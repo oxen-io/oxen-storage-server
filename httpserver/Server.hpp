@@ -29,10 +29,6 @@
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 using namespace service_node;
-namespace my_program_state {
-
-std::time_t now() { return std::time(0); }
-} // namespace my_program_state
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
   public:
