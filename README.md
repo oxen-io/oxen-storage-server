@@ -1,4 +1,4 @@
-# loki-sn-storage
+# loki-storage-server
 Storage server for Loki Service Nodes
 
 ```
