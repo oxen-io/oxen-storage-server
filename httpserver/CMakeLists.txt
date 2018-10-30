@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.0)
 
 project(httpserver)
 
-add_executable(httpserver main.cpp Server.hpp)
+add_executable(httpserver main.cpp http_connection.hpp)
 
 add_subdirectory(../storage storage)
 target_link_libraries(httpserver PRIVATE sn_storage)

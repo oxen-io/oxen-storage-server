@@ -1,5 +1,4 @@
-#include "Server.hpp"
-#include "Storage.hpp"
+#include "http_connection.hpp"
 
 #include <cstdlib>
 #include <iomanip>

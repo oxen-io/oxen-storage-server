@@ -95,12 +95,19 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::vector<std::string> keys = {"pubkey"};
         if (!parse_header(keys))
             return;
+        
+        // optional lastHash
+        std::string last_hash = "";
+        const auto it = request_.find("last_hash");
+        if (it != request_.end()) {
+            last_hash = it->value().to_string();
+        }
 
         std::vector<storage::Item> items;
         std::string body = "{\"messages\": [";
 
         try {
-            storage_.retrieve(header_["pubkey"], items, "");
+            storage_.retrieve(header_["pubkey"], items, last_hash);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
