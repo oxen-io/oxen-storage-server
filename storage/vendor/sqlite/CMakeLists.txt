@@ -18,3 +18,8 @@ target_compile_definitions(sqlite PRIVATE
     SQLITE_OMIT_DEPRECATED # no need for deprecated stuff
     SQLITE_OMIT_PROGRESS_CALLBACK # no need for progress callback
 )
+
+target_link_libraries(sqlite PUBLIC
+    pthread
+    dl
+)
