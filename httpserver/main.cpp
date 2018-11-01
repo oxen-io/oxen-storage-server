@@ -1,4 +1,5 @@
 #include "http_connection.hpp"
+#include "Storage.hpp"
 
 #include <cstdlib>
 #include <iomanip>
@@ -24,10 +25,12 @@ int main(int argc, char* argv[]) {
         unsigned short port = static_cast<unsigned short>(std::atoi(argv[2]));
 
         boost::asio::io_context ioc{1};
+        
+        Storage storage(".");
 
         tcp::acceptor acceptor{ioc, {address, port}};
         tcp::socket socket{ioc};
-        http_server(acceptor, socket);
+        http_server(acceptor, socket, storage);
 
         ioc.run();
     } catch (std::exception const& e) {

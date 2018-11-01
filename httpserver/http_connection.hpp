@@ -32,8 +32,8 @@ using namespace service_node;
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
   public:
-    http_connection(tcp::socket socket)
-        : socket_(std::move(socket)), storage_(".") {}
+    http_connection(tcp::socket socket, Storage& storage)
+        : socket_(std::move(socket)), storage_(storage) {}
 
     // Initiate the asynchronous operations associated with the connection.
     void start() {
@@ -59,7 +59,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         socket_.get_executor().context(), std::chrono::seconds(60)};
 
     std::unordered_map<std::string, std::string> header_;
-    Storage storage_;
+    Storage& storage_;
 
     // Asynchronously receive a complete request message.
     void read_request() {
@@ -229,10 +229,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 };
 
 // "Loop" forever accepting new connections.
-void http_server(tcp::acceptor& acceptor, tcp::socket& socket) {
+void http_server(tcp::acceptor& acceptor, tcp::socket& socket, Storage& storage) {
     acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
         if (!ec)
-            std::make_shared<http_connection>(std::move(socket))->start();
-        http_server(acceptor, socket);
+            std::make_shared<http_connection>(std::move(socket), storage)->start();
+        http_server(acceptor, socket, storage);
     });
 }
