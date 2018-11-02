@@ -13,6 +13,7 @@
 //
 //------------------------------------------------------------------------------
 #include "Storage.hpp"
+#include "pow.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -95,7 +96,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::vector<std::string> keys = {"pubkey"};
         if (!parse_header(keys))
             return;
-        
+
         // optional lastHash
         std::string last_hash = "";
         const auto it = request_.find("last_hash");
@@ -132,8 +133,9 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     }
 
     void process_store() {
-        const std::vector<std::string> keys = {"pubkey", "ttl", "timestamp",
-                                               "hash"};
+        const std::vector<std::string> keys = {"X-Loki-pow-nonce", "X-Loki-ttl",
+                                               "X-Loki-timestamp",
+                                               "X-Loki-recipient"};
         if (!parse_header(keys))
             return;
 
@@ -144,13 +146,25 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             bytes.insert(std::end(bytes), cbuf,
                          cbuf + boost::asio::buffer_size(seq));
         }
+        // Do not store message if the PoW provided is invalid
+        const bool validPoW =
+            checkPoW(header_["X-Loki-pow-nonce"], header_["X-Loki-timestamp"],
+                     header_["X-Loki-ttl"], header_["X-Loki-recipient"], bytes);
+        if (!validPoW) {
+            response_.result(http::status::forbidden);
+            response_.set(http::field::content_type, "text/plain");
+            boost::beast::ostream(response_.body())
+                << "Provided PoW nonce is not valid.";
+            return;
+        }
 
-        const int ttl = std::stoi(header_["ttl"]);
+        const int ttl = std::stoi(header_["X-Loki-ttl"]);
         bool success;
 
         try {
-            success =
-                storage_.store(header_["hash"], header_["pubkey"], bytes, ttl);
+            // TODO: Calculate hash and store instead of timestamp
+            success = storage_.store(header_["X-Loki-timestamp"],
+                                     header_["X-Loki-recipient"], bytes, ttl);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
@@ -229,10 +243,12 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 };
 
 // "Loop" forever accepting new connections.
-void http_server(tcp::acceptor& acceptor, tcp::socket& socket, Storage& storage) {
+void http_server(tcp::acceptor& acceptor, tcp::socket& socket,
+                 Storage& storage) {
     acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
         if (!ec)
-            std::make_shared<http_connection>(std::move(socket), storage)->start();
+            std::make_shared<http_connection>(std::move(socket), storage)
+                ->start();
         http_server(acceptor, socket, storage);
     });
 }

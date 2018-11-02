@@ -30,7 +30,7 @@ if(NOT Boost_FOUND)
         REQUIRED
         system
         filesystem
-    )    
+    )
 endif()
 
 include_directories(sn_storage ${Boost_INCLUDE_DIRS})
