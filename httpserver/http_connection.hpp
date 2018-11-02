@@ -13,6 +13,7 @@
 //
 //------------------------------------------------------------------------------
 #include "Storage.hpp"
+#include "pow.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -133,7 +134,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
     void process_store() {
         const std::vector<std::string> keys = {"pubkey", "ttl", "timestamp",
-                                               "hash"};
+                                               "hash", "nonce"};
         if (!parse_header(keys))
             return;
 
@@ -146,6 +147,8 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         }
 
         const int ttl = std::stoi(header_["ttl"]);
+        bool pow = checkPoW(header_["nonce"], header_["timestamp"],
+                            header_["ttl"], header_["pubkey"], bytes);
         bool success;
 
         try {
