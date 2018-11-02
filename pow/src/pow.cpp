@@ -1,16 +1,21 @@
-#include <string.h>
-#include <limits>
-#include <array>
-#include <openssl/sha.h>
 #include "pow.hpp"
-#include "base64.hpp"
+
+#include <array>
+#include <boost/archive/iterators/base64_from_binary.hpp>
+#include <boost/archive/iterators/binary_from_base64.hpp>
+#include <boost/archive/iterators/insert_linebreaks.hpp>
+#include <boost/archive/iterators/remove_whitespace.hpp>
+#include <boost/archive/iterators/transform_width.hpp>
+#include <limits>
+#include <openssl/sha.h>
+#include <string.h>
 
 const int BYTE_LEN = 8;
 const int NONCE_TRIALS = 1000;
 using uint64Bytes = std::array<uint8_t, BYTE_LEN>;
 
 // This enforces that the result array has the most significant byte at index 0
-void u64ToU8Array(uint64_t numberVal, uint64Bytes &result) {
+void u64ToU8Array(uint64_t numberVal, uint64Bytes& result) {
     for (int idx = result.size() - 1; idx >= 0; idx--) {
         // Grab the least significant byte
         result[idx] = numberVal & (uint64_t)0xFF;
@@ -24,7 +29,31 @@ bool addWillOverflow(uint64_t x, uint64_t add) {
 }
 
 bool multWillOverflow(uint64_t left, uint64_t right) {
-    return left != 0 && (std::numeric_limits<std::uint64_t>::max() / left < right);
+    return left != 0 &&
+           (std::numeric_limits<std::uint64_t>::max() / left < right);
+}
+
+// Base64 decode function using boost, found online
+std::string base64_decode(std::string input) {
+    using namespace boost::archive::iterators;
+    typedef transform_width<
+        binary_from_base64<remove_whitespace<std::string::const_iterator>>, 8,
+        6>
+        ItBinaryT;
+
+    try {
+        // If the input isn't a multiple of 4, pad with =
+        size_t num_pad_chars((4 - input.size() % 4) % 4);
+        input.append(num_pad_chars, '=');
+
+        size_t pad_chars(std::count(input.begin(), input.end(), '='));
+        std::replace(input.begin(), input.end(), '=', 'A');
+        std::string output(ItBinaryT(input.begin()), ItBinaryT(input.end()));
+        output.erase(output.end() - pad_chars, output.end());
+        return output;
+    } catch (std::exception const&) {
+        return std::string("");
+    }
 }
 
 bool checkPoW(std::string &nonce, std::string &timestamp, std::string &ttl, std::string &recipient, std::vector<uint8_t> &data) {

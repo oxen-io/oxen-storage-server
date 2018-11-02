@@ -1,8 +1,6 @@
 set(SOURCES
     include/pow.hpp
     src/pow.cpp
-    src/base64.cpp
-    src/base64.hpp
 )
 
 add_library(pow STATIC ${SOURCES})
@@ -16,3 +14,14 @@ target_include_directories(pow
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+if(NOT Boost_FOUND)
+    find_package(Boost
+        REQUIRED
+        system
+        filesystem
+    )
+endif()
+
+include_directories(pow ${Boost_INCLUDE_DIRS})
+target_link_libraries(pow PRIVATE ${Boost_LIBRARIES})
