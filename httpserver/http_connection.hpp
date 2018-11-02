@@ -133,8 +133,12 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     }
 
     void process_store() {
-        const std::vector<std::string> keys = {"pubkey", "ttl", "timestamp",
-                                               "hash", "nonce"};
+        const std::vector<std::string> keys = {
+            "X-Loki-pow-nonce",
+            "X-Loki-ttl",
+            "X-Loki-timestamp",
+            "X-Loki-recipient"
+        };
         if (!parse_header(keys))
             return;
 
@@ -145,15 +149,18 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             bytes.insert(std::end(bytes), cbuf,
                          cbuf + boost::asio::buffer_size(seq));
         }
+        bool pow = checkPoW(header_["X-Loki-pow-nonce"], header_["X-Loki-timestamp"],
+                            header_["X-Loki-ttl"], header_["X-Loki-recipient"],
+                            bytes);
 
-        const int ttl = std::stoi(header_["ttl"]);
-        bool pow = checkPoW(header_["nonce"], header_["timestamp"],
-                            header_["ttl"], header_["pubkey"], bytes);
+        const int ttl = std::stoi(header_["X-Loki-ttl"]);
         bool success;
 
         try {
+            // TODO: Calculate hash and store instead of timestamp
             success =
-                storage_.store(header_["hash"], header_["pubkey"], bytes, ttl);
+                storage_.store(header_["X-Loki-timestamp"],
+                               header_["X-Loki-recipient"], bytes, ttl);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
