@@ -149,9 +149,19 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             bytes.insert(std::end(bytes), cbuf,
                          cbuf + boost::asio::buffer_size(seq));
         }
-        bool pow = checkPoW(header_["X-Loki-pow-nonce"], header_["X-Loki-timestamp"],
-                            header_["X-Loki-ttl"], header_["X-Loki-recipient"],
-                            bytes);
+        // Do not store message if the PoW provided is invalid
+        const bool validPoW = checkPoW(header_["X-Loki-pow-nonce"],
+                                 header_["X-Loki-timestamp"],
+                                 header_["X-Loki-ttl"],
+                                 header_["X-Loki-recipient"],
+                                 bytes);
+        if (!validPoW) {
+            response_.result(http::status::forbidden);
+            response_.set(http::field::content_type, "text/plain");
+            boost::beast::ostream(response_.body()) <<
+                "Provided PoW nonce is not valid.";
+            return;
+        }
 
         const int ttl = std::stoi(header_["X-Loki-ttl"]);
         bool success;
