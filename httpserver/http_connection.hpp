@@ -24,6 +24,7 @@
 #include <ctime>
 #include <iostream>
 #include <memory>
+#include <openssl/sha.h>
 #include <string>
 #include <unordered_map>
 
@@ -161,10 +162,32 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const int ttl = std::stoi(header_["X-Loki-ttl"]);
         bool success;
 
+        unsigned char hashResult[SHA512_DIGEST_LENGTH];
+        std::vector<unsigned char> messageContents(
+            header_["X-Loki-timestamp"].size() +
+            header_["X-Loki-pow-nonce"].size() +
+            header_["X-Loki-recipient"].size() + bytes.size());
+        messageContents.insert(std::end(messageContents),
+                               std::begin(header_["X-Loki-timestamp"]),
+                               std::end(header_["X-Loki-timestamp"]));
+        messageContents.insert(std::end(messageContents),
+                               std::begin(header_["X-Loki-pow-nonce"]),
+                               std::end(header_["X-Loki-pow-nonce"]));
+        messageContents.insert(std::end(messageContents),
+                               std::begin(header_["X-Loki-recipient"]),
+                               std::end(header_["X-Loki-recipient"]));
+        messageContents.insert(std::end(messageContents), std::begin(bytes),
+                               std::end(bytes));
+        SHA512(messageContents.data(), messageContents.size(), hashResult);
+
+        char hash[SHA512_DIGEST_LENGTH * 2 + 1];
+        for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+            sprintf(&hash[i * 2], "%02x", (unsigned int)hashResult[i]);
+
         try {
             // TODO: Calculate hash and store instead of timestamp
-            success = storage_.store(header_["X-Loki-timestamp"],
-                                     header_["X-Loki-recipient"], bytes, ttl);
+            success =
+                storage_.store(hash, header_["X-Loki-recipient"], bytes, ttl);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
