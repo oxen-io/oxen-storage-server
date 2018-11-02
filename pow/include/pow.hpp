@@ -1,4 +1,6 @@
 #include <iostream>
 #include <vector>
 
-bool checkPoW(std::string &nonce, std::string &timestamp, std::string &ttl, std::string &recipient, std::vector<uint8_t> &data);
+bool checkPoW(const std::string& nonce, const std::string& timestamp,
+              const std::string& ttl, const std::string& recipient,
+              const std::vector<uint8_t>& data);

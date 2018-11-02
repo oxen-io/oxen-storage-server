@@ -56,12 +56,17 @@ std::string base64_decode(std::string input) {
     }
 }
 
-bool checkPoW(std::string &nonce, std::string &timestamp, std::string &ttl, std::string &recipient, std::vector<uint8_t> &data) {
+bool checkPoW(const std::string& nonce, const std::string& timestamp,
+              const std::string& ttl, const std::string& recipient,
+              const std::vector<uint8_t>& data) {
     std::vector<uint8_t> payload;
-    payload.reserve(timestamp.size() + ttl.size() + recipient.size() + data.size());
-    payload.insert(std::end(payload), std::begin(timestamp), std::end(timestamp));
+    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
+                    data.size());
+    payload.insert(std::end(payload), std::begin(timestamp),
+                   std::end(timestamp));
     payload.insert(std::end(payload), std::begin(ttl), std::end(ttl));
-    payload.insert(std::end(payload), std::begin(recipient), std::end(recipient));
+    payload.insert(std::end(payload), std::begin(recipient),
+                   std::end(recipient));
     payload.insert(std::end(payload), std::begin(data), std::end(data));
 
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
@@ -94,8 +99,10 @@ bool checkPoW(std::string &nonce, std::string &timestamp, std::string &ttl, std:
     // Convert decoded nonce string into uint8_t vector. Will have length 8
     std::vector<uint8_t> innerPayload;
     innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
-    innerPayload.insert(std::end(innerPayload), std::begin(decodedNonce), std::end(decodedNonce));
-    innerPayload.insert(std::end(innerPayload), hashResult, hashResult + SHA512_DIGEST_LENGTH);
+    innerPayload.insert(std::end(innerPayload), std::begin(decodedNonce),
+                        std::end(decodedNonce));
+    innerPayload.insert(std::end(innerPayload), hashResult,
+                        hashResult + SHA512_DIGEST_LENGTH);
     // Final hash
     SHA512(innerPayload.data(), innerPayload.size(), hashResult);
     return memcmp(hashResult, target.data(), BYTE_LEN) < 0;
