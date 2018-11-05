@@ -24,6 +24,7 @@
 #include <ctime>
 #include <iostream>
 #include <memory>
+#include <openssl/sha.h>
 #include <string>
 #include <unordered_map>
 
@@ -138,6 +139,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
                                                "X-Loki-recipient"};
         if (!parse_header(keys))
             return;
+        const std::string& timestamp = header_["X-Loki-timestamp"];
+        const std::string& nonce = header_["X-Loki-pow-nonce"];
+        const std::string& recipient = header_["X-Loki-recipient"];
+        const std::string& ttl = header_["X-Loki-ttl"];
 
         std::vector<uint8_t> bytes;
 
@@ -147,9 +152,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
                          cbuf + boost::asio::buffer_size(seq));
         }
         // Do not store message if the PoW provided is invalid
-        const bool validPoW =
-            checkPoW(header_["X-Loki-pow-nonce"], header_["X-Loki-timestamp"],
-                     header_["X-Loki-ttl"], header_["X-Loki-recipient"], bytes);
+        const bool validPoW = checkPoW(nonce, timestamp, ttl, recipient, bytes);
         if (!validPoW) {
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
@@ -158,13 +161,28 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             return;
         }
 
-        const int ttl = std::stoi(header_["X-Loki-ttl"]);
+        const int ttlInt = std::stoi(ttl);
         bool success;
 
+        unsigned char hashResult[SHA512_DIGEST_LENGTH];
+        std::vector<unsigned char> messageContents(
+            timestamp.size() + nonce.size() + recipient.size() + bytes.size());
+        messageContents.insert(std::end(messageContents), std::begin(timestamp),
+                               std::end(timestamp));
+        messageContents.insert(std::end(messageContents), std::begin(nonce),
+                               std::end(nonce));
+        messageContents.insert(std::end(messageContents), std::begin(recipient),
+                               std::end(recipient));
+        messageContents.insert(std::end(messageContents), std::begin(bytes),
+                               std::end(bytes));
+        SHA512(messageContents.data(), messageContents.size(), hashResult);
+
+        char hash[SHA512_DIGEST_LENGTH * 2 + 1];
+        for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+            sprintf(&hash[i * 2], "%02x", (unsigned int)hashResult[i]);
+
         try {
-            // TODO: Calculate hash and store instead of timestamp
-            success = storage_.store(header_["X-Loki-timestamp"],
-                                     header_["X-Loki-recipient"], bytes, ttl);
+            success = storage_.store(hash, recipient, bytes, ttlInt);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
