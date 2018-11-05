@@ -17,9 +17,9 @@ set_property(TARGET sn_storage PROPERTY CXX_STANDARD 11)
 
 target_include_directories(sn_storage
     PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_LIST_DIR}/include
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
 add_subdirectory(vendor/sqlite)
