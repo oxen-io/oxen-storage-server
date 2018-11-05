@@ -18,7 +18,7 @@ project(sqlite)
 add_library(sqlite STATIC sqlite3.c)
 
 target_include_directories(sqlite PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}
 )
 
 # https://www.sqlite.org/compile.html#recommended_compile_time_options

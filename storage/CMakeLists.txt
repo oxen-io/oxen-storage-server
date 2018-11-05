@@ -33,5 +33,5 @@ if(NOT Boost_FOUND)
     )
 endif()
 
-include_directories(sn_storage ${Boost_INCLUDE_DIRS})
+target_include_directories(sn_storage PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(sn_storage PRIVATE ${Boost_LIBRARIES})

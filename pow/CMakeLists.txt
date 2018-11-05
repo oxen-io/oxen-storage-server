@@ -10,9 +10,9 @@ target_link_libraries(pow PRIVATE OpenSSL::SSL)
 
 target_include_directories(pow
     PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_LIST_DIR}/include
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
 if(NOT Boost_FOUND)
@@ -23,5 +23,5 @@ if(NOT Boost_FOUND)
     )
 endif()
 
-include_directories(pow ${Boost_INCLUDE_DIRS})
+target_include_directories(pow PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(pow PRIVATE ${Boost_LIBRARIES})

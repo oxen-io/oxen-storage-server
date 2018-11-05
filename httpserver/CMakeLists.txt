@@ -18,5 +18,5 @@ if(NOT Boost_FOUND)
     )
 endif()
 
-include_directories(httpserver ${Boost_INCLUDE_DIRS})
+target_include_directories(httpserver PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(httpserver PRIVATE ${Boost_LIBRARIES})
