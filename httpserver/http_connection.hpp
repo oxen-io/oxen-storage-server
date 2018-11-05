@@ -100,7 +100,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
         // optional lastHash
         std::string last_hash = "";
-        const auto it = request_.find("last_hash");
+        const auto it = request_.find("X-Loki-last-hash");
         if (it != request_.end()) {
             last_hash = it->value().to_string();
         }
