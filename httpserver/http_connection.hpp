@@ -94,7 +94,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     }
 
     void process_retrieve() {
-        const std::vector<std::string> keys = {"pubkey"};
+        const std::vector<std::string> keys = {"X-Loki-recipient"};
         if (!parse_header(keys))
             return;
 
@@ -109,7 +109,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         std::string body = "{\"messages\": [";
 
         try {
-            storage_.retrieve(header_["pubkey"], items, last_hash);
+            storage_.retrieve(header_["X-Loki-recipient"], items, last_hash);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
