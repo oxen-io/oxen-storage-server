@@ -6,7 +6,7 @@ set(SOURCES
 add_library(pow STATIC ${SOURCES})
 
 find_package(OpenSSL REQUIRED)
-target_link_libraries(pow PUBLIC OpenSSL::SSL)
+target_link_libraries(pow PRIVATE OpenSSL::SSL)
 
 target_include_directories(pow
     PUBLIC

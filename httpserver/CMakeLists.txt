@@ -6,6 +6,8 @@ add_executable(httpserver main.cpp http_connection.hpp)
 
 add_subdirectory(../storage storage)
 add_subdirectory(../pow pow)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
 target_link_libraries(httpserver PRIVATE sn_storage)
 target_link_libraries(httpserver PRIVATE pow)
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 11)
