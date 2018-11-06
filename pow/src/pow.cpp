@@ -6,6 +6,7 @@
 #include <boost/archive/iterators/insert_linebreaks.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#include <iomanip>
 #include <limits>
 #include <openssl/sha.h>
 #include <string.h>
@@ -58,7 +59,7 @@ std::string base64_decode(std::string input) {
 
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
-              const std::vector<uint8_t>& data) {
+              const std::vector<uint8_t>& data, std::string& messageHash) {
     std::vector<uint8_t> payload;
     payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
                     data.size());
@@ -105,5 +106,11 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
                         hashResult + SHA512_DIGEST_LENGTH);
     // Final hash
     SHA512(innerPayload.data(), innerPayload.size(), hashResult);
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+        ss << std::setw(2) << static_cast<unsigned>(hashResult[i]);
+    messageHash = ss.str();
+
     return memcmp(hashResult, target.data(), BYTE_LEN) < 0;
 }
