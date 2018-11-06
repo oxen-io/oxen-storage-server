@@ -152,7 +152,9 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
                          cbuf + boost::asio::buffer_size(seq));
         }
         // Do not store message if the PoW provided is invalid
-        const bool validPoW = checkPoW(nonce, timestamp, ttl, recipient, bytes);
+        std::string messageHash;
+        const bool validPoW =
+            checkPoW(nonce, timestamp, ttl, recipient, bytes, messageHash);
         if (!validPoW) {
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
@@ -164,25 +166,8 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const int ttlInt = std::stoi(ttl);
         bool success;
 
-        unsigned char hashResult[SHA512_DIGEST_LENGTH];
-        std::vector<unsigned char> messageContents(
-            timestamp.size() + nonce.size() + recipient.size() + bytes.size());
-        messageContents.insert(std::end(messageContents), std::begin(timestamp),
-                               std::end(timestamp));
-        messageContents.insert(std::end(messageContents), std::begin(nonce),
-                               std::end(nonce));
-        messageContents.insert(std::end(messageContents), std::begin(recipient),
-                               std::end(recipient));
-        messageContents.insert(std::end(messageContents), std::begin(bytes),
-                               std::end(bytes));
-        SHA512(messageContents.data(), messageContents.size(), hashResult);
-
-        char hash[SHA512_DIGEST_LENGTH * 2 + 1];
-        for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
-            sprintf(&hash[i * 2], "%02x", (unsigned int)hashResult[i]);
-
         try {
-            success = storage_.store(hash, recipient, bytes, ttlInt);
+            success = storage_.store(messageHash, recipient, bytes, ttlInt);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
