@@ -10,6 +10,7 @@
 #include <limits>
 #include <openssl/sha.h>
 #include <string.h>
+#include <sstream>
 
 const int BYTE_LEN = 8;
 const int NONCE_TRIALS = 1000;
