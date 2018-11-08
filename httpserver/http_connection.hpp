@@ -130,7 +130,9 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
                                                 std::end(item.bytes)));
             messagesNode.push_back(std::make_pair("", messageNode));
         }
-        root.add_child("messages", messagesNode);
+        if(messagesNode.size() != 0) {
+            root.add_child("messages", messagesNode);
+        }
         std::ostringstream buf;
         pt::write_json(buf, root);
         response_.result(http::status::ok);
