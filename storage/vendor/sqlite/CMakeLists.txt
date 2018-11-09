@@ -37,4 +37,5 @@ if(UNIX AND NOT APPLE)
         pthread
         dl
     )
+    target_compile_options(sqlite PRIVATE "-fPIC")
 endif()
