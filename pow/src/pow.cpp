@@ -1,4 +1,5 @@
 #include "pow.hpp"
+#include "utils.hpp"
 
 #include <array>
 #include <boost/archive/iterators/base64_from_binary.hpp>
@@ -74,11 +75,14 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
     if (overflow)
         return false;
+    uint64_t ttlInt;
+    if (!util::parseTTL(ttl, ttlInt))
+        return false;
     uint64_t totalLen = payload.size() + BYTE_LEN;
-    overflow = multWillOverflow(stoi(ttl), totalLen);
+    overflow = multWillOverflow(ttlInt, totalLen);
     if (overflow)
         return false;
-    uint64_t ttlMult = stoi(ttl) * totalLen;
+    uint64_t ttlMult = ttlInt * totalLen;
     uint64_t innerFrac = ttlMult / std::numeric_limits<uint16_t>::max();
     overflow = addWillOverflow(totalLen, innerFrac);
     if (overflow)
