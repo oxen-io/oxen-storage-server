@@ -35,14 +35,12 @@ void DatabaseHandler::perform_cleanup() {
 
     sqlite3_bind_int64(delete_expired_stmt, 1, now_ms);
 
-    bool result = false;
     int rc;
     while (true) {
         rc = sqlite3_step(delete_expired_stmt);
         if (rc == SQLITE_BUSY) {
             continue;
         } else if (rc == SQLITE_DONE) {
-            result = true;
             break;
         } else {
             fprintf(stderr, "Can't delete expired messages: %s\n",
