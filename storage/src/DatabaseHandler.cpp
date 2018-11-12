@@ -127,7 +127,7 @@ void DatabaseHandler::open_and_prepare(const std::string& db_path) {
 }
 
 bool DatabaseHandler::store(const std::string& hash, const std::string& pubKey,
-                            const std::string& bytes, int ttl) {
+                            const std::string& bytes, uint64_t ttl) {
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
