@@ -28,6 +28,7 @@
 #include <memory>
 #include <openssl/sha.h>
 #include <string>
+#include <sstream>
 #include <unordered_map>
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>

@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <string>
-#include <vector>
 
 namespace service_node {
 namespace storage {
