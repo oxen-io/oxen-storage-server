@@ -126,11 +126,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             pt::ptree messageNode;
             messageNode.put("hash", item.hash);
             messageNode.put("timestamp", item.timestamp);
-            messageNode.put("data", std::string(std::begin(item.bytes),
-                                                std::end(item.bytes)));
+            messageNode.put("data", item.bytes);
             messagesNode.push_back(std::make_pair("", messageNode));
         }
-        if(messagesNode.size() != 0) {
+        if (messagesNode.size() != 0) {
             root.add_child("messages", messagesNode);
         }
         std::ostringstream buf;
@@ -151,7 +150,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::string& recipient = header_["X-Loki-recipient"];
         const std::string& ttl = header_["X-Loki-ttl"];
 
-        std::vector<uint8_t> bytes;
+        std::string bytes;
 
         for (auto seq : request_.body().data()) {
             const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);

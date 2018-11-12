@@ -127,7 +127,7 @@ void DatabaseHandler::open_and_prepare(const std::string& db_path) {
 }
 
 bool DatabaseHandler::store(const std::string& hash, const std::string& pubKey,
-                            const std::vector<uint8_t>& bytes, int ttl) {
+                            const std::string& bytes, int ttl) {
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
@@ -191,9 +191,9 @@ bool DatabaseHandler::retrieve(const std::string& pubKey,
             std::string((const char*)sqlite3_column_text(stmt, 1));
         const auto time_saved = sqlite3_column_int64(stmt, 2);
         const auto time_expires = sqlite3_column_int64(stmt, 3);
-        auto* bytes = (uint8_t*)sqlite3_column_blob(stmt, 4);
-        const int size = sqlite3_column_bytes(stmt, 4);
-        items.emplace_back(hash, pubKey, time_saved, time_expires, bytes, size);
+        const std::string bytes((char*)sqlite3_column_blob(stmt, 4),
+                                sqlite3_column_bytes(stmt, 4));
+        items.emplace_back(hash, pubKey, time_saved, time_expires, bytes);
     }
 
     int rc = sqlite3_reset(stmt);

@@ -17,7 +17,7 @@ class DatabaseHandler {
     ~DatabaseHandler();
 
     bool store(const std::string& hash, const std::string& pubKey,
-               const std::vector<uint8_t>& bytes, int ttl);
+               const std::string& bytes, int ttl);
     bool retrieve(const std::string& key,
                   std::vector<service_node::storage::Item>& items,
                   const std::string& lastHash);
