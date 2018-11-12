@@ -60,16 +60,8 @@ std::string base64_decode(std::string input) {
 
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
-              const std::vector<uint8_t>& data, std::string& messageHash) {
-    std::vector<uint8_t> payload;
-    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
-                    data.size());
-    payload.insert(std::end(payload), std::begin(timestamp),
-                   std::end(timestamp));
-    payload.insert(std::end(payload), std::begin(ttl), std::end(ttl));
-    payload.insert(std::end(payload), std::begin(recipient),
-                   std::end(recipient));
-    payload.insert(std::end(payload), std::begin(data), std::end(data));
+              const std::string& data, std::string& messageHash) {
+    const std::string payload = timestamp + ttl + recipient + data;
 
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
     if (overflow)
@@ -95,7 +87,7 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
 
     uint8_t hashResult[SHA512_DIGEST_LENGTH];
     // Initial hash
-    SHA512(payload.data(), payload.size(), hashResult);
+    SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
     // Convert nonce to binary
     std::string decodedNonce = base64_decode(nonce);
     // Convert decoded nonce string into uint8_t vector. Will have length 8

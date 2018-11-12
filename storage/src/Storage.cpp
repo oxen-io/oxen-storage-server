@@ -13,7 +13,7 @@ Storage::~Storage() {
 Storage::Storage(const std::string& db_dir) : db(new DatabaseHandler(db_dir)) {}
 
 bool Storage::store(const std::string& hash, const std::string& pubKey,
-                    const std::vector<uint8_t>& bytes, int ttl) {
+                    const std::string& bytes, uint64_t ttl) {
     return db->store(hash, pubKey, bytes, ttl);
 }
 

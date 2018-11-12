@@ -19,6 +19,8 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -26,10 +28,12 @@
 #include <memory>
 #include <openssl/sha.h>
 #include <string>
+#include <sstream>
 #include <unordered_map>
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
+namespace pt = boost::property_tree; // from <boost/property_tree/>
 using namespace service_node;
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
@@ -106,7 +110,6 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         }
 
         std::vector<storage::Item> items;
-        std::string body = "{\"messages\": [";
 
         try {
             storage_.retrieve(header_["X-Loki-recipient"], items, last_hash);
@@ -117,20 +120,24 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             return;
         }
 
+        pt::ptree root;
+        pt::ptree messagesNode;
+
         for (const auto& item : items) {
-            body += "{";
-            body += "\"hash\":\"" + item.hash + "\",";
-            body += "\"timestamp\":\"" + std::to_string(item.timestamp) + "\",";
-            body += "\"data\":\"";
-            body.append(std::begin(item.bytes), std::end(item.bytes));
-            body += "\"";
-            body += "},";
+            pt::ptree messageNode;
+            messageNode.put("hash", item.hash);
+            messageNode.put("timestamp", item.timestamp);
+            messageNode.put("data", item.bytes);
+            messagesNode.push_back(std::make_pair("", messageNode));
         }
-        body.pop_back();
-        body += "]}";
+        if (messagesNode.size() != 0) {
+            root.add_child("messages", messagesNode);
+        }
+        std::ostringstream buf;
+        pt::write_json(buf, root);
         response_.result(http::status::ok);
         response_.set(http::field::content_type, "application/json");
-        boost::beast::ostream(response_.body()) << body;
+        boost::beast::ostream(response_.body()) << buf.str();
     }
 
     void process_store() {
@@ -144,7 +151,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::string& recipient = header_["X-Loki-recipient"];
         const std::string& ttl = header_["X-Loki-ttl"];
 
-        std::vector<uint8_t> bytes;
+        std::string bytes;
 
         for (auto seq : request_.body().data()) {
             const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);

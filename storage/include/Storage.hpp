@@ -16,7 +16,7 @@ class Storage {
     Storage(const std::string& db_dir);
     ~Storage();
     bool store(const std::string& hash, const std::string& pubKey,
-               const std::vector<uint8_t>& data, int ttl);
+               const std::string& data, uint64_t ttl);
     bool retrieve(const std::string& pubKey, std::vector<storage::Item>& data,
                   const std::string& lastHash);
 
