@@ -12,7 +12,6 @@ uint64_t get_time_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                timestamp.time_since_epoch())
         .count();
-    ;
 }
 
 Storage::~Storage() {
@@ -24,8 +23,7 @@ Storage::~Storage() {
 }
 
 Storage::Storage(const std::string& db_path)
-    : cleanup_timer(
-          new Timer(std::bind(&Storage::perform_cleanup, this))) {
+    : cleanup_timer(new Timer(std::bind(&Storage::perform_cleanup, this))) {
     open_and_prepare(db_path);
     cleanup_timer->start();
 }
@@ -125,7 +123,7 @@ void Storage::open_and_prepare(const std::string& db_path) {
 }
 
 bool Storage::store(const std::string& hash, const std::string& pubKey,
-                            const std::string& bytes, uint64_t ttl) {
+                    const std::string& bytes, uint64_t ttl) {
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
@@ -161,9 +159,8 @@ bool Storage::store(const std::string& hash, const std::string& pubKey,
     return result;
 }
 
-bool Storage::retrieve(const std::string& pubKey,
-                               std::vector<Item>& items,
-                               const std::string& lastHash) {
+bool Storage::retrieve(const std::string& pubKey, std::vector<Item>& items,
+                       const std::string& lastHash) {
 
     sqlite3_stmt* stmt;
 
