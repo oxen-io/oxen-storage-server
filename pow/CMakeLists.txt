@@ -5,6 +5,8 @@ set(SOURCES
 
 add_library(pow STATIC ${SOURCES})
 
+set_property(TARGET pow PROPERTY CXX_STANDARD 11)
+
 find_package(OpenSSL REQUIRED)
 target_link_libraries(pow PRIVATE OpenSSL::SSL)
 
