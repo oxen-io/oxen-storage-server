@@ -14,6 +14,7 @@
 //------------------------------------------------------------------------------
 #include "Storage.hpp"
 #include "pow.hpp"
+#include "utils.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -170,7 +171,15 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             return;
         }
 
-        const int ttlInt = std::stoi(ttl);
+        uint64_t ttlInt;
+        if (!util::parseTTL(ttl, ttlInt)) {
+            response_.result(http::status::forbidden);
+            response_.set(http::field::content_type, "text/plain");
+            boost::beast::ostream(response_.body())
+                << "Provided TTL is not valid.";
+            return;
+        }
+
         bool success;
 
         try {
