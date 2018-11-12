@@ -4,7 +4,6 @@
 #include <array>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
-#include <boost/archive/iterators/insert_linebreaks.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
 #include <iomanip>
@@ -39,10 +38,9 @@ bool multWillOverflow(uint64_t left, uint64_t right) {
 // Base64 decode function using boost, found online
 std::string base64_decode(std::string input) {
     using namespace boost::archive::iterators;
-    typedef transform_width<
+    using ItBinaryT = transform_width<
         binary_from_base64<remove_whitespace<std::string::const_iterator>>, 8,
-        6>
-        ItBinaryT;
+        6>;
 
     try {
         // If the input isn't a multiple of 4, pad with =
