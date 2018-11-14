@@ -33,3 +33,7 @@
 
 # Custom
 build
+
+# Vscode settings
+.vscode
+

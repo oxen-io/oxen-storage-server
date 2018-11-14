@@ -133,6 +133,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         }
         if (messagesNode.size() != 0) {
             root.add_child("messages", messagesNode);
+            root.put("lastHash", items.back().hash);
         }
         std::ostringstream buf;
         pt::write_json(buf, root);
