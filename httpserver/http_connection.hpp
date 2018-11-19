@@ -127,7 +127,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         for (const auto& item : items) {
             pt::ptree messageNode;
             messageNode.put("hash", item.hash);
-            messageNode.put("timestamp", item.timestamp);
+            messageNode.put("expiration", item.expirationTimestamp);
             messageNode.put("data", item.bytes);
             messagesNode.push_back(std::make_pair("", messageNode));
         }
