@@ -13,7 +13,11 @@
 #include <sstream>
 
 const int BYTE_LEN = 8;
+#ifdef NDEBUG
 const int NONCE_TRIALS = 1000;
+#else
+const int NONCE_TRIALS = 10;
+#endif
 using uint64Bytes = std::array<uint8_t, BYTE_LEN>;
 
 // This enforces that the result array has the most significant byte at index 0
