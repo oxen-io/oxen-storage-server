@@ -165,6 +165,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const bool validPoW =
             checkPoW(nonce, timestamp, ttl, recipient, bytes, messageHash);
         if (!validPoW) {
+            std::cerr << "Message rejected, invalid PoW" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
             boost::beast::ostream(response_.body())
@@ -174,6 +175,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
         uint64_t ttlInt;
         if (!util::parseTTL(ttl, ttlInt)) {
+            std::cerr << "Message rejected, invalid TTL" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
             boost::beast::ostream(response_.body())
