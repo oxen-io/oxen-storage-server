@@ -16,15 +16,15 @@ Then using something like Postman (https://www.getpostman.com/) you can hit the 
 HTTP POST http://127.0.0.1/store
 body: "hello world"
 headers:
-- pubkey: "mypubkey"
-- ttl: "86400"
-- timestamp: "1540860811000"
-- hash: "deadbeef"
+- X-Loki-recipient: "mypubkey"
+- X-Loki-ttl: "86400"
+- X-Loki-timestamp: "1540860811000"
+- X-Loki-pow-nonce: "xxxx..."
 ```
 # get data
 ```
 HTTP GET http://127.0.0.1/retrieve
 headers:
-- pubkey: "mypubkey"
-- last_hash: "" (optional)
+- X-Loki-recipient: "mypubkey"
+- X-Loki-last-hash: "" (optional)
 ```
