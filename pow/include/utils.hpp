@@ -13,7 +13,8 @@ inline bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
         return false;
     }
 
-    if (ttlInt < 0)
+    // Maximum time to live of 4 days
+    if (ttlInt < 0 || ttlInt > 96 * 60 * 60)
         return false;
 
     ttl = static_cast<uint64_t>(ttlInt);

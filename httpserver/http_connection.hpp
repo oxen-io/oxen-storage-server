@@ -153,6 +153,16 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::string& recipient = header_["X-Loki-recipient"];
         const std::string& ttl = header_["X-Loki-ttl"];
 
+        uint64_t ttlInt;
+        if (!util::parseTTL(ttl, ttlInt)) {
+            std::cerr << "Message rejected, invalid TTL" << std::endl;
+            response_.result(http::status::forbidden);
+            response_.set(http::field::content_type, "text/plain");
+            boost::beast::ostream(response_.body())
+                << "Provided TTL is not valid.";
+            return;
+        }
+
         std::string bytes;
 
         for (auto seq : request_.body().data()) {
@@ -170,16 +180,6 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             response_.set(http::field::content_type, "text/plain");
             boost::beast::ostream(response_.body())
                 << "Provided PoW nonce is not valid.";
-            return;
-        }
-
-        uint64_t ttlInt;
-        if (!util::parseTTL(ttl, ttlInt)) {
-            std::cerr << "Message rejected, invalid TTL" << std::endl;
-            response_.result(http::status::forbidden);
-            response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "Provided TTL is not valid.";
             return;
         }
 
