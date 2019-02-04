@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
             std::string("hash") + std::to_string(num_entries / 2 - 1);
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), num_entries / 2);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash500");
+        BOOST_CHECK_EQUAL(items[0].hash, std::string("hash") + std::to_string(num_entries / 2));
     }
 }
 
