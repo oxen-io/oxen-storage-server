@@ -252,12 +252,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const auto target = request_.target();
         switch (request_.method()) {
         case http::verb::post:
-            if (target != "/v1/storage_rpc") {
-                response_.result(http::status::not_found);
+            if (target == "/v1/storage_rpc") {
+                process_v1();
                 break;
             }
-
-            process_v1();
+            response_.result(http::status::not_found);
             break;
 
         default:
