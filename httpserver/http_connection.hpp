@@ -25,13 +25,13 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <openssl/sha.h>
-#include <string>
 #include <sstream>
-#include <map>
-#include <functional>
+#include <string>
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
@@ -145,13 +145,14 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         auto iter = rpc_endpoints_.find(method_name);
         if (iter == rpc_endpoints_.end()) {
             response_.result(http::status::bad_request);
-            boost::beast::ostream(response_.body()) << "no method" << method_name;
+            boost::beast::ostream(response_.body())
+                << "no method" << method_name;
             return;
         }
         rpc_function endpoint_callback = iter->second;
         try {
             endpoint_callback(root.get_child("params"));
-        } catch(std::exception& e) {
+        } catch (std::exception& e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
             boost::beast::ostream(response_.body()) << e.what();
@@ -159,7 +160,8 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         }
     }
 
-    void process_retrieve(const std::string& pubKey, const std::string& last_hash) {
+    void process_retrieve(const std::string& pubKey,
+                          const std::string& last_hash) {
         std::vector<storage::Item> items;
 
         try {
@@ -192,11 +194,9 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         boost::beast::ostream(response_.body()) << buf.str();
     }
 
-    void process_store(const std::string& recipient,
-        const std::string& ttl,
-        const std::string& nonce,
-        const std::string& timestamp,
-        const std::string& bytes) {
+    void process_store(const std::string& recipient, const std::string& ttl,
+                       const std::string& nonce, const std::string& timestamp,
+                       const std::string& bytes) {
         uint64_t ttlInt;
         if (!util::parseTTL(ttl, ttlInt)) {
             std::cerr << "Message rejected, invalid TTL" << std::endl;
