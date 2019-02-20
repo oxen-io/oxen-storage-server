@@ -25,17 +25,20 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <openssl/sha.h>
-#include <string>
 #include <sstream>
-#include <unordered_map>
+#include <string>
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 namespace pt = boost::property_tree; // from <boost/property_tree/>
 using namespace service_node;
+
+using rpc_function = std::function<void(const pt::ptree&)>;
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
   public:
@@ -44,6 +47,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
     // Initiate the asynchronous operations associated with the connection.
     void start() {
+        assign_callbacks();
         read_request();
         check_deadline();
     }
@@ -65,8 +69,25 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     boost::asio::basic_waitable_timer<std::chrono::steady_clock> deadline_{
         socket_.get_executor().context(), std::chrono::seconds(60)};
 
-    std::unordered_map<std::string, std::string> header_;
+    std::map<std::string, std::string> header_;
+    std::map<std::string, rpc_function> rpc_endpoints_;
     Storage& storage_;
+
+    void assign_callbacks() {
+        rpc_endpoints_["store"] = [&](const pt::ptree& params) {
+            const auto pubKey = params.get<std::string>("pubKey");
+            const auto ttl = params.get<std::string>("ttl");
+            const auto nonce = params.get<std::string>("nonce");
+            const auto timestamp = params.get<std::string>("timestamp");
+            const auto data = params.get<std::string>("data");
+            return process_store(pubKey, ttl, nonce, timestamp, data);
+        };
+        rpc_endpoints_["retrieve"] = [&](const pt::ptree& params) {
+            const auto pubKey = params.get<std::string>("pubKey");
+            const auto lastHash = params.get("lastHash", "");
+            return process_retrieve(pubKey, lastHash);
+        };
+    }
 
     // Asynchronously receive a complete request message.
     void read_request() {
@@ -98,22 +119,53 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         return true;
     }
 
-    void process_retrieve() {
-        const std::vector<std::string> keys = {"X-Loki-recipient"};
+    void process_v1() {
+        const std::vector<std::string> keys = {"X-Loki-EphemKey"};
         if (!parse_header(keys))
             return;
 
-        // optional lastHash
-        std::string last_hash = "";
-        const auto it = request_.find("X-Loki-last-hash");
-        if (it != request_.end()) {
-            last_hash = it->value().to_string();
+        std::string bytes;
+
+        for (auto seq : request_.body().data()) {
+            const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);
+            bytes.insert(std::end(bytes), cbuf,
+                         cbuf + boost::asio::buffer_size(seq));
         }
 
+        // TODO: actually decrypt
+        const std::string plainText = bytes;
+
+        // parse json
+        pt::ptree root;
+        std::stringstream ss;
+        ss << plainText;
+        pt::json_parser::read_json(ss, root);
+
+        const auto method_name = root.get("method", "");
+        auto iter = rpc_endpoints_.find(method_name);
+        if (iter == rpc_endpoints_.end()) {
+            response_.result(http::status::bad_request);
+            boost::beast::ostream(response_.body())
+                << "no method" << method_name;
+            return;
+        }
+        rpc_function endpoint_callback = iter->second;
+        try {
+            endpoint_callback(root.get_child("params"));
+        } catch (std::exception& e) {
+            response_.result(http::status::internal_server_error);
+            response_.set(http::field::content_type, "text/plain");
+            boost::beast::ostream(response_.body()) << e.what();
+            return;
+        }
+    }
+
+    void process_retrieve(const std::string& pubKey,
+                          const std::string& last_hash) {
         std::vector<storage::Item> items;
 
         try {
-            storage_.retrieve(header_["X-Loki-recipient"], items, last_hash);
+            storage_.retrieve(pubKey, items, last_hash);
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
@@ -142,17 +194,9 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         boost::beast::ostream(response_.body()) << buf.str();
     }
 
-    void process_store() {
-        const std::vector<std::string> keys = {"X-Loki-pow-nonce", "X-Loki-ttl",
-                                               "X-Loki-timestamp",
-                                               "X-Loki-recipient"};
-        if (!parse_header(keys))
-            return;
-        const std::string& timestamp = header_["X-Loki-timestamp"];
-        const std::string& nonce = header_["X-Loki-pow-nonce"];
-        const std::string& recipient = header_["X-Loki-recipient"];
-        const std::string& ttl = header_["X-Loki-ttl"];
-
+    void process_store(const std::string& recipient, const std::string& ttl,
+                       const std::string& nonce, const std::string& timestamp,
+                       const std::string& bytes) {
         uint64_t ttlInt;
         if (!util::parseTTL(ttl, ttlInt)) {
             std::cerr << "Message rejected, invalid TTL" << std::endl;
@@ -163,13 +207,6 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             return;
         }
 
-        std::string bytes;
-
-        for (auto seq : request_.body().data()) {
-            const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);
-            bytes.insert(std::end(bytes), cbuf,
-                         cbuf + boost::asio::buffer_size(seq));
-        }
         // Do not store message if the PoW provided is invalid
         std::string messageHash;
         const bool validPoW =
@@ -214,21 +251,12 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
         const auto target = request_.target();
         switch (request_.method()) {
-        case http::verb::get:
-            if (target != "/retrieve") {
-                response_.result(http::status::not_found);
-                break;
-            }
-
-            process_retrieve();
-            break;
         case http::verb::post:
-            if (target != "/store") {
-                response_.result(http::status::not_found);
+            if (target == "/v1/storage_rpc") {
+                process_v1();
                 break;
             }
-
-            process_store();
+            response_.result(http::status::not_found);
             break;
 
         default:
