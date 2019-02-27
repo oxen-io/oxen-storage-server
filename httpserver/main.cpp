@@ -21,8 +21,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "    receiver 0::0 80\n";
             return EXIT_FAILURE;
         }
-        std::cout << "Listening at address " << argv[1] << " port "
-                  << argv[2] << std::endl;
+        std::cout << "Listening at address " << argv[1] << " port " << argv[2]
+                  << std::endl;
 
         auto const address = boost::asio::ip::make_address(argv[1]);
         unsigned short port = static_cast<unsigned short>(std::atoi(argv[2]));
