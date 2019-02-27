@@ -60,10 +60,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     boost::beast::flat_buffer buffer_{8192};
 
     // The request message.
-    http::request<http::dynamic_body> request_;
+    http::request<http::string_body> request_;
 
     // The response message.
-    http::response<http::dynamic_body> response_;
+    http::response<http::string_body> response_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::basic_waitable_timer<std::chrono::steady_clock> deadline_{
@@ -72,6 +72,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     std::map<std::string, std::string> header_;
     std::map<std::string, rpc_function> rpc_endpoints_;
     Storage& storage_;
+    std::stringstream bodyStream_;
 
     void assign_callbacks() {
         rpc_endpoints_["store"] = [&](const pt::ptree& params) {
@@ -110,8 +111,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             if (it == request_.end()) {
                 response_.result(http::status::bad_request);
                 response_.set(http::field::content_type, "text/plain");
-                boost::beast::ostream(response_.body())
-                    << "Missing field in header : " << key;
+                bodyStream_ << "Missing field in header : " << key;
                 return false;
             }
             header_[key] = it->value().to_string();
@@ -123,6 +123,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         const std::vector<std::string> keys = {"X-Loki-EphemKey"};
         if (!parse_header(keys))
             return;
+        std::string plainText = request_.body();
 
         std::string bytes;
 
@@ -131,9 +132,6 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             bytes.insert(std::end(bytes), cbuf,
                          cbuf + boost::asio::buffer_size(seq));
         }
-
-        // TODO: actually decrypt
-        const std::string plainText = bytes;
 
         // parse json
         pt::ptree root;
@@ -145,8 +143,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         auto iter = rpc_endpoints_.find(method_name);
         if (iter == rpc_endpoints_.end()) {
             response_.result(http::status::bad_request);
-            boost::beast::ostream(response_.body())
-                << "no method" << method_name;
+            bodyStream_ << "no method" << method_name;
             return;
         }
         rpc_function endpoint_callback = iter->second;
@@ -155,7 +152,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception& e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
     }
@@ -169,7 +166,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
 
@@ -191,7 +188,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         pt::write_json(buf, root);
         response_.result(http::status::ok);
         response_.set(http::field::content_type, "application/json");
-        boost::beast::ostream(response_.body()) << buf.str();
+        bodyStream_ << buf.str();
     }
 
     void process_store(const std::string& recipient, const std::string& ttl,
@@ -202,8 +199,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             std::cerr << "Message rejected, invalid TTL" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "Provided TTL is not valid.";
+            bodyStream_ << "Provided TTL is not valid.";
             return;
         }
 
@@ -215,8 +211,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             std::cerr << "Message rejected, invalid PoW" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "Provided PoW nonce is not valid.";
+            bodyStream_ << "Provided PoW nonce is not valid.";
             return;
         }
 
@@ -227,21 +222,20 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
 
         if (!success) {
             response_.result(http::status::conflict);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "hash conflict - resource already present.";
+            bodyStream_ << "hash conflict - resource already present.";
             return;
         }
 
         response_.result(http::status::ok);
         response_.set(http::field::content_type, "application/json");
-        boost::beast::ostream(response_.body()) << "{ \"status\": \"ok\" }";
+        bodyStream_ << "{ \"status\": \"ok\" }";
     }
 
     // Determine what needs to be done with the request message.
@@ -268,6 +262,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     // Asynchronously transmit the response message.
     void write_response() {
         auto self = shared_from_this();
+
+        std::string body = bodyStream_.str();
+
+        response_.body() = body;
 
         response_.set(http::field::content_length, response_.body().size());
 
