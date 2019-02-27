@@ -98,7 +98,7 @@ T ChannelEncryption<T>::encrypt(const T& plaintext,
     output.insert(output.begin(), iv, iv + ivLength);
 
     EVP_CIPHER_CTX_free(ctx);
-    //    const T ret(output.begin(), output.end());
+
     return output;
 }
 
