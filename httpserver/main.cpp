@@ -1,5 +1,6 @@
-#include "http_connection.hpp"
 #include "Storage.hpp"
+#include "http_connection.hpp"
+#include "channel_encryption.hpp"
 
 #include <cstdlib>
 #include <iomanip>
@@ -29,10 +30,11 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context ioc{1};
 
         Storage storage(".");
+        ChannelEncryption<std::string> channelEncryption("/Users/sachav/Downloads/identity.private");
 
         tcp::acceptor acceptor{ioc, {address, port}};
         tcp::socket socket{ioc};
-        http_server(acceptor, socket, storage);
+        http_server(acceptor, socket, storage, channelEncryption);
 
         ioc.run();
     } catch (std::exception const& e) {

@@ -15,11 +15,13 @@
 #include "Storage.hpp"
 #include "pow.hpp"
 #include "utils.hpp"
+#include "channel_encryption.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <chrono>
@@ -44,8 +46,8 @@ using rpc_function = std::function<void(const pt::ptree&)>;
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
   public:
-    http_connection(tcp::socket socket, Storage& storage)
-        : socket_(std::move(socket)), storage_(storage) {}
+    http_connection(tcp::socket socket, Storage& storage, ChannelEncryption<std::string>& channelEncryption)
+        : socket_(std::move(socket)), storage_(storage), channelCipher_(channelEncryption) {}
 
     // Initiate the asynchronous operations associated with the connection.
     void start() {
@@ -74,6 +76,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     std::map<std::string, std::string> header_;
     std::map<std::string, rpc_function> rpc_endpoints_;
     Storage& storage_;
+    ChannelEncryption<std::string>& channelCipher_;
     std::stringstream bodyStream_;
 
     void assign_callbacks() {
@@ -127,12 +130,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             return;
         std::string plainText = request_.body();
 
-        std::string bytes;
-
-        for (auto seq : request_.body().data()) {
-            const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);
-            bytes.insert(std::end(bytes), cbuf,
-                         cbuf + boost::asio::buffer_size(seq));
+        try {
+            const std::string decoded = boost::beast::detail::base64_decode(plainText);
+            plainText = channelCipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
+        } catch(...) {
+            // TODO: don't accept unencrypted data?
         }
 
         // parse json
@@ -267,6 +269,18 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
         std::string body = bodyStream_.str();
 
+        const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
+        if (it != header_.end()) {
+            const std::string& ephemKey = it->second;
+            try {
+                body = channelCipher_.encrypt(body, ephemKey);
+                body = boost::beast::detail::base64_encode(body);
+                response_.set(http::field::content_type, "text/plain");
+            } catch(...) {
+                // TODO: not allow sending as plaintext?
+            }
+        }
+
         response_.body() = body;
 
         response_.set(http::field::content_length, response_.body().size());
@@ -294,11 +308,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
 // "Loop" forever accepting new connections.
 void http_server(tcp::acceptor& acceptor, tcp::socket& socket,
-                 Storage& storage) {
+                 Storage& storage, ChannelEncryption<std::string>& channelEncryption) {
     acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
         if (!ec)
-            std::make_shared<http_connection>(std::move(socket), storage)
+            std::make_shared<http_connection>(std::move(socket), storage, channelEncryption)
                 ->start();
-        http_server(acceptor, socket, storage);
+        http_server(acceptor, socket, storage, channelEncryption);
     });
 }
