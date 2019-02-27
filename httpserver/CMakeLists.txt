@@ -23,6 +23,7 @@ if(NOT Boost_FOUND)
         REQUIRED
         system
         filesystem
+        program_options
     )
 endif()
 
