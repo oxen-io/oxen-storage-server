@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context ioc{1};
 
         Storage storage(".");
-        ChannelEncryption<std::string> channelEncryption("/Users/sachav/Downloads/identity.private");
+        ChannelEncryption<std::string> channelEncryption;
 
         tcp::acceptor acceptor{ioc, {address, port}};
         tcp::socket socket{ioc};
