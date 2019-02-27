@@ -133,8 +133,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         try {
             const std::string decoded = boost::beast::detail::base64_decode(plainText);
             plainText = channelCipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
-        } catch(...) {
-            // TODO: don't accept unencrypted data?
+        } catch(const std::exception& e) {
+            response_.result(http::status::bad_request);
+            response_.set(http::field::content_type, "text/plain");
+            bodyStream_ << "Could not decode/decrypt body: ";
+            bodyStream_ << e.what();
         }
 
         // parse json
@@ -276,8 +279,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
                 body = channelCipher_.encrypt(body, ephemKey);
                 body = boost::beast::detail::base64_encode(body);
                 response_.set(http::field::content_type, "text/plain");
-            } catch(...) {
-                // TODO: not allow sending as plaintext?
+            } catch(const std::exception& e) {
+                response_.result(http::status::internal_server_error);
+                response_.set(http::field::content_type, "text/plain");
+                body = "Could not encrypt/encode response: ";
+                body += e.what();
             }
         }
 
