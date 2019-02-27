@@ -12,12 +12,12 @@ class ChannelEncryption {
     ChannelEncryption(const std::string& identityPrivatePath = "");
     ~ChannelEncryption() = default;
 
-    T encrypt(const T& plainText, const std::string& pubkey) const;
+    T encrypt(const T& plainText, const std::string& pubKey) const;
 
-    T decrypt(const T& cipherText, const std::string& pubkey) const;
+    T decrypt(const T& cipherText, const std::string& pubKey) const;
 
   private:
     std::vector<uint8_t>
-    calculateSharedSecret(const std::vector<uint8_t>& pubkey) const;
+    calculateSharedSecret(const std::vector<uint8_t>& pubKey) const;
     std::vector<uint8_t> privateKey;
 };

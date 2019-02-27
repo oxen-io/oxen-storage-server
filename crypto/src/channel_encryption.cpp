@@ -33,13 +33,13 @@ ChannelEncryption<T>::ChannelEncryption(
 
 template <typename T>
 std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(
-    const std::vector<uint8_t>& pubkey) const {
+    const std::vector<uint8_t>& pubKey) const {
     std::vector<uint8_t> sharedSecret(crypto_scalarmult_BYTES);
-    if (pubkey.size() != crypto_scalarmult_curve25519_BYTES) {
-        throw std::runtime_error("Bad pubkey size");
+    if (pubKey.size() != crypto_scalarmult_curve25519_BYTES) {
+        throw std::runtime_error("Bad pubKey size");
     }
     if (crypto_scalarmult(sharedSecret.data(), this->privateKey.data(),
-                          pubkey.data()) != 0) {
+                          pubKey.data()) != 0) {
         throw std::runtime_error(
             "Shared key derivation failed (crypto_scalarmult)");
     }
@@ -48,8 +48,8 @@ std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(
 
 template <typename T>
 T ChannelEncryption<T>::encrypt(const T& plaintext,
-                                const std::string& pubkey) const {
-    const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubkey);
+                                const std::string& pubKey) const {
+    const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubKey);
     const std::vector<uint8_t> sharedKey = calculateSharedSecret(pubKeyBytes);
 
     // Initialise cipher
@@ -104,8 +104,8 @@ T ChannelEncryption<T>::encrypt(const T& plaintext,
 
 template <typename T>
 T ChannelEncryption<T>::decrypt(const T& ciphertextAndIV,
-                                const std::string& pubkey) const {
-    const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubkey);
+                                const std::string& pubKey) const {
+    const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubKey);
     const std::vector<uint8_t> sharedKey = calculateSharedSecret(pubKeyBytes);
 
     // Initialise cipher
