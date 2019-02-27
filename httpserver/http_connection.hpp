@@ -33,6 +33,8 @@
 #include <sstream>
 #include <string>
 
+static const std::string LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
+
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 namespace pt = boost::property_tree; // from <boost/property_tree/>
@@ -120,7 +122,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     }
 
     void process_v1() {
-        const std::vector<std::string> keys = {"X-Loki-EphemKey"};
+        const std::vector<std::string> keys = {LOKI_EPHEMKEY_HEADER};
         if (!parse_header(keys))
             return;
         std::string plainText = request_.body();
