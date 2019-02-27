@@ -2,6 +2,7 @@
 #include "utils.hpp"
 
 #include <array>
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
@@ -39,28 +40,6 @@ bool multWillOverflow(uint64_t left, uint64_t right) {
            (std::numeric_limits<std::uint64_t>::max() / left < right);
 }
 
-// Base64 decode function using boost, found online
-std::string base64_decode(std::string input) {
-    using namespace boost::archive::iterators;
-    using ItBinaryT = transform_width<
-        binary_from_base64<remove_whitespace<std::string::const_iterator>>, 8,
-        6>;
-
-    try {
-        // If the input isn't a multiple of 4, pad with =
-        size_t num_pad_chars((4 - input.size() % 4) % 4);
-        input.append(num_pad_chars, '=');
-
-        size_t pad_chars(std::count(input.begin(), input.end(), '='));
-        std::replace(input.begin(), input.end(), '=', 'A');
-        std::string output(ItBinaryT(input.begin()), ItBinaryT(input.end()));
-        output.erase(output.end() - pad_chars, output.end());
-        return output;
-    } catch (std::exception const&) {
-        return std::string("");
-    }
-}
-
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
               const std::string& data, std::string& messageHash) {
@@ -95,7 +74,7 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     // Initial hash
     SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
     // Convert nonce to binary
-    std::string decodedNonce = base64_decode(nonce);
+    std::string decodedNonce = boost::beast::detail::base64_decode(nonce);
     // Convert decoded nonce string into uint8_t vector. Will have length 8
     std::vector<uint8_t> innerPayload;
     innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
