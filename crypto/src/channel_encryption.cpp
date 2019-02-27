@@ -1,6 +1,7 @@
 #include "channel_encryption.hpp"
 #include "lokinet_identity.hpp"
 
+#include <boost/algorithm/hex.hpp>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <sodium.h>
@@ -9,18 +10,9 @@
 #include <string>
 
 std::vector<uint8_t> hexToBytes(const std::string& hex) {
-    const size_t hexLength = hex.length();
-    const size_t retLength = hexLength / 2;
-    std::vector<uint8_t> ret(retLength);
-    size_t bin_len;
-
-    if (sodium_hex2bin(ret.data(), retLength, hex.c_str(), hexLength, NULL,
-                       &bin_len, NULL) != 0 ||
-        bin_len != retLength) {
-        throw std::runtime_error("Could not convert hex to bytes");
-    }
-
-    return ret;
+    std::vector<uint8_t> temp;
+    boost::algorithm::unhex(hex, std::back_inserter(temp));
+    return temp;
 }
 
 template <typename T>
