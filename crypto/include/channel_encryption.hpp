@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-struct evp_pkey_st;
-
 template <typename T>
 class ChannelEncryption {
   public:

@@ -6,26 +6,28 @@
 #include <fstream>
 #include <iterator>
 
+namespace fs = boost::filesystem;
+
 constexpr size_t privateKeyOffset = 3;
 constexpr size_t privateKeyLength = 32;
 
 std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
-    boost::filesystem::path p(path);
+    fs::path p(path);
 
     if (p.empty()) {
 #ifdef _WIN32
-        const boost::filesystem::path homedir =
-            boost::filesystem::pathpath(getenv("APPDATA"));
+        const fs::path homedir =
+            fs::pathpath(getenv("APPDATA"));
 #else
-        const boost::filesystem::path homedir =
-            boost::filesystem::path(getenv("HOME"));
+        const fs::path homedir =
+            fs::path(getenv("HOME"));
 #endif
-        const boost::filesystem::path basepath =
-            homedir / boost::filesystem::path(".lokinet");
+        const fs::path basepath =
+            homedir / fs::path(".lokinet");
         p = basepath / "identity.private";
     }
 
-    if (!boost::filesystem::exists(p)) {
+    if (!fs::exists(p)) {
         throw std::runtime_error(
             "Lokinet identity.private file could not be found");
     }
