@@ -15,11 +15,13 @@
 #include "Storage.hpp"
 #include "pow.hpp"
 #include "utils.hpp"
+#include "channel_encryption.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <chrono>
@@ -33,6 +35,8 @@
 #include <sstream>
 #include <string>
 
+static const std::string LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
+
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 namespace pt = boost::property_tree; // from <boost/property_tree/>
@@ -42,8 +46,8 @@ using rpc_function = std::function<void(const pt::ptree&)>;
 
 class http_connection : public std::enable_shared_from_this<http_connection> {
   public:
-    http_connection(tcp::socket socket, Storage& storage)
-        : socket_(std::move(socket)), storage_(storage) {}
+    http_connection(tcp::socket socket, Storage& storage, ChannelEncryption<std::string>& channelEncryption)
+        : socket_(std::move(socket)), storage_(storage), channelCipher_(channelEncryption) {}
 
     // Initiate the asynchronous operations associated with the connection.
     void start() {
@@ -60,10 +64,10 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     boost::beast::flat_buffer buffer_{8192};
 
     // The request message.
-    http::request<http::dynamic_body> request_;
+    http::request<http::string_body> request_;
 
     // The response message.
-    http::response<http::dynamic_body> response_;
+    http::response<http::string_body> response_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::basic_waitable_timer<std::chrono::steady_clock> deadline_{
@@ -72,6 +76,8 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     std::map<std::string, std::string> header_;
     std::map<std::string, rpc_function> rpc_endpoints_;
     Storage& storage_;
+    ChannelEncryption<std::string>& channelCipher_;
+    std::stringstream bodyStream_;
 
     void assign_callbacks() {
         rpc_endpoints_["store"] = [&](const pt::ptree& params) {
@@ -110,8 +116,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             if (it == request_.end()) {
                 response_.result(http::status::bad_request);
                 response_.set(http::field::content_type, "text/plain");
-                boost::beast::ostream(response_.body())
-                    << "Missing field in header : " << key;
+                bodyStream_ << "Missing field in header : " << key;
                 return false;
             }
             header_[key] = it->value().to_string();
@@ -120,20 +125,20 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     }
 
     void process_v1() {
-        const std::vector<std::string> keys = {"X-Loki-EphemKey"};
+        const std::vector<std::string> keys = {LOKI_EPHEMKEY_HEADER};
         if (!parse_header(keys))
             return;
+        std::string plainText = request_.body();
 
-        std::string bytes;
-
-        for (auto seq : request_.body().data()) {
-            const auto* cbuf = boost::asio::buffer_cast<const char*>(seq);
-            bytes.insert(std::end(bytes), cbuf,
-                         cbuf + boost::asio::buffer_size(seq));
+        try {
+            const std::string decoded = boost::beast::detail::base64_decode(plainText);
+            plainText = channelCipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
+        } catch(const std::exception& e) {
+            response_.result(http::status::bad_request);
+            response_.set(http::field::content_type, "text/plain");
+            bodyStream_ << "Could not decode/decrypt body: ";
+            bodyStream_ << e.what();
         }
-
-        // TODO: actually decrypt
-        const std::string plainText = bytes;
 
         // parse json
         pt::ptree root;
@@ -145,8 +150,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         auto iter = rpc_endpoints_.find(method_name);
         if (iter == rpc_endpoints_.end()) {
             response_.result(http::status::bad_request);
-            boost::beast::ostream(response_.body())
-                << "no method" << method_name;
+            bodyStream_ << "no method" << method_name;
             return;
         }
         rpc_function endpoint_callback = iter->second;
@@ -155,7 +159,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception& e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
     }
@@ -169,7 +173,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
 
@@ -191,7 +195,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         pt::write_json(buf, root);
         response_.result(http::status::ok);
         response_.set(http::field::content_type, "application/json");
-        boost::beast::ostream(response_.body()) << buf.str();
+        bodyStream_ << buf.str();
     }
 
     void process_store(const std::string& recipient, const std::string& ttl,
@@ -202,8 +206,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             std::cerr << "Message rejected, invalid TTL" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "Provided TTL is not valid.";
+            bodyStream_ << "Provided TTL is not valid.";
             return;
         }
 
@@ -215,8 +218,7 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
             std::cerr << "Message rejected, invalid PoW" << std::endl;
             response_.result(http::status::forbidden);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "Provided PoW nonce is not valid.";
+            bodyStream_ << "Provided PoW nonce is not valid.";
             return;
         }
 
@@ -227,21 +229,20 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
         } catch (std::exception e) {
             response_.result(http::status::internal_server_error);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body()) << e.what();
+            bodyStream_ << e.what();
             return;
         }
 
         if (!success) {
             response_.result(http::status::conflict);
             response_.set(http::field::content_type, "text/plain");
-            boost::beast::ostream(response_.body())
-                << "hash conflict - resource already present.";
+            bodyStream_ << "hash conflict - resource already present.";
             return;
         }
 
         response_.result(http::status::ok);
         response_.set(http::field::content_type, "application/json");
-        boost::beast::ostream(response_.body()) << "{ \"status\": \"ok\" }";
+        bodyStream_ << "{ \"status\": \"ok\" }";
     }
 
     // Determine what needs to be done with the request message.
@@ -269,6 +270,25 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
     void write_response() {
         auto self = shared_from_this();
 
+        std::string body = bodyStream_.str();
+
+        const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
+        if (it != header_.end()) {
+            const std::string& ephemKey = it->second;
+            try {
+                body = channelCipher_.encrypt(body, ephemKey);
+                body = boost::beast::detail::base64_encode(body);
+                response_.set(http::field::content_type, "text/plain");
+            } catch(const std::exception& e) {
+                response_.result(http::status::internal_server_error);
+                response_.set(http::field::content_type, "text/plain");
+                body = "Could not encrypt/encode response: ";
+                body += e.what();
+            }
+        }
+
+        response_.body() = body;
+
         response_.set(http::field::content_length, response_.body().size());
 
         http::async_write(socket_, response_,
@@ -294,11 +314,11 @@ class http_connection : public std::enable_shared_from_this<http_connection> {
 
 // "Loop" forever accepting new connections.
 void http_server(tcp::acceptor& acceptor, tcp::socket& socket,
-                 Storage& storage) {
+                 Storage& storage, ChannelEncryption<std::string>& channelEncryption) {
     acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
         if (!ec)
-            std::make_shared<http_connection>(std::move(socket), storage)
+            std::make_shared<http_connection>(std::move(socket), storage, channelEncryption)
                 ->start();
-        http_server(acceptor, socket, storage);
+        http_server(acceptor, socket, storage, channelEncryption);
     });
 }
