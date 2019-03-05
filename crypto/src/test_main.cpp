@@ -1,4 +1,5 @@
 #include "channel_encryption.hpp"
+#include <assert.h>
 #include <iostream>
 #include <sodium.h>
 
