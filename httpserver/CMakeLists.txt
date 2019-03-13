@@ -24,6 +24,7 @@ if(NOT Boost_FOUND)
         system
         filesystem
         program_options
+        log
     )
 endif()
 
