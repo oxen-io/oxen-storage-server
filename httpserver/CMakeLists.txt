@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8.0)
 
 project(httpserver)
 
+add_definitions(-DBOOST_LOG_DYN_LINK)
+
 add_executable(httpserver main.cpp http_connection.hpp)
 
 add_subdirectory(../storage storage)
