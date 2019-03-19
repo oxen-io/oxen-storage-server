@@ -1,4 +1,4 @@
-#include "Storage.hpp"
+#include "Database.hpp"
 
 #include <iostream>
 #include <string>
@@ -26,7 +26,7 @@ BOOST_AUTO_TEST_SUITE(storage)
 BOOST_AUTO_TEST_CASE(it_creates_the_database_file) {
     StorageRAIIFixture fixture;
 
-    Storage storage(".");
+    Database storage(".");
     BOOST_CHECK(boost::filesystem::exists("storage.db"));
 }
 
@@ -38,13 +38,13 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
     const auto bytes = "bytesasstring";
     const uint64_t ttl = 123456;
     {
-        Storage storage(".");
+        Database storage(".");
         BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl));
         // the database is closed when storage goes out of scope
     }
     {
         // re-open the database
-        Storage storage(".");
+        Database storage(".");
 
         std::vector<service_node::storage::Item> items;
         const auto lastHash = "";
@@ -68,7 +68,7 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
     const auto bytes = "bytesasstring";
     const uint64_t ttl = 123456;
 
-    Storage storage(".");
+    Database storage(".");
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl));
     // store using the same hash
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
     StorageRAIIFixture fixture;
 
-    Storage storage(".");
+    Database storage(".");
 
     BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000));
     BOOST_CHECK(
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
 BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     StorageRAIIFixture fixture;
 
-    Storage storage(".");
+    Database storage(".");
 
     const size_t num_entries = 1000;
     for (size_t i = 0; i < num_entries; i++) {
@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
 
     const auto pubkey = "mypubkey";
 
-    Storage storage(".");
+    Database storage(".");
 
     BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000));
     BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0));

@@ -1,4 +1,4 @@
-#include "Storage.hpp"
+#include "Database.hpp"
 #include "Timer.hpp"
 
 #include "sqlite3.h"
@@ -14,21 +14,22 @@ uint64_t get_time_ms() {
         .count();
 }
 
-Storage::~Storage() {
+Database::~Database() {
     sqlite3_finalize(save_stmt);
     sqlite3_finalize(get_all_stmt);
     sqlite3_finalize(get_stmt);
     sqlite3_finalize(delete_expired_stmt);
     sqlite3_close(db);
+    std::cerr << "~Database\n";
 }
 
-Storage::Storage(const std::string& db_path)
-    : cleanup_timer(new Timer(std::bind(&Storage::perform_cleanup, this))) {
+Database::Database(const std::string& db_path)
+    : cleanup_timer(new Timer(std::bind(&Database::perform_cleanup, this))) {
     open_and_prepare(db_path);
     cleanup_timer->start();
 }
 
-void Storage::perform_cleanup() {
+void Database::perform_cleanup() {
     const auto now_ms = get_time_ms();
 
     sqlite3_bind_int64(delete_expired_stmt, 1, now_ms);
@@ -54,7 +55,7 @@ void Storage::perform_cleanup() {
     }
 }
 
-sqlite3_stmt* Storage::prepare_statement(const std::string& query) {
+sqlite3_stmt* Database::prepare_statement(const std::string& query) {
     const char* pzTest;
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, query.c_str(), query.length() + 1, &stmt,
@@ -65,7 +66,7 @@ sqlite3_stmt* Storage::prepare_statement(const std::string& query) {
     return stmt;
 }
 
-void Storage::open_and_prepare(const std::string& db_path) {
+void Database::open_and_prepare(const std::string& db_path) {
     const std::string file_path = db_path + "/storage.db";
     int rc = sqlite3_open_v2(file_path.c_str(), &db,
                              SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
@@ -122,10 +123,14 @@ void Storage::open_and_prepare(const std::string& db_path) {
             "could not prepare 'delete expired' statement");
 }
 
-bool Storage::store(const std::string& hash, const std::string& pubKey,
+bool Database::store(const std::string& hash, const std::string& pubKey,
                     const std::string& bytes, uint64_t ttl) {
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
+
+    std::cout << pubKey << std::endl;
+    std::cout << hash << std::endl;
+    std::cout << ttl << std::endl;
 
     sqlite3_bind_text(save_stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(save_stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
@@ -159,7 +164,7 @@ bool Storage::store(const std::string& hash, const std::string& pubKey,
     return result;
 }
 
-bool Storage::retrieve(const std::string& pubKey, std::vector<Item>& items,
+bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
                        const std::string& lastHash) {
 
     sqlite3_stmt* stmt;
@@ -193,7 +198,11 @@ bool Storage::retrieve(const std::string& pubKey, std::vector<Item>& items,
 
     int rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        throw std::runtime_error("ERROR: could not reset DB statement");
+        return false;
     }
     return true;
+}
+
+bool Database::save_pushed() {
+
 }

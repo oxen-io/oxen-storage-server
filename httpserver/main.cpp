@@ -1,6 +1,7 @@
-#include "Storage.hpp"
 #include "channel_encryption.hpp"
-#include "http_connection.hpp"
+#include "http_connection.h"
+#include "service_node.h"
+#include "swarm.h"
 
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
@@ -13,6 +14,7 @@
 #include <thread>
 #include <utility> // for std::pair
 #include <vector>
+#include <iostream>
 
 using namespace service_node;
 namespace po = boost::program_options;
@@ -68,8 +70,8 @@ int main(int argc, char* argv[]) {
         std::string dbLocation(".");
         std::string logLevelString("info");
 
-        auto const address = boost::asio::ip::make_address(argv[1]);
-        unsigned short port = static_cast<unsigned short>(std::atoi(argv[2]));
+        const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
+        std::string ip = argv[1];
 
         po::options_description desc;
         desc.add_options()("lokinet-identity", po::value(&lokinetIdentityPath),
@@ -101,21 +103,19 @@ int main(int argc, char* argv[]) {
                 << "Setting database location to " << dbLocation;
         }
 
-        BOOST_LOG_TRIVIAL(info) << "Listening at address " << argv[1]
-                                << " port " << argv[2] << std::endl;
+        BOOST_LOG_TRIVIAL(info) << "Listening at address " << ip
+                                << " port " << port << std::endl;
 
         boost::asio::io_context ioc{1};
 
-        Storage storage(dbLocation);
+        loki::ServiceNode service_node(ioc, port, dbLocation);
         ChannelEncryption<std::string> channelEncryption(lokinetIdentityPath);
 
-        tcp::acceptor acceptor{ioc, {address, port}};
-        tcp::socket socket{ioc};
-        http_server(acceptor, socket, storage, channelEncryption);
+        /// Should run http server
+        loki::http_server::run(ioc, ip, port, service_node, channelEncryption);
 
-        ioc.run();
     } catch (std::exception const& e) {
-        BOOST_LOG_TRIVIAL(fatal) << "Error: " << e.what();
+        BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
         return EXIT_FAILURE;
     }
 }

@@ -6,21 +6,26 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <iostream>
 
 struct sqlite3;
 struct sqlite3_stmt;
 class Timer;
 
-class Storage {
+class Database {
   public:
-    Storage(const std::string& db_path);
-    ~Storage();
+    Database(const std::string& db_path);
+    ~Database();
 
+    /// this is low-level logic (separate?)
     bool store(const std::string& hash, const std::string& pubKey,
                const std::string& bytes, uint64_t ttl);
     bool retrieve(const std::string& key,
                   std::vector<service_node::storage::Item>& items,
                   const std::string& lastHash);
+
+    /// this is high-level logic
+    bool save_pushed();
 
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
