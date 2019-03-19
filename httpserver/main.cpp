@@ -10,11 +10,11 @@
 
 #include <cstdlib>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <thread>
 #include <utility> // for std::pair
 #include <vector>
-#include <iostream>
 
 using namespace service_node;
 namespace po = boost::program_options;
@@ -103,8 +103,8 @@ int main(int argc, char* argv[]) {
                 << "Setting database location to " << dbLocation;
         }
 
-        BOOST_LOG_TRIVIAL(info) << "Listening at address " << ip
-                                << " port " << port << std::endl;
+        BOOST_LOG_TRIVIAL(info)
+            << "Listening at address " << ip << " port " << port << std::endl;
 
         boost::asio::io_context ioc{1};
 

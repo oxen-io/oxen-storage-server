@@ -2,11 +2,11 @@
 
 #include "Item.hpp"
 
+#include <iostream>
 #include <memory>
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <iostream>
 
 struct sqlite3;
 struct sqlite3_stmt;

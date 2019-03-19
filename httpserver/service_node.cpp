@@ -3,8 +3,8 @@
 #include "Database.hpp"
 #include "swarm.h"
 
-#include "http_connection.h"
 #include "Item.hpp"
+#include "http_connection.h"
 
 #include <chrono>
 #include <fstream>
@@ -59,10 +59,9 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
-ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& dbLocation)
-    : ioc_(ioc),
-      db_(std::make_unique<Database>(dbLocation)),
-      our_sn_(port),
+ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+                         const std::string& dbLocation)
+    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_sn_(port),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
     update_timer_.async_wait(std::bind(&ServiceNode::update_swarms, this));
@@ -99,7 +98,6 @@ void ServiceNode::relay_batch(const std::string& data, uint16_t port) const {
                       [](std::shared_ptr<std::string>) {
 
                       });
-
 }
 
 /// initiate a /swarms/push request
@@ -107,7 +105,8 @@ void ServiceNode::push_message(const message_ptr msg) {
 
     auto others = swarm_->other_nodes();
 
-    BOOST_LOG_TRIVIAL(trace) << "push_message to " << others.size() << " other nodes";
+    BOOST_LOG_TRIVIAL(trace)
+        << "push_message to " << others.size() << " other nodes";
 
     for (auto& port : others) {
         /// send a request asyncronously (todo: collect confirmations)
@@ -133,11 +132,7 @@ bool ServiceNode::process_store(const message_ptr msg) {
     return true;
 }
 
-bool ServiceNode::process_push(const message_ptr msg) {
-
-    save_if_new(msg);
-
-}
+bool ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
 
 bool ServiceNode::is_existing_msg(const std::string& hash) {
 
@@ -147,7 +142,6 @@ bool ServiceNode::is_existing_msg(const std::string& hash) {
 
     return (it != all_messages_.end());
 }
-
 
 void ServiceNode::save_if_new(const message_ptr msg) {
 
@@ -170,7 +164,6 @@ void ServiceNode::save_if_new(const message_ptr msg) {
     all_messages_.push_back({hash, msg->pk_.c_str(), msg->text_.c_str()});
 
     BOOST_LOG_TRIVIAL(trace) << "It is done!";
-
 }
 
 void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
@@ -259,10 +252,9 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     for (const sn_record_t& sn : peers) {
         relay_batch(data, sn);
     }
-
 }
 
-template<typename T>
+template <typename T>
 std::string vec_to_string(const std::vector<T>& vec) {
 
     std::stringstream ss;
@@ -280,15 +272,16 @@ std::string vec_to_string(const std::vector<T>& vec) {
     ss << "]";
 
     return ss.str();
-
 }
 
-void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const {
+void ServiceNode::bootstrap_swarms(
+    const std::vector<swarm_id_t>& swarms) const {
 
     if (swarms.empty()) {
         BOOST_LOG_TRIVIAL(info) << "bootstrapping all swarms\n";
     } else {
-        BOOST_LOG_TRIVIAL(info) << "bootstrapping swarms: " << vec_to_string(swarms) << std::endl;
+        BOOST_LOG_TRIVIAL(info)
+            << "bootstrapping swarms: " << vec_to_string(swarms) << std::endl;
     }
 
     const auto& all_swarms = swarm_->all_swarms();
@@ -302,9 +295,10 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
 
     std::unordered_map<std::string, swarm_id_t> cache;
 
-    BOOST_LOG_TRIVIAL(trace)<< "we have " << all_messages_.size() << " messages\n";
+    BOOST_LOG_TRIVIAL(trace)
+        << "we have " << all_messages_.size() << " messages\n";
 
-    for (auto &msg : all_messages_) {
+    for (auto& msg : all_messages_) {
 
         const auto it = cache.find(msg.pk_);
 
@@ -322,7 +316,6 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
             if (swarm == swarm_id) {
                 relevant = true;
             }
-
         }
 
         if (relevant || swarms.empty()) {
@@ -332,21 +325,18 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
 
             for (const sn_record_t& sn : all_swarms[idx].snodes) {
                 // TODO: Actually use the message values here
-                relay_one(std::make_shared<message_t>(msg.pk_.c_str(), msg.text_.c_str(), "", 0), sn);
+                relay_one(std::make_shared<message_t>(msg.pk_.c_str(),
+                                                      msg.text_.c_str(), "", 0),
+                          sn);
             }
-
-
         }
-
     }
-
 }
 
 void ServiceNode::salvage_data() const {
 
     /// This is very similar to ServiceNode::bootstrap_swarms, so might reuse it
     bootstrap_swarms({});
-
 }
 
 static std::string serialize(uint32_t a) {
@@ -401,10 +391,11 @@ std::string ServiceNode::get_all_messages() {
     pt::write_json(buf, root);
 
     return buf.str();
-
 }
 
-bool ServiceNode::retrieve(const std::string& pubKey, const std::string& last_hash, std::vector<Item>& items) {
+bool ServiceNode::retrieve(const std::string& pubKey,
+                           const std::string& last_hash,
+                           std::vector<Item>& items) {
     return db_->retrieve(pubKey, items, last_hash);
 }
 
@@ -462,12 +453,13 @@ void ServiceNode::purge_outdated() {
 
     std::vector<saved_message_t> to_keep;
 
-    for (auto &msg : all_messages_) {
+    for (auto& msg : all_messages_) {
 
         const auto it = cache.find(msg.pk_);
 
         if (it == cache.end()) {
-            swarm_id_t swarm_id = get_swarm_by_pk(swarm_->all_swarms(), msg.pk_);
+            swarm_id_t swarm_id =
+                get_swarm_by_pk(swarm_->all_swarms(), msg.pk_);
             cache.insert({msg.pk_, swarm_id});
         }
 
@@ -477,11 +469,9 @@ void ServiceNode::purge_outdated() {
         if (swarm_id == swarm_->our_swarm_id()) {
             to_keep.push_back(msg);
         }
-
     }
 
     all_messages_ = std::move(to_keep);
-
 }
 
 void ServiceNode::update_swarms() {
@@ -560,12 +550,12 @@ static std::vector<message_t> deserialize_messages(const std::string& blob) {
         bytes_read += msg_size;
         it += msg_size;
 
-        BOOST_LOG_TRIVIAL(trace) << boost::format("size: %1%, pk: %2%, msg: %3%") %
-                         msg_size % pk % msg;
+        BOOST_LOG_TRIVIAL(trace)
+            << boost::format("size: %1%, pk: %2%, msg: %3%") % msg_size % pk %
+                   msg;
 
         // TODO: Actually use the message values here
         result.push_back({pk.c_str(), msg.c_str(), "", 0});
-
     }
 
     BOOST_LOG_TRIVIAL(trace) << "=== END ===";
@@ -591,14 +581,15 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
     // boost::split(messages, *blob, boost::is_any_of("\n"),
     //  boost::token_compress_on);
 
-    BOOST_LOG_TRIVIAL(trace) << "got " << messages.size() << " messages form peers";
+    BOOST_LOG_TRIVIAL(trace)
+        << "got " << messages.size() << " messages form peers";
 
     for (auto& msg : messages) {
 
         /// shouldn't have to create shared ptr here...
         // TODO: Actually use the message values here
-        save_if_new(
-            std::make_shared<message_t>(msg.pk_.c_str(), msg.text_.c_str(), "", 0));
+        save_if_new(std::make_shared<message_t>(msg.pk_.c_str(),
+                                                msg.text_.c_str(), "", 0));
     }
 }
 

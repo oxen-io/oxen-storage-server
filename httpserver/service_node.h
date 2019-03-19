@@ -1,9 +1,9 @@
 #pragma once
 
 #include <Database.hpp>
-#include <memory>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <memory>
 
 #include <boost/asio.hpp>
 
@@ -26,8 +26,8 @@ struct message_t {
     std::string hash_;
     uint64_t ttl_;
 
-    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl) : pk_(pk), text_(text), hash_(hash), ttl_(ttl) {}
-
+    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl)
+        : pk_(pk), text_(text), hash_(hash), ttl_(ttl) {}
 };
 
 struct saved_message_t {
@@ -42,7 +42,7 @@ struct saved_message_t {
 
 using message_ptr = std::shared_ptr<message_t>;
 
-    class Swarm;
+class Swarm;
 
 /// All service node logic that is not network-specific
 class ServiceNode {
@@ -85,11 +85,11 @@ class ServiceNode {
     std::string serialize_all() const;
 
   public:
-
-      /// This mimics the db for now
+    /// This mimics the db for now
     std::vector<saved_message_t> all_messages_;
 
-    ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& dbLocation);
+    ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+                const std::string& dbLocation);
 
     ~ServiceNode();
 
@@ -111,7 +111,8 @@ class ServiceNode {
     /// return all messages (in JSON)
     std::string get_all_messages();
 
-    bool retrieve(const std::string& pubKey, const std::string& last_hash, std::vector<service_node::storage::Item>& items);
+    bool retrieve(const std::string& pubKey, const std::string& last_hash,
+                  std::vector<service_node::storage::Item>& items);
 };
 
 } // namespace loki

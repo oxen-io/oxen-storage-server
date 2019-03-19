@@ -12,13 +12,13 @@
 #include <string>
 #include <thread>
 
-#include <boost/log/trivial.hpp>
 #include <boost/beast/core/detail/base64.hpp>
+#include <boost/log/trivial.hpp>
 
-#include "http_connection.h"
-#include "channel_encryption.hpp"
-#include "service_node.h"
 #include "Item.hpp"
+#include "channel_encryption.hpp"
+#include "http_connection.h"
+#include "service_node.h"
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
@@ -43,8 +43,9 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
         boost::asio::ip::address::from_string(ip, ec);
 
     if (ec) {
-        BOOST_LOG_TRIVIAL(error) << "Failed to parse the IP address. Error code = "
-                  << ec.value() << ". Message: " << ec.message();
+        BOOST_LOG_TRIVIAL(error)
+            << "Failed to parse the IP address. Error code = " << ec.value()
+            << ". Message: " << ec.message();
         return;
     }
 
@@ -60,7 +61,10 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
         ep, [=](const boost::system::error_code& ec) {
             /// TODO: I think I should just call again if ec == EINTR
             if (ec) {
-                BOOST_LOG_TRIVIAL(error) << boost::format("Could not connect to %1%:%2%, message: %3% (%4%)") % ip % port % ec.message() % ec.value();
+                BOOST_LOG_TRIVIAL(error)
+                    << boost::format(
+                           "Could not connect to %1%:%2%, message: %3% (%4%)") %
+                           ip % port % ec.message() % ec.value();
                 /// TODO: handle error better here
                 return;
             }
@@ -90,15 +94,17 @@ static void log_error(const error_code& ec) {
 }
 
 // "Loop" forever accepting new connections.
-static void accept_connection(boost::asio::io_context& ioc,
-                              tcp::acceptor& acceptor, tcp::socket& socket,
-                              ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption) {
+static void
+accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
+                  tcp::socket& socket, ServiceNode& sn,
+                  ChannelEncryption<std::string>& channelEncryption) {
 
     acceptor.async_accept(socket, [&](const error_code& ec) {
-
         BOOST_LOG_TRIVIAL(trace) << "connection accepted";
         if (!ec)
-            std::make_shared<connection_t>(ioc, std::move(socket), sn, channelEncryption)->start();
+            std::make_shared<connection_t>(ioc, std::move(socket), sn,
+                                           channelEncryption)
+                ->start();
 
         if (ec)
             log_error(ec);
@@ -126,7 +132,8 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 /// ============ connection_t ============
 
 connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
-                           ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption)
+                           ServiceNode& sn,
+                           ChannelEncryption<std::string>& channelEncryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
       channelCipher_(channelEncryption),
       deadline_(ioc, std::chrono::seconds(60)) {
@@ -135,9 +142,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
     /// NOTE: I'm not sure if the timer is working properly
 }
 
-connection_t::~connection_t() {
-    BOOST_LOG_TRIVIAL(trace) << "~connection_t";
-}
+connection_t::~connection_t() { BOOST_LOG_TRIVIAL(trace) << "~connection_t"; }
 
 void connection_t::start() {
     register_deadline();
@@ -150,7 +155,6 @@ void connection_t::read_request() {
     auto self = shared_from_this();
 
     auto on_data = [self](error_code ec, size_t bytes_transferred) {
-
         BOOST_LOG_TRIVIAL(trace) << "on data";
 
         boost::ignore_unused(bytes_transferred);
@@ -168,12 +172,9 @@ void connection_t::read_request() {
         }
 
         self->write_response();
-
     };
 
     http::async_read(socket_, buffer_, request_, on_data);
-
-
 }
 
 // Determine what needs to be done with the request message.
@@ -200,10 +201,12 @@ void connection_t::process_request() {
                 process_client_req();
             } catch (std::exception& e) {
                 response_.result(http::status::internal_server_error);
-                BOOST_LOG_TRIVIAL(trace) << "exception caught while processing client request: " << e.what();
+                BOOST_LOG_TRIVIAL(trace)
+                    << "exception caught while processing client request: "
+                    << e.what();
             }
 
-        /// Make sure only service nodes can use this API
+            /// Make sure only service nodes can use this API
         } else if (target == "/v1/swarms/push") {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
@@ -212,14 +215,16 @@ void connection_t::process_request() {
 
             parse_header(keys);
 
-            BOOST_LOG_TRIVIAL(trace) << "got PK: " << header_["X-Loki-recipient"];
+            BOOST_LOG_TRIVIAL(trace)
+                << "got PK: " << header_["X-Loki-recipient"];
 
             std::string text = request_.body();
 
             auto pk = header_["X-Loki-recipient"];
 
             // TODO: Actually use the message values here
-            auto msg = std::make_shared<message_t>(pk.c_str(), text.c_str(), "", 0);
+            auto msg =
+                std::make_shared<message_t>(pk.c_str(), text.c_str(), "", 0);
 
             /// TODO: this will need to be done asyncronoulsy
             service_node_.process_push(msg);
@@ -284,7 +289,7 @@ void connection_t::write_response() {
                 << "Internal Server Error. Could not encrypt response for "
                 << ephemKey.substr(0, 2) << "..."
                 << ephemKey.substr(ephemKey.length() - 3,
-                                    ephemKey.length() - 1);
+                                   ephemKey.length() - 1);
         }
     }
 
@@ -301,7 +306,8 @@ void connection_t::write_response() {
     });
 }
 
-template <typename T> bool connection_t::parse_header(T key_list) {
+template <typename T>
+bool connection_t::parse_header(T key_list) {
     for (const auto key : key_list) {
         const auto it = request_.find(key);
         if (it == request_.end()) {
@@ -343,15 +349,15 @@ void connection_t::process_store(const pt::ptree& params) {
         response_.result(http::status::forbidden);
         response_.set(http::field::content_type, "text/plain");
         bodyStream_ << "Provided PoW nonce is not valid.";
-        BOOST_LOG_TRIVIAL(error)
-            << "Forbidden. Invalid PoW nonce " << nonce;
+        BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid PoW nonce " << nonce;
         return;
     }
 
     bool success;
 
     try {
-        auto msg = std::make_shared<message_t>(pubKey.c_str(), data.c_str(), messageHash.c_str(), ttlInt);
+        auto msg = std::make_shared<message_t>(pubKey.c_str(), data.c_str(),
+                                               messageHash.c_str(), ttlInt);
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
@@ -360,8 +366,7 @@ void connection_t::process_store(const pt::ptree& params) {
         BOOST_LOG_TRIVIAL(error)
             << "Internal Server Error. Could not store message for "
             << pubKey.substr(0, 2) << "..."
-            << pubKey.substr(pubKey.length() - 3,
-                                pubKey.length() - 1);
+            << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
         return;
     }
 
@@ -371,14 +376,13 @@ void connection_t::process_store(const pt::ptree& params) {
         // TODO: Maybe this shouldn't respond with error
         bodyStream_ << "hash conflict - resource already present.";
         BOOST_LOG_TRIVIAL(warning) << "Conflict. Message with hash "
-                                    << messageHash << " already present";
+                                   << messageHash << " already present";
         return;
     }
 
     response_.result(http::status::ok);
     BOOST_LOG_TRIVIAL(trace)
-        << "Successfully stored message for " << pubKey.substr(0, 2)
-        << "..."
+        << "Successfully stored message for " << pubKey.substr(0, 2) << "..."
         << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
 }
 
@@ -388,7 +392,7 @@ void connection_t::process_retrieve(const pt::ptree& params) {
 
     std::vector<Item> items;
 
-    if(!service_node_.retrieve(pubKey, last_hash, items)) {
+    if (!service_node_.retrieve(pubKey, last_hash, items)) {
         response_.result(http::status::internal_server_error);
         response_.set(http::field::content_type, "text/plain");
         BOOST_LOG_TRIVIAL(error)
@@ -413,8 +417,7 @@ void connection_t::process_retrieve(const pt::ptree& params) {
         root.put("lastHash", items.back().hash);
         BOOST_LOG_TRIVIAL(trace)
             << "Successfully retrieved messages for " << pubKey.substr(0, 2)
-            << "..."
-            << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
+            << "..." << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
     }
     std::ostringstream buf;
     pt::write_json(buf, root);
@@ -465,7 +468,6 @@ void connection_t::process_client_req() {
         BOOST_LOG_TRIVIAL(error)
             << "Bad Request. Unknown method '" << method_name << "'";
     }
-
 }
 
 void connection_t::register_deadline() {
@@ -527,11 +529,12 @@ void HttpClientSession::on_write(boost::system::error_code ec,
     BOOST_LOG_TRIVIAL(trace) << "on write";
     if (ec) {
         BOOST_LOG_TRIVIAL(error) << "Error on write, ec: " << ec.value()
-                  << ". Message: " << ec.message();
+                                 << ". Message: " << ec.message();
         return;
     }
 
-    BOOST_LOG_TRIVIAL(trace) << "Successfully transferred " << bytes_transferred << " bytes";
+    BOOST_LOG_TRIVIAL(trace)
+        << "Successfully transferred " << bytes_transferred << " bytes";
 
     // Receive the HTTP response
     http::async_read(socket_, buffer_, res_,
@@ -542,19 +545,21 @@ void HttpClientSession::on_write(boost::system::error_code ec,
 void HttpClientSession::on_read(boost::system::error_code ec,
                                 std::size_t bytes_transferred) {
 
-    BOOST_LOG_TRIVIAL(trace) << "Successfully received " << bytes_transferred << " bytes";
+    BOOST_LOG_TRIVIAL(trace)
+        << "Successfully received " << bytes_transferred << " bytes";
 
     std::shared_ptr<std::string> body = nullptr;
 
     if (!ec || (ec == http::error::end_of_stream)) {
 
-        if (http::to_status_class(res_.result_int()) == http::status_class::successful) {
+        if (http::to_status_class(res_.result_int()) ==
+            http::status_class::successful) {
             body = std::make_shared<std::string>(res_.body());
         }
 
     } else {
-        BOOST_LOG_TRIVIAL(error) << "Error on read: " << ec.value()
-            << ". Message: " << ec.message();
+        BOOST_LOG_TRIVIAL(error)
+            << "Error on read: " << ec.value() << ". Message: " << ec.message();
     }
 
     // Gracefully close the socket
@@ -563,7 +568,8 @@ void HttpClientSession::on_read(boost::system::error_code ec,
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
 
-        BOOST_LOG_TRIVIAL(error) << "ec: " << ec.value() << ". Message: " << ec.message();
+        BOOST_LOG_TRIVIAL(error)
+            << "ec: " << ec.value() << ". Message: " << ec.message();
         return;
     }
 

@@ -7,12 +7,12 @@
 
 namespace loki {
 
+static bool swarm_exists(const all_swarms_t& all_swarms,
+                         const swarm_id_t& swarm) {
 
-static bool swarm_exists(const all_swarms_t& all_swarms, const swarm_id_t& swarm) {
-
-    const auto it = std::find_if(all_swarms.begin(), all_swarms.end(), [&swarm](const SwarmInfo& si) {
-        return si.swarm_id == swarm;
-    });
+    const auto it = std::find_if(
+        all_swarms.begin(), all_swarms.end(),
+        [&swarm](const SwarmInfo& si) { return si.swarm_id == swarm; });
 
     return it != all_swarms.end();
 }
@@ -38,7 +38,6 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                 our_swarm_idx = swarm_idx;
             }
         }
-
     }
 
     const auto& our_swarm = swarms[our_swarm_idx].snodes;
@@ -48,30 +47,29 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
         return events;
     }
 
-
     if (swarm_peers_.empty()) {
 
         assert(cur_swarm_id_ == UINT64_MAX);
 
-        BOOST_LOG_TRIVIAL(info) << "EVENT: started SN in swarm: " << our_swarm_idx;
+        BOOST_LOG_TRIVIAL(info)
+            << "EVENT: started SN in swarm: " << our_swarm_idx;
 
     } else {
 
-            /// Are we in a new swarm?
+        /// Are we in a new swarm?
         if (cur_swarm_id_ != swarms[our_swarm_idx].swarm_id) {
 
-            BOOST_LOG_TRIVIAL(info) << "EVENT: got moved into a new swarm: " << swarms[our_swarm_idx].swarm_id;
+            BOOST_LOG_TRIVIAL(info) << "EVENT: got moved into a new swarm: "
+                                    << swarms[our_swarm_idx].swarm_id;
 
             /// Check that our old swarm still exists
             if (!swarm_exists(swarms, cur_swarm_id_)) {
 
-                BOOST_LOG_TRIVIAL(info) << "EVENT: our old swarm got DISSOLVED!";
+                BOOST_LOG_TRIVIAL(info)
+                    << "EVENT: our old swarm got DISSOLVED!";
                 events.decommissioned = true;
-
             }
-
         }
-
 
         /// See if anyone joined our swarm
         for (auto& sn : our_swarm) {
@@ -81,7 +79,6 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
             if (it == swarm_peers_.end()) {
                 BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << sn;
                 events.new_snodes.push_back(sn);
-
             }
         }
 
@@ -100,11 +97,11 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
             }
 
             if (!found) {
-                BOOST_LOG_TRIVIAL(info) << "EVENT: detected a new swarm: " << swarm_info.swarm_id;
+                BOOST_LOG_TRIVIAL(info)
+                    << "EVENT: detected a new swarm: " << swarm_info.swarm_id;
                 events.new_swarms.push_back(swarm_info.swarm_id);
             }
         }
-
     }
 
     /// NOTE: need to be careful and make sure we don't miss any
@@ -117,7 +114,8 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
     return events;
 }
 
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, std::string pk) {
+swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
+                           std::string pk) {
 
     assert(pk.size() == 64);
 
@@ -141,24 +139,24 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, std::string
 
     for (const auto& si : all_swarms) {
 
-        uint64_t dist = (si.swarm_id > res) ? (si.swarm_id - res) : (res - si.swarm_id);
+        uint64_t dist =
+            (si.swarm_id > res) ? (si.swarm_id - res) : (res - si.swarm_id);
         if (dist < cur_min) {
             cur_best = si.swarm_id;
             cur_min = dist;
         }
-
     }
 
     // handle special case
 
     if (res > all_swarms[0].swarm_id) {
-        uint64_t dist = std::numeric_limits<uint64_t>::max() - res + all_swarms[0].swarm_id;
+        uint64_t dist =
+            std::numeric_limits<uint64_t>::max() - res + all_swarms[0].swarm_id;
 
         if (dist < cur_min) {
             return all_swarms[0].swarm_id;
         }
     }
-
 
     return cur_best;
 }

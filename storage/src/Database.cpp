@@ -124,7 +124,7 @@ void Database::open_and_prepare(const std::string& db_path) {
 }
 
 bool Database::store(const std::string& hash, const std::string& pubKey,
-                    const std::string& bytes, uint64_t ttl) {
+                     const std::string& bytes, uint64_t ttl) {
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
@@ -165,7 +165,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
 }
 
 bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
-                       const std::string& lastHash) {
+                        const std::string& lastHash) {
 
     sqlite3_stmt* stmt;
 
@@ -203,6 +203,4 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     return true;
 }
 
-bool Database::save_pushed() {
-
-}
+bool Database::save_pushed() {}

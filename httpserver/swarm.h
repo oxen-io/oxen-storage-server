@@ -23,7 +23,8 @@ struct SwarmInfo {
 
 using all_swarms_t = std::vector<SwarmInfo>;
 
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, std::string pk);
+swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
+                           std::string pk);
 
 struct SwarmEvents {
 
@@ -43,8 +44,7 @@ class Swarm {
     sn_record_t port_us;
     std::vector<uint16_t> swarm_peers_;
 
-public:
-
+  public:
     Swarm(sn_record_t port) : port_us(port) {}
 
     ~Swarm();
@@ -57,7 +57,6 @@ public:
     const std::vector<SwarmInfo>& all_swarms() const { return all_cur_swarms_; }
 
     swarm_id_t our_swarm_id() const { return cur_swarm_id_; }
-
 };
 
 } // namespace loki

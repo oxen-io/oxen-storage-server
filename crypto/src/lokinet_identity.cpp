@@ -16,14 +16,11 @@ std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
 
     if (p.empty()) {
 #ifdef _WIN32
-        const fs::path homedir =
-            fs::pathpath(getenv("APPDATA"));
+        const fs::path homedir = fs::pathpath(getenv("APPDATA"));
 #else
-        const fs::path homedir =
-            fs::path(getenv("HOME"));
+        const fs::path homedir = fs::path(getenv("HOME"));
 #endif
-        const fs::path basepath =
-            homedir / fs::path(".lokinet");
+        const fs::path basepath = homedir / fs::path(".lokinet");
         p = basepath / "identity.private";
     }
 

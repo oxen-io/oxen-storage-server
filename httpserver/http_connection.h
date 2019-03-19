@@ -30,8 +30,7 @@ using rpc_function = std::function<void(const pt::ptree&)>;
 namespace loki {
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
-                       uint16_t port, const request_t& req,
-                       http_callback_t cb);
+                       uint16_t port, const request_t& req, http_callback_t cb);
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
                        uint16_t port, std::string target, std::string body,
@@ -60,7 +59,8 @@ class HttpClientSession
   public:
     tcp::socket socket_;
     // Resolver and socket require an io_context
-    explicit HttpClientSession(boost::asio::io_context& ioc, const request_t& req, http_callback_t cb);
+    explicit HttpClientSession(boost::asio::io_context& ioc,
+                               const request_t& req, http_callback_t cb);
 
     void on_connect();
 
@@ -74,7 +74,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     using tcp = boost::asio::ip::tcp;
 
   private:
-
     boost::asio::io_context& ioc_;
 
     // The socket for the currently connected client.
@@ -104,7 +103,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
   public:
     connection_t(boost::asio::io_context& ioc, tcp::socket socket,
-                 ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption);
+                 ServiceNode& sn,
+                 ChannelEncryption<std::string>& channelEncryption);
 
     ~connection_t();
 
@@ -133,7 +133,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void register_deadline();
 
     /// TODO: should move somewhere else
-    template <typename T> bool parse_header(T key_list);
+    template <typename T>
+    bool parse_header(T key_list);
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
