@@ -56,7 +56,7 @@ class ServiceNode {
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
 
-    sn_record_t our_sn_;
+    sn_record_t our_address_;
 
     boost::asio::steady_timer update_timer_;
 
@@ -78,10 +78,10 @@ class ServiceNode {
     void salvage_data() const;
 
     /// used on push and on swarm bootstrapping
-    void relay_one(const message_ptr msg, uint16_t port) const;
+    void relay_one(const message_ptr msg, sn_record_t address) const;
 
     /// used for SN bootstrapping
-    void relay_batch(const std::string& data, uint16_t port) const;
+    void relay_batch(const std::string& data, sn_record_t address) const;
 
     /// return all messages serialized
     std::string serialize_all() const;

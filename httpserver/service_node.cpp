@@ -27,6 +27,8 @@ namespace loki {
 
 void say_hello(const boost::system::error_code& ec) { std::cout << "hello\n"; }
 
+static constexpr uint16_t SNODE_PORT = 8080;
+
 /// TODO: can we reuse context (reset it)?
 std::string hash_data(std::string data) {
 
@@ -65,7 +67,7 @@ std::string hash_data(std::string data) {
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identityPath,
                          const std::string& dbLocation)
-    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_sn_(0),
+    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
     const std::vector<uint8_t> publicKey =
@@ -76,18 +78,18 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identi
         our_address.append(dest);
         our_address.append(".snode");
     }
-    std::cout << our_address << std::endl;
+    our_address_ = our_address;
     update_timer_.async_wait(std::bind(&ServiceNode::update_swarms, this));
 }
 
 ServiceNode::~ServiceNode() = default;
 
 /// make this async
-void ServiceNode::relay_one(const message_ptr msg, uint16_t port) const {
+void ServiceNode::relay_one(const message_ptr msg, sn_record_t address) const {
 
     /// TODO: need to encrypt messages?
 
-    BOOST_LOG_TRIVIAL(trace) << "Relaying a message to " << port;
+    BOOST_LOG_TRIVIAL(trace) << "Relaying a message to " << address;
 
     request_t req;
     req.body() = serialize_message(*msg);
@@ -95,21 +97,21 @@ void ServiceNode::relay_one(const message_ptr msg, uint16_t port) const {
     req.target("/v1/swarms/push");
 
     /// TODO: how to handle a failure here?
-    make_http_request(ioc_, "0.0.0.0", port, req,
+    make_http_request(ioc_, address, SNODE_PORT, req,
                       [](std::shared_ptr<std::string>) {
 
                       });
 }
 
-void ServiceNode::relay_batch(const std::string& data, uint16_t port) const {
+void ServiceNode::relay_batch(const std::string& data, sn_record_t address) const {
 
-    BOOST_LOG_TRIVIAL(trace) << "Relaying a batch to " << port;
+    BOOST_LOG_TRIVIAL(trace) << "Relaying a batch to " << address;
 
     request_t req;
     req.body() = data;
     req.target("/v1/swarms/push_all");
 
-    make_http_request(ioc_, "0.0.0.0", port, req,
+    make_http_request(ioc_, address, SNODE_PORT, req,
                       [](std::shared_ptr<std::string>) {
 
                       });
@@ -125,9 +127,9 @@ void ServiceNode::push_message(const message_ptr msg) {
     BOOST_LOG_TRIVIAL(trace)
         << "push_message to " << others.size() << " other nodes";
 
-    for (auto& port : others) {
+    for (auto& address : others) {
         /// send a request asyncronously (todo: collect confirmations)
-        relay_one(msg, port);
+        relay_one(msg, address);
     }
 }
 
@@ -198,18 +200,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
         uint64_t swarm_id = stoull(nodes[0]);
 
         for (auto i = 1u; i < nodes.size(); ++i) {
-
-            uint16_t port = 0;
-
-            try {
-                port = stoi(nodes[i]);
-
-            } catch (const std::exception& e) {
-                BOOST_LOG_TRIVIAL(error) << "ERROR: invalid port: " << nodes[i];
-                return;
-            }
-
-            swarm_members.push_back(port);
+            swarm_members.push_back(nodes[i]);
         }
 
         SwarmInfo si;
@@ -221,7 +212,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (!swarm_) {
-        swarm_ = std::make_unique<Swarm>(our_sn_);
+        swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
     const SwarmEvents events = swarm_->update_swarms(all_swarms);

@@ -35,14 +35,15 @@ using service_node::storage::Item;
 
 namespace loki {
 
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
+void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
                        http_callback_t cb) {
 
     boost::system::error_code ec;
 
+    // TODO: Resolve this address to ip
     boost::asio::ip::address ip_address =
-        boost::asio::ip::address::from_string(ip, ec);
+        boost::asio::ip::address::from_string(sn_address, ec);
 
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
@@ -62,7 +63,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
                 BOOST_LOG_TRIVIAL(error)
                     << boost::format(
                            "Could not connect to %1%:%2%, message: %3% (%4%)") %
-                           ip % port % ec.message() % ec.value();
+                           sn_address % port % ec.message() % ec.value();
                 /// TODO: handle error better here
                 return;
             }
@@ -71,7 +72,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
         });
 }
 
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
+void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, std::string target, std::string body,
                        http_callback_t cb) {
 
@@ -80,7 +81,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
     req.body() = body;
     req.target(target);
 
-    make_http_request(ioc, ip, port, req, cb);
+    make_http_request(ioc, sn_address, port, req, cb);
 }
 
 namespace http_server {
