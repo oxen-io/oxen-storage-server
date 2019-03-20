@@ -20,6 +20,8 @@
 #include "http_connection.h"
 #include "service_node.h"
 
+#include "serialization.h"
+
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 namespace pt = boost::property_tree; // from <boost/property_tree/>
@@ -50,10 +52,6 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
     }
 
     boost::asio::ip::tcp::endpoint ep(ip_address, port);
-
-    if (req.target() == "/v1/swarms/push") {
-        assert(req.find("X-Loki-recipient") != req.end());
-    }
 
     auto session = std::make_shared<HttpClientSession>(ioc, req, cb);
 
@@ -211,27 +209,24 @@ void connection_t::process_request() {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
 
-            const std::vector<std::string> keys = {"X-Loki-recipient"};
 
-            parse_header(keys);
-
-            BOOST_LOG_TRIVIAL(trace)
-                << "got PK: " << header_["X-Loki-recipient"];
-
-            std::string text = request_.body();
-
-            auto pk = header_["X-Loki-recipient"];
+            /// NOTE:: we only expect one message here, but
+            /// for now lets reuse the function we already have
+            std::vector<message_t> messages = deserialize_messages(request_.body());
+            assert(messages.size() == 1);
 
             // TODO: Actually use the message values here
-            auto msg =
-                std::make_shared<message_t>(pk.c_str(), text.c_str(), "", 0);
+            auto msg = std::make_shared<message_t>(messages[0]);
+
+            BOOST_LOG_TRIVIAL(trace)
+                << "got PK: " << msg->pk_;
 
             /// TODO: this will need to be done asyncronoulsy
             service_node_.process_push(msg);
 
             response_.result(http::status::ok);
         } else if (target == "/retrieve_all") {
-            bodyStream_ << service_node_.get_all_messages();
+            bodyStream_ << service_node_.get_all_messages(boost::none);
             response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_all") {
             response_.result(http::status::ok);
@@ -273,6 +268,8 @@ void connection_t::write_response() {
 
     std::string body = bodyStream_.str();
 
+
+#ifndef INTEGRATION_TEST
     const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
     if (it != header_.end()) {
         const std::string& ephemKey = it->second;
@@ -292,6 +289,7 @@ void connection_t::write_response() {
                                    ephemKey.length() - 1);
         }
     }
+#endif
 
     response_.body() = body;
     response_.set(http::field::content_length, response_.body().size());
@@ -343,8 +341,10 @@ void connection_t::process_store(const pt::ptree& params) {
 
     // Do not store message if the PoW provided is invalid
     std::string messageHash;
+
     const bool validPoW =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash);
+#ifndef INTEGRATION_TEST
     if (!validPoW) {
         response_.result(http::status::forbidden);
         response_.set(http::field::content_type, "text/plain");
@@ -352,12 +352,15 @@ void connection_t::process_store(const pt::ptree& params) {
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid PoW nonce " << nonce;
         return;
     }
+#endif
 
     bool success;
 
     try {
+
+        auto ts = std::stoull(timestamp);
         auto msg = std::make_shared<message_t>(pubKey.c_str(), data.c_str(),
-                                               messageHash.c_str(), ttlInt);
+                                               messageHash.c_str(), ttlInt, ts, nonce.c_str());
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
@@ -435,6 +438,7 @@ void connection_t::process_client_req() {
     }
     std::string plainText = request_.body();
 
+#ifndef INTEGRATION_TEST
     try {
         const std::string decoded =
             boost::beast::detail::base64_decode(plainText);
@@ -447,6 +451,7 @@ void connection_t::process_client_req() {
         bodyStream_ << e.what();
         BOOST_LOG_TRIVIAL(error) << "Bad Request. Could not decrypt body";
     }
+#endif
 
     // parse json
     pt::ptree root;
@@ -499,11 +504,6 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const request_t& req, http_callback_t cb)
     : ioc_(ioc), socket_(ioc), callback_(cb) {
 
-    if (req.target() == "/v1/swarms/push") {
-        assert(req.find("X-Loki-recipient") != req.end());
-
-        req_.set("X-Loki-recipient", req.at("X-Loki-recipient"));
-    }
 
     req_.method(http::verb::post);
     req_.version(11);

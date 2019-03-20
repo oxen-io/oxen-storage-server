@@ -4,9 +4,10 @@ add_definitions(-DBOOST_LOG_DYN_LINK)
 
 project(httpserver)
 
-set(HEADER_FILES http_connection.h swarm.h service_node.h)
+set(HEADER_FILES http_connection.h swarm.h service_node.h serialization.h)
+set(SRC_FILES main.cpp http_connection.cpp swarm.cpp service_node.cpp serialization.cpp)
 
-add_executable(httpserver main.cpp http_connection.cpp swarm.cpp service_node.cpp ${HEADER_FILES})
+add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
 
 add_subdirectory(../storage storage)
 add_subdirectory(../pow pow)

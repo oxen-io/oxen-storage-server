@@ -8,14 +8,17 @@ namespace storage {
 
 struct Item {
     Item(const std::string& hash, const std::string& pubKey, uint64_t timestamp,
-         uint64_t expirationTimestamp, const std::string& bytes)
-        : hash(hash), pubKey(pubKey), bytes(bytes), timestamp(timestamp),
-          expirationTimestamp(expirationTimestamp) {}
+         uint64_t ttl, uint64_t expirationTimestamp, const std::string& nonce,
+         const std::string& bytes)
+        : hash(hash), pubKey(pubKey), timestamp(timestamp), ttl(ttl),
+          expirationTimestamp(expirationTimestamp), nonce(nonce), bytes(bytes) {}
     std::string hash;
     std::string pubKey;
-    std::string bytes;
     uint64_t timestamp;
+    uint64_t ttl;
     uint64_t expirationTimestamp;
+    std::string nonce;
+    std::string bytes;
 };
 
 } // namespace storage
