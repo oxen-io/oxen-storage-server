@@ -88,7 +88,7 @@ class ServiceNode {
 
   public:
 
-    ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+    ServiceNode(boost::asio::io_context& ioc, const std::string& identityPath,
                 const std::string& dbLocation);
 
     ~ServiceNode();

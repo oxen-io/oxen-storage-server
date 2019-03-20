@@ -2,6 +2,8 @@
 
 #include "Database.hpp"
 #include "swarm.h"
+#include "lokinet_identity.hpp"
+#include "utils.hpp"
 
 #include "Item.hpp"
 #include "http_connection.h"
@@ -61,11 +63,20 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
-ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identityPath,
                          const std::string& dbLocation)
-    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_sn_(port),
+    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_sn_(0),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
+    const std::vector<uint8_t> publicKey =
+        parseLokinetIdentityPublic(identityPath);
+    char buf[64] = {0};
+    std::string our_address("http://");
+    if (char const *dest = util::base32z_encode(publicKey, buf)) {
+        our_address.append(dest);
+        our_address.append(".snode");
+    }
+    std::cout << our_address << std::endl;
     update_timer_.async_wait(std::bind(&ServiceNode::update_swarms, this));
 }
 
