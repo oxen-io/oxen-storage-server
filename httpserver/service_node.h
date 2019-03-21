@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <boost/asio.hpp>
+#include <boost/optional.hpp>
 
 #include "common.h"
 
@@ -19,15 +20,18 @@ class Item;
 
 namespace loki {
 
+/// message as received by client
 struct message_t {
 
     std::string pk_;
     std::string text_;
     std::string hash_;
     uint64_t ttl_;
+    uint64_t timestamp_;
+    std::string nonce_;
 
-    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl)
-        : pk_(pk), text_(text), hash_(hash), ttl_(ttl) {}
+    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl, uint64_t timestamp, const char* nonce)
+        : pk_(pk), text_(text), hash_(hash), ttl_(ttl), timestamp_(timestamp), nonce_(nonce) {}
 };
 
 struct saved_message_t {
@@ -58,8 +62,6 @@ class ServiceNode {
 
     void push_message(const message_ptr msg);
 
-    bool is_existing_msg(const std::string& hash);
-
     void save_if_new(const message_ptr msg);
 
     /// request swarm info from the blockchain
@@ -85,8 +87,6 @@ class ServiceNode {
     std::string serialize_all() const;
 
   public:
-    /// This mimics the db for now
-    std::vector<saved_message_t> all_messages_;
 
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                 const std::string& dbLocation);
@@ -106,10 +106,7 @@ class ServiceNode {
     void purge_outdated();
 
     /// return all messages for a particular PK (in JSON)
-    std::string get_all_messages(const std::string& pk);
-
-    /// return all messages (in JSON)
-    std::string get_all_messages();
+    std::string get_all_messages(boost::optional<const std::string&> pk);
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

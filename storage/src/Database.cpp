@@ -16,6 +16,7 @@ uint64_t get_time_ms() {
 
 Database::~Database() {
     sqlite3_finalize(save_stmt);
+    sqlite3_finalize(get_all_for_pk_stmt);
     sqlite3_finalize(get_all_stmt);
     sqlite3_finalize(get_stmt);
     sqlite3_finalize(delete_expired_stmt);
@@ -84,8 +85,10 @@ void Database::open_and_prepare(const std::string& db_path) {
         "CREATE TABLE IF NOT EXISTS `Data`("
         "    `Hash` VARCHAR(128) NOT NULL,"
         "    `Owner` VARCHAR(256) NOT NULL,"
-        "    `TimeReceived` INTEGER NOT NULL,"
+        "    `TTL` INTEGER NOT NULL,"
+        "    `Timestamp` INTEGER NOT NULL,"
         "    `TimeExpires` INTEGER NOT NULL,"
+        "    `Nonce` VARCHAR(128) NOT NULL,"
         "    `Data` BLOB"
         ");"
         "CREATE UNIQUE INDEX IF NOT EXISTS `idx_data_hash` ON `Data` (`Hash`);"
@@ -101,12 +104,16 @@ void Database::open_and_prepare(const std::string& db_path) {
 
     save_stmt =
         prepare_statement("INSERT INTO Data "
-                          "(Hash, Owner, TimeReceived, TimeExpires, Data)"
-                          "VALUES (?,?,?,?,?);");
+                          "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
+                          "VALUES (?,?,?,?,?,?,?);");
     if (!save_stmt)
         throw std::runtime_error("could not prepare the save statement");
 
-    get_all_stmt = prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
+    get_all_for_pk_stmt = prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
+    if (!get_all_for_pk_stmt)
+        throw std::runtime_error("could not prepare the get all for pk statement");
+
+    get_all_stmt = prepare_statement("SELECT * FROM Data;");
     if (!get_all_stmt)
         throw std::runtime_error("could not prepare the get all statement");
 
@@ -124,7 +131,9 @@ void Database::open_and_prepare(const std::string& db_path) {
 }
 
 bool Database::store(const std::string& hash, const std::string& pubKey,
-                     const std::string& bytes, uint64_t ttl) {
+                     const std::string& bytes, uint64_t ttl, uint64_t timestamp,
+                     const std::string& nonce) {
+
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
@@ -134,9 +143,11 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
 
     sqlite3_bind_text(save_stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(save_stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int64(save_stmt, 3, cur_time);
-    sqlite3_bind_int64(save_stmt, 4, exp_time);
-    sqlite3_bind_blob(save_stmt, 5, bytes.data(), bytes.size(), SQLITE_STATIC);
+    sqlite3_bind_int64(save_stmt, 3, ttl);
+    sqlite3_bind_int64(save_stmt, 4, timestamp);
+    sqlite3_bind_int64(save_stmt, 5, exp_time);
+    sqlite3_bind_blob(save_stmt, 6, nonce.data(), nonce.size(), SQLITE_STATIC);
+    sqlite3_bind_blob(save_stmt, 7, bytes.data(), bytes.size(), SQLITE_STATIC);
 
     bool result = false;
     int rc;
@@ -170,15 +181,16 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     sqlite3_stmt* stmt;
 
     if (lastHash.empty()) {
-        stmt = get_all_stmt;
+        stmt = get_all_for_pk_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
+    } else if (pubKey.empty())  {
+        stmt = get_all_stmt;
     } else {
         stmt = get_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, lastHash.c_str(), -1, SQLITE_STATIC);
     }
 
-    std::vector<std::string> results;
     while (true) {
         int res = sqlite3_step(stmt);
         if (res == SQLITE_DONE)
@@ -189,11 +201,12 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
             std::string((const char*)sqlite3_column_text(stmt, 0));
         const auto pub_key =
             std::string((const char*)sqlite3_column_text(stmt, 1));
-        const auto time_saved = sqlite3_column_int64(stmt, 2);
-        const auto time_expires = sqlite3_column_int64(stmt, 3);
-        const std::string bytes((char*)sqlite3_column_blob(stmt, 4),
-                                sqlite3_column_bytes(stmt, 4));
-        items.emplace_back(hash, pubKey, time_saved, time_expires, bytes);
+        const auto ttl = sqlite3_column_int64(stmt, 2);
+        const auto timestamp = sqlite3_column_int64(stmt, 3);
+        const auto time_expires = sqlite3_column_int64(stmt, 4);
+        const auto nonce = std::string((const char*)sqlite3_column_text(stmt, 5));
+        const auto bytes = std::string((char*)sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6));
+        items.emplace_back(hash, pubKey, timestamp, ttl, time_expires, nonce, bytes);
     }
 
     int rc = sqlite3_reset(stmt);
@@ -202,5 +215,3 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     }
     return true;
 }
-
-bool Database::save_pushed() {}

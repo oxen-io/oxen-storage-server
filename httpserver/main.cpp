@@ -89,6 +89,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
+        // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
         BOOST_LOG_TRIVIAL(info) << "Setting log level to " << logLevelString;
