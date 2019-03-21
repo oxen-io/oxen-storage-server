@@ -137,10 +137,6 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
     const auto cur_time = get_time_ms();
     const auto exp_time = cur_time + (ttl * 1000);
 
-    std::cout << pubKey << std::endl;
-    std::cout << hash << std::endl;
-    std::cout << ttl << std::endl;
-
     sqlite3_bind_text(save_stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(save_stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_int64(save_stmt, 3, ttl);

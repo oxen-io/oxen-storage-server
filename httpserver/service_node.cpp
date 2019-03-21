@@ -89,7 +89,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t address) const {
 
     /// TODO: need to encrypt messages?
 
-    BOOST_LOG_TRIVIAL(trace) << "Relaying a message to " << address;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << address;
 
     request_t req;
     req.body() = serialize_message(*msg);
@@ -105,7 +105,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t address) const {
 
 void ServiceNode::relay_batch(const std::string& data, sn_record_t address) const {
 
-    BOOST_LOG_TRIVIAL(trace) << "Relaying a batch to " << address;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << address;
 
     request_t req;
     req.body() = data;
@@ -124,7 +124,7 @@ void ServiceNode::push_message(const message_ptr msg) {
 
     auto others = swarm_->other_nodes();
 
-    BOOST_LOG_TRIVIAL(trace)
+    BOOST_LOG_TRIVIAL(debug)
         << "push_message to " << others.size() << " other nodes";
 
     for (auto& address : others) {
@@ -158,7 +158,7 @@ void ServiceNode::save_if_new(const message_ptr msg) {
 
     db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_, msg->nonce_);
 
-    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->text_;
+    BOOST_LOG_TRIVIAL(debug) << "saving message: " << msg->text_;
 
     /// just append this to a file for simplicity
     std::ofstream file("db.txt", std::ios_base::app);
@@ -288,7 +288,7 @@ void ServiceNode::bootstrap_swarms(
     /// See what pubkeys we have
     std::unordered_map<std::string, swarm_id_t> cache;
 
-    BOOST_LOG_TRIVIAL(trace)
+    BOOST_LOG_TRIVIAL(debug)
         << "we have " << all_entries.size() << " messages\n";
 
     for (auto& entry : all_entries) {
@@ -449,7 +449,7 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
     // boost::split(messages, *blob, boost::is_any_of("\n"),
     //  boost::token_compress_on);
 
-    BOOST_LOG_TRIVIAL(trace)
+    BOOST_LOG_TRIVIAL(debug)
         << "got " << messages.size() << " messages form peers";
 
     for (auto& msg : messages) {
