@@ -111,7 +111,9 @@ std::string serialize_message(const Item& item) {
     res += item.pubKey;
     serialize(res, item.hash);
     serialize(res, item.bytes);
+    res += serialize_uint64(item.ttl);
     res += serialize_uint64(item.timestamp);
+    serialize(res, item.nonce);
 
     return res;
 }

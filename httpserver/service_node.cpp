@@ -73,7 +73,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identi
     const std::vector<uint8_t> publicKey =
         parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};
-    std::string our_address("http://");
+    std::string our_address;
     if (char const *dest = util::base32z_encode(publicKey, buf)) {
         our_address.append(dest);
         our_address.append(".snode");

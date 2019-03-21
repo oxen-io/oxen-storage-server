@@ -41,23 +41,24 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
 
     boost::system::error_code ec;
 
-    // TODO: Resolve this address to ip
-    boost::asio::ip::address ip_address =
-        boost::asio::ip::address::from_string(sn_address, ec);
-
+    boost::asio::ip::tcp::endpoint endpoint;
+    boost::asio::ip::tcp::resolver resolver( ioc );
+    boost::asio::ip::tcp::resolver::iterator destination = resolver.resolve(sn_address, "http", ec);
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
             << "Failed to parse the IP address. Error code = " << ec.value()
             << ". Message: " << ec.message();
         return;
     }
-
-    boost::asio::ip::tcp::endpoint ep(ip_address, port);
+    while ( destination != boost::asio::ip::tcp::resolver::iterator() ) {
+        endpoint = *destination++;
+    }
+    endpoint.port(port);
 
     auto session = std::make_shared<HttpClientSession>(ioc, req, cb);
 
     session->socket_.async_connect(
-        ep, [=](const boost::system::error_code& ec) {
+        endpoint, [=](const boost::system::error_code& ec) {
             /// TODO: I think I should just call again if ec == EINTR
             if (ec) {
                 BOOST_LOG_TRIVIAL(error)
