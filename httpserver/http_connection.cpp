@@ -35,34 +35,36 @@ using service_node::storage::Item;
 
 namespace loki {
 
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
+void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
                        http_callback_t cb) {
 
     boost::system::error_code ec;
 
-    boost::asio::ip::address ip_address =
-        boost::asio::ip::address::from_string(ip, ec);
-
+    boost::asio::ip::tcp::endpoint endpoint;
+    boost::asio::ip::tcp::resolver resolver( ioc );
+    boost::asio::ip::tcp::resolver::iterator destination = resolver.resolve(sn_address, "http", ec);
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
             << "Failed to parse the IP address. Error code = " << ec.value()
             << ". Message: " << ec.message();
         return;
     }
-
-    boost::asio::ip::tcp::endpoint ep(ip_address, port);
+    while ( destination != boost::asio::ip::tcp::resolver::iterator() ) {
+        endpoint = *destination++;
+    }
+    endpoint.port(port);
 
     auto session = std::make_shared<HttpClientSession>(ioc, req, cb);
 
     session->socket_.async_connect(
-        ep, [=](const boost::system::error_code& ec) {
+        endpoint, [=](const boost::system::error_code& ec) {
             /// TODO: I think I should just call again if ec == EINTR
             if (ec) {
                 BOOST_LOG_TRIVIAL(error)
                     << boost::format(
                            "Could not connect to %1%:%2%, message: %3% (%4%)") %
-                           ip % port % ec.message() % ec.value();
+                           sn_address % port % ec.message() % ec.value();
                 /// TODO: handle error better here
                 return;
             }
@@ -71,7 +73,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
         });
 }
 
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
+void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, std::string target, std::string body,
                        http_callback_t cb) {
 
@@ -80,7 +82,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
     req.body() = body;
     req.target(target);
 
-    make_http_request(ioc, ip, port, req, cb);
+    make_http_request(ioc, sn_address, port, req, cb);
 }
 
 namespace http_server {

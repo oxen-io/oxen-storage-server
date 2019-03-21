@@ -1,11 +1,10 @@
-#pragma once
+#include "utils.hpp"
 
-#include <stdint.h>
-#include <string>
+#include <vector>
 
 namespace util {
 
-inline bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
+bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
     int ttlInt;
     try {
         ttlInt = std::stoi(ttlString);

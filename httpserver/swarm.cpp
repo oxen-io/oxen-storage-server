@@ -34,7 +34,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 
         for (auto node_idx = 0u; node_idx < snodes.size(); ++node_idx) {
 
-            if (port_us == snodes[node_idx]) {
+            if (our_address == snodes[node_idx]) {
                 our_swarm_idx = swarm_idx;
             }
         }
@@ -161,12 +161,12 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     return cur_best;
 }
 
-std::vector<uint16_t> Swarm::other_nodes() const {
+std::vector<sn_record_t> Swarm::other_nodes() const {
 
-    std::vector<uint16_t> result;
+    std::vector<sn_record_t> result;
 
     for (auto& swarm : swarm_peers_) {
-        if (swarm != port_us) {
+        if (swarm != our_address) {
             result.push_back(swarm);
         }
     }

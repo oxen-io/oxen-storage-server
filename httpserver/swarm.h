@@ -41,18 +41,18 @@ class Swarm {
 
     swarm_id_t cur_swarm_id_ = UINT64_MAX;
     std::vector<SwarmInfo> all_cur_swarms_;
-    sn_record_t port_us;
-    std::vector<uint16_t> swarm_peers_;
+    sn_record_t our_address;
+    std::vector<sn_record_t> swarm_peers_;
 
   public:
-    Swarm(sn_record_t port) : port_us(port) {}
+    Swarm(sn_record_t address) : our_address(address) {}
 
     ~Swarm();
 
     /// Update swarms and work out the changes
     SwarmEvents update_swarms(const all_swarms_t& swarms);
 
-    std::vector<uint16_t> other_nodes() const;
+    std::vector<sn_record_t> other_nodes() const;
 
     const std::vector<SwarmInfo>& all_swarms() const { return all_cur_swarms_; }
 
