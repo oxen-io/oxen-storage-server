@@ -4,7 +4,7 @@ add_definitions(-DBOOST_LOG_DYN_LINK)
 
 project(httpserver)
 
-set(HEADER_FILES http_connection.h swarm.h service_node.h serialization.h)
+set(HEADER_FILES http_connection.h swarm.h service_node.h serialization.h ../external/json.hpp)
 set(SRC_FILES main.cpp http_connection.cpp swarm.cpp service_node.cpp serialization.cpp)
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})

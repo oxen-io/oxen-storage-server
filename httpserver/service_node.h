@@ -56,6 +56,8 @@ class ServiceNode {
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
 
+    uint16_t our_port_;
+
     sn_record_t our_address_;
 
     boost::asio::steady_timer update_timer_;
@@ -88,7 +90,7 @@ class ServiceNode {
 
   public:
 
-    ServiceNode(boost::asio::io_context& ioc, const std::string& identityPath,
+    ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& identityPath,
                 const std::string& dbLocation);
 
     ~ServiceNode();

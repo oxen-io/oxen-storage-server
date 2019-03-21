@@ -80,7 +80,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                 auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
                 if (it == swarm_peers_.end()) {
-                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << sn;
+                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << to_string(sn);
                     events.new_snodes.push_back(sn);
                 }
             }

@@ -15,12 +15,16 @@
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/log/trivial.hpp>
 
+#include "../external/json.hpp"
+
 #include "Item.hpp"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
 #include "service_node.h"
 
 #include "serialization.h"
+
+using json = nlohmann::json;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
@@ -38,6 +42,10 @@ namespace loki {
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
                        http_callback_t cb) {
+
+#ifdef INTEGRATION_TEST
+    sn_address = "0.0.0.0";
+#endif
 
     boost::system::error_code ec;
 
@@ -394,9 +402,26 @@ void connection_t::process_snodes_by_pk(const pt::ptree& params) {
 
     const auto pubKey = params.get<std::string>("pubKey");
 
-    std::vector<sn_record_t> snodes = service_node_.get_snodes_by_pk(pubKey);
+    std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
 
-    /// TODO
+    json body;
+
+    json snodes = json::array();
+
+    for (const auto& sn : nodes) {
+#ifdef INTEGRATION_TEST
+        snodes.push_back(std::to_string(sn.port));
+#else
+        snodes.push_back(sn.address);
+#endif
+    }
+
+    body["snodes"] = snodes;
+
+    response_.result(http::status::ok);
+    response_.set(http::field::content_type, "application/json");
+    bodyStream_ << body.dump();
+
 }
 
 void connection_t::process_retrieve(const pt::ptree& params) {
