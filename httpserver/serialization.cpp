@@ -100,6 +100,8 @@ std::string serialize_message(const message_t& msg) {
     res += serialize_uint64(msg.timestamp_);
     serialize(res, msg.nonce_);
 
+    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_ << std::endl;
+
     return res;
 }
 
@@ -114,6 +116,8 @@ std::string serialize_message(const Item& item) {
     res += serialize_uint64(item.ttl);
     res += serialize_uint64(item.timestamp);
     serialize(res, item.nonce);
+
+    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes << std::endl;
 
     return res;
 }
@@ -147,8 +151,6 @@ boost::optional<std::string> deserialize_string(string_view& slice) {
     if (slice.size() < 4) return boost::none;
 
     uint32_t len = deserialize_uint32(slice.it); // already increments `it`!
-
-    std::cerr << "len: " << len << std::endl;
 
     if (slice.size() < len) return boost::none;
 
@@ -208,7 +210,7 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         /// Deserialize TTL
         auto ttl = deserialize_uint64(slice);
         if (!ttl) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize timestamp";
+            BOOST_LOG_TRIVIAL(error) << "could not deserialize ttl";
             return {};
         }
 
@@ -222,15 +224,17 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         /// Deserialize Nonce
         auto nonce = deserialize_string(slice);
         if (!nonce) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize data";
+            BOOST_LOG_TRIVIAL(error) << "could not deserialize nonce";
             return {};
         }
 
+        BOOST_LOG_TRIVIAL(trace) << "deserialized data: " << *data << std::endl;
+
         BOOST_LOG_TRIVIAL(trace)
-            << boost::format("pk: %2%, msg: %3%") % *pk % *data;
+            << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
         // TODO: Actually use the message values here
-        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), 0, 0, ""});
+        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), *ttl, *timestamp, nonce->c_str()});
     }
 
     BOOST_LOG_TRIVIAL(trace) << "=== END ===";

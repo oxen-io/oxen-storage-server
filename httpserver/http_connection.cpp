@@ -211,7 +211,6 @@ void connection_t::process_request() {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
 
-
             /// NOTE:: we only expect one message here, but
             /// for now lets reuse the function we already have
             std::vector<message_t> messages = deserialize_messages(request_.body());
@@ -391,6 +390,15 @@ void connection_t::process_store(const pt::ptree& params) {
         << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
 }
 
+void connection_t::process_snodes_by_pk(const pt::ptree& params) {
+
+    const auto pubKey = params.get<std::string>("pubKey");
+
+    std::vector<sn_record_t> snodes = service_node_.get_snodes_by_pk(pubKey);
+
+    /// TODO
+}
+
 void connection_t::process_retrieve(const pt::ptree& params) {
     const auto pubKey = params.get<std::string>("pubKey");
     const auto last_hash = params.get("lastHash", "");
@@ -469,6 +477,8 @@ void connection_t::process_client_req() {
         process_store(root.get_child("params"));
     } else if (method_name == "retrieve") {
         process_retrieve(root.get_child("params"));
+    } else if (method_name == "get_snodes_for_pubkey") {
+        process_snodes_by_pk(root.get_child("params"));
     } else {
         response_.result(http::status::bad_request);
         bodyStream_ << "no method" << method_name;

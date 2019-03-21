@@ -136,7 +136,8 @@ void ServiceNode::push_message(const message_ptr msg) {
 /// do this asyncronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_ptr msg) {
 
-    // TODO: Enable swarm and push_message functionality again
+    /// TODO: accept messages if they are coming from other service nodes
+
     /// only accept a message if we are in a swarm
     if (!swarm_) {
         std::cerr << "error: my swarm in not initialized" << std::endl;
@@ -159,10 +160,6 @@ void ServiceNode::save_if_new(const message_ptr msg) {
     db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_, msg->nonce_);
 
     BOOST_LOG_TRIVIAL(debug) << "saving message: " << msg->text_;
-
-    /// just append this to a file for simplicity
-    std::ofstream file("db.txt", std::ios_base::app);
-    file << msg->pk_ << " " << msg->text_ << "\n";
 }
 
 void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
@@ -212,6 +209,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (!swarm_) {
+        BOOST_LOG_TRIVIAL(trace) << "initialized our swarm" << std::endl;
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
@@ -342,6 +340,8 @@ bool ServiceNode::retrieve(const std::string& pubKey,
 
 std::string ServiceNode::get_all_messages(boost::optional<const std::string&> pk) {
 
+    BOOST_LOG_TRIVIAL(trace) << "get all messages";
+
     pt::ptree messages;
 
     std::vector<Item> all_entries;
@@ -458,6 +458,26 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
         // TODO: Actually use the message values here
         save_if_new(std::make_shared<message_t>(msg));
     }
+}
+
+std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
+
+    const auto& all_swarms = swarm_->all_swarms();
+
+    swarm_id_t swarm_id = get_swarm_by_pk(all_swarms, pk);
+
+    // TODO: have get_swarm_by_pk return idx into all_swarms instead,
+    // so we don't have to find it again
+
+    for (const auto& si : all_swarms) {
+        if (si.swarm_id == swarm_id) return si.snodes;
+    }
+
+    BOOST_LOG_TRIVIAL(fatal) << "Something went wrong in get_snodes_by_pk";
+
+    return {};
+
+
 }
 
 } // namespace loki

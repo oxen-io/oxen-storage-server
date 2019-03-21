@@ -123,6 +123,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void process_retrieve(const pt::ptree& params);
 
+    void process_snodes_by_pk(const pt::ptree& params);
+
     /// Asynchronously transmit the response message.
     void write_response();
 
