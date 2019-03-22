@@ -10,6 +10,7 @@
 #include <boost/beast/version.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include "../external/json.hpp"
 
 template <typename T>
 class ChannelEncryption;
@@ -119,11 +120,11 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// (synchronously).
     void process_request();
 
-    void process_store(const pt::ptree& params);
+    void process_store(const nlohmann::json& params);
 
-    void process_retrieve(const pt::ptree& params);
+    void process_retrieve(const nlohmann::json& params);
 
-    void process_snodes_by_pk(const pt::ptree& params);
+    void process_snodes_by_pk(const nlohmann::json& params);
 
     /// Asynchronously transmit the response message.
     void write_response();

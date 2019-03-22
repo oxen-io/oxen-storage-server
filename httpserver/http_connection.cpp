@@ -15,8 +15,6 @@
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/log/trivial.hpp>
 
-#include "../external/json.hpp"
-
 #include "Item.hpp"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
@@ -42,10 +40,6 @@ namespace loki {
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
                        http_callback_t cb) {
-
-#ifdef INTEGRATION_TEST
-    sn_address = "0.0.0.0";
-#endif
 
     boost::system::error_code ec;
 
@@ -330,12 +324,24 @@ bool connection_t::parse_header(T key_list) {
     return true;
 }
 
-void connection_t::process_store(const pt::ptree& params) {
-    const auto pubKey = params.get<std::string>("pubKey");
-    const auto ttl = params.get<std::string>("ttl");
-    const auto nonce = params.get<std::string>("nonce");
-    const auto timestamp = params.get<std::string>("timestamp");
-    const auto data = params.get<std::string>("data");
+void connection_t::process_store(const json& params) {
+
+    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp", "data"};
+
+    for (const auto& field : fields) {
+        if (!params.contains(field)) {
+            response_.result(http::status::bad_request);
+            bodyStream_ << boost::format("invalid json: no `%1%` field") % field;
+            BOOST_LOG_TRIVIAL(error) << boost::format("Bad client request: no `%1%` field") % field;
+            return;
+        }
+    }
+
+    const auto pubKey = params["pubKey"].get<std::string>();
+    const auto ttl = params["ttl"].get<std::string>();
+    const auto nonce = params["nonce"].get<std::string>();
+    const auto timestamp = params["timestamp"].get<std::string>();
+    const auto data = params["data"].get<std::string>();
 
     BOOST_LOG_TRIVIAL(trace) << "store body: " << data;
 
@@ -398,13 +404,20 @@ void connection_t::process_store(const pt::ptree& params) {
         << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
 }
 
-void connection_t::process_snodes_by_pk(const pt::ptree& params) {
+void connection_t::process_snodes_by_pk(const json& params) {
 
-    const auto pubKey = params.get<std::string>("pubKey");
+    if (!params.contains("pubKey")) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "invalid json: no `pubKey` field";
+        BOOST_LOG_TRIVIAL(error) << "Bad client request: no `pubKey` field";
+        return;
+    }
+
+    const auto pubKey = params["pubKey"].get<std::string>();
 
     std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
 
-    json body;
+    json res_body;
 
     json snodes = json::array();
 
@@ -416,17 +429,31 @@ void connection_t::process_snodes_by_pk(const pt::ptree& params) {
 #endif
     }
 
-    body["snodes"] = snodes;
+    res_body["snodes"] = snodes;
 
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
-    bodyStream_ << body.dump();
+
+    /// This might throw if not utf-8 endoded
+    bodyStream_ << res_body.dump();
 
 }
 
-void connection_t::process_retrieve(const pt::ptree& params) {
-    const auto pubKey = params.get<std::string>("pubKey");
-    const auto last_hash = params.get("lastHash", "");
+void connection_t::process_retrieve(const json& params) {
+
+    constexpr const char* fields[] = {"pubKey", "lastHash"};
+
+    for (const auto& field : fields) {
+        if (!params.contains(field)) {
+            response_.result(http::status::bad_request);
+            bodyStream_ << boost::format("invalid json: no `%1%` field") % field;
+            BOOST_LOG_TRIVIAL(error) << boost::format("Bad client request: no `%1%` field") % field;
+            return;
+        }
+    }
+
+    const auto pubKey = params["pubKey"].get<std::string>();
+    const auto last_hash = params["lastHash"].get<std::string>();
 
     std::vector<Item> items;
 
@@ -485,30 +512,46 @@ void connection_t::process_client_req() {
         bodyStream_ << "Could not decode/decrypt body: ";
         bodyStream_ << e.what();
         BOOST_LOG_TRIVIAL(error) << "Bad Request. Could not decrypt body";
+        return;
     }
 #endif
 
-    // parse json
-    pt::ptree root;
-    std::stringstream ss;
-    ss << plainText;
+    json body = json::parse(plainText, nullptr, false);
+    if (body == nlohmann::detail::value_t::discarded) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "invalid json";
+        BOOST_LOG_TRIVIAL(error) << "Bad client request: invalid json";
+        return;
+    }
 
-    /// TODO: this may throw, need to handle
-    pt::json_parser::read_json(ss, root);
+    const auto method_it = body.find("method");
+    if (method_it == body.end() || !method_it->is_string()) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "invalid json: no `method` field";
+        BOOST_LOG_TRIVIAL(error) << "Bad client request: no method field";
+        return;
+    }
 
-    const auto method_name = root.get("method", "");
+    const auto method_name = method_it->get<std::string>();
+
+    const auto params_it = body.find("params");
+    if (params_it == body.end() || !params_it->is_object()) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "invalid json: no `params` field";
+        BOOST_LOG_TRIVIAL(error) << "Bad client request: no params field";
+        return;
+    }
 
     if (method_name == "store") {
-        process_store(root.get_child("params"));
+        process_store(*params_it);
     } else if (method_name == "retrieve") {
-        process_retrieve(root.get_child("params"));
+        process_retrieve(*params_it);
     } else if (method_name == "get_snodes_for_pubkey") {
-        process_snodes_by_pk(root.get_child("params"));
+        process_snodes_by_pk(*params_it);
     } else {
         response_.result(http::status::bad_request);
         bodyStream_ << "no method" << method_name;
-        BOOST_LOG_TRIVIAL(error)
-            << "Bad Request. Unknown method '" << method_name << "'";
+        BOOST_LOG_TRIVIAL(error) << boost::format("Bad Request. Unknown method '%1%'") % method_name;
     }
 }
 
