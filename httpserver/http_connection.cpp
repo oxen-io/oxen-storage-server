@@ -26,7 +26,6 @@ using json = nlohmann::json;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
-namespace pt = boost::property_tree; // from <boost/property_tree/>
 using namespace service_node;
 
 /// +===========================================
@@ -229,8 +228,7 @@ void connection_t::process_request() {
 
             response_.result(http::status::ok);
         } else if (target == "/retrieve_all") {
-            bodyStream_ << service_node_.get_all_messages(boost::none);
-            response_.result(http::status::ok);
+            process_retrieve_all();
         } else if (target == "/v1/swarms/push_all") {
             response_.result(http::status::ok);
 
@@ -413,7 +411,20 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    const auto pubKey = params["pubKey"].get<std::string>();
+    auto pubKey = params["pubKey"].get<std::string>();
+
+    if (pubKey.size() != 64) {
+
+        if (pubKey.size() == 66) {
+            /// Note signal prepends `05` to each pubkey
+            pubKey = pubKey.substr(2, std::string::npos);
+        } else {
+            response_.result(http::status::bad_request);
+            bodyStream_ << "invalid json: pubKey should be 64/66 characters long";
+            BOOST_LOG_TRIVIAL(error) << "Bad client request: no `pubKey` field";
+            return;
+        }
+    }
 
     std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
 
@@ -437,6 +448,32 @@ void connection_t::process_snodes_by_pk(const json& params) {
     /// This might throw if not utf-8 endoded
     bodyStream_ << res_body.dump();
 
+}
+
+void connection_t::process_retrieve_all() {
+
+    std::vector<Item> all_entries;
+
+    bool res = service_node_.get_all_messages(all_entries);
+
+    if (!res) {
+        response_.result(http::status::internal_server_error);
+        return;
+    }
+
+    json messages = json::array();
+
+    for (auto& entry : all_entries) {
+        json item;
+        item["data"] = entry.bytes;
+        messages.push_back(item);
+    }
+
+    json res_body;
+    res_body["messages"] = messages;
+
+    bodyStream_ << res_body.dump();
+    response_.result(http::status::ok);
 }
 
 void connection_t::process_retrieve(const json& params) {
@@ -467,28 +504,28 @@ void connection_t::process_retrieve(const json& params) {
         return;
     }
 
-    pt::ptree root;
-    pt::ptree messagesNode;
+    json res_body;
+    json messages = json::array();
 
     for (const auto& item : items) {
-        pt::ptree messageNode;
-        messageNode.put("hash", item.hash);
-        messageNode.put("expiration", item.expirationTimestamp);
-        messageNode.put("data", item.bytes);
-        messagesNode.push_back(std::make_pair("", messageNode));
+        json message;
+        message["hash"] = item.hash;
+        message["expiration"] = item.expirationTimestamp;
+        message["data"] = item.bytes;
+        messages.push_back(message);
     }
-    if (messagesNode.size() != 0) {
-        root.add_child("messages", messagesNode);
-        root.put("lastHash", items.back().hash);
+
+    res_body["messages"] = messages;
+
+    if (!items.empty()) {
         BOOST_LOG_TRIVIAL(trace)
             << "Successfully retrieved messages for " << pubKey.substr(0, 2)
             << "..." << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
     }
-    std::ostringstream buf;
-    pt::write_json(buf, root);
+
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
-    bodyStream_ << buf.str();
+    bodyStream_ << res_body.dump();
 }
 
 void connection_t::process_client_req() {

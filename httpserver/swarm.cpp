@@ -119,9 +119,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 }
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           std::string pk) {
-
-    assert(pk.size() == 64);
+                           const std::string& pk) {
 
     // TODO: handle errors
     // TODO: get rid of allocations?

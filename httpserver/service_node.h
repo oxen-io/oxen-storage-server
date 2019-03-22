@@ -99,7 +99,7 @@ class ServiceNode {
     bool process_store(const message_ptr msg);
 
     /// Process message relayed from another SN from our swarm
-    bool process_push(const message_ptr msg);
+    void process_push(const message_ptr msg);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_all(std::shared_ptr<std::string> blob);
@@ -110,7 +110,7 @@ class ServiceNode {
     void purge_outdated();
 
     /// return all messages for a particular PK (in JSON)
-    std::string get_all_messages(boost::optional<const std::string&> pk);
+    bool get_all_messages(std::vector<service_node::storage::Item>& all_entries);
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

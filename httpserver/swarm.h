@@ -24,7 +24,7 @@ struct SwarmInfo {
 using all_swarms_t = std::vector<SwarmInfo>;
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           std::string pk);
+                           const std::string& pk);
 
 struct SwarmEvents {
 

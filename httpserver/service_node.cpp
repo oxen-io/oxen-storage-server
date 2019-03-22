@@ -12,6 +12,7 @@
 #include <fstream>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/bind.hpp>
 
 #include <boost/log/trivial.hpp>
 
@@ -159,7 +160,7 @@ bool ServiceNode::process_store(const message_ptr msg) {
     return true;
 }
 
-bool ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
+void ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
 
 void ServiceNode::save_if_new(const message_ptr msg) {
 
@@ -353,33 +354,11 @@ bool ServiceNode::retrieve(const std::string& pubKey,
     return db_->retrieve(pubKey, items, last_hash);
 }
 
-std::string ServiceNode::get_all_messages(boost::optional<const std::string&> pk) {
+bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) {
 
     BOOST_LOG_TRIVIAL(trace) << "get all messages";
 
-    pt::ptree messages;
-
-    std::vector<Item> all_entries;
-
-    bool res = db_->retrieve(*pk, all_entries, "");
-
-    for (auto& entry : all_entries) {
-        pt::ptree msg_node;
-        msg_node.put("data", entry.bytes);
-        messages.push_back(std::make_pair("", msg_node));
-    }
-
-    pt::ptree root;
-
-    if (!res || messages.empty())
-        return "";
-
-    root.add_child("messages", messages);
-
-    std::ostringstream buf;
-    pt::write_json(buf, root);
-
-    return buf.str();
+    return db_->retrieve("", all_entries, "");
 }
 
 std::string ServiceNode::serialize_all() const {

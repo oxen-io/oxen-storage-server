@@ -8,8 +8,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
+#include <boost/format.hpp>
 #include "../external/json.hpp"
 
 template <typename T>
@@ -20,13 +19,10 @@ class ServiceNode;
 }
 
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
-namespace pt = boost::property_tree; // from <boost/property_tree/>
 
 using request_t = http::request<http::string_body>;
 
 using http_callback_t = std::function<void(std::shared_ptr<std::string>)>;
-
-using rpc_function = std::function<void(const pt::ptree&)>;
 
 namespace loki {
 
@@ -91,7 +87,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     /// TODO: move these if possible
     std::map<std::string, std::string> header_;
-    std::map<std::string, rpc_function> rpc_endpoints_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::basic_waitable_timer<std::chrono::steady_clock> deadline_;
@@ -125,6 +120,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void process_retrieve(const nlohmann::json& params);
 
     void process_snodes_by_pk(const nlohmann::json& params);
+
+    void process_retrieve_all();
 
     /// Asynchronously transmit the response message.
     void write_response();
