@@ -6,6 +6,7 @@
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
 
 #include <cstdlib>
@@ -68,6 +69,7 @@ int main(int argc, char* argv[]) {
 
         std::string lokinetIdentityPath;
         std::string dbLocation(".");
+        std::string logLocation;
         std::string logLevelString("info");
 
         const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
@@ -76,11 +78,18 @@ int main(int argc, char* argv[]) {
         po::options_description desc;
         desc.add_options()("lokinet-identity", po::value(&lokinetIdentityPath),
                            "")("db-location", po::value(&dbLocation),
-                               "")("log-level", po::value(&logLevelString), "");
+                               "")("output-log", po::value(&logLocation), "")(
+            "log-level", po::value(&logLevelString), "");
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
+        if (vm.count("output-log")) {
+            auto sink = logging::add_file_log(logLocation + ".out");
+            sink->locked_backend()->auto_flush(true);
+            BOOST_LOG_TRIVIAL(info)
+                << "Outputting logs to " << logLocation << ".out";
+        }
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(logLevelString, logLevel)) {

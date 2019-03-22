@@ -105,6 +105,8 @@ class ServiceNode {
     /// Process incoming blob of messages: add to DB if new
     void process_push_all(std::shared_ptr<std::string> blob);
 
+    bool is_pubkey_for_us(const std::string& pk);
+
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
 
     /// remove all data that doesn't belong to this swarm
