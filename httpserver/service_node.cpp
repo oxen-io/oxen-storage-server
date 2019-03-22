@@ -65,11 +65,13 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
-ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identityPath,
+ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& identityPath,
                          const std::string& dbLocation)
-    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)),
+    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_port_(port),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
+
+#ifndef INTEGRATION_TEST
     const std::vector<uint8_t> publicKey =
         parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};
@@ -78,18 +80,22 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, const std::string& identi
         our_address.append(dest);
         our_address.append(".snode");
     }
-    our_address_ = our_address;
+    our_address_.address = our_address;
+#else 
+    our_address_.port = port;
+#endif
+
     update_timer_.async_wait(std::bind(&ServiceNode::update_swarms, this));
 }
 
 ServiceNode::~ServiceNode() = default;
 
 /// make this async
-void ServiceNode::relay_one(const message_ptr msg, sn_record_t address) const {
+void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
     /// TODO: need to encrypt messages?
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << address;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << to_string(sn);
 
     request_t req;
     req.body() = serialize_message(*msg);
@@ -97,21 +103,21 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t address) const {
     req.target("/v1/swarms/push");
 
     /// TODO: how to handle a failure here?
-    make_http_request(ioc_, address, SNODE_PORT, req,
+    make_http_request(ioc_, sn.address, sn.port, req,
                       [](std::shared_ptr<std::string>) {
 
                       });
 }
 
-void ServiceNode::relay_batch(const std::string& data, sn_record_t address) const {
+void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << address;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << to_string(sn);
 
     request_t req;
     req.body() = data;
     req.target("/v1/swarms/push_all");
 
-    make_http_request(ioc_, address, SNODE_PORT, req,
+    make_http_request(ioc_, sn.address, sn.port, req,
                       [](std::shared_ptr<std::string>) {
 
                       });
@@ -136,7 +142,8 @@ void ServiceNode::push_message(const message_ptr msg) {
 /// do this asyncronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_ptr msg) {
 
-    // TODO: Enable swarm and push_message functionality again
+    /// TODO: accept messages if they are coming from other service nodes
+
     /// only accept a message if we are in a swarm
     if (!swarm_) {
         std::cerr << "error: my swarm in not initialized" << std::endl;
@@ -159,10 +166,6 @@ void ServiceNode::save_if_new(const message_ptr msg) {
     db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_, msg->nonce_);
 
     BOOST_LOG_TRIVIAL(debug) << "saving message: " << msg->text_;
-
-    /// just append this to a file for simplicity
-    std::ofstream file("db.txt", std::ios_base::app);
-    file << msg->pk_ << " " << msg->text_ << "\n";
 }
 
 void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
@@ -200,7 +203,16 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
         uint64_t swarm_id = stoull(nodes[0]);
 
         for (auto i = 1u; i < nodes.size(); ++i) {
-            swarm_members.push_back(nodes[i]);
+
+#ifdef INTEGRATION_TEST
+            /// TODO: error handling here
+            uint16_t port = stoi(nodes[i]);
+            std::string address = "0.0.0.0";
+#else
+            uint16_t port = SNODE_PORT;
+            std::string address = nodes[i];
+#endif
+            swarm_members.push_back({port, address});
         }
 
         SwarmInfo si;
@@ -212,6 +224,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (!swarm_) {
+        BOOST_LOG_TRIVIAL(trace) << "initialized our swarm" << std::endl;
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
@@ -342,6 +355,8 @@ bool ServiceNode::retrieve(const std::string& pubKey,
 
 std::string ServiceNode::get_all_messages(boost::optional<const std::string&> pk) {
 
+    BOOST_LOG_TRIVIAL(trace) << "get all messages";
+
     pt::ptree messages;
 
     std::vector<Item> all_entries;
@@ -458,6 +473,26 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
         // TODO: Actually use the message values here
         save_if_new(std::make_shared<message_t>(msg));
     }
+}
+
+std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
+
+    const auto& all_swarms = swarm_->all_swarms();
+
+    swarm_id_t swarm_id = get_swarm_by_pk(all_swarms, pk);
+
+    // TODO: have get_swarm_by_pk return idx into all_swarms instead,
+    // so we don't have to find it again
+
+    for (const auto& si : all_swarms) {
+        if (si.swarm_id == swarm_id) return si.snodes;
+    }
+
+    BOOST_LOG_TRIVIAL(fatal) << "Something went wrong in get_snodes_by_pk";
+
+    return {};
+
+
 }
 
 } // namespace loki

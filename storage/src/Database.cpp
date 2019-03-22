@@ -176,11 +176,11 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
 
     sqlite3_stmt* stmt;
 
-    if (lastHash.empty()) {
+    if (pubKey.empty()) {
+        stmt = get_all_stmt;
+    } else if (lastHash.empty()) {
         stmt = get_all_for_pk_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
-    } else if (pubKey.empty())  {
-        stmt = get_all_stmt;
     } else {
         stmt = get_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
@@ -202,7 +202,7 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
         const auto time_expires = sqlite3_column_int64(stmt, 4);
         const auto nonce = std::string((const char*)sqlite3_column_text(stmt, 5));
         const auto bytes = std::string((char*)sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6));
-        items.emplace_back(hash, pubKey, timestamp, ttl, time_expires, nonce, bytes);
+        items.emplace_back(hash, pub_key, timestamp, ttl, time_expires, nonce, bytes);
     }
 
     int rc = sqlite3_reset(stmt);

@@ -71,35 +71,39 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
             }
         }
 
-        /// See if anyone joined our swarm
-        for (auto& sn : our_swarm) {
+        /// don't bother checking the rest
+        if (!events.decommissioned) {
 
-            auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
+            /// See if anyone joined our swarm
+            for (auto& sn : our_swarm) {
 
-            if (it == swarm_peers_.end()) {
-                BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << sn;
-                events.new_snodes.push_back(sn);
-            }
-        }
+                auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
-        /// See if there are any new swarms
-
-        for (const auto& swarm_info : swarms) {
-
-            bool found = false;
-
-            for (const auto& prev_si : all_cur_swarms_) {
-
-                if (prev_si.swarm_id == swarm_info.swarm_id) {
-                    found = true;
-                    break;
+                if (it == swarm_peers_.end()) {
+                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << to_string(sn);
+                    events.new_snodes.push_back(sn);
                 }
             }
 
-            if (!found) {
-                BOOST_LOG_TRIVIAL(info)
-                    << "EVENT: detected a new swarm: " << swarm_info.swarm_id;
-                events.new_swarms.push_back(swarm_info.swarm_id);
+            /// See if there are any new swarms
+
+            for (const auto& swarm_info : swarms) {
+
+                bool found = false;
+
+                for (const auto& prev_si : all_cur_swarms_) {
+
+                    if (prev_si.swarm_id == swarm_info.swarm_id) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    BOOST_LOG_TRIVIAL(info)
+                        << "EVENT: detected a new swarm: " << swarm_info.swarm_id;
+                    events.new_swarms.push_back(swarm_info.swarm_id);
+                }
             }
         }
     }
