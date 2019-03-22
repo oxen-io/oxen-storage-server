@@ -12,11 +12,6 @@ namespace loki {
 
 class message_t;
 
-std::string serialize(uint32_t a);
-
-/// append buf
-void serialize(std::string& buf, const std::string& str);
-
 std::string serialize_message(const message_t& msg);
 
 /// TODO: reuse the one above

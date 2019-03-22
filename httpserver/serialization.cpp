@@ -39,27 +39,20 @@ static uint64_t deserialize_uint64(std::string::const_iterator& it) {
     return static_cast<uint64_t>(b1 << 56 | b2 << 48 | b3 << 40 | b4 << 32 | b5 << 24 | b6 << 16 | b7 << 8 | b8);
 }
 
-std::string serialize_uint32(uint32_t a) {
-
-    /// TODO: get rid of allocations
-    std::string res;
+static void serialize_uint32(std::string& buf, uint32_t a) {
 
     char b0 = static_cast<char>(((a & 0xFF000000) >> 24));
     char b1 = static_cast<char>(((a & 0xFF0000) >> 16));
     char b2 = static_cast<char>(((a & 0xFF00) >> 8));
     char b3 = static_cast<char>(((a & 0xFF)));
 
-    res += b0;
-    res += b1;
-    res += b2;
-    res += b3;
-
-    return res;
+    buf += b0;
+    buf += b1;
+    buf += b2;
+    buf += b3;
 }
 
-static std::string serialize_uint64(uint64_t a) {
-
-    std::string res;
+static void serialize_uint64(std::string& buf, uint64_t a) {
 
     char b0 = static_cast<char>(((a & 0xFF00000000000000) >> 56));
     char b1 = static_cast<char>(((a & 0xFF000000000000) >> 48));
@@ -70,22 +63,20 @@ static std::string serialize_uint64(uint64_t a) {
     char b6 = static_cast<char>(((a & 0xFF00) >> 8));
     char b7 = static_cast<char>(((a & 0xFF)));
 
-    res += b0;
-    res += b1;
-    res += b2;
-    res += b3;
-    res += b4;
-    res += b5;
-    res += b6;
-    res += b7;
-
-    return res;
+    buf += b0;
+    buf += b1;
+    buf += b2;
+    buf += b3;
+    buf += b4;
+    buf += b5;
+    buf += b6;
+    buf += b7;
 }
 
-    /// append buf
-void serialize(std::string& buf, const std::string& str) {
+static void serialize(std::string& buf, const std::string& str) {
 
-    buf += serialize_uint32(str.size());
+    buf.reserve(buf.size() + str.size() + 4);
+    serialize_uint32(buf, str.size());
     buf += str;
 }
 
@@ -96,8 +87,8 @@ std::string serialize_message(const message_t& msg) {
     res += msg.pk_;
     serialize(res, msg.hash_);
     serialize(res, msg.text_);
-    res += serialize_uint64(msg.ttl_);
-    res += serialize_uint64(msg.timestamp_);
+    serialize_uint64(res, msg.ttl_);
+    serialize_uint64(res, msg.timestamp_);
     serialize(res, msg.nonce_);
 
     BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_ << std::endl;
@@ -113,8 +104,8 @@ std::string serialize_message(const Item& item) {
     res += item.pubKey;
     serialize(res, item.hash);
     serialize(res, item.bytes);
-    res += serialize_uint64(item.ttl);
-    res += serialize_uint64(item.timestamp);
+    serialize_uint64(res, item.ttl);
+    serialize_uint64(res, item.timestamp);
     serialize(res, item.nonce);
 
     BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes << std::endl;
@@ -134,7 +125,7 @@ struct string_view {
     bool empty() { return it_end <= it; }
 };
 
-boost::optional<std::string> deserialize_string(string_view& slice, size_t len) {
+static boost::optional<std::string> deserialize_string(string_view& slice, size_t len) {
 
     if (slice.size() < len) {
         return boost::none;
@@ -146,7 +137,7 @@ boost::optional<std::string> deserialize_string(string_view& slice, size_t len) 
     return res;
 }
 
-boost::optional<std::string> deserialize_string(string_view& slice) {
+static boost::optional<std::string> deserialize_string(string_view& slice) {
 
     if (slice.size() < 4) return boost::none;
 
@@ -160,7 +151,7 @@ boost::optional<std::string> deserialize_string(string_view& slice) {
     return res;
 }
 
-boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
+static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
     if (slice.size() < 8) return boost::none;
 
@@ -175,7 +166,7 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
 
     auto it = blob.begin();
 
-    constexpr size_t PK_SIZE = 64; // characters in hex;
+    constexpr size_t PK_SIZE = 66; // characters in hex;
 
     std::vector<message_t> result;
 

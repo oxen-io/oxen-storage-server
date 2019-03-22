@@ -217,7 +217,6 @@ void connection_t::process_request() {
             std::vector<message_t> messages = deserialize_messages(request_.body());
             assert(messages.size() == 1);
 
-            // TODO: Actually use the message values here
             auto msg = std::make_shared<message_t>(messages[0]);
 
             BOOST_LOG_TRIVIAL(trace)
@@ -340,6 +339,13 @@ void connection_t::process_store(const json& params) {
     const auto nonce = params["nonce"].get<std::string>();
     const auto timestamp = params["timestamp"].get<std::string>();
     const auto data = params["data"].get<std::string>();
+
+    if (pubKey.size() != 66) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "Pubkey must be 66 characters long";
+        BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
+        return;
+    }
 
     BOOST_LOG_TRIVIAL(trace) << "store body: " << data;
 
@@ -466,6 +472,7 @@ void connection_t::process_retrieve_all() {
     for (auto& entry : all_entries) {
         json item;
         item["data"] = entry.bytes;
+        item["pk"] = entry.pubKey;
         messages.push_back(item);
     }
 
