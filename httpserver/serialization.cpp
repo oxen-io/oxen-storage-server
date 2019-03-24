@@ -1,8 +1,8 @@
 #include "serialization.h"
 
 /// TODO: should only be aware of messages
-#include "service_node.h"
 #include "Item.hpp"
+#include "service_node.h"
 
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -10,7 +10,6 @@
 using service_node::storage::Item;
 
 namespace loki {
-
 
 using iter_t = const char*;
 
@@ -36,7 +35,8 @@ static uint64_t deserialize_uint64(std::string::const_iterator& it) {
     auto b7 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
     auto b8 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
 
-    return static_cast<uint64_t>(b1 << 56 | b2 << 48 | b3 << 40 | b4 << 32 | b5 << 24 | b6 << 16 | b7 << 8 | b8);
+    return static_cast<uint64_t>(b1 << 56 | b2 << 48 | b3 << 40 | b4 << 32 |
+                                 b5 << 24 | b6 << 16 | b7 << 8 | b8);
 }
 
 static void serialize_uint32(std::string& buf, uint32_t a) {
@@ -91,7 +91,8 @@ std::string serialize_message(const message_t& msg) {
     serialize_uint64(res, msg.timestamp_);
     serialize(res, msg.nonce_);
 
-    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_ << std::endl;
+    BOOST_LOG_TRIVIAL(debug)
+        << "serialized message: " << msg.text_ << std::endl;
 
     return res;
 }
@@ -108,7 +109,8 @@ std::string serialize_message(const Item& item) {
     serialize_uint64(res, item.timestamp);
     serialize(res, item.nonce);
 
-    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes << std::endl;
+    BOOST_LOG_TRIVIAL(debug)
+        << "serialized message: " << item.bytes << std::endl;
 
     return res;
 }
@@ -118,14 +120,16 @@ struct string_view {
     std::string::const_iterator it;
     const std::string::const_iterator it_end;
 
-    string_view(const std::string& data) : it(data.begin()), it_end(data.end()) { }
+    string_view(const std::string& data)
+        : it(data.begin()), it_end(data.end()) {}
 
     size_t size() { return it_end - it; }
 
     bool empty() { return it_end <= it; }
 };
 
-static boost::optional<std::string> deserialize_string(string_view& slice, size_t len) {
+static boost::optional<std::string> deserialize_string(string_view& slice,
+                                                       size_t len) {
 
     if (slice.size() < len) {
         return boost::none;
@@ -139,11 +143,13 @@ static boost::optional<std::string> deserialize_string(string_view& slice, size_
 
 static boost::optional<std::string> deserialize_string(string_view& slice) {
 
-    if (slice.size() < 4) return boost::none;
+    if (slice.size() < 4)
+        return boost::none;
 
     uint32_t len = deserialize_uint32(slice.it); // already increments `it`!
 
-    if (slice.size() < len) return boost::none;
+    if (slice.size() < len)
+        return boost::none;
 
     std::string res = std::string(slice.it, slice.it + len);
     slice.it += len;
@@ -153,7 +159,8 @@ static boost::optional<std::string> deserialize_string(string_view& slice) {
 
 static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
-    if (slice.size() < 8) return boost::none;
+    if (slice.size() < 8)
+        return boost::none;
 
     auto res = deserialize_uint64(slice.it);
 
@@ -225,7 +232,8 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
             << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
         // TODO: Actually use the message values here
-        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), *ttl, *timestamp, nonce->c_str()});
+        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), *ttl,
+                          *timestamp, nonce->c_str()});
     }
 
     BOOST_LOG_TRIVIAL(trace) << "=== END ===";
@@ -233,4 +241,4 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
     return result;
 }
 
-}
+} // namespace loki

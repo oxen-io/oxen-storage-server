@@ -1,12 +1,13 @@
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
-namespace service_node { namespace storage {
-    class Item;
-}}
-
+namespace service_node {
+namespace storage {
+class Item;
+}
+} // namespace service_node
 
 namespace loki {
 
@@ -19,4 +20,4 @@ std::string serialize_message(const service_node::storage::Item& msg);
 
 std::vector<message_t> deserialize_messages(const std::string& blob);
 
-}
+} // namespace loki

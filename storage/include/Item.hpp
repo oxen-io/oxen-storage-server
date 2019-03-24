@@ -11,7 +11,8 @@ struct Item {
          uint64_t ttl, uint64_t expirationTimestamp, const std::string& nonce,
          const std::string& bytes)
         : hash(hash), pubKey(pubKey), timestamp(timestamp), ttl(ttl),
-          expirationTimestamp(expirationTimestamp), nonce(nonce), bytes(bytes) {}
+          expirationTimestamp(expirationTimestamp), nonce(nonce), bytes(bytes) {
+    }
     std::string hash;
     std::string pubKey;
     uint64_t timestamp;

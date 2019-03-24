@@ -109,7 +109,8 @@ int main(int argc, char* argv[]) {
 
         boost::asio::io_context ioc{1};
 
-        loki::ServiceNode service_node(ioc, port, lokinetIdentityPath, dbLocation);
+        loki::ServiceNode service_node(ioc, port, lokinetIdentityPath,
+                                       dbLocation);
         ChannelEncryption<std::string> channelEncryption(lokinetIdentityPath);
 
         /// Should run http server

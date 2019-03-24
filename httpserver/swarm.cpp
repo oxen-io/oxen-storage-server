@@ -77,10 +77,12 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
             /// See if anyone joined our swarm
             for (auto& sn : our_swarm) {
 
-                auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
+                auto it =
+                    std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
                 if (it == swarm_peers_.end()) {
-                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << to_string(sn);
+                    BOOST_LOG_TRIVIAL(info)
+                        << "EVENT: detected new SN: " << to_string(sn);
                     events.new_snodes.push_back(sn);
                 }
             }
@@ -100,8 +102,8 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                 }
 
                 if (!found) {
-                    BOOST_LOG_TRIVIAL(info)
-                        << "EVENT: detected a new swarm: " << swarm_info.swarm_id;
+                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected a new swarm: "
+                                            << swarm_info.swarm_id;
                     events.new_swarms.push_back(swarm_info.swarm_id);
                 }
             }

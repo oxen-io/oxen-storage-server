@@ -4,12 +4,12 @@
 #include <map>
 #include <memory>
 
+#include "../external/json.hpp"
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/format.hpp>
-#include "../external/json.hpp"
 
 template <typename T>
 class ChannelEncryption;

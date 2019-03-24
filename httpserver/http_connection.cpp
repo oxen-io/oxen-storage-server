@@ -43,15 +43,16 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
     boost::system::error_code ec;
 
     boost::asio::ip::tcp::endpoint endpoint;
-    boost::asio::ip::tcp::resolver resolver( ioc );
-    boost::asio::ip::tcp::resolver::iterator destination = resolver.resolve(sn_address, "http", ec);
+    boost::asio::ip::tcp::resolver resolver(ioc);
+    boost::asio::ip::tcp::resolver::iterator destination =
+        resolver.resolve(sn_address, "http", ec);
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
             << "Failed to parse the IP address. Error code = " << ec.value()
             << ". Message: " << ec.message();
         return;
     }
-    while ( destination != boost::asio::ip::tcp::resolver::iterator() ) {
+    while (destination != boost::asio::ip::tcp::resolver::iterator()) {
         endpoint = *destination++;
     }
     endpoint.port(port);
@@ -214,13 +215,13 @@ void connection_t::process_request() {
 
             /// NOTE:: we only expect one message here, but
             /// for now lets reuse the function we already have
-            std::vector<message_t> messages = deserialize_messages(request_.body());
+            std::vector<message_t> messages =
+                deserialize_messages(request_.body());
             assert(messages.size() == 1);
 
             auto msg = std::make_shared<message_t>(messages[0]);
 
-            BOOST_LOG_TRIVIAL(trace)
-                << "got PK: " << msg->pk_;
+            BOOST_LOG_TRIVIAL(trace) << "got PK: " << msg->pk_;
 
             /// TODO: this will need to be done asyncronoulsy
             service_node_.process_push(msg);
@@ -267,7 +268,6 @@ void connection_t::process_request() {
 void connection_t::write_response() {
 
     std::string body = bodyStream_.str();
-
 
 #ifndef INTEGRATION_TEST
     const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
@@ -323,13 +323,16 @@ bool connection_t::parse_header(T key_list) {
 
 void connection_t::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp", "data"};
+    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
+                                      "data"};
 
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            bodyStream_ << boost::format("invalid json: no `%1%` field") % field;
-            BOOST_LOG_TRIVIAL(error) << boost::format("Bad client request: no `%1%` field") % field;
+            bodyStream_ << boost::format("invalid json: no `%1%` field") %
+                               field;
+            BOOST_LOG_TRIVIAL(error)
+                << boost::format("Bad client request: no `%1%` field") % field;
             return;
         }
     }
@@ -379,7 +382,8 @@ void connection_t::process_store(const json& params) {
 
         auto ts = std::stoull(timestamp);
         auto msg = std::make_shared<message_t>(pubKey.c_str(), data.c_str(),
-                                               messageHash.c_str(), ttlInt, ts, nonce.c_str());
+                                               messageHash.c_str(), ttlInt, ts,
+                                               nonce.c_str());
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
@@ -426,7 +430,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
             pubKey = pubKey.substr(2, std::string::npos);
         } else {
             response_.result(http::status::bad_request);
-            bodyStream_ << "invalid json: pubKey should be 64/66 characters long";
+            bodyStream_
+                << "invalid json: pubKey should be 64/66 characters long";
             BOOST_LOG_TRIVIAL(error) << "Bad client request: no `pubKey` field";
             return;
         }
@@ -453,7 +458,6 @@ void connection_t::process_snodes_by_pk(const json& params) {
 
     /// This might throw if not utf-8 endoded
     bodyStream_ << res_body.dump();
-
 }
 
 void connection_t::process_retrieve_all() {
@@ -490,8 +494,10 @@ void connection_t::process_retrieve(const json& params) {
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            bodyStream_ << boost::format("invalid json: no `%1%` field") % field;
-            BOOST_LOG_TRIVIAL(error) << boost::format("Bad client request: no `%1%` field") % field;
+            bodyStream_ << boost::format("invalid json: no `%1%` field") %
+                               field;
+            BOOST_LOG_TRIVIAL(error)
+                << boost::format("Bad client request: no `%1%` field") % field;
             return;
         }
     }
@@ -595,7 +601,8 @@ void connection_t::process_client_req() {
     } else {
         response_.result(http::status::bad_request);
         bodyStream_ << "no method" << method_name;
-        BOOST_LOG_TRIVIAL(error) << boost::format("Bad Request. Unknown method '%1%'") % method_name;
+        BOOST_LOG_TRIVIAL(error)
+            << boost::format("Bad Request. Unknown method '%1%'") % method_name;
     }
 }
 
@@ -627,7 +634,6 @@ void connection_t::register_deadline() {
 HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const request_t& req, http_callback_t cb)
     : ioc_(ioc), socket_(ioc), callback_(cb) {
-
 
     req_.method(http::verb::post);
     req_.version(11);

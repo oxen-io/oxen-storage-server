@@ -102,16 +102,18 @@ void Database::open_and_prepare(const std::string& db_path) {
         throw std::runtime_error("Can't create table");
     }
 
-    save_stmt =
-        prepare_statement("INSERT INTO Data "
-                          "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
-                          "VALUES (?,?,?,?,?,?,?);");
+    save_stmt = prepare_statement(
+        "INSERT INTO Data "
+        "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
+        "VALUES (?,?,?,?,?,?,?);");
     if (!save_stmt)
         throw std::runtime_error("could not prepare the save statement");
 
-    get_all_for_pk_stmt = prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
+    get_all_for_pk_stmt =
+        prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
     if (!get_all_for_pk_stmt)
-        throw std::runtime_error("could not prepare the get all for pk statement");
+        throw std::runtime_error(
+            "could not prepare the get all for pk statement");
 
     get_all_stmt = prepare_statement("SELECT * FROM Data;");
     if (!get_all_stmt)
@@ -200,9 +202,12 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
         const auto ttl = sqlite3_column_int64(stmt, 2);
         const auto timestamp = sqlite3_column_int64(stmt, 3);
         const auto time_expires = sqlite3_column_int64(stmt, 4);
-        const auto nonce = std::string((const char*)sqlite3_column_text(stmt, 5));
-        const auto bytes = std::string((char*)sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6));
-        items.emplace_back(hash, pub_key, timestamp, ttl, time_expires, nonce, bytes);
+        const auto nonce =
+            std::string((const char*)sqlite3_column_text(stmt, 5));
+        const auto bytes = std::string((char*)sqlite3_column_blob(stmt, 6),
+                                       sqlite3_column_bytes(stmt, 6));
+        items.emplace_back(hash, pub_key, timestamp, ttl, time_expires, nonce,
+                           bytes);
     }
 
     int rc = sqlite3_reset(stmt);

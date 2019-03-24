@@ -30,8 +30,10 @@ struct message_t {
     uint64_t timestamp_;
     std::string nonce_;
 
-    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl, uint64_t timestamp, const char* nonce)
-        : pk_(pk), text_(text), hash_(hash), ttl_(ttl), timestamp_(timestamp), nonce_(nonce) {}
+    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl,
+              uint64_t timestamp, const char* nonce)
+        : pk_(pk), text_(text), hash_(hash), ttl_(ttl), timestamp_(timestamp),
+          nonce_(nonce) {}
 };
 
 struct saved_message_t {
@@ -89,9 +91,8 @@ class ServiceNode {
     std::string serialize_all() const;
 
   public:
-
-    ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& identityPath,
-                const std::string& dbLocation);
+    ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+                const std::string& identityPath, const std::string& dbLocation);
 
     ~ServiceNode();
 
@@ -110,7 +111,8 @@ class ServiceNode {
     void purge_outdated();
 
     /// return all messages for a particular PK (in JSON)
-    bool get_all_messages(std::vector<service_node::storage::Item>& all_entries);
+    bool
+    get_all_messages(std::vector<service_node::storage::Item>& all_entries);
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

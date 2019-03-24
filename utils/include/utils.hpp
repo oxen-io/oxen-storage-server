@@ -1,9 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 namespace util {
 
@@ -18,41 +18,33 @@ static const char zbase32_alpha[] = {'y', 'b', 'n', 'd', 'r', 'f', 'g', '8',
 
 /// adapted from i2pd
 template <typename stack_t>
-const char* base32z_encode(const std::vector<uint8_t>& value, stack_t &stack)
-{
-  size_t ret = 0, pos = 1;
-  uint32_t bits = 8, tmp = value[0];
-  size_t len = value.size();
-  while(ret < sizeof(stack) && (bits > 0 || pos < len))
-  {
-    if(bits < 5)
-    {
-      if(pos < len)
-      {
-        tmp <<= 8;
-        tmp |= value[pos] & 0xFF;
-        pos++;
-        bits += 8;
-      }
-      else  // last byte
-      {
-        tmp <<= (5 - bits);
-        bits = 5;
-      }
-    }
+const char* base32z_encode(const std::vector<uint8_t>& value, stack_t& stack) {
+    size_t ret = 0, pos = 1;
+    uint32_t bits = 8, tmp = value[0];
+    size_t len = value.size();
+    while (ret < sizeof(stack) && (bits > 0 || pos < len)) {
+        if (bits < 5) {
+            if (pos < len) {
+                tmp <<= 8;
+                tmp |= value[pos] & 0xFF;
+                pos++;
+                bits += 8;
+            } else // last byte
+            {
+                tmp <<= (5 - bits);
+                bits = 5;
+            }
+        }
 
-    bits -= 5;
-    int ind = (tmp >> bits) & 0x1F;
-    if(ret < sizeof(stack))
-    {
-      stack[ret] = zbase32_alpha[ind];
-      ret++;
+        bits -= 5;
+        int ind = (tmp >> bits) & 0x1F;
+        if (ret < sizeof(stack)) {
+            stack[ret] = zbase32_alpha[ind];
+            ret++;
+        } else
+            return nullptr;
     }
-    else
-      return nullptr;
-  }
-  return &stack[0];
+    return &stack[0];
 }
-
 
 } // namespace util

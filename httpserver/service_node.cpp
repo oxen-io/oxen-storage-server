@@ -1,8 +1,8 @@
 #include "service_node.h"
 
 #include "Database.hpp"
-#include "swarm.h"
 #include "lokinet_identity.hpp"
+#include "swarm.h"
 #include "utils.hpp"
 
 #include "Item.hpp"
@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/bind.hpp>
@@ -66,23 +67,23 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
-ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port, const std::string& identityPath,
+ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+                         const std::string& identityPath,
                          const std::string& dbLocation)
     : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_port_(port),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
-
 
 #ifndef INTEGRATION_TEST
     const std::vector<uint8_t> publicKey =
         parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};
     std::string our_address;
-    if (char const *dest = util::base32z_encode(publicKey, buf)) {
+    if (char const* dest = util::base32z_encode(publicKey, buf)) {
         our_address.append(dest);
         our_address.append(".snode");
     }
     our_address_.address = our_address;
-#else 
+#else
     our_address_.port = port;
 #endif
 
@@ -127,7 +128,8 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
 /// initiate a /swarms/push request
 void ServiceNode::push_message(const message_ptr msg) {
 
-    if (!swarm_) return;
+    if (!swarm_)
+        return;
 
     auto others = swarm_->other_nodes();
 
@@ -164,7 +166,8 @@ void ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
 
 void ServiceNode::save_if_new(const message_ptr msg) {
 
-    db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_, msg->nonce_);
+    db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_,
+               msg->nonce_);
 
     BOOST_LOG_TRIVIAL(debug) << "saving message: " << msg->text_;
 }
@@ -290,7 +293,8 @@ void ServiceNode::bootstrap_swarms(
 
     std::vector<Item> all_entries;
     if (!db_->retrieve("", all_entries, "")) {
-        BOOST_LOG_TRIVIAL(error) << "could not retrieve entries from the database\n";
+        BOOST_LOG_TRIVIAL(error)
+            << "could not retrieve entries from the database\n";
         return;
     }
 
@@ -333,8 +337,10 @@ void ServiceNode::bootstrap_swarms(
             for (const sn_record_t& sn : all_swarms[idx].snodes) {
                 // TODO: use a constructor from Item to message_t?
 
-                auto msg = std::make_shared<message_t>(entry.pubKey.c_str(), entry.bytes.c_str(),
-                                                       entry.hash.c_str(), entry.ttl, entry.timestamp, entry.nonce.c_str());
+                auto msg = std::make_shared<message_t>(
+                    entry.pubKey.c_str(), entry.bytes.c_str(),
+                    entry.hash.c_str(), entry.ttl, entry.timestamp,
+                    entry.nonce.c_str());
 
                 relay_one(msg, sn);
             }
@@ -371,7 +377,6 @@ std::string ServiceNode::serialize_all() const {
     /// Protocol 2:
     /// |body_size| client pk |  message  |
     /// | 4 bytes | 256 bytes |<body_size>|
-
 
     std::vector<Item> all_entries;
     db_->retrieve("", all_entries, "");
@@ -464,14 +469,13 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
     // so we don't have to find it again
 
     for (const auto& si : all_swarms) {
-        if (si.swarm_id == swarm_id) return si.snodes;
+        if (si.swarm_id == swarm_id)
+            return si.snodes;
     }
 
     BOOST_LOG_TRIVIAL(fatal) << "Something went wrong in get_snodes_by_pk";
 
     return {};
-
-
 }
 
 } // namespace loki
