@@ -73,7 +73,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_port_(port),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
-#ifndef INTEGRATION_TEST
+#ifndef DISABLE_ENCRYPTION
     const std::vector<uint8_t> publicKey =
         parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};

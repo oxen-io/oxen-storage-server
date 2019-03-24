@@ -269,7 +269,7 @@ void connection_t::write_response() {
 
     std::string body = bodyStream_.str();
 
-#ifndef INTEGRATION_TEST
+#ifndef DISABLE_ENCRYPTION
     const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
     if (it != header_.end()) {
         const std::string& ephemKey = it->second;
@@ -366,7 +366,7 @@ void connection_t::process_store(const json& params) {
 
     const bool validPoW =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash);
-#ifndef INTEGRATION_TEST
+#ifndef DISABLE_POW
     if (!validPoW) {
         response_.result(http::status::forbidden);
         response_.set(http::field::content_type, "text/plain");
@@ -550,7 +550,7 @@ void connection_t::process_client_req() {
     }
     std::string plainText = request_.body();
 
-#ifndef INTEGRATION_TEST
+#ifndef DISABLE_ENCRYPTION
     try {
         const std::string decoded =
             boost::beast::detail::base64_decode(plainText);
