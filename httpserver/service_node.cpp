@@ -404,6 +404,8 @@ void ServiceNode::update_swarms() {
     // const char* ip = "149.56.148.124";
     // const uint16_t port = 22023;
 
+    // TODO: this should be changed to lokid
+
     const uint16_t port = 7777;
     const char* ip = "0.0.0.0";
 
@@ -417,11 +419,16 @@ void ServiceNode::update_swarms() {
             }
         })#";
 
-    make_http_request(
-        ioc_, ip, port, "/json_rpc", req_body,
-        std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1));
-
-    /// TODO: make an rpc request to lokid
+    make_http_request(ioc_, ip, port, "/json_rpc", req_body,
+                      [this](std::shared_ptr<std::string> res_body) {
+                          try {
+                              this->on_swarm_update(res_body);
+                          } catch (const std::exception& e) {
+                              BOOST_LOG_TRIVIAL(error)
+                                  << "Exception caught on swarm update: "
+                                  << e.what();
+                          }
+                      });
 
     update_timer_.expires_after(std::chrono::seconds(2));
 
