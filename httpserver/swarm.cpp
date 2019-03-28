@@ -126,10 +126,10 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     // TODO: handle errors
     // TODO: get rid of allocations?
 
-    std::string pk0_str = std::string(pk.c_str(), 16);
-    std::string pk1_str = std::string(pk.c_str() + 16, 16);
-    std::string pk2_str = std::string(pk.c_str() + 32, 16);
-    std::string pk3_str = std::string(pk.c_str() + 48, 16);
+    std::string pk0_str = std::string(pk.c_str() + 2, 16);
+    std::string pk1_str = std::string(pk.c_str() + 2 + 16, 16);
+    std::string pk2_str = std::string(pk.c_str() + 2 + 32, 16);
+    std::string pk3_str = std::string(pk.c_str() + 2 + 48, 16);
 
     uint64_t pk0 = std::stoull(pk0_str, 0, 16);
     uint64_t pk1 = std::stoull(pk1_str, 0, 16);

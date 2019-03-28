@@ -423,18 +423,11 @@ void connection_t::process_snodes_by_pk(const json& params) {
 
     auto pubKey = params["pubKey"].get<std::string>();
 
-    if (pubKey.size() != 64) {
-
-        if (pubKey.size() == 66) {
-            /// Note signal prepends `05` to each pubkey
-            pubKey = pubKey.substr(2, std::string::npos);
-        } else {
-            response_.result(http::status::bad_request);
-            bodyStream_
-                << "invalid json: pubKey should be 64/66 characters long";
-            BOOST_LOG_TRIVIAL(error) << "Bad client request: no `pubKey` field";
-            return;
-        }
+    if (pubKey.size() != 66) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "Pubkey must be 66 characters long";
+        BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
+        return;
     }
 
     std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
