@@ -121,31 +121,34 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
     return events;
 }
 
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const std::string& pk) {
+static uint64_t hex_to_u64(const std::string& pk) {
 
     if (pk.size() != 66) {
         throw std::invalid_argument("invalid pub key size");
     }
 
-    /// Create a buffer for 64 characters plus 4 nulls on 8-byte boundaries
-    char buf[68] = {};
+    /// Create a buffer for 16 characters null terminated
+    char buf[17] = {};
 
     /// Note: pk is expected to contain two leading characters
     /// (05 for the messenger) that do not participate in mapping
 
-    memcpy(buf, pk.c_str() + 2, 16);
-    memcpy(buf + 17, pk.c_str() + 2 + 16, 16);
-    memcpy(buf + 34, pk.c_str() + 2 + 32, 16);
-    memcpy(buf + 51, pk.c_str() + 2 + 48, 16);
-
     /// Note: if conversion is not possible, we will still
     /// get a value in res (possibly 0 or UINT64_MAX), which
     /// we are not handling at the moment
-    uint64_t res = strtoull(buf, nullptr, 16);
-    res ^= strtoull(buf + 17, nullptr, 16);
-    res ^= strtoull(buf + 34, nullptr, 16);
-    res ^= strtoull(buf + 51, nullptr, 16);
+    uint64_t res = 0;
+    for (auto it = pk.begin() + 2; it < pk.end(); it += 16) {
+        memcpy(buf, &(*it), 16);
+        res ^= strtoull(buf, nullptr, 16);
+    }
+
+    return res;
+}
+
+swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
+                           const std::string& pk) {
+
+    const uint64_t res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = std::numeric_limits<uint64_t>::max() - 1;
@@ -179,16 +182,16 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     }
 
     // handle special case
-    if (res > leftmost_id) {
-        uint64_t dist = (MAX_ID - res) + leftmost_id;
+    if (res > rightmost_id) {
+        // since rightmost is at least as large as leftmost,
+        // res >= leftmost_id in this branch, so the value will
+        // not overflow; the same logic applies to the else branch
+        const uint64_t dist = (MAX_ID - res) + leftmost_id;
         if (dist < cur_min) {
             cur_best = leftmost_id;
         }
-    } else {
-        // since rightmost is at least as large as leftmost,
-        // res <= rightmost in this branch, so the value will
-        // not overflow
-        uint64_t dist = res + (MAX_ID - rightmost_id);
+    } else if (res < leftmost_id) {
+        const uint64_t dist = res + (MAX_ID - rightmost_id);
         if (dist < cur_min) {
             cur_best = rightmost_id;
         }
