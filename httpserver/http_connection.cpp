@@ -157,9 +157,7 @@ void connection_t::read_request() {
     auto self = shared_from_this();
 
     auto on_data = [self](error_code ec, size_t bytes_transferred) {
-        BOOST_LOG_TRIVIAL(trace) << "on data";
-
-        boost::ignore_unused(bytes_transferred);
+        BOOST_LOG_TRIVIAL(trace) << "on data: " << bytes_transferred << " bytes";
 
         if (ec) {
             log_error(ec);
@@ -397,12 +395,10 @@ void connection_t::process_store(const json& params) {
     }
 
     if (!success) {
-        response_.result(http::status::conflict);
+        response_.result(http::status::service_unavailable);
         response_.set(http::field::content_type, "text/plain");
-        // TODO: Maybe this shouldn't respond with error
-        bodyStream_ << "hash conflict - resource already present.";
-        BOOST_LOG_TRIVIAL(warning) << "Conflict. Message with hash "
-                                   << messageHash << " already present";
+        bodyStream_ << "Service node is initializing";
+        BOOST_LOG_TRIVIAL(warning) << "Service node is initializing";
         return;
     }
 

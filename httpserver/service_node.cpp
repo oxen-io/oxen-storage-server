@@ -100,7 +100,9 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
     BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << to_string(sn);
 
     request_t req;
-    req.body() = serialize_message(*msg);
+    std::string body;
+    serialize_message(body, *msg);
+    req.body() = body;
 
     req.target("/v1/swarms/push");
 
@@ -149,14 +151,15 @@ bool ServiceNode::process_store(const message_ptr msg) {
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
-        std::cerr << "error: my swarm in not initialized" << std::endl;
+        BOOST_LOG_TRIVIAL(error) << "error: my swarm in not initialized";
         return false;
     }
 
     /// store to the database
     save_if_new(msg);
 
-    /// initiate a /swarms/push request
+    /// initiate a /swarms/push request;
+    /// (done asyncronously)
     this->push_message(msg);
 
     return true;
@@ -169,7 +172,7 @@ void ServiceNode::save_if_new(const message_ptr msg) {
     db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_,
                msg->nonce_);
 
-    BOOST_LOG_TRIVIAL(debug) << "saving message: " << msg->text_;
+    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->text_;
 }
 
 void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
@@ -177,7 +180,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     /// TODO: firgure out if anything changed
 
     if (!body) {
-        BOOST_LOG_TRIVIAL(error) << "FAILED to obtain swarm info from lokid";
+        BOOST_LOG_TRIVIAL(error) << "Failed to obtain swarm info from lokid";
         return;
     }
 
@@ -228,7 +231,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (!swarm_) {
-        BOOST_LOG_TRIVIAL(trace) << "initialized our swarm" << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "initialized our swarm";
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
@@ -243,7 +246,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (events.decommissioned) {
-        /// Go throguh all our PK and push them to accordingly
+        /// Go throguh all our PK and push them accordingly
         salvage_data();
     }
 
@@ -286,7 +289,7 @@ void ServiceNode::bootstrap_swarms(
         BOOST_LOG_TRIVIAL(info) << "bootstrapping all swarms\n";
     } else {
         BOOST_LOG_TRIVIAL(info)
-            << "bootstrapping swarms: " << vec_to_string(swarms) << std::endl;
+            << "bootstrapping swarms: " << vec_to_string(swarms);
     }
 
     const auto& all_swarms = swarm_->all_swarms();
@@ -309,17 +312,18 @@ void ServiceNode::bootstrap_swarms(
     BOOST_LOG_TRIVIAL(debug)
         << "we have " << all_entries.size() << " messages\n";
 
+    std::unordered_map<swarm_id_t, std::vector<message_t>> to_relay;
+
     for (auto& entry : all_entries) {
 
+        swarm_id_t swarm_id;
         const auto it = cache.find(entry.pubKey);
-
         if (it == cache.end()) {
-            swarm_id_t swarm_id = get_swarm_by_pk(all_swarms, entry.pubKey);
+            swarm_id = get_swarm_by_pk(all_swarms, entry.pubKey);
             cache.insert({entry.pubKey, swarm_id});
+        } else {
+            swarm_id = it->second;
         }
-
-        /// extra lookup?
-        swarm_id_t swarm_id = cache[entry.pubKey];
 
         bool relevant = false;
         for (const auto swarm : swarms) {
@@ -331,18 +335,28 @@ void ServiceNode::bootstrap_swarms(
 
         if (relevant || swarms.empty()) {
 
-            /// what if not found?
-            size_t idx = swarm_id_to_idx[swarm_id];
+            to_relay[swarm_id].emplace_back(
+                entry.pubKey.c_str(), entry.bytes.c_str(), entry.hash.c_str(),
+                entry.ttl, entry.timestamp, entry.nonce.c_str());
+        }
+    }
 
-            for (const sn_record_t& sn : all_swarms[idx].snodes) {
-                // TODO: use a constructor from Item to message_t?
+    BOOST_LOG_TRIVIAL(trace)
+        << "Bootstrapping " << to_relay.size() << " swarms";
 
-                auto msg = std::make_shared<message_t>(
-                    entry.pubKey.c_str(), entry.bytes.c_str(),
-                    entry.hash.c_str(), entry.ttl, entry.timestamp,
-                    entry.nonce.c_str());
+    for (const auto& kv : to_relay) {
+        uint64_t swarm_id = kv.first;
+        /// what if not found?
+        size_t idx = swarm_id_to_idx[swarm_id];
 
-                relay_one(msg, sn);
+        const std::vector<std::string> data = serialize_messages(kv.second);
+
+        BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
+
+        for (const sn_record_t& sn : all_swarms[idx].snodes) {
+            // TODO: use a constructor from Item to message_t?
+            for (const std::string& batch : data) {
+                relay_batch(batch, sn);
             }
         }
     }
@@ -368,15 +382,6 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) {
 }
 
 std::string ServiceNode::serialize_all() const {
-    /// IMPORTANT: need to be careful how we separate messages,
-    /// as we cannot assume anything about the contents of
-    /// the messages.
-    /// But for know, every line is a new message, change this to
-    /// a protocol that declares sizes of the following blobs messages
-
-    /// Protocol 2:
-    /// |body_size| client pk |  message  |
-    /// | 4 bytes | 256 bytes |<body_size>|
 
     std::vector<Item> all_entries;
     db_->retrieve("", all_entries, "");
@@ -446,17 +451,12 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
     if (*blob == "")
         return;
 
-    /// Note: this code will likely change, so I'm not worried about performance
-
     std::vector<message_t> messages = deserialize_messages(*blob);
 
-    // boost::trim(*blob);
+    BOOST_LOG_TRIVIAL(trace) << "saving all: begin";
 
-    // boost::split(messages, *blob, boost::is_any_of("\n"),
-    //  boost::token_compress_on);
-
-    BOOST_LOG_TRIVIAL(debug)
-        << "got " << messages.size() << " messages form peers";
+    BOOST_LOG_TRIVIAL(debug) << "got " << messages.size()
+                             << " messages form peers, size: " << blob->size();
 
     for (auto& msg : messages) {
 
@@ -464,6 +464,8 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
         // TODO: Actually use the message values here
         save_if_new(std::make_shared<message_t>(msg));
     }
+
+    BOOST_LOG_TRIVIAL(trace) << "saving all: end";
 }
 
 std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {

@@ -21,6 +21,7 @@ class ServiceNode;
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
 using request_t = http::request<http::string_body>;
+using response_t = http::response<http::string_body>;
 
 using http_callback_t = std::function<void(std::shared_ptr<std::string>)>;
 
@@ -41,7 +42,7 @@ class HttpClientSession
     boost::asio::io_context& ioc_;
     boost::beast::flat_buffer buffer_;
     request_t req_;
-    http::response<http::string_body> res_;
+    response_t res_;
 
     http_callback_t callback_;
 
@@ -80,10 +81,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     boost::beast::flat_buffer buffer_{8192};
 
     // The request message.
-    http::request<http::string_body> request_;
+    request_t request_;
 
     // The response message.
-    http::response<http::string_body> response_;
+    response_t response_;
 
     /// TODO: move these if possible
     std::map<std::string, std::string> header_;

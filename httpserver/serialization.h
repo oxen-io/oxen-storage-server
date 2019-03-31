@@ -13,7 +13,9 @@ namespace loki {
 
 class message_t;
 
-std::string serialize_message(const message_t& msg);
+void serialize_message(std::string& buf, const message_t& msg);
+
+std::vector<std::string> serialize_messages(const std::vector<message_t>& msgs);
 
 /// TODO: reuse the one above
 std::string serialize_message(const service_node::storage::Item& msg);

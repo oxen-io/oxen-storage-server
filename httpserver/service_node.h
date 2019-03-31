@@ -96,7 +96,7 @@ class ServiceNode {
 
     ~ServiceNode();
 
-    /// Process message received from a client
+    /// Process message received from a client, return false if no in a swarm
     bool process_store(const message_ptr msg);
 
     /// Process message relayed from another SN from our swarm
