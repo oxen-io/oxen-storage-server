@@ -56,6 +56,15 @@ bool parseLogLevel(const std::string& input,
     return false;
 }
 
+std::vector<std::function<void(void)> > closers;
+
+void handle_signal(int)
+{
+  for(auto & f : closers)
+    f();
+  closers.clear();
+}
+
 int main(int argc, char* argv[]) {
     try {
         // Check command line arguments.
@@ -63,14 +72,12 @@ int main(int argc, char* argv[]) {
             usage(argv);
             return EXIT_FAILURE;
         }
+        boost::asio::io_context ioc{1};
 
         std::string lokinetIdentityPath;
         std::string dbLocation(".");
         std::string logLevelString("info");
-
-        auto const address = boost::asio::ip::make_address(argv[1]);
-        unsigned short port = static_cast<unsigned short>(std::atoi(argv[2]));
-
+        
         po::options_description desc;
         desc.add_options()("lokinet-identity", po::value(&lokinetIdentityPath),
                            "")("db-location", po::value(&dbLocation),
@@ -100,20 +107,43 @@ int main(int argc, char* argv[]) {
             BOOST_LOG_TRIVIAL(info)
                 << "Setting database location to " << dbLocation;
         }
-
+        using endpoint_t = boost::asio::ip::tcp::endpoint;
+        endpoint_t ep;
+        {
+          using err_t = boost::system::error_code;
+          using resolver_t = boost::asio::ip::tcp::resolver;
+          resolver_t r{ioc};
+          err_t ec;
+          auto res = r.resolve(resolver_t::query(argv[1], argv[2]), ec);
+          if(ec)
+          {
+            BOOST_LOG_TRIVIAL(fatal) << "failed to resolve " << argv[1] << ":" << argv[2] << ", " << ec.message() ;
+            return EXIT_FAILURE;
+          }
+          ep = *res;
+        }
         BOOST_LOG_TRIVIAL(info) << "Listening at address " << argv[1]
-                                << " port " << argv[2] << std::endl;
-
-        boost::asio::io_context ioc{1};
+                                << " port " << argv[2] ;
 
         Storage storage(dbLocation);
         ChannelEncryption<std::string> channelEncryption(lokinetIdentityPath);
 
-        tcp::acceptor acceptor{ioc, {address, port}};
+        tcp::acceptor acceptor{ioc, ep};
         tcp::socket socket{ioc};
         http_server(acceptor, socket, storage, channelEncryption);
 
+        closers.emplace_back([&]() {
+            BOOST_LOG_TRIVIAL(info) << "closing..." ;
+            acceptor.close();
+            ioc.stop();
+            BOOST_LOG_TRIVIAL(info) << "bye" ;
+        });
+        
+        signal(SIGINT, handle_signal);
+        signal(SIGTERM, handle_signal);
+
         ioc.run();
+        return 0;
     } catch (std::exception const& e) {
         BOOST_LOG_TRIVIAL(fatal) << "Error: " << e.what();
         return EXIT_FAILURE;

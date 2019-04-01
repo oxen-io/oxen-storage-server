@@ -1,0 +1,15 @@
+Source: loki-storage-server
+Section: net
+Priority: optional
+Maintainer: Jeff Becker (probably not evil) <jeff@i2p.rocks>
+Build-Depends: cmake, debhelper (>=11~)
+Standards-Version: 4.1.4
+Homepage: https://github.com/loki-project/loki-storage-server
+
+Package: loki-storage-server
+Architecture: any
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: loki storage server
+  TODO write proper description
+  TODO something something downstream maintainer

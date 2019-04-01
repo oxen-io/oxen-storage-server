@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+    NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+    MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+BOOST_ROOT ?= ~/git/boost
+
+%:
+	dh $@ --parallel
+
+override_dh_auto_clean:
+	rm -rf build
+
+override_dh_auto_configure:
+	mkdir -p build && cd build && cmake ../httpserver -DBOOST_ROOT=$(BOOST_ROOT) -DBoost_USE_STATIC_LIBS=ON 
+
+override_dh_auto_build:
+	$(MAKE) -C build

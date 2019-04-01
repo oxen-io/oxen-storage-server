@@ -1,0 +1,18 @@
+[Unit]
+Description=Loki Storage Server: Store for encrypted messages
+Wants=lokinet.service
+After=lokinet.service
+#TODO: implement this target later
+#After=lokinet-replaced-resolver.target
+
+
+
+[Service]
+User=debian-lokinet
+SyslogIdentifier=lokinet
+WorkingDirectory=/var/lib/lokinet
+ExecStart=/usr/bin/loki-storage-server localhost.loki 8080 --lokinet-identity=identity.private --db-location=storage
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

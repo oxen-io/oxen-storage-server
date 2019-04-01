@@ -1,0 +1,2 @@
+#!/bin/sh -e
+adduser --quiet --system --home /var/lib/lokinet debian-lokinet || echo "debian-lokinet user not added"
