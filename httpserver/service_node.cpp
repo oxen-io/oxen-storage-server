@@ -2,7 +2,6 @@
 
 #include "Database.hpp"
 #include "lokinet_identity.hpp"
-#include "swarm.h"
 #include "utils.hpp"
 
 #include "Item.hpp"
@@ -12,7 +11,6 @@
 #include <fstream>
 #include <iomanip>
 
-#include <boost/algorithm/string.hpp>
 #include <boost/bind.hpp>
 
 #include <boost/log/trivial.hpp>
@@ -28,8 +26,6 @@ using service_node::storage::Item;
 namespace loki {
 
 void say_hello(const boost::system::error_code& ec) { std::cout << "hello\n"; }
-
-static constexpr uint16_t SNODE_PORT = 8080;
 
 /// TODO: can we reuse context (reset it)?
 std::string hash_data(std::string data) {
@@ -87,7 +83,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     our_address_.port = port;
 #endif
 
-    update_timer_.async_wait(std::bind(&ServiceNode::update_swarms, this));
+    swarm_timer_tick();
 }
 
 ServiceNode::~ServiceNode() = default;
@@ -173,61 +169,7 @@ void ServiceNode::save_if_new(const message_ptr msg) {
     BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->text_;
 }
 
-void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
-
-    /// TODO: firgure out if anything changed
-
-    if (!body) {
-        BOOST_LOG_TRIVIAL(error) << "Failed to obtain swarm info from lokid";
-        return;
-    }
-
-    boost::trim(*body);
-
-    /// Note: parsing will most likely change, so don't worry about efficiency
-    /// for now
-    std::vector<std::string> swarms;
-
-    all_swarms_t all_swarms;
-
-    boost::split(swarms, *body, boost::is_any_of("\n"),
-                 boost::token_compress_on);
-
-    for (auto& swarm : swarms) {
-
-        std::vector<sn_record_t> swarm_members;
-
-        std::vector<std::string> nodes;
-
-        boost::trim(swarm);
-
-        boost::split(nodes, swarm, boost::is_any_of(" "),
-                     boost::token_compress_on);
-
-        /// the first entry is the swarm id
-        uint64_t swarm_id = stoull(nodes[0]);
-
-        for (auto i = 1u; i < nodes.size(); ++i) {
-
-#ifdef INTEGRATION_TEST
-            /// TODO: error handling here
-            uint16_t port = stoi(nodes[i]);
-            std::string address = "0.0.0.0";
-#else
-            uint16_t port = SNODE_PORT;
-            std::string address = nodes[i];
-#endif
-            swarm_members.push_back({port, address});
-        }
-
-        SwarmInfo si;
-
-        si.snodes = swarm_members;
-        si.swarm_id = swarm_id;
-
-        all_swarms.push_back(si);
-    }
-
+void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
     if (!swarm_) {
         BOOST_LOG_TRIVIAL(trace) << "initialized our swarm";
         swarm_ = std::make_unique<Swarm>(our_address_);
@@ -249,6 +191,13 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     this->purge_outdated();
+}
+
+void ServiceNode::swarm_timer_tick() {
+    const swarm_callback_t cb = std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
+    request_swarm_update(ioc_, std::move(cb));
+    update_timer_.expires_after(std::chrono::seconds(2));
+    update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
@@ -398,46 +347,6 @@ void ServiceNode::purge_outdated() {
 
     /// TODO: use database instead, for now it is a no-op
     return;
-}
-
-void ServiceNode::update_swarms() {
-
-    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
-
-    // const char* ip = "149.56.148.124";
-    // const uint16_t port = 22023;
-
-    // TODO: this should be changed to lokid
-
-    const uint16_t port = 7777;
-    const char* ip = "0.0.0.0";
-
-    std::string req_body =
-        R"#({
-            "jsonrpc":"2.0",
-            "id":"0",
-            "method":"get_service_nodes",
-            "params": {
-                "height": 200
-            }
-        })#";
-
-    make_http_request(ioc_, ip, port, "/json_rpc", req_body,
-                      [this](std::shared_ptr<std::string> res_body) {
-                          try {
-                              this->on_swarm_update(res_body);
-                          } catch (const std::exception& e) {
-                              BOOST_LOG_TRIVIAL(error)
-                                  << "Exception caught on swarm update: "
-                                  << e.what();
-                          }
-                      });
-
-    update_timer_.expires_after(std::chrono::seconds(2));
-
-    update_timer_.async_wait(boost::bind(&ServiceNode::update_swarms, this));
-
-    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: end";
 }
 
 void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {

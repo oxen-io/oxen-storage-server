@@ -9,6 +9,9 @@
 #include <boost/optional.hpp>
 
 #include "common.h"
+#include "swarm.h"
+
+static constexpr uint16_t SNODE_PORT = 8080;
 
 class Database;
 
@@ -71,7 +74,7 @@ class ServiceNode {
     /// request swarm info from the blockchain
     void update_swarms();
 
-    void on_swarm_update(std::shared_ptr<std::string> body);
+    void on_swarm_update(all_swarms_t all_swarms);
 
     void bootstrap_peers(const std::vector<sn_record_t>& peers) const;
 
@@ -106,6 +109,8 @@ class ServiceNode {
     void process_push_all(std::shared_ptr<std::string> blob);
 
     bool is_pubkey_for_us(const std::string& pk) const;
+
+    void swarm_timer_tick();
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
 

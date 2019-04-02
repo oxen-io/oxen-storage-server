@@ -87,6 +87,81 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
     make_http_request(ioc, sn_address, port, req, cb);
 }
 
+static void parse_swarm_update(const std::shared_ptr<std::string>& response_body, const swarm_callback_t&& cb) {
+    const json body = json::parse(*response_body, nullptr, false);
+    if (body == nlohmann::detail::value_t::discarded) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+    all_swarms_t all_swarms;
+    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+
+    try {
+        const json service_node_states_string = body["result"]["as_json"];
+        const std::string list_string = service_node_states_string.get<std::string>();
+        const json service_node_states = json::parse(list_string, nullptr, false);
+
+        for(const auto &sn_json : service_node_states) {
+            const std::string pubkey = sn_json["pubkey"].get<std::string>();
+            const swarm_id_t swarm_id = sn_json["info"]["swarm_id"].get<swarm_id_t>();
+            std::string snode_address = util::hex64_to_base32z(pubkey);
+            snode_address.append(".snode");
+
+            const sn_record_t sn{
+                SNODE_PORT,
+                snode_address
+            };
+
+            swarm_map[swarm_id].push_back(sn);
+        }
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+
+    for(auto const &swarm : swarm_map) {
+        all_swarms.emplace_back(SwarmInfo{
+            swarm.first,
+            swarm.second
+        });
+    }
+
+    try {
+        cb(all_swarms);
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Exception caught on swarm update: "
+            << e.what();
+    }
+}
+
+void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&& cb) {
+    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
+
+    const std::string ip = "127.0.0.1";
+    const uint16_t port = 38157;
+    const std::string target = "/json_rpc";
+    const std::string req_body =
+        R"#({
+            "jsonrpc":"2.0",
+            "id":"0",
+            "method":"get_service_nodes",
+            "params": {
+                "sevice_node_pubkeys": [],
+                "include_json": true
+            }
+        })#";
+
+    make_http_request(
+        ioc, ip, port, target, req_body,
+        [cb = std::move(cb)](const std::shared_ptr<std::string>& result_body) {
+            if (result_body) {
+                parse_swarm_update(result_body, std::move(cb));
+            }
+        }
+    );
+}
+
 namespace http_server {
 
 using error_code = boost::system::error_code;

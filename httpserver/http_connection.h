@@ -11,12 +11,10 @@
 #include <boost/beast/version.hpp>
 #include <boost/format.hpp>
 
+#include "swarm.h"
+
 template <typename T>
 class ChannelEncryption;
-
-namespace loki {
-class ServiceNode;
-}
 
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
@@ -26,6 +24,7 @@ using response_t = http::response<http::string_body>;
 using http_callback_t = std::function<void(std::shared_ptr<std::string>)>;
 
 namespace loki {
+using swarm_callback_t = std::function<void(const all_swarms_t&)>;
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
                        uint16_t port, const request_t& req, http_callback_t cb);
@@ -33,6 +32,8 @@ void make_http_request(boost::asio::io_context& ioc, std::string ip,
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
                        uint16_t port, std::string target, std::string body,
                        http_callback_t cb);
+
+void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&& cb);
 
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {
