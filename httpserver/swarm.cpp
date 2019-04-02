@@ -4,6 +4,7 @@
 #include "service_node.h"
 
 #include <boost/log/trivial.hpp>
+#include <stdlib.h>
 
 namespace loki {
 
@@ -120,26 +121,46 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
     return events;
 }
 
+static uint64_t hex_to_u64(const std::string& pk) {
+
+    if (pk.size() != 66) {
+        throw std::invalid_argument("invalid pub key size");
+    }
+
+    /// Create a buffer for 16 characters null terminated
+    char buf[17] = {};
+
+    /// Note: pk is expected to contain two leading characters
+    /// (05 for the messenger) that do not participate in mapping
+
+    /// Note: if conversion is not possible, we will still
+    /// get a value in res (possibly 0 or UINT64_MAX), which
+    /// we are not handling at the moment
+    uint64_t res = 0;
+    for (auto it = pk.begin() + 2; it < pk.end(); it += 16) {
+        memcpy(buf, &(*it), 16);
+        res ^= strtoull(buf, nullptr, 16);
+    }
+
+    return res;
+}
+
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const std::string& pk) {
 
-    // TODO: handle errors
-    // TODO: get rid of allocations?
+    const uint64_t res = hex_to_u64(pk);
 
-    std::string pk0_str = std::string(pk.c_str() + 2, 16);
-    std::string pk1_str = std::string(pk.c_str() + 2 + 16, 16);
-    std::string pk2_str = std::string(pk.c_str() + 2 + 32, 16);
-    std::string pk3_str = std::string(pk.c_str() + 2 + 48, 16);
+    /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
+    constexpr swarm_id_t MAX_ID = std::numeric_limits<uint64_t>::max() - 1;
+    constexpr swarm_id_t SENTINEL_ID = std::numeric_limits<uint64_t>::max();
 
-    uint64_t pk0 = std::stoull(pk0_str, 0, 16);
-    uint64_t pk1 = std::stoull(pk1_str, 0, 16);
-    uint64_t pk2 = std::stoull(pk2_str, 0, 16);
-    uint64_t pk3 = std::stoull(pk3_str, 0, 16);
+    swarm_id_t cur_best = SENTINEL_ID;
+    uint64_t cur_min = SENTINEL_ID;
 
-    uint64_t res = pk0 ^ pk1 ^ pk2 ^ pk3;
-
-    swarm_id_t cur_best = 0;
-    uint64_t cur_min = std::numeric_limits<uint64_t>::max();
+    /// We don't require that all_swarms is sorted, so we find
+    /// the smallest/largest elements in the same loop
+    swarm_id_t leftmost_id = SENTINEL_ID;
+    swarm_id_t rightmost_id = 0;
 
     for (const auto& si : all_swarms) {
 
@@ -149,16 +170,30 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
             cur_best = si.swarm_id;
             cur_min = dist;
         }
+
+        /// Find the letfmost
+        if (si.swarm_id < leftmost_id) {
+            leftmost_id = si.swarm_id;
+        }
+
+        if (si.swarm_id > rightmost_id) {
+            rightmost_id = si.swarm_id;
+        }
     }
 
     // handle special case
-
-    if (res > all_swarms[0].swarm_id) {
-        uint64_t dist =
-            std::numeric_limits<uint64_t>::max() - res + all_swarms[0].swarm_id;
-
+    if (res > rightmost_id) {
+        // since rightmost is at least as large as leftmost,
+        // res >= leftmost_id in this branch, so the value will
+        // not overflow; the same logic applies to the else branch
+        const uint64_t dist = (MAX_ID - res) + leftmost_id;
         if (dist < cur_min) {
-            return all_swarms[0].swarm_id;
+            cur_best = leftmost_id;
+        }
+    } else if (res < leftmost_id) {
+        const uint64_t dist = res + (MAX_ID - rightmost_id);
+        if (dist < cur_min) {
+            cur_best = rightmost_id;
         }
     }
 
