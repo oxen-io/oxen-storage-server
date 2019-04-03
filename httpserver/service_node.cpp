@@ -82,6 +82,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
         our_address.append(dest);
         our_address.append(".snode");
     }
+    BOOST_LOG_TRIVIAL(info) << "Read Service Node address: " << our_address;
     our_address_.address = our_address;
 #else
     our_address_.port = port;

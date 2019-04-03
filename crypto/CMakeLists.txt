@@ -10,6 +10,15 @@ set(SOURCES
     include/lokinet_identity.hpp
     include/channel_encryption.hpp
     src/channel_encryption.cpp
+    include/sodium/private/ed25519_ref10.h
+    include/sodium/private/ed25519_ref10_fe_25_5.h
+    include/sodium/private/ed25519_ref10_fe_51.h
+    include/sodium/private/common.h
+    curve25519/ref10/ed25519_ref10.c
+    curve25519/ref10/fe_25_5/base.h
+    curve25519/ref10/fe_25_5/base2.h
+    curve25519/ref10/fe_25_5/constants.h
+    curve25519/ref10/fe_25_5/fe.h
 )
 
 add_library(crypto STATIC ${SOURCES})
