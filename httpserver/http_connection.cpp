@@ -349,28 +349,7 @@ void connection_t::process_store(const json& params) {
         return;
     }
 
-    if (!service_node_.is_pubkey_for_us(pubKey)) {
-        std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
-
-        json res_body;
-        json snodes = json::array();
-
-        for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-            snodes.push_back(std::to_string(sn.port));
-#else
-            snodes.push_back(sn.address);
-#endif
-        }
-
-        res_body["snodes"] = snodes;
-
-        response_.result(http::status::misdirected_request);
-        response_.set(http::field::content_type, "application/json");
-
-        /// This might throw if not utf-8 endoded
-        bodyStream_ << res_body.dump();
-        BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
+    if (!check_correct_swarm(pubKey)) {
         return;
     }
 
@@ -504,6 +483,34 @@ void connection_t::process_retrieve_all() {
     response_.result(http::status::ok);
 }
 
+bool connection_t::check_correct_swarm(std::string pub_key) {
+    if (service_node_.is_pubkey_for_us(pub_key)) {
+        return true;
+    }
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pub_key);
+
+    json res_body;
+    json snodes = json::array();
+
+    for (const auto& sn : nodes) {
+#ifdef INTEGRATION_TEST
+        snodes.push_back(std::to_string(sn.port));
+#else
+        snodes.push_back(sn.address);
+#endif
+    }
+
+    res_body["snodes"] = snodes;
+
+    response_.result(http::status::misdirected_request);
+    response_.set(http::field::content_type, "application/json");
+
+    /// This might throw if not utf-8 endoded
+    bodyStream_ << res_body.dump();
+    BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
+    return false;
+}
+
 void connection_t::process_retrieve(const json& params) {
 
     constexpr const char* fields[] = {"pubKey", "lastHash"};
@@ -522,28 +529,7 @@ void connection_t::process_retrieve(const json& params) {
     const auto pubKey = params["pubKey"].get<std::string>();
     const auto last_hash = params["lastHash"].get<std::string>();
 
-    if (!service_node_.is_pubkey_for_us(pubKey)) {
-        std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
-
-        json res_body;
-        json snodes = json::array();
-
-        for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-            snodes.push_back(std::to_string(sn.port));
-#else
-            snodes.push_back(sn.address);
-#endif
-        }
-
-        res_body["snodes"] = snodes;
-
-        response_.result(http::status::misdirected_request);
-        response_.set(http::field::content_type, "application/json");
-
-        /// This might throw if not utf-8 endoded
-        bodyStream_ << res_body.dump();
-        BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
+    if (!check_correct_swarm(pubKey)) {
         return;
     }
 

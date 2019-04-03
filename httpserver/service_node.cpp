@@ -466,7 +466,7 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
     }
 }
 
-bool ServiceNode::is_pubkey_for_us(const std::string& pk) {
+bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
     const auto& all_swarms = swarm_->all_swarms();
     return swarm_->is_pubkey_for_us(all_swarms, pk);
 }
