@@ -52,6 +52,9 @@ class Swarm {
     /// Update swarms and work out the changes
     SwarmEvents update_swarms(const all_swarms_t& swarms);
 
+    bool is_pubkey_for_us(const std::vector<SwarmInfo>& all_swarms,
+                          const std::string& pk) const;
+
     std::vector<sn_record_t> other_nodes() const;
 
     const std::vector<SwarmInfo>& all_swarms() const { return all_cur_swarms_; }

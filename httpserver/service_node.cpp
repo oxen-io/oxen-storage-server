@@ -73,7 +73,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_port_(port),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
-#ifndef DISABLE_ENCRYPTION
+#ifndef INTEGRATION_TEST
     const std::vector<uint8_t> publicKey =
         parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};
@@ -464,6 +464,11 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
         // TODO: Actually use the message values here
         save_if_new(std::make_shared<message_t>(msg));
     }
+}
+
+bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
+    const auto& all_swarms = swarm_->all_swarms();
+    return swarm_->is_pubkey_for_us(all_swarms, pk);
 }
 
 std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {

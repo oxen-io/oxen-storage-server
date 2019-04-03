@@ -203,7 +203,7 @@ void connection_t::process_request() {
                 process_client_req();
             } catch (std::exception& e) {
                 response_.result(http::status::internal_server_error);
-                BOOST_LOG_TRIVIAL(trace)
+                BOOST_LOG_TRIVIAL(error)
                     << "exception caught while processing client request: "
                     << e.what();
             }
@@ -323,8 +323,7 @@ bool connection_t::parse_header(T key_list) {
 
 void connection_t::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
-                                      "data"};
+    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp", "data"};
 
     for (const auto& field : fields) {
         if (!params.contains(field)) {
@@ -347,6 +346,11 @@ void connection_t::process_store(const json& params) {
         response_.result(http::status::bad_request);
         bodyStream_ << "Pubkey must be 66 characters long";
         BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
+        return;
+    }
+
+    if (!service_node_.is_pubkey_for_us(pubKey)) {
+        handle_wrong_swarm(pubKey);
         return;
     }
 
@@ -480,6 +484,30 @@ void connection_t::process_retrieve_all() {
     response_.result(http::status::ok);
 }
 
+void connection_t::handle_wrong_swarm(const std::string& pubKey) {
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+
+    json res_body;
+    json snodes = json::array();
+
+    for (const auto& sn : nodes) {
+#ifdef INTEGRATION_TEST
+        snodes.push_back(std::to_string(sn.port));
+#else
+        snodes.push_back(sn.address);
+#endif
+    }
+
+    res_body["snodes"] = snodes;
+
+    response_.result(http::status::misdirected_request);
+    response_.set(http::field::content_type, "application/json");
+
+    /// This might throw if not utf-8 endoded
+    bodyStream_ << res_body.dump();
+    BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
+}
+
 void connection_t::process_retrieve(const json& params) {
 
     constexpr const char* fields[] = {"pubKey", "lastHash"};
@@ -497,6 +525,11 @@ void connection_t::process_retrieve(const json& params) {
 
     const auto pubKey = params["pubKey"].get<std::string>();
     const auto last_hash = params["lastHash"].get<std::string>();
+
+    if (!service_node_.is_pubkey_for_us(pubKey)) {
+        handle_wrong_swarm(pubKey);
+        return;
+    }
 
     std::vector<Item> items;
 
