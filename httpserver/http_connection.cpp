@@ -349,7 +349,8 @@ void connection_t::process_store(const json& params) {
         return;
     }
 
-    if (!check_correct_swarm(pubKey)) {
+    if (!service_node_.is_pubkey_for_us(pubKey)) {
+        handle_wrong_swarm(pubKey);
         return;
     }
 
@@ -483,11 +484,8 @@ void connection_t::process_retrieve_all() {
     response_.result(http::status::ok);
 }
 
-bool connection_t::check_correct_swarm(std::string pub_key) {
-    if (service_node_.is_pubkey_for_us(pub_key)) {
-        return true;
-    }
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pub_key);
+void connection_t::handle_wrong_swarm(const std::string& pubKey) {
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
 
     json res_body;
     json snodes = json::array();
@@ -508,7 +506,6 @@ bool connection_t::check_correct_swarm(std::string pub_key) {
     /// This might throw if not utf-8 endoded
     bodyStream_ << res_body.dump();
     BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
-    return false;
 }
 
 void connection_t::process_retrieve(const json& params) {
@@ -529,7 +526,8 @@ void connection_t::process_retrieve(const json& params) {
     const auto pubKey = params["pubKey"].get<std::string>();
     const auto last_hash = params["lastHash"].get<std::string>();
 
-    if (!check_correct_swarm(pubKey)) {
+    if (!service_node_.is_pubkey_for_us(pubKey)) {
+        handle_wrong_swarm(pubKey);
         return;
     }
 

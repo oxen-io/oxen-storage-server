@@ -136,7 +136,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     template <typename T>
     bool parse_header(T key_list);
 
-    bool check_correct_swarm(std::string pub_key);
+    void handle_wrong_swarm(const std::string& pubKey);
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
