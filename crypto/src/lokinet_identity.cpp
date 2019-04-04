@@ -11,7 +11,7 @@ extern "C" {
 
 namespace fs = boost::filesystem;
 
-constexpr size_t keyLength = 32;
+constexpr size_t KEY_LENGTH = 32;
 
 std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
     fs::path p(path);
@@ -57,7 +57,7 @@ std::vector<uint8_t> parseLokinetIdentityPublic(const std::string& path) {
     const std::vector<uint8_t> privateKey(std::istreambuf_iterator<char>(input), {});
     ge25519_p3 A;
     ge25519_scalarmult_base(&A, privateKey.data());
-    std::vector<uint8_t> publicKey(keyLength);
+    std::vector<uint8_t> publicKey(KEY_LENGTH);
     ge25519_p3_tobytes(publicKey.data(), &A);
 
     return publicKey;
