@@ -2,16 +2,16 @@
 #include "utils.hpp"
 
 #include <array>
-#include <boost/beast/core/detail/base64.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#include <boost/beast/core/detail/base64.hpp>
 #include <iomanip>
 #include <limits>
 #include <openssl/sha.h>
-#include <string.h>
 #include <sstream>
+#include <string.h>
 
 const int BYTE_LEN = 8;
 #ifdef NDEBUG

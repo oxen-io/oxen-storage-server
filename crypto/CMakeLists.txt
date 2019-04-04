@@ -7,7 +7,7 @@ set(CXX_STANDARD_REQUIRED ON)
 
 set(SOURCES
     src/lokinet_identity.cpp
-    src/lokinet_identity.hpp
+    include/lokinet_identity.hpp
     include/channel_encryption.hpp
     src/channel_encryption.cpp
 )

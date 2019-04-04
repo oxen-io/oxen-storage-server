@@ -2,6 +2,7 @@
 
 #include "Item.hpp"
 
+#include <iostream>
 #include <memory>
 #include <stdint.h>
 #include <string>
@@ -11,13 +12,16 @@ struct sqlite3;
 struct sqlite3_stmt;
 class Timer;
 
-class Storage {
+class Database {
   public:
-    Storage(const std::string& db_path);
-    ~Storage();
+    Database(const std::string& db_path);
+    ~Database();
 
+    /// this is low-level logic (separate?)
     bool store(const std::string& hash, const std::string& pubKey,
-               const std::string& bytes, uint64_t ttl);
+               const std::string& bytes, uint64_t ttl, uint64_t timestamp,
+               const std::string& nonce);
+
     bool retrieve(const std::string& key,
                   std::vector<service_node::storage::Item>& items,
                   const std::string& lastHash);
@@ -30,6 +34,7 @@ class Storage {
   private:
     sqlite3* db;
     sqlite3_stmt* save_stmt;
+    sqlite3_stmt* get_all_for_pk_stmt;
     sqlite3_stmt* get_all_stmt;
     sqlite3_stmt* get_stmt;
     sqlite3_stmt* delete_expired_stmt;

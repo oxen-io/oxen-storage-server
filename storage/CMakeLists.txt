@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.1)
 project(sn_storage)
 
 set(SOURCES
-    include/Storage.hpp
+    include/Database.hpp
     include/Item.hpp
-    src/Storage.cpp
+    src/Database.cpp
     src/Timer.hpp
 )
 

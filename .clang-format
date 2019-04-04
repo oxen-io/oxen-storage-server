@@ -8,4 +8,4 @@ DerivePointerAlignment: false
 PointerAlignment: Left
 AlwaysBreakAfterReturnType: None
 AlwaysBreakAfterDefinitionReturnType: None
-AlwaysBreakTemplateDeclarations: Yes
+AlwaysBreakTemplateDeclarations: true
