@@ -13,6 +13,8 @@ namespace loki {
 
 using iter_t = const char*;
 
+/// TODO: use endianness aware serialisation
+// ( boost::native_to_big_inplace? )
 static uint32_t deserialize_uint32(std::string::const_iterator& it) {
 
     auto b1 = static_cast<uint32_t>(reinterpret_cast<const uint8_t&>(*it++));
@@ -80,10 +82,9 @@ static void serialize(std::string& buf, const std::string& str) {
     buf += str;
 }
 
-std::string serialize_message(const message_t& msg) {
+void serialize_message(std::string& res, const message_t& msg) {
 
-    std::string res;
-
+    /// TODO: use binary / base64 representation for pk
     res += msg.pk_;
     serialize(res, msg.hash_);
     serialize(res, msg.text_);
@@ -91,8 +92,29 @@ std::string serialize_message(const message_t& msg) {
     serialize_uint64(res, msg.timestamp_);
     serialize(res, msg.nonce_);
 
-    BOOST_LOG_TRIVIAL(debug)
-        << "serialized message: " << msg.text_ << std::endl;
+    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_;
+}
+
+std::vector<std::string>
+serialize_messages(const std::vector<message_t>& msgs) {
+
+    std::vector<std::string> res;
+
+    std::string buf;
+
+    constexpr size_t BATCH_SIZE = 500000;
+
+    for (const auto& msg : msgs) {
+        serialize_message(buf, msg);
+        if (buf.size() > BATCH_SIZE) {
+            res.push_back(std::move(buf));
+            buf.clear();
+        }
+    }
+
+    if (!buf.empty()) {
+        res.push_back(std::move(buf));
+    }
 
     return res;
 }
@@ -109,8 +131,7 @@ std::string serialize_message(const Item& item) {
     serialize_uint64(res, item.timestamp);
     serialize(res, item.nonce);
 
-    BOOST_LOG_TRIVIAL(debug)
-        << "serialized message: " << item.bytes << std::endl;
+    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes;
 
     return res;
 }
@@ -226,14 +247,13 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
             return {};
         }
 
-        BOOST_LOG_TRIVIAL(trace) << "deserialized data: " << *data << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "deserialized data: " << *data;
 
         BOOST_LOG_TRIVIAL(trace)
             << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
         // TODO: Actually use the message values here
-        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), *ttl,
-                          *timestamp, nonce->c_str()});
+        result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 
     BOOST_LOG_TRIVIAL(trace) << "=== END ===";

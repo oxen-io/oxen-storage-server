@@ -157,16 +157,15 @@ void connection_t::read_request() {
     auto self = shared_from_this();
 
     auto on_data = [self](error_code ec, size_t bytes_transferred) {
-        BOOST_LOG_TRIVIAL(trace) << "on data";
-
-        boost::ignore_unused(bytes_transferred);
+        BOOST_LOG_TRIVIAL(trace)
+            << "on data: " << bytes_transferred << " bytes";
 
         if (ec) {
             log_error(ec);
             return;
         }
 
-        // NOTE: this is blocking, we should make this asyncronous
+        // NOTE: this is blocking, we should make this asynchronous
         try {
             self->process_request();
         } catch (const std::exception& e) {
@@ -223,7 +222,7 @@ void connection_t::process_request() {
 
             BOOST_LOG_TRIVIAL(trace) << "got PK: " << msg->pk_;
 
-            /// TODO: this will need to be done asyncronoulsy
+            /// TODO: this will need to be done asynchronoulsy
             service_node_.process_push(msg);
 
             response_.result(http::status::ok);
@@ -385,9 +384,8 @@ void connection_t::process_store(const json& params) {
     try {
 
         auto ts = std::stoull(timestamp);
-        auto msg = std::make_shared<message_t>(pubKey.c_str(), data.c_str(),
-                                               messageHash.c_str(), ttlInt, ts,
-                                               nonce.c_str());
+        auto msg = std::make_shared<message_t>(pubKey, data, messageHash,
+                                               ttlInt, ts, nonce);
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
@@ -401,12 +399,10 @@ void connection_t::process_store(const json& params) {
     }
 
     if (!success) {
-        response_.result(http::status::conflict);
+        response_.result(http::status::service_unavailable);
         response_.set(http::field::content_type, "text/plain");
-        // TODO: Maybe this shouldn't respond with error
-        bodyStream_ << "hash conflict - resource already present.";
-        BOOST_LOG_TRIVIAL(warning) << "Conflict. Message with hash "
-                                   << messageHash << " already present";
+        bodyStream_ << "Service node is initializing";
+        BOOST_LOG_TRIVIAL(warning) << "Service node is initializing";
         return;
     }
 

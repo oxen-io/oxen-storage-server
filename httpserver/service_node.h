@@ -30,8 +30,8 @@ struct message_t {
     uint64_t timestamp_;
     std::string nonce_;
 
-    message_t(const char* pk, const char* text, const char* hash, uint64_t ttl,
-              uint64_t timestamp, const char* nonce)
+    message_t(const std::string& pk, const std::string& text, const std::string& hash, uint64_t ttl,
+              uint64_t timestamp, const std::string& nonce)
         : pk_(pk), text_(text), hash_(hash), ttl_(ttl), timestamp_(timestamp),
           nonce_(nonce) {}
 };
@@ -96,7 +96,7 @@ class ServiceNode {
 
     ~ServiceNode();
 
-    /// Process message received from a client
+    /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_ptr msg);
 
     /// Process message relayed from another SN from our swarm
