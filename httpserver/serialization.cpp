@@ -77,7 +77,7 @@ static void serialize_uint64(std::string& buf, uint64_t a) {
 
 static void serialize(std::string& buf, const std::string& str) {
 
-    buf.reserve(buf.size() + str.size() + 4);
+    buf.reserve(buf.capacity() + str.size() + sizeof(uint32_t));
     serialize_uint32(buf, str.size());
     buf += str;
 }
