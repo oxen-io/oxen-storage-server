@@ -95,7 +95,8 @@ void serialize_message(std::string& res, const message_t& msg) {
     BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_;
 }
 
-std::vector<std::string> serialize_messages(const std::vector<message_t>& msgs) {
+std::vector<std::string>
+serialize_messages(const std::vector<message_t>& msgs) {
 
     std::vector<std::string> res;
 
@@ -252,8 +253,7 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
             << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
         // TODO: Actually use the message values here
-        result.push_back({pk->c_str(), data->c_str(), hash->c_str(), *ttl,
-                          *timestamp, nonce->c_str()});
+        result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 
     BOOST_LOG_TRIVIAL(trace) << "=== END ===";

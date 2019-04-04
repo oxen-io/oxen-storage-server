@@ -100,9 +100,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
     BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << to_string(sn);
 
     request_t req;
-    std::string body;
-    serialize_message(body, *msg);
-    req.body() = body;
+    serialize_message(req.body(), *msg);
 
     req.target("/v1/swarms/push");
 
@@ -139,12 +137,12 @@ void ServiceNode::push_message(const message_ptr msg) {
         << "push_message to " << others.size() << " other nodes";
 
     for (auto& address : others) {
-        /// send a request asyncronously (todo: collect confirmations)
+        /// send a request asynchronously (todo: collect confirmations)
         relay_one(msg, address);
     }
 }
 
-/// do this asyncronously on a different thread? (on the same thread?)
+/// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_ptr msg) {
 
     /// TODO: accept messages if they are coming from other service nodes
@@ -159,7 +157,7 @@ bool ServiceNode::process_store(const message_ptr msg) {
     save_if_new(msg);
 
     /// initiate a /swarms/push request;
-    /// (done asyncronously)
+    /// (done asynchronously)
     this->push_message(msg);
 
     return true;
@@ -246,7 +244,7 @@ void ServiceNode::on_swarm_update(std::shared_ptr<std::string> body) {
     }
 
     if (events.decommissioned) {
-        /// Go throguh all our PK and push them accordingly
+        /// Go through all our PK and push them accordingly
         salvage_data();
     }
 
@@ -335,9 +333,9 @@ void ServiceNode::bootstrap_swarms(
 
         if (relevant || swarms.empty()) {
 
-            to_relay[swarm_id].emplace_back(
-                entry.pubKey.c_str(), entry.bytes.c_str(), entry.hash.c_str(),
-                entry.ttl, entry.timestamp, entry.nonce.c_str());
+            to_relay[swarm_id].emplace_back(entry.pubKey, entry.bytes,
+                                            entry.hash, entry.ttl,
+                                            entry.timestamp, entry.nonce);
         }
     }
 
@@ -345,9 +343,9 @@ void ServiceNode::bootstrap_swarms(
         << "Bootstrapping " << to_relay.size() << " swarms";
 
     for (const auto& kv : to_relay) {
-        uint64_t swarm_id = kv.first;
+        const uint64_t swarm_id = kv.first;
         /// what if not found?
-        size_t idx = swarm_id_to_idx[swarm_id];
+        const size_t idx = swarm_id_to_idx[swarm_id];
 
         const std::vector<std::string> data = serialize_messages(kv.second);
 
