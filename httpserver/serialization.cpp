@@ -34,21 +34,25 @@ static void serialize(std::string& buf, const std::string& str) {
     buf += str;
 }
 
-void serialize_message(std::string& res, const message_t& msg) {
+template <typename T>
+void serialize_message(std::string& res, const T& msg) {
 
     /// TODO: use binary / base64 representation for pk
-    res += msg.pk_;
-    serialize(res, msg.hash_);
-    serialize(res, msg.text_);
-    serialize_integer(res, msg.ttl_);
-    serialize_integer(res, msg.timestamp_);
-    serialize(res, msg.nonce_);
+    res += msg.pub_key;
+    serialize(res, msg.hash);
+    serialize(res, msg.data);
+    serialize_integer(res, msg.ttl);
+    serialize_integer(res, msg.timestamp);
+    serialize(res, msg.nonce);
 
-    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_;
+    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.data;
 }
 
-std::vector<std::string>
-serialize_messages(const std::vector<message_t>& msgs) {
+template void serialize_message(std::string& res, const message_t& msg);
+template void serialize_message(std::string& res, const Item& msg);
+
+template <typename T>
+std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
 
     std::vector<std::string> res;
 
@@ -71,22 +75,11 @@ serialize_messages(const std::vector<message_t>& msgs) {
     return res;
 }
 
-/// TODO: reuse the one above
-std::string serialize_message(const Item& item) {
+template std::vector<std::string>
+serialize_messages(const std::vector<message_t>& msgs);
 
-    std::string res;
-
-    res += item.pubKey;
-    serialize(res, item.hash);
-    serialize(res, item.bytes);
-    serialize_integer(res, item.ttl);
-    serialize_integer(res, item.timestamp);
-    serialize(res, item.nonce);
-
-    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes;
-
-    return res;
-}
+template std::vector<std::string>
+serialize_messages(const std::vector<Item>& msgs);
 
 struct string_view {
 
