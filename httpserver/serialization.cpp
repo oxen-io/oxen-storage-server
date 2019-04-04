@@ -11,74 +11,26 @@ using service_node::storage::Item;
 
 namespace loki {
 
-using iter_t = const char*;
-
 /// TODO: use endianness aware serialisation
 // ( boost::native_to_big_inplace? )
-static uint32_t deserialize_uint32(std::string::const_iterator& it) {
+template<typename T>
+static T deserialize_integer(std::string::const_iterator& it) {
 
-    auto b1 = static_cast<uint32_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b2 = static_cast<uint32_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b3 = static_cast<uint32_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b4 = static_cast<uint32_t>(reinterpret_cast<const uint8_t&>(*it++));
-
-    return static_cast<uint32_t>(b1 << 24 | b2 << 16 | b3 << 8 | b4);
+   const auto b1 = reinterpret_cast<const T&>(*it);
+   it += sizeof(T);
+   return b1;
 }
 
-static uint64_t deserialize_uint64(std::string::const_iterator& it) {
-
-    auto b1 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b2 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b3 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b4 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-
-    auto b5 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b6 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b7 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-    auto b8 = static_cast<uint64_t>(reinterpret_cast<const uint8_t&>(*it++));
-
-    return static_cast<uint64_t>(b1 << 56 | b2 << 48 | b3 << 40 | b4 << 32 |
-                                 b5 << 24 | b6 << 16 | b7 << 8 | b8);
-}
-
-static void serialize_uint32(std::string& buf, uint32_t a) {
-
-    char b0 = static_cast<char>(((a & 0xFF000000) >> 24));
-    char b1 = static_cast<char>(((a & 0xFF0000) >> 16));
-    char b2 = static_cast<char>(((a & 0xFF00) >> 8));
-    char b3 = static_cast<char>(((a & 0xFF)));
-
-    buf += b0;
-    buf += b1;
-    buf += b2;
-    buf += b3;
-}
-
-static void serialize_uint64(std::string& buf, uint64_t a) {
-
-    char b0 = static_cast<char>(((a & 0xFF00000000000000) >> 56));
-    char b1 = static_cast<char>(((a & 0xFF000000000000) >> 48));
-    char b2 = static_cast<char>(((a & 0xFF0000000000) >> 40));
-    char b3 = static_cast<char>(((a & 0xFF00000000) >> 32));
-    char b4 = static_cast<char>(((a & 0xFF000000) >> 24));
-    char b5 = static_cast<char>(((a & 0xFF0000) >> 16));
-    char b6 = static_cast<char>(((a & 0xFF00) >> 8));
-    char b7 = static_cast<char>(((a & 0xFF)));
-
-    buf += b0;
-    buf += b1;
-    buf += b2;
-    buf += b3;
-    buf += b4;
-    buf += b5;
-    buf += b6;
-    buf += b7;
+template<typename T>
+static void serialize_integer(std::string& buf, T a) {
+    const auto p = reinterpret_cast<const char*>(&a);
+    buf.insert(buf.size(), p, sizeof(T));
 }
 
 static void serialize(std::string& buf, const std::string& str) {
 
     buf.reserve(buf.size() + str.size() + 4);
-    serialize_uint32(buf, str.size());
+    serialize_integer(buf, str.size());
     buf += str;
 }
 
@@ -88,8 +40,8 @@ void serialize_message(std::string& res, const message_t& msg) {
     res += msg.pk_;
     serialize(res, msg.hash_);
     serialize(res, msg.text_);
-    serialize_uint64(res, msg.ttl_);
-    serialize_uint64(res, msg.timestamp_);
+    serialize_integer(res, msg.ttl_);
+    serialize_integer(res, msg.timestamp_);
     serialize(res, msg.nonce_);
 
     BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.text_;
@@ -127,8 +79,8 @@ std::string serialize_message(const Item& item) {
     res += item.pubKey;
     serialize(res, item.hash);
     serialize(res, item.bytes);
-    serialize_uint64(res, item.ttl);
-    serialize_uint64(res, item.timestamp);
+    serialize_integer(res, item.ttl);
+    serialize_integer(res, item.timestamp);
     serialize(res, item.nonce);
 
     BOOST_LOG_TRIVIAL(debug) << "serialized message: " << item.bytes;
@@ -156,7 +108,7 @@ static boost::optional<std::string> deserialize_string(string_view& slice,
         return boost::none;
     }
 
-    std::string res = std::string(slice.it, slice.it + len);
+    const auto res = std::string(slice.it, slice.it + len);
     slice.it += len;
 
     return res;
@@ -164,26 +116,20 @@ static boost::optional<std::string> deserialize_string(string_view& slice,
 
 static boost::optional<std::string> deserialize_string(string_view& slice) {
 
-    if (slice.size() < 4)
+    if (slice.size() < sizeof(size_t))
         return boost::none;
 
-    uint32_t len = deserialize_uint32(slice.it); // already increments `it`!
+    const auto len = deserialize_integer<size_t>(slice.it); // already increments `it`!
 
-    if (slice.size() < len)
-        return boost::none;
-
-    std::string res = std::string(slice.it, slice.it + len);
-    slice.it += len;
-
-    return res;
+    return deserialize_string(slice, len);
 }
 
 static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
-    if (slice.size() < 8)
+    if (slice.size() < sizeof(uint64_t))
         return boost::none;
 
-    auto res = deserialize_uint64(slice.it);
+    const auto res = deserialize_integer<uint64_t>(slice.it);
 
     return res;
 }

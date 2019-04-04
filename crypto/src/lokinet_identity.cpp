@@ -10,7 +10,7 @@ namespace fs = boost::filesystem;
 
 constexpr size_t privateKeyOffset = 3;
 constexpr size_t keyLength = 32;
-constexpr size_t publicKeyOffset = 35;
+constexpr size_t publicKeyOffset = privateKeyOffset + keyLength;
 
 std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
     fs::path p(path);
