@@ -47,4 +47,6 @@ const char* base32z_encode(const std::vector<uint8_t>& value, stack_t& stack) {
     return &stack[0];
 }
 
+std::string hex64_to_base32z(const std::string &src);
+
 } // namespace util
