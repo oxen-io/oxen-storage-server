@@ -8,9 +8,9 @@
 
 namespace fs = boost::filesystem;
 
-constexpr size_t privateKeyOffset = 3;
-constexpr size_t keyLength = 32;
-constexpr size_t publicKeyOffset = 35;
+constexpr size_t PRIVATE_KEY_OFFSET = 3;
+constexpr size_t KEY_LENGTH = 32;
+constexpr size_t PUBLIC_KEY_OFFSET = PRIVATE_KEY_OFFSET + KEY_LENGTH;
 
 std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
     fs::path p(path);
@@ -31,9 +31,9 @@ std::vector<uint8_t> parseLokinetIdentityPrivate(const std::string& path) {
     }
     std::ifstream input(p.c_str(), std::ios::binary);
     const std::vector<uint8_t> bytes(std::istreambuf_iterator<char>(input), {});
-    const std::vector<uint8_t> privateKey(bytes.begin() + privateKeyOffset,
-                                          bytes.begin() + privateKeyOffset +
-                                              keyLength);
+    const std::vector<uint8_t> privateKey(bytes.begin() + PRIVATE_KEY_OFFSET,
+                                          bytes.begin() + PRIVATE_KEY_OFFSET +
+                                              KEY_LENGTH);
 
     return privateKey;
 }
@@ -57,9 +57,9 @@ std::vector<uint8_t> parseLokinetIdentityPublic(const std::string& path) {
     }
     std::ifstream input(p.c_str(), std::ios::binary);
     const std::vector<uint8_t> bytes(std::istreambuf_iterator<char>(input), {});
-    const std::vector<uint8_t> publicKey(bytes.begin() + publicKeyOffset,
-                                         bytes.begin() + publicKeyOffset +
-                                             keyLength);
+    const std::vector<uint8_t> publicKey(bytes.begin() + PUBLIC_KEY_OFFSET,
+                                         bytes.begin() + PUBLIC_KEY_OFFSET +
+                                             KEY_LENGTH);
 
     return publicKey;
 }
