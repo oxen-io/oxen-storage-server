@@ -105,7 +105,12 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 
     cur_swarm_id_ = our_swarm_id;
     all_cur_swarms_ = swarms;
-    swarm_peers_ = our_swarm_snodes;
+
+    swarm_peers_.clear();
+    std::copy_if(
+        our_swarm_snodes.begin(), our_swarm_snodes.end(),
+        std::back_inserter(swarm_peers_),
+        [this](const sn_record_t& record) { return record != our_address_; });
 
     return events;
 }
@@ -194,15 +199,8 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     return cur_best;
 }
 
-std::vector<sn_record_t> Swarm::other_nodes() const {
-
-    std::vector<sn_record_t> result;
-
-    std::copy_if(
-        swarm_peers_.begin(), swarm_peers_.end(), std::back_inserter(result),
-        [this](const sn_record_t& record) { return record != our_address_; });
-
-    return result;
+const std::vector<sn_record_t>& Swarm::other_nodes() const {
+    return swarm_peers_;
 }
 
 } // namespace loki
