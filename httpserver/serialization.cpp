@@ -137,7 +137,6 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
 
     std::vector<message_t> result;
 
-    /// TODO: better incapsulate serialization/deserialization!
     string_view slice{blob};
 
     bool success = false;
@@ -191,7 +190,6 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         BOOST_LOG_TRIVIAL(trace)
             << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
-        // TODO: Actually use the message values here
         result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 

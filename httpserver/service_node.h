@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/optional.hpp>
@@ -45,6 +46,13 @@ using message_ptr = std::shared_ptr<message_t>;
 
 class Swarm;
 
+struct snode_stats_t {
+
+  // how many times a single push failed
+  uint64_t relay_fails = 0;
+
+};
+
 /// All service node logic that is not network-specific
 class ServiceNode {
 
@@ -52,6 +60,8 @@ class ServiceNode {
 
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
+    // performance report for other snodes
+    mutable std::unordered_map<sn_record_t, snode_stats_t> snode_report_;
 
     sn_record_t our_address_;
 

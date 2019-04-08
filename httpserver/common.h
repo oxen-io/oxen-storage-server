@@ -5,6 +5,22 @@ struct sn_record_t {
     std::string address; // Snode address
 };
 
+namespace std {
+
+    template<>
+    struct hash<sn_record_t>
+    {
+        std::size_t operator()(const sn_record_t& k) const {
+#ifdef INTEGRATION_TEST
+            return hash<uint16_t>{}(k.port);
+#else
+            return hash<std::string>{}(k.address);
+#endif
+        }
+    };
+
+}
+
 static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
     return os << sn.port;

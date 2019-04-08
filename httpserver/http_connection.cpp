@@ -38,7 +38,7 @@ namespace loki {
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
-                       http_callback_t cb) {
+                       http_callback_t&& cb) {
 
     boost::system::error_code ec;
 
@@ -68,6 +68,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                            "Could not connect to %1%:%2%, message: %3% (%4%)") %
                            sn_address % port % ec.message() % ec.value();
                 /// TODO: handle error better here
+                cb({SNodeError::NO_REACH, nullptr});
                 return;
             }
 
@@ -77,14 +78,14 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, std::string target, std::string body,
-                       http_callback_t cb) {
+                       http_callback_t&& cb) {
 
     request_t req;
 
     req.body() = body;
     req.target(target);
 
-    make_http_request(ioc, sn_address, port, req, cb);
+    make_http_request(ioc, sn_address, port, req, std::move(cb));
 }
 
 static void parse_swarm_update(const std::shared_ptr<std::string>& response_body, const swarm_callback_t&& cb) {
@@ -160,9 +161,9 @@ void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&&
 
     make_http_request(
         ioc, ip, port, target, req_body,
-        [cb = std::move(cb)](const std::shared_ptr<std::string>& result_body) {
-            if (result_body) {
-                parse_swarm_update(result_body, std::move(cb));
+        [cb = std::move(cb)](const sn_response_t&& res) {
+            if (res.body) {
+                parse_swarm_update(res.body, std::move(cb));
             }
         }
     );
@@ -806,14 +807,13 @@ void HttpClientSession::on_read(boost::system::error_code ec,
         return;
     }
 
-    init_callback(body);
+    init_callback(std::move(body));
 
     // If we get here then the connection is closed gracefully
 }
 
-void HttpClientSession::init_callback(std::shared_ptr<std::string> body) {
-
-    ioc_.post(std::bind(callback_, body));
+void HttpClientSession::init_callback(std::shared_ptr<std::string>&& body) {
+    ioc_.post(std::bind(callback_, sn_response_t{SNodeError::NO_ERROR, body}));
     used_callback_ = true;
 }
 
@@ -821,7 +821,9 @@ void HttpClientSession::init_callback(std::shared_ptr<std::string> body) {
 HttpClientSession::~HttpClientSession() {
 
     if (!used_callback_) {
-        ioc_.post(std::bind(callback_, nullptr));
+        // If we destroy the session before posting the callback,
+        // it must be due to some error
+        ioc_.post(std::bind(callback_, sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
     }
 }
 

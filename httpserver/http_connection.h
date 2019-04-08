@@ -21,17 +21,29 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-using http_callback_t = std::function<void(std::shared_ptr<std::string>)>;
 
 namespace loki {
 using swarm_callback_t = std::function<void(const all_swarms_t&)>;
 
+enum class SNodeError {
+  NO_ERROR,
+  ERROR_OTHER,
+  NO_REACH
+};
+
+struct sn_response_t {
+  SNodeError error_code;
+  std::shared_ptr<std::string> body;
+};
+
+using http_callback_t = std::function<void(sn_response_t)>;
+
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
-                       uint16_t port, const request_t& req, http_callback_t cb);
+                       uint16_t port, const request_t& req, http_callback_t&& cb);
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
                        uint16_t port, std::string target, std::string body,
-                       http_callback_t cb);
+                       http_callback_t&& cb);
 
 void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&& cb);
 
@@ -53,7 +65,7 @@ class HttpClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void init_callback(std::shared_ptr<std::string> body);
+    void init_callback(std::shared_ptr<std::string>&& body);
 
   public:
     tcp::socket socket_;
