@@ -39,11 +39,11 @@ struct sn_response_t {
 using http_callback_t = std::function<void(sn_response_t)>;
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
-                       uint16_t port, const request_t& req, http_callback_t cb);
+                       uint16_t port, const request_t& req, http_callback_t&& cb);
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
                        uint16_t port, std::string target, std::string body,
-                       http_callback_t cb);
+                       http_callback_t&& cb);
 
 void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&& cb);
 

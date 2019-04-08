@@ -95,7 +95,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
     req.target("/v1/swarms/push");
 
-    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t res) {
+    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t&& res) {
         if (res.error_code != SNodeError::NO_ERROR) {
             BOOST_LOG_TRIVIAL(error) << "Could not relay one to: " << sn;
             snode_report_[sn].relay_fails += 1;
@@ -111,7 +111,7 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
     req.body() = data;
     req.target("/v1/swarms/push_all");
 
-    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t res) {
+    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t&& res) {
         if (res.error_code != SNodeError::NO_ERROR) {
             BOOST_LOG_TRIVIAL(error) << "Could not relay batch to: " << sn;
             snode_report_[sn].relay_fails += 1;
