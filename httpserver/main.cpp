@@ -34,7 +34,7 @@ static const LogLevelMap logLevelMap{
 
 void usage(char* argv[]) {
     std::cerr << "Usage: " << argv[0]
-              << " <address> <port> [--lokinet-identity path] [--db-location "
+              << " <address> <port> [--lokid-key path] [--db-location "
                  "path] [--log-level level]\n";
     std::cerr << "  For IPv4, try:\n";
     std::cerr << "    receiver 0.0.0.0 80\n";
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        std::string lokinetIdentityPath;
+        std::string lokidKeyPath;
         std::string dbLocation(".");
         std::string logLocation;
         std::string logLevelString("info");
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
         std::string ip = argv[1];
 
         po::options_description desc;
-        desc.add_options()("lokinet-identity", po::value(&lokinetIdentityPath),
+        desc.add_options()("lokid-key", po::value(&lokidKeyPath),
                            "")("db-location", po::value(&dbLocation),
                                "")("output-log", po::value(&logLocation), "")(
             "log-level", po::value(&logLevelString), "");
@@ -103,9 +103,9 @@ int main(int argc, char* argv[]) {
                                          logLevel);
         BOOST_LOG_TRIVIAL(info) << "Setting log level to " << logLevelString;
 
-        if (vm.count("lokinet-identity")) {
+        if (vm.count("lokid-key")) {
             BOOST_LOG_TRIVIAL(info)
-                << "Setting identity.private path to " << lokinetIdentityPath;
+                << "Setting Lokid key path to " << lokidKeyPath;
         }
 
         if (vm.count("db-location")) {
@@ -118,9 +118,9 @@ int main(int argc, char* argv[]) {
 
         boost::asio::io_context ioc{1};
 
-        loki::ServiceNode service_node(ioc, port, lokinetIdentityPath,
+        ChannelEncryption<std::string> channelEncryption(lokidKeyPath);
+        loki::ServiceNode service_node(ioc, port, channelEncryption.public_key,
                                        dbLocation);
-        ChannelEncryption<std::string> channelEncryption(lokinetIdentityPath);
 
         /// Should run http server
         loki::http_server::run(ioc, ip, port, service_node, channelEncryption);

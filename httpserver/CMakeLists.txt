@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.0)
 
 add_definitions(-DBOOST_LOG_DYN_LINK)
+add_definitions(-DDISABLE_ENCRYPTION)
 
 project(httpserver)
 
