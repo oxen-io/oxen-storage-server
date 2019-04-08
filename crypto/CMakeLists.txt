@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(CXX_STANDARD_REQUIRED ON)
 
 set(SOURCES
-    src/lokinet_identity.cpp
-    include/lokinet_identity.hpp
+    src/lokid_key.cpp
+    include/lokid_key.h
     include/channel_encryption.hpp
     src/channel_encryption.cpp
 )

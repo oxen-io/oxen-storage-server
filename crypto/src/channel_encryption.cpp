@@ -1,5 +1,5 @@
 #include "channel_encryption.hpp"
-#include "lokinet_identity.hpp"
+#include "lokid_key.h"
 
 #include <boost/algorithm/hex.hpp>
 #include <openssl/evp.h>
@@ -16,19 +16,10 @@ std::vector<uint8_t> hexToBytes(const std::string& hex) {
 }
 
 template <typename T>
-ChannelEncryption<T>::ChannelEncryption(
-    const std::string& identityPrivatePath) {
-    // Lokinet identity uses ed25519
-    const std::vector<uint8_t> privateEd25519Key =
-        parseLokinetIdentityPrivate(identityPrivatePath);
-    this->privateKey.resize(crypto_scalarmult_curve25519_BYTES);
-
-    // Convert to curve25519
-    if (crypto_sign_ed25519_sk_to_curve25519(this->privateKey.data(),
-                                             privateEd25519Key.data()) != 0) {
-        throw std::runtime_error(
-            "Could not convert lokinet private key from ed25519 to curve25519");
-    }
+ChannelEncryption<T>::ChannelEncryption(const std::string& key_path) {
+    // Lokid uses ed25519
+    this->private_key = parseLokidKey(key_path);
+    this->public_key = calcPublicKey(this->private_key);
 }
 
 template <typename T>
@@ -38,7 +29,7 @@ std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(
     if (pubKey.size() != crypto_scalarmult_curve25519_BYTES) {
         throw std::runtime_error("Bad pubKey size");
     }
-    if (crypto_scalarmult(sharedSecret.data(), this->privateKey.data(),
+    if (crypto_scalarmult(sharedSecret.data(), this->private_key.data(),
                           pubKey.data()) != 0) {
         throw std::runtime_error(
             "Shared key derivation failed (crypto_scalarmult)");

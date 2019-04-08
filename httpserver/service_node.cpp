@@ -1,7 +1,7 @@
 #include "service_node.h"
 
 #include "Database.hpp"
-#include "lokinet_identity.hpp"
+#include "lokid_key.h"
 #include "utils.hpp"
 
 #include "Item.hpp"
@@ -64,24 +64,22 @@ std::string hash_data(std::string data) {
 }
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                         const std::string& identityPath,
+                         const std::vector<uint8_t>& public_key,
                          const std::string& dbLocation)
-    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)), our_port_(port),
+    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
 #ifndef INTEGRATION_TEST
-    const std::vector<uint8_t> publicKey =
-        parseLokinetIdentityPublic(identityPath);
     char buf[64] = {0};
     std::string our_address;
-    if (char const* dest = util::base32z_encode(publicKey, buf)) {
+    if (char const* dest = util::base32z_encode(public_key, buf)) {
         our_address.append(dest);
         our_address.append(".snode");
     }
+    BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
     our_address_.address = our_address;
-#else
-    our_address_.port = port;
 #endif
+    our_address_.port = port;
 
     swarm_timer_tick();
 }

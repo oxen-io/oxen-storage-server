@@ -645,15 +645,15 @@ void connection_t::process_retrieve(const json& params) {
 }
 
 void connection_t::process_client_req() {
+    std::string plainText = request_.body();
 
+#ifndef DISABLE_ENCRYPTION
     const std::vector<std::string> keys = {LOKI_EPHEMKEY_HEADER};
     if (!parse_header(keys)) {
         BOOST_LOG_TRIVIAL(error) << "Could not parse headers\n";
         return;
     }
-    std::string plainText = request_.body();
 
-#ifndef DISABLE_ENCRYPTION
     try {
         const std::string decoded =
             boost::beast::detail::base64_decode(plainText);
