@@ -160,9 +160,9 @@ void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&&
 
     make_http_request(
         ioc, ip, port, target, req_body,
-        [cb = std::move(cb)](const std::shared_ptr<std::string>& result_body) {
-            if (result_body) {
-                parse_swarm_update(result_body, std::move(cb));
+        [cb = std::move(cb)](const sn_response_t&& res) {
+            if (res.body) {
+                parse_swarm_update(res.body, std::move(cb));
             }
         }
     );
@@ -806,14 +806,15 @@ void HttpClientSession::on_read(boost::system::error_code ec,
         return;
     }
 
-    init_callback(body);
+    init_callback(std::move(body));
 
     // If we get here then the connection is closed gracefully
 }
 
-void HttpClientSession::init_callback(std::shared_ptr<std::string> body) {
+void HttpClientSession::init_callback(std::shared_ptr<std::string>&& body) {
 
-    ioc_.post(std::bind(callback_, body));
+    sn_response_t res = {SNodeError::NO_ERROR, body};
+    ioc_.post(std::bind(callback_, std::move(res)));
     used_callback_ = true;
 }
 
@@ -821,7 +822,8 @@ void HttpClientSession::init_callback(std::shared_ptr<std::string> body) {
 HttpClientSession::~HttpClientSession() {
 
     if (!used_callback_) {
-        ioc_.post(std::bind(callback_, nullptr));
+        sn_response_t res = {SNodeError::NO_ERROR, nullptr};
+        ioc_.post(std::bind(callback_, std::move(res)));
     }
 }
 
