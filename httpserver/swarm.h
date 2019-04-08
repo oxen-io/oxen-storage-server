@@ -41,11 +41,11 @@ class Swarm {
 
     swarm_id_t cur_swarm_id_ = UINT64_MAX;
     std::vector<SwarmInfo> all_cur_swarms_;
-    sn_record_t our_address;
+    sn_record_t our_address_;
     std::vector<sn_record_t> swarm_peers_;
 
   public:
-    Swarm(sn_record_t address) : our_address(address) {}
+    Swarm(sn_record_t address) : our_address_(address) {}
 
     ~Swarm();
 
