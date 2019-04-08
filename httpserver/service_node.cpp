@@ -91,7 +91,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
     /// TODO: need to encrypt messages?
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << to_string(sn);
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << sn;
 
     request_t req;
     serialize_message(req.body(), *msg);
@@ -107,7 +107,7 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
 void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << to_string(sn);
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << sn;
 
     request_t req;
     req.body() = data;
