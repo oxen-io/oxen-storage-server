@@ -26,42 +26,36 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 
     SwarmEvents events = {};
 
-    swarm_id_t our_swarm_idx = UINT32_MAX;
-
     /// Find us:
-    for (auto swarm_idx = 0u; swarm_idx < swarms.size(); ++swarm_idx) {
+    const auto our_swarm_it = std::find_if(
+        swarms.begin(), swarms.end(), [this](const SwarmInfo& swarm_info) {
+            const auto& snodes = swarm_info.snodes;
+            return std::find(snodes.begin(), snodes.end(), our_address_) !=
+                   snodes.end();
+        });
 
-        const auto& snodes = swarms[swarm_idx].snodes;
-
-        for (auto node_idx = 0u; node_idx < snodes.size(); ++node_idx) {
-
-            if (our_address == snodes[node_idx]) {
-                our_swarm_idx = swarm_idx;
-            }
-        }
-    }
-
-    const auto& our_swarm = swarms[our_swarm_idx].snodes;
-
-    if (our_swarm_idx == UINT32_MAX) {
+    if (our_swarm_it == swarms.end()) {
         BOOST_LOG_TRIVIAL(error) << "ERROR: WE ARE NOT IN ANY SWARM";
         return events;
     }
+
+    const auto& our_swarm_snodes = our_swarm_it->snodes;
+    const auto our_swarm_id = our_swarm_it->swarm_id;
 
     if (swarm_peers_.empty()) {
 
         assert(cur_swarm_id_ == UINT64_MAX);
 
         BOOST_LOG_TRIVIAL(info)
-            << "EVENT: started SN in swarm: " << our_swarm_idx;
+            << "EVENT: started SN in swarm: " << our_swarm_id;
 
     } else {
 
         /// Are we in a new swarm?
-        if (cur_swarm_id_ != swarms[our_swarm_idx].swarm_id) {
+        if (cur_swarm_id_ != our_swarm_id) {
 
-            BOOST_LOG_TRIVIAL(info) << "EVENT: got moved into a new swarm: "
-                                    << swarms[our_swarm_idx].swarm_id;
+            BOOST_LOG_TRIVIAL(info)
+                << "EVENT: got moved into a new swarm: " << our_swarm_id;
 
             /// Check that our old swarm still exists
             if (!swarm_exists(swarms, cur_swarm_id_)) {
@@ -76,9 +70,9 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
         if (!events.decommissioned) {
 
             /// See if anyone joined our swarm
-            for (auto& sn : our_swarm) {
+            for (const auto& sn : our_swarm_snodes) {
 
-                auto it =
+                const auto it =
                     std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
                 if (it == swarm_peers_.end()) {
@@ -92,15 +86,11 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 
             for (const auto& swarm_info : swarms) {
 
-                bool found = false;
-
-                for (const auto& prev_si : all_cur_swarms_) {
-
-                    if (prev_si.swarm_id == swarm_info.swarm_id) {
-                        found = true;
-                        break;
-                    }
-                }
+                const bool found = std::any_of(
+                    all_cur_swarms_.begin(), all_cur_swarms_.end(),
+                    [&swarm_info](const SwarmInfo& cur_swarm_info) {
+                        return cur_swarm_info.swarm_id == swarm_info.swarm_id;
+                    });
 
                 if (!found) {
                     BOOST_LOG_TRIVIAL(info) << "EVENT: detected a new swarm: "
@@ -114,9 +104,9 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
     /// NOTE: need to be careful and make sure we don't miss any
     /// swarm update (e.g. if we don't update frequently enough)
 
-    cur_swarm_id_ = swarms[our_swarm_idx].swarm_id;
+    cur_swarm_id_ = our_swarm_id;
     all_cur_swarms_ = swarms;
-    swarm_peers_ = our_swarm;
+    swarm_peers_ = our_swarm_snodes;
 
     return events;
 }
@@ -209,11 +199,9 @@ std::vector<sn_record_t> Swarm::other_nodes() const {
 
     std::vector<sn_record_t> result;
 
-    for (auto& swarm : swarm_peers_) {
-        if (swarm != our_address) {
-            result.push_back(swarm);
-        }
-    }
+    std::copy_if(
+        swarm_peers_.begin(), swarm_peers_.end(), std::back_inserter(result),
+        [this](const sn_record_t& record) { return record != our_address_; });
 
     return result;
 }
