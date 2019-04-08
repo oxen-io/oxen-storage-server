@@ -200,6 +200,8 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     return cur_best;
 }
 
-std::vector<sn_record_t> Swarm::other_nodes() const { return swarm_peers_; }
+const std::vector<sn_record_t>& Swarm::other_nodes() const {
+    return swarm_peers_;
+}
 
 } // namespace loki

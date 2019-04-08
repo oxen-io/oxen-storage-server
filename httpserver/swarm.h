@@ -55,7 +55,7 @@ class Swarm {
     bool is_pubkey_for_us(const std::vector<SwarmInfo>& all_swarms,
                           const std::string& pk) const;
 
-    std::vector<sn_record_t> other_nodes() const;
+    const std::vector<sn_record_t>& other_nodes() const;
 
     const std::vector<SwarmInfo>& all_swarms() const { return all_cur_swarms_; }
 

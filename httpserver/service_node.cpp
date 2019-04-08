@@ -127,12 +127,12 @@ void ServiceNode::push_message(const message_ptr msg) {
     if (!swarm_)
         return;
 
-    auto others = swarm_->other_nodes();
+    const auto& others = swarm_->other_nodes();
 
     BOOST_LOG_TRIVIAL(debug)
         << "push_message to " << others.size() << " other nodes";
 
-    for (auto& address : others) {
+    for (const auto& address : others) {
         /// send a request asynchronously (todo: collect confirmations)
         relay_one(msg, address);
     }
