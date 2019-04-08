@@ -68,6 +68,7 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                            "Could not connect to %1%:%2%, message: %3% (%4%)") %
                            sn_address % port % ec.message() % ec.value();
                 /// TODO: handle error better here
+                cb({SNodeError::NO_REACH, nullptr});
                 return;
             }
 
@@ -822,7 +823,9 @@ void HttpClientSession::init_callback(std::shared_ptr<std::string>&& body) {
 HttpClientSession::~HttpClientSession() {
 
     if (!used_callback_) {
-        sn_response_t res = {SNodeError::NO_ERROR, nullptr};
+        // If we destroy the session before posting the callback,
+        // it must be due to some error
+        sn_response_t res = {SNodeError::ERROR_OTHER, nullptr};
         ioc_.post(std::bind(callback_, std::move(res)));
     }
 }

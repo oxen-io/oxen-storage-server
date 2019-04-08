@@ -86,7 +86,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-/// make this async
 void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << sn;
@@ -96,11 +95,12 @@ void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
 
     req.target("/v1/swarms/push");
 
-    // TODO: record in case of a failure
-    make_http_request(ioc_, sn.address, sn.port, req,
-                      [](sn_response_t res) {
-
-                      });
+    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t res) {
+        if (res.error_code != SNodeError::NO_ERROR) {
+            BOOST_LOG_TRIVIAL(error) << "Could not relay one to: " << sn;
+            snode_report_[sn].relay_fails += 1;
+        }
+    });
 }
 
 void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
@@ -111,11 +111,12 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
     req.body() = data;
     req.target("/v1/swarms/push_all");
 
-    // TODO: record in case of a failure
-    make_http_request(ioc_, sn.address, sn.port, req,
-                      [](sn_response_t res) {
-
-                      });
+    make_http_request(ioc_, sn.address, sn.port, req, [this, sn](sn_response_t res) {
+        if (res.error_code != SNodeError::NO_ERROR) {
+            BOOST_LOG_TRIVIAL(error) << "Could not relay batch to: " << sn;
+            snode_report_[sn].relay_fails += 1;
+        }
+    });
 }
 
 /// initiate a /swarms/push request
@@ -191,7 +192,8 @@ void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
 }
 
 void ServiceNode::swarm_timer_tick() {
-    const swarm_callback_t cb = std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
+    const swarm_callback_t cb =
+        std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb));
     update_timer_.expires_after(std::chrono::seconds(2));
     update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));

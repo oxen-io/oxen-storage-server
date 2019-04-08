@@ -27,6 +27,7 @@ using swarm_callback_t = std::function<void(const all_swarms_t&)>;
 
 enum class SNodeError {
   NO_ERROR,
+  ERROR_OTHER,
   NO_REACH
 };
 
