@@ -26,27 +26,19 @@ namespace loki {
 /// message as received by client
 struct message_t {
 
-    std::string pk_;
-    std::string text_;
-    std::string hash_;
-    uint64_t ttl_;
-    uint64_t timestamp_;
-    std::string nonce_;
+    std::string pub_key;
+    std::string data;
+    std::string hash;
+    uint64_t ttl;
+    uint64_t timestamp;
+    std::string nonce;
 
-    message_t(const std::string& pk, const std::string& text, const std::string& hash, uint64_t ttl,
-              uint64_t timestamp, const std::string& nonce)
-        : pk_(pk), text_(text), hash_(hash), ttl_(ttl), timestamp_(timestamp),
-          nonce_(nonce) {}
-};
+    message_t(const std::string& pk, const std::string& text,
+              const std::string& hash, uint64_t ttl, uint64_t timestamp,
+              const std::string& nonce)
+        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp),
+          nonce(nonce) {}
 
-struct saved_message_t {
-
-    std::string hash_;
-    std::string pk_;
-    std::string text_;
-
-    saved_message_t(std::string hash, const char* pk, const char* text)
-        : hash_(hash), pk_(pk), text_(text) {}
 };
 
 using message_ptr = std::shared_ptr<message_t>;
@@ -89,9 +81,6 @@ class ServiceNode {
 
     /// used for SN bootstrapping
     void relay_batch(const std::string& data, sn_record_t address) const;
-
-    /// return all messages serialized
-    std::string serialize_all() const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,

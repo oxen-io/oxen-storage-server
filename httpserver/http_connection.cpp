@@ -295,7 +295,7 @@ void connection_t::process_request() {
 
             auto msg = std::make_shared<message_t>(messages[0]);
 
-            BOOST_LOG_TRIVIAL(trace) << "got PK: " << msg->pk_;
+            BOOST_LOG_TRIVIAL(trace) << "got PK: " << msg->pub_key;
 
             /// TODO: this will need to be done asynchronoulsy
             service_node_.process_push(msg);
@@ -543,8 +543,8 @@ void connection_t::process_retrieve_all() {
 
     for (auto& entry : all_entries) {
         json item;
-        item["data"] = entry.bytes;
-        item["pk"] = entry.pubKey;
+        item["data"] = entry.data;
+        item["pk"] = entry.pub_key;
         messages.push_back(item);
     }
 
@@ -620,8 +620,8 @@ void connection_t::process_retrieve(const json& params) {
     for (const auto& item : items) {
         json message;
         message["hash"] = item.hash;
-        message["expiration"] = item.expirationTimestamp;
-        message["data"] = item.bytes;
+        message["expiration"] = item.expiration_timestamp;
+        message["data"] = item.data;
         messages.push_back(message);
     }
 

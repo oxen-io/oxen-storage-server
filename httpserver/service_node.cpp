@@ -163,10 +163,10 @@ void ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
 
 void ServiceNode::save_if_new(const message_ptr msg) {
 
-    db_->store(msg->hash_, msg->pk_, msg->text_, msg->ttl_, msg->timestamp_,
-               msg->nonce_);
+    db_->store(msg->hash, msg->pub_key, msg->data, msg->ttl, msg->timestamp,
+               msg->nonce);
 
-    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->text_;
+    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->data;
 }
 
 void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
@@ -202,10 +202,15 @@ void ServiceNode::swarm_timer_tick() {
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
-    std::string data = serialize_all();
+    std::vector<Item> all_entries;
+    db_->retrieve("", all_entries, "");
+
+    const std::vector<std::string> data = serialize_messages(all_entries);
 
     for (const sn_record_t& sn : peers) {
-        relay_batch(data, sn);
+        for (const std::string& batch : data) {
+            relay_batch(batch, sn);
+        }
     }
 }
 
@@ -259,15 +264,15 @@ void ServiceNode::bootstrap_swarms(
     BOOST_LOG_TRIVIAL(debug)
         << "we have " << all_entries.size() << " messages\n";
 
-    std::unordered_map<swarm_id_t, std::vector<message_t>> to_relay;
+    std::unordered_map<swarm_id_t, std::vector<Item>> to_relay;
 
     for (auto& entry : all_entries) {
 
         swarm_id_t swarm_id;
-        const auto it = cache.find(entry.pubKey);
+        const auto it = cache.find(entry.pub_key);
         if (it == cache.end()) {
-            swarm_id = get_swarm_by_pk(all_swarms, entry.pubKey);
-            cache.insert({entry.pubKey, swarm_id});
+            swarm_id = get_swarm_by_pk(all_swarms, entry.pub_key);
+            cache.insert({entry.pub_key, swarm_id});
         } else {
             swarm_id = it->second;
         }
@@ -282,9 +287,7 @@ void ServiceNode::bootstrap_swarms(
 
         if (relevant || swarms.empty()) {
 
-            to_relay[swarm_id].emplace_back(entry.pubKey, entry.bytes,
-                                            entry.hash, entry.ttl,
-                                            entry.timestamp, entry.nonce);
+            to_relay[swarm_id].emplace_back(std::move(entry));
         }
     }
 
@@ -301,7 +304,6 @@ void ServiceNode::bootstrap_swarms(
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
         for (const sn_record_t& sn : all_swarms[idx].snodes) {
-            // TODO: use a constructor from Item to message_t?
             for (const std::string& batch : data) {
                 relay_batch(batch, sn);
             }
@@ -311,7 +313,7 @@ void ServiceNode::bootstrap_swarms(
 
 void ServiceNode::salvage_data() const {
 
-    /// This is very similar to ServiceNode::bootstrap_swarms, so might reuse it
+    /// This is very similar to ServiceNode::bootstrap_swarms, so just reuse it
     bootstrap_swarms({});
 }
 
@@ -326,21 +328,6 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) {
     BOOST_LOG_TRIVIAL(trace) << "get all messages";
 
     return db_->retrieve("", all_entries, "");
-}
-
-std::string ServiceNode::serialize_all() const {
-
-    std::vector<Item> all_entries;
-    db_->retrieve("", all_entries, "");
-
-    std::string result;
-
-    for (auto& entry : all_entries) {
-
-        result += serialize_message(entry);
-    }
-
-    return result;
 }
 
 void ServiceNode::purge_outdated() {
