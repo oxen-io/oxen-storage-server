@@ -5,17 +5,7 @@ struct sn_record_t {
     std::string address; // Snode address
 };
 
-static std::string to_string(const sn_record_t& sn) {
-    std::string res;
-#ifdef INTEGRATION_TEST
-    res += std::to_string(sn.port);
-#else
-    res += sn.address;
-#endif
-    return res;
-}
-
-static std::ostream& operator&&(std::ostream& os, const sn_record_t& sn) {
+static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
     return os << sn.port;
 #else
