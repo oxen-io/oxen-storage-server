@@ -220,7 +220,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ChannelEncryption<std::string>& channelEncryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
       channelCipher_(channelEncryption),
-      deadline_(ioc, std::chrono::seconds(60)) {
+      deadline_(ioc, std::chrono::seconds(60)), poll_timer_(ioc) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
     /// NOTE: I'm not sure if the timer is working properly
@@ -254,7 +254,9 @@ void connection_t::read_request() {
             BOOST_LOG_TRIVIAL(error) << "Exception caught: " << e.what();
         }
 
-        self->write_response();
+        if (!self->delay_response_) {
+            self->write_response();
+        }
     };
 
     http::async_read(socket_, buffer_, request_, on_data);
@@ -592,6 +594,62 @@ void connection_t::handle_wrong_swarm(const std::string& pubKey) {
     BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
 }
 
+constexpr auto DB_POLL_FREQUENCY = std::chrono::milliseconds(200);
+constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
+constexpr uint32_t DB_POLL_LIMIT = LONG_POLL_TIMEOUT / DB_POLL_FREQUENCY;
+
+/// TODO: get rid of argument copying
+void connection_t::poll_db(std::string pk, std::string last_hash) {
+
+    std::vector<Item> items;
+
+    if (!service_node_.retrieve(pk, last_hash, items)) {
+        response_.result(http::status::internal_server_error);
+        response_.set(http::field::content_type, "text/plain");
+        BOOST_LOG_TRIVIAL(error)
+            << "Internal Server Error. Could not retrieve messages for "
+            << pk.substr(0, 2) << "..."
+            << pk.substr(pk.length() - 3, pk.length() - 1);
+        return;
+    }
+
+    if (items.empty() && long_polling_counter < DB_POLL_LIMIT) {
+
+        // initiate a timer to poll for new messages
+        long_polling_counter += 1;
+        poll_timer_.expires_after(DB_POLL_FREQUENCY);
+        poll_timer_.async_wait(std::bind(&connection_t::poll_db, shared_from_this(), pk, last_hash));
+
+    } else {
+
+        json res_body;
+        json messages = json::array();
+
+        for (const auto& item : items) {
+            json message;
+            message["hash"] = item.hash;
+            message["expiration"] = item.expiration_timestamp;
+            message["data"] = item.data;
+            messages.push_back(message);
+        }
+
+        res_body["messages"] = messages;
+
+        if (!items.empty()) {
+            BOOST_LOG_TRIVIAL(trace)
+                << "Successfully retrieved messages for " << pk.substr(0, 2)
+                << "..." << pk.substr(pk.length() - 3, pk.length() - 1);
+        }
+
+        response_.result(http::status::ok);
+        response_.set(http::field::content_type, "application/json");
+        bodyStream_ << res_body.dump();
+
+        this->write_response();
+    }
+
+}
+
 void connection_t::process_retrieve(const json& params) {
 
     constexpr const char* fields[] = {"pubKey", "lastHash"};
@@ -607,48 +665,19 @@ void connection_t::process_retrieve(const json& params) {
         }
     }
 
-    const auto pubKey = params["pubKey"].get<std::string>();
+    const auto pub_key = params["pubKey"].get<std::string>();
     const auto last_hash = params["lastHash"].get<std::string>();
 
-    if (!service_node_.is_pubkey_for_us(pubKey)) {
-        handle_wrong_swarm(pubKey);
+    if (!service_node_.is_pubkey_for_us(pub_key)) {
+        handle_wrong_swarm(pub_key);
         return;
     }
 
-    std::vector<Item> items;
+    // we are going send the response anynchronously
+    // once we have new data
+    delay_response_ = true;
 
-    if (!service_node_.retrieve(pubKey, last_hash, items)) {
-        response_.result(http::status::internal_server_error);
-        response_.set(http::field::content_type, "text/plain");
-        BOOST_LOG_TRIVIAL(error)
-            << "Internal Server Error. Could not retrieve messages for "
-            << pubKey.substr(0, 2) << "..."
-            << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
-        return;
-    }
-
-    json res_body;
-    json messages = json::array();
-
-    for (const auto& item : items) {
-        json message;
-        message["hash"] = item.hash;
-        message["expiration"] = item.expiration_timestamp;
-        message["data"] = item.data;
-        messages.push_back(message);
-    }
-
-    res_body["messages"] = messages;
-
-    if (!items.empty()) {
-        BOOST_LOG_TRIVIAL(trace)
-            << "Successfully retrieved messages for " << pubKey.substr(0, 2)
-            << "..." << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
-    }
-
-    response_.result(http::status::ok);
-    response_.set(http::field::content_type, "application/json");
-    bodyStream_ << res_body.dump();
+    poll_db(pub_key, last_hash);
 }
 
 void connection_t::process_client_req() {
