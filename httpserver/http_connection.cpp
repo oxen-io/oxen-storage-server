@@ -446,7 +446,7 @@ void connection_t::process_store(const json& params) {
         return;
     }
     uint64_t timestampInt;
-    if (!util::parseTimestamp(timestamp, timestampInt, ttlInt)) {
+    if (!util::parseTimestamp(timestamp, ttlInt, timestampInt)) {
         response_.result(http::status::not_acceptable);
         response_.set(http::field::content_type, "text/plain");
         bodyStream_ << "Timestamp error: check your clock";
