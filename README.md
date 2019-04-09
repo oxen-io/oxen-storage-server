@@ -7,13 +7,15 @@ Requirements:
 * sodium (for ed25119 to curve25519 conversion)
 
 ```
-mkdir build
-cd build
-cmake ../httpserver -DBOOST_ROOT="path to boost" -DOPENSSL_ROOT_DIR="path to openssl"
-cmake --build .
+make
 ./httpserver 127.0.0.1 8080
 ```
-(The paths for Boost and OpenSSL need only to be provided if not installed on the system)
+
+The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
+```
+export OPENSSL_ROOT_DIR = ...
+export BOOST_ROOT= ...
+```
 
 Then using something like Postman (https://www.getpostman.com/) you can hit the API:
 
