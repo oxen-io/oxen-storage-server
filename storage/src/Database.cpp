@@ -9,6 +9,7 @@ using namespace service_node::storage;
 
 Database::~Database() {
     sqlite3_finalize(save_stmt);
+    sqlite3_finalize(save_or_ignore_stmt);
     sqlite3_finalize(get_all_for_pk_stmt);
     sqlite3_finalize(get_all_stmt);
     sqlite3_finalize(get_stmt);
@@ -102,6 +103,13 @@ void Database::open_and_prepare(const std::string& db_path) {
     if (!save_stmt)
         throw std::runtime_error("could not prepare the save statement");
 
+    save_or_ignore_stmt = prepare_statement(
+        "INSERT OR IGNORE INTO Data "
+        "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
+        "VALUES (?,?,?,?,?,?,?)");
+    if (!save_or_ignore_stmt)
+        throw std::runtime_error("could not prepare the bulk save statement");
+
     get_all_for_pk_stmt =
         prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
     if (!get_all_for_pk_stmt)
@@ -127,22 +135,24 @@ void Database::open_and_prepare(const std::string& db_path) {
 
 bool Database::store(const std::string& hash, const std::string& pubKey,
                      const std::string& bytes, uint64_t ttl, uint64_t timestamp,
-                     const std::string& nonce) {
+                     const std::string& nonce, OnDuplicateInsertion duplicateBehaviour) {
 
     const auto exp_time = timestamp + (ttl * 1000);
 
-    sqlite3_bind_text(save_stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(save_stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int64(save_stmt, 3, ttl);
-    sqlite3_bind_int64(save_stmt, 4, timestamp);
-    sqlite3_bind_int64(save_stmt, 5, exp_time);
-    sqlite3_bind_blob(save_stmt, 6, nonce.data(), nonce.size(), SQLITE_STATIC);
-    sqlite3_bind_blob(save_stmt, 7, bytes.data(), bytes.size(), SQLITE_STATIC);
+    sqlite3_stmt* stmt = duplicateBehaviour == IGNORE ? save_or_ignore_stmt : save_stmt;
+
+    sqlite3_bind_text(stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, ttl);
+    sqlite3_bind_int64(stmt, 4, timestamp);
+    sqlite3_bind_int64(stmt, 5, exp_time);
+    sqlite3_bind_blob(stmt, 6, nonce.data(), nonce.size(), SQLITE_STATIC);
+    sqlite3_bind_blob(stmt, 7, bytes.data(), bytes.size(), SQLITE_STATIC);
 
     bool result = false;
     int rc;
     while (true) {
-        rc = sqlite3_step(save_stmt);
+        rc = sqlite3_step(stmt);
         if (rc == SQLITE_BUSY) {
             continue;
         } else if (rc == SQLITE_CONSTRAINT) {
@@ -154,7 +164,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             throw std::runtime_error("could not store into db");
         }
     }
-    int reset_rc = sqlite3_reset(save_stmt);
+    int reset_rc = sqlite3_reset(stmt);
     // If the most recent call to sqlite3_step(S) for the prepared statement S
     // indicated an error, then sqlite3_reset(S) returns an appropriate error
     // code.
@@ -163,6 +173,25 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             "could not reset statement: unexpected value");
     }
     return result;
+}
+
+bool Database::bulk_store(const std::vector<service_node::storage::Item>& items) {
+    char *errmsg = 0;
+    if (sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &errmsg) != SQLITE_OK) {
+        return false;
+    }
+
+    for (const auto& item : items) {
+        if (!store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp, item.nonce, IGNORE)) {
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, &errmsg);
+            return false;
+        }
+    }
+
+    if (sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, &errmsg) != SQLITE_OK)
+        return false;
+
+    return true;
 }
 
 bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
