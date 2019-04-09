@@ -10,10 +10,10 @@ set(SRC_FILES main.cpp http_connection.cpp swarm.cpp service_node.cpp serializat
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
 
-add_subdirectory(../storage storage)
-add_subdirectory(../utils utils)
-add_subdirectory(../pow pow)
-add_subdirectory(../crypto crypto)
+loki_add_subdirectory(../storage storage)
+loki_add_subdirectory(../utils utils)
+loki_add_subdirectory(../pow pow)
+loki_add_subdirectory(../crypto crypto)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
@@ -25,7 +25,7 @@ find_package(Boost
 )
 
 target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
-target_link_libraries(httpserver PRIVATE sn_storage)
+target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
 target_link_libraries(httpserver PRIVATE crypto)
