@@ -445,6 +445,14 @@ void connection_t::process_store(const json& params) {
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid TTL " << ttl;
         return;
     }
+    uint64_t timestampInt;
+    if (!util::parseTimestamp(timestamp, timestampInt, ttlInt)) {
+        response_.result(http::status::not_acceptable);
+        response_.set(http::field::content_type, "text/plain");
+        bodyStream_ << "Timestamp error: check your clock";
+        BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid Timestamp " << timestamp;
+        return;
+    }
 
     // Do not store message if the PoW provided is invalid
     std::string messageHash;
@@ -464,10 +472,8 @@ void connection_t::process_store(const json& params) {
     bool success;
 
     try {
-
-        auto ts = std::stoull(timestamp);
         auto msg = std::make_shared<message_t>(pubKey, data, messageHash,
-                                               ttlInt, ts, nonce);
+                                               ttlInt, timestampInt, nonce);
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);

@@ -1,18 +1,11 @@
 #include "Database.hpp"
 #include "Timer.hpp"
+#include "utils.hpp"
 
 #include "sqlite3.h"
-#include <chrono>
 #include <exception>
 
 using namespace service_node::storage;
-
-uint64_t get_time_ms() {
-    const auto timestamp = std::chrono::system_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               timestamp.time_since_epoch())
-        .count();
-}
 
 Database::~Database() {
     sqlite3_finalize(save_stmt);
@@ -31,7 +24,7 @@ Database::Database(const std::string& db_path)
 }
 
 void Database::perform_cleanup() {
-    const auto now_ms = get_time_ms();
+    const auto now_ms = util::get_time_ms();
 
     sqlite3_bind_int64(delete_expired_stmt, 1, now_ms);
 

@@ -7,7 +7,15 @@
 
 namespace util {
 
+// Convert ttl string into uint64_t, return bool for success/fail
 bool parseTTL(const std::string& ttlString, uint64_t& ttl);
+
+// Convert timestamp string into uint64_t, return bool for success/fail
+bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
+                    uint64_t& timestamp);
+
+// Get current time in milliseconds
+uint64_t get_time_ms();
 
 // adapted from Lokinet llarp/encode.hpp
 // from  https://en.wikipedia.org/wiki/Base32#z-base-32

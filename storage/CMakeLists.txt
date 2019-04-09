@@ -18,7 +18,9 @@ target_include_directories(storage
     ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
-add_subdirectory(vendor/sqlite)
+loki_add_subdirectory(../utils utils)
+target_link_libraries(storage PRIVATE utils)
+loki_add_subdirectory(vendor/sqlite)
 target_link_libraries(storage PRIVATE sqlite)
 
 if(NOT Boost_FOUND)
