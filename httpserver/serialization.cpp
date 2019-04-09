@@ -4,6 +4,7 @@
 #include "Item.hpp"
 #include "service_node.h"
 
+#include <boost/endian/conversion.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 
@@ -13,16 +14,17 @@ namespace loki {
 
 /// TODO: use endianness aware serialisation
 // ( boost::native_to_big_inplace? )
-template<typename T>
+template <typename T>
 static T deserialize_integer(std::string::const_iterator& it) {
 
-   const auto b1 = reinterpret_cast<const T&>(*it);
-   it += sizeof(T);
-   return b1;
+    const auto b1 = reinterpret_cast<const T&>(*it);
+    it += sizeof(T);
+    return boost::endian::little_to_native(b1);
 }
 
-template<typename T>
+template <typename T>
 static void serialize_integer(std::string& buf, T a) {
+    boost::endian::native_to_little_inplace(a);
     const auto p = reinterpret_cast<const char*>(&a);
     buf.insert(buf.size(), p, sizeof(T));
 }
@@ -112,7 +114,8 @@ static boost::optional<std::string> deserialize_string(string_view& slice) {
     if (slice.size() < sizeof(size_t))
         return boost::none;
 
-    const auto len = deserialize_integer<size_t>(slice.it); // already increments `it`!
+    const auto len =
+        deserialize_integer<size_t>(slice.it); // already increments `it`!
 
     return deserialize_string(slice, len);
 }
