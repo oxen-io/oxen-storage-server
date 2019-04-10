@@ -75,7 +75,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                 const auto it =
                     std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
-                if (it == swarm_peers_.end()) {
+                if (it == swarm_peers_.end() && sn != our_address_) {
                     BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << sn;
                     events.new_snodes.push_back(sn);
                 }
