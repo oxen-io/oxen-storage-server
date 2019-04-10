@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash, FAIL is default behaviour
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::FAIL) == false);
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::DuplicateHandling::FAIL) == false);
 }
 
 BOOST_AUTO_TEST_CASE(it_returns_true_when_storing_existing_with_ignore_constraint) {
@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(it_returns_true_when_storing_existing_with_ignore_constrain
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::IGNORE) == true);
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::DuplicateHandling::IGNORE) == true);
 }
 
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
