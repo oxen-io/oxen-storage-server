@@ -63,7 +63,7 @@ bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
         return false;
 
     // Don't need to worry about overflow for several hundred million years
-    const uint64_t exp_time = timestamp + (ttl * 1000);
+    const uint64_t exp_time = timestamp + ttl;
 
     // Don't accept timestamp that has already expired
     if (exp_time < cur_time)
@@ -80,8 +80,8 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
         return false;
     }
 
-    // Maximum time to live of 4 days
-    if (ttlInt < 0 || ttlInt > 96 * 60 * 60)
+    // Minimum time to live of 10 seconds, maximum of 4 days
+    if (ttlInt < 10 * 1000 || ttlInt > 96 * 60 * 60 * 1000)
         return false;
 
     ttl = static_cast<uint64_t>(ttlInt);

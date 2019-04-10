@@ -51,6 +51,8 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     uint64_t ttlInt;
     if (!util::parseTTL(ttl, ttlInt))
         return false;
+    // ttl is in milliseconds, but target calculation wants seconds
+    ttlInt = ttlInt / 1000;
     uint64_t totalLen = payload.size() + BYTE_LEN;
     overflow = multWillOverflow(ttlInt, totalLen);
     if (overflow)
