@@ -1,4 +1,5 @@
 #include "Database.hpp"
+#include "utils.hpp"
 
 #include <iostream>
 #include <string>
@@ -36,10 +37,12 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
     const auto hash = "myhash";
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
     const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
     {
         Database storage(".");
-        BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl));
+        BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
         // the database is closed when storage goes out of scope
     }
     {
@@ -54,7 +57,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
         BOOST_CHECK_EQUAL(items.size(), 1);
         BOOST_CHECK_EQUAL(items[0].pub_key, pubkey);
         BOOST_CHECK_EQUAL(items[0].hash, hash);
-        BOOST_CHECK_EQUAL((items[0].expirationTimestamp - items[0].timestamp),
+        BOOST_CHECK_EQUAL((items[0].expiration_timestamp - items[0].timestamp),
                           (ttl * 1000));
         BOOST_CHECK_EQUAL(items[0].data, bytes);
     }
@@ -66,13 +69,15 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
     const auto hash = "myhash";
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
     const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
 
     Database storage(".");
 
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl));
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl) == false);
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce) == false);
 }
 
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
@@ -80,9 +85,9 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
 
     Database storage(".");
 
-    BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000));
+    BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000, util::get_time_ms(), "nonce"));
     BOOST_CHECK(
-        storage.store("hash1", "otherpubkey", "bytesasstring1", 100000));
+        storage.store("hash1", "otherpubkey", "bytesasstring1", 100000, util::get_time_ms(), "nonce"));
 
     {
         std::vector<service_node::storage::Item> items;
@@ -109,7 +114,7 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     const size_t num_entries = 1000;
     for (size_t i = 0; i < num_entries; i++) {
         const auto hash = std::string("hash") + std::to_string(i);
-        storage.store(hash, "mypubkey", "bytesasstring", 100000);
+        storage.store(hash, "mypubkey", "bytesasstring", 100000, util::get_time_ms(), "nonce");
     }
 
     {
@@ -138,8 +143,8 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
 
     Database storage(".");
 
-    BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000));
-    BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0));
+    BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000, util::get_time_ms(), "nonce"));
+    BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0, util::get_time_ms(), "nonce"));
     {
         std::vector<service_node::storage::Item> items;
         const auto lastHash = "";
