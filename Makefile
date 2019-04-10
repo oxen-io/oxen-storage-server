@@ -1,40 +1,34 @@
-
-subbuilddir:=$(shell echo  `uname | sed -e 's|[:/\\ \(\)]|_|g'`/`git branch | grep '\* ' | cut -f2- -d' '| sed -e 's|[:/\\ \(\)]|_|g'`)
-ifeq ($(USE_SINGLE_BUILDDIR),)
-  builddir := build/$(subbuilddir)
-  topdir   := ../../../..
+SUB_DIR:=$(shell echo  `uname | sed -e 's|[:/\\ \(\)]|_|g'`/`git branch | grep '\* ' | cut -f2- -d' '| sed -e 's|[:/\\ \(\)]|_|g'`)
+ifeq ($(USE_SINGLE_BUILD_DIR),)
+  BUILD_DIR := build/$(SUB_DIR)
+  TOP_DIR   := ../../../..
 else
-  builddir := build
-  topdir   := ../..
+  BUILD_DIR := build
+  TOP_DIR   := ../..
 endif
 
-all: release-httpserver
+ifeq ($(DEBUG),)
+	BUILD_TYPE := Release
+else
+	BUILD_TYPE := Debug
+endif
+
+ifeq ($(GEN),)
+	CMAKE := cmake
+else
+	CMAKE := cmake -G$(GEN)
+endif
+
+BUILD_TESTS ?= ON
+
+MKDIR := mkdir -p $(BUILD_DIR)/$(BUILD_TYPE) && cd $(BUILD_DIR)/$(BUILD_TYPE)
+
+MAKE_CMD := $(CMAKE) $(TOP_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_TESTS=$(BUILD_TESTS) && cmake --build .
+
+all:
+	$(MKDIR) && $(MAKE_CMD)
 
 clean:
 	rm -rf build
 
-debug-all:
-	mkdir -p $(builddir)/debug && cd $(builddir)/debug && cmake $(topdir) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON && cmake --build .
-
-debug-httpserver:
-	mkdir -p $(builddir)/debug && cd $(builddir)/debug && cmake $(topdir) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=OFF && cmake --build .
-
-release-all:
-	mkdir -p $(builddir)/release && cd $(builddir)/release && cmake $(topdir) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON && cmake --build .
-
-release-httpserver:
-	mkdir -p $(builddir)/release && cd $(builddir)/release && cmake $(topdir) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF && cmake --build .
-
-ninja-debug-all:
-	mkdir -p $(builddir)/debug && cd $(builddir)/debug && cmake -GNinja $(topdir) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON && ninja
-
-ninja-debug-httpserver:
-	mkdir -p $(builddir)/debug && cd $(builddir)/debug && cmake -GNinja $(topdir) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=OFF && ninja
-
-ninja-release-all:
-	mkdir -p $(builddir)/release && cd $(builddir)/release && cmake -GNinja $(topdir) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON && ninja
-
-ninja-release-httpserver:
-	mkdir -p $(builddir)/release && cd $(builddir)/release && cmake -GNinja $(topdir) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF && ninja
-
-.PHONY: all clean release-all release-httpserver debug-all debug-httpserver ninja-release-all ninja-release-httpserver ninja-debug-all ninja-debug-httpserver
+.PHONY: all clean
