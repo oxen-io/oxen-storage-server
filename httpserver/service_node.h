@@ -39,7 +39,6 @@ struct message_t {
               const std::string& nonce)
         : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp),
           nonce(nonce) {}
-
 };
 
 using message_ptr = std::shared_ptr<message_t>;
@@ -48,9 +47,8 @@ class Swarm;
 
 struct snode_stats_t {
 
-  // how many times a single push failed
-  uint64_t relay_fails = 0;
-
+    // how many times a single push failed
+    uint64_t relay_fails = 0;
 };
 
 /// All service node logic that is not network-specific
@@ -92,7 +90,8 @@ class ServiceNode {
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                const std::vector<uint8_t>& public_key, const std::string& dbLocation);
+                const std::vector<uint8_t>& public_key,
+                const std::string& dbLocation);
 
     ~ServiceNode();
 

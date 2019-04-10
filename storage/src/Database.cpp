@@ -135,11 +135,14 @@ void Database::open_and_prepare(const std::string& db_path) {
 
 bool Database::store(const std::string& hash, const std::string& pubKey,
                      const std::string& bytes, uint64_t ttl, uint64_t timestamp,
-                     const std::string& nonce, DuplicateHandling duplicateHandling) {
+                     const std::string& nonce,
+                     DuplicateHandling duplicateHandling) {
 
     const auto exp_time = timestamp + ttl;
 
-    sqlite3_stmt* stmt = duplicateHandling == DuplicateHandling::IGNORE ? save_or_ignore_stmt : save_stmt;
+    sqlite3_stmt* stmt = duplicateHandling == DuplicateHandling::IGNORE
+                             ? save_or_ignore_stmt
+                             : save_stmt;
 
     sqlite3_bind_text(stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
@@ -175,17 +178,20 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
     return result;
 }
 
-bool Database::bulk_store(const std::vector<service_node::storage::Item>& items) {
-    char *errmsg = 0;
-    if (sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &errmsg) != SQLITE_OK) {
+bool Database::bulk_store(
+    const std::vector<service_node::storage::Item>& items) {
+    char* errmsg = 0;
+    if (sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &errmsg) !=
+        SQLITE_OK) {
         return false;
     }
 
     try {
         for (const auto& item : items) {
-            store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp, item.nonce, DuplicateHandling::IGNORE);
+            store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp,
+                  item.nonce, DuplicateHandling::IGNORE);
         }
-    } catch(...) {
+    } catch (...) {
         fprintf(stderr, "Failed to store items during bulk operation");
     }
 

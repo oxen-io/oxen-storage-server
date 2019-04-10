@@ -9,8 +9,7 @@ using Callback = std::function<void()>;
 class Timer {
 
   public:
-    Timer(Callback action)
-        : timer_(service_, TICK_PERIOD), action_(action) {}
+    Timer(Callback action) : timer_(service_, TICK_PERIOD), action_(action) {}
 
     ~Timer() {
         service_.stop();

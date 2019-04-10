@@ -27,11 +27,11 @@ std::vector<uint8_t> parseLokidKey(const std::string& path) {
     }
 
     if (!fs::exists(p)) {
-        throw std::runtime_error(
-            "Lokid key file could not be found");
+        throw std::runtime_error("Lokid key file could not be found");
     }
     std::ifstream input(p.c_str(), std::ios::binary);
-    const std::vector<uint8_t> privateKey(std::istreambuf_iterator<char>(input), {});
+    const std::vector<uint8_t> privateKey(std::istreambuf_iterator<char>(input),
+                                          {});
 
     return privateKey;
 }

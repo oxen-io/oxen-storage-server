@@ -88,7 +88,9 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
     make_http_request(ioc, sn_address, port, req, std::move(cb));
 }
 
-static void parse_swarm_update(const std::shared_ptr<std::string>& response_body, const swarm_callback_t&& cb) {
+static void
+parse_swarm_update(const std::shared_ptr<std::string>& response_body,
+                   const swarm_callback_t&& cb) {
     const json body = json::parse(*response_body, nullptr, false);
     if (body == nlohmann::detail::value_t::discarded) {
         BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
@@ -99,24 +101,22 @@ static void parse_swarm_update(const std::shared_ptr<std::string>& response_body
 
     try {
         const json service_node_states_string = body["result"]["as_json"];
-        const std::string list_string = service_node_states_string.get<std::string>();
-        const json service_node_states = json::parse(list_string, nullptr, false);
+        const std::string list_string =
+            service_node_states_string.get<std::string>();
+        const json service_node_states =
+            json::parse(list_string, nullptr, false);
 
-        for(const auto &sn_json : service_node_states) {
+        for (const auto& sn_json : service_node_states) {
             const std::string pubkey = sn_json["pubkey"].get<std::string>();
-            const swarm_id_t swarm_id = sn_json["info"]["swarm_id"].get<swarm_id_t>();
+            const swarm_id_t swarm_id =
+                sn_json["info"]["swarm_id"].get<swarm_id_t>();
 #ifndef INTEGRATION_TEST
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
-            const sn_record_t sn{
-                SNODE_PORT,
-                snode_address
-            };
+            const sn_record_t sn{SNODE_PORT, snode_address};
 #else
-            const sn_record_t sn{
-                static_cast<uint16_t>(stoi(pubkey)),
-                "0.0.0.0"
-            };
+            const sn_record_t sn{static_cast<uint16_t>(stoi(pubkey)),
+                                 "0.0.0.0"};
 #endif
 
             swarm_map[swarm_id].push_back(sn);
@@ -126,23 +126,20 @@ static void parse_swarm_update(const std::shared_ptr<std::string>& response_body
         return;
     }
 
-    for(auto const &swarm : swarm_map) {
-        all_swarms.emplace_back(SwarmInfo{
-            swarm.first,
-            swarm.second
-        });
+    for (auto const& swarm : swarm_map) {
+        all_swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
     }
 
     try {
         cb(all_swarms);
     } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(error)
-            << "Exception caught on swarm update: "
-            << e.what();
+            << "Exception caught on swarm update: " << e.what();
     }
 }
 
-void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&& cb) {
+void request_swarm_update(boost::asio::io_context& ioc,
+                          const swarm_callback_t&& cb) {
     BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
 
     const std::string ip = "127.0.0.1";
@@ -159,14 +156,12 @@ void request_swarm_update(boost::asio::io_context& ioc, const swarm_callback_t&&
             }
         })#";
 
-    make_http_request(
-        ioc, ip, port, target, req_body,
-        [cb = std::move(cb)](const sn_response_t&& res) {
-            if (res.body) {
-                parse_swarm_update(res.body, std::move(cb));
-            }
-        }
-    );
+    make_http_request(ioc, ip, port, target, req_body,
+                      [cb = std::move(cb)](const sn_response_t&& res) {
+                          if (res.body) {
+                              parse_swarm_update(res.body, std::move(cb));
+                          }
+                      });
 }
 
 namespace http_server {
@@ -406,7 +401,8 @@ bool connection_t::parse_header(T key_list) {
 
 void connection_t::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp", "data"};
+    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
+                                      "data"};
 
     for (const auto& field : fields) {
         if (!params.contains(field)) {
@@ -452,7 +448,8 @@ void connection_t::process_store(const json& params) {
         response_.result(http::status::not_acceptable);
         response_.set(http::field::content_type, "text/plain");
         bodyStream_ << "Timestamp error: check your clock";
-        BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid Timestamp " << timestamp;
+        BOOST_LOG_TRIVIAL(error)
+            << "Forbidden. Invalid Timestamp " << timestamp;
         return;
     }
 
@@ -571,7 +568,8 @@ void connection_t::process_retrieve_all() {
 }
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes =
+        service_node_.get_snodes_by_pk(pubKey);
 
     json res_body;
     json snodes = json::array();
@@ -613,14 +611,16 @@ void connection_t::poll_db(std::string pk, std::string last_hash) {
         return;
     }
 
-    const bool lp_requested = request_.find("X-Loki-Long-Poll") != request_.end();
+    const bool lp_requested =
+        request_.find("X-Loki-Long-Poll") != request_.end();
 
     if (items.empty() && lp_requested && long_polling_counter < DB_POLL_LIMIT) {
 
         // initiate a timer to poll for new messages
         long_polling_counter += 1;
         poll_timer_.expires_after(DB_POLL_INTERVAL);
-        poll_timer_.async_wait(std::bind(&connection_t::poll_db, shared_from_this(), pk, last_hash));
+        poll_timer_.async_wait(std::bind(&connection_t::poll_db,
+                                         shared_from_this(), pk, last_hash));
 
     } else {
 
@@ -649,7 +649,6 @@ void connection_t::poll_db(std::string pk, std::string last_hash) {
 
         this->write_response();
     }
-
 }
 
 void connection_t::process_retrieve(const json& params) {
@@ -860,7 +859,8 @@ HttpClientSession::~HttpClientSession() {
     if (!used_callback_) {
         // If we destroy the session before posting the callback,
         // it must be due to some error
-        ioc_.post(std::bind(callback_, sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
+        ioc_.post(std::bind(callback_,
+                            sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
     }
 }
 

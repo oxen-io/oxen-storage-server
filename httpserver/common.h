@@ -7,19 +7,18 @@ struct sn_record_t {
 
 namespace std {
 
-    template<>
-    struct hash<sn_record_t>
-    {
-        std::size_t operator()(const sn_record_t& k) const {
+template <>
+struct hash<sn_record_t> {
+    std::size_t operator()(const sn_record_t& k) const {
 #ifdef INTEGRATION_TEST
-            return hash<uint16_t>{}(k.port);
+        return hash<uint16_t>{}(k.port);
 #else
-            return hash<std::string>{}(k.address);
+        return hash<std::string>{}(k.address);
 #endif
-        }
-    };
+    }
+};
 
-}
+} // namespace std
 
 static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
