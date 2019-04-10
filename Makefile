@@ -32,4 +32,7 @@ all:
 clean:
 	rm -rf build/$(SUB_DIR)
 
+clean-all:
+	rm -rf build
+
 .PHONY: all clean
