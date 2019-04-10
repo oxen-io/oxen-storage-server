@@ -99,11 +99,22 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // The response message.
     response_t response_;
 
+    // whether the response should be sent asyncronously,
+    // as opposed to directly after connection_t::process_request
+    bool delay_response_ = false;
+
     /// TODO: move these if possible
     std::map<std::string, std::string> header_;
 
     // The timer for putting a deadline on connection processing.
-    boost::asio::basic_waitable_timer<std::chrono::steady_clock> deadline_;
+    boost::asio::steady_timer deadline_;
+
+    // Used in case of long polling to keep track of how many
+    // times the database has already been polled internally
+    uint32_t long_polling_counter = 0;
+
+    // The timer used for internal db polling
+    boost::asio::steady_timer poll_timer_;
 
     ServiceNode& service_node_;
 
@@ -124,6 +135,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
   private:
     /// Asynchronously receive a complete request message.
     void read_request();
+
+    /// Check the database for new data, reschedule if empty
+    void poll_db(std::string pk, std::string last_hash);
 
     /// Determine what needs to be done with the request message
     /// (synchronously).
