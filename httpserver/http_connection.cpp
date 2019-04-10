@@ -34,17 +34,24 @@ static const std::string LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
 
 using service_node::storage::Item;
 
+using error_code = boost::system::error_code;
+
 namespace loki {
+
+constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(5);
+
+static void log_error(const error_code& ec) {
+    BOOST_LOG_TRIVIAL(error) << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
+}
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
                        uint16_t port, const request_t& req,
                        http_callback_t&& cb) {
 
-    boost::system::error_code ec;
-
-    boost::asio::ip::tcp::endpoint endpoint;
-    boost::asio::ip::tcp::resolver resolver(ioc);
-    boost::asio::ip::tcp::resolver::iterator destination =
+    error_code ec;
+    tcp::endpoint endpoint;
+    tcp::resolver resolver(ioc);
+    tcp::resolver::iterator destination =
         resolver.resolve(sn_address, "http", ec);
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
@@ -52,28 +59,14 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
             << ". Message: " << ec.message();
         return;
     }
-    while (destination != boost::asio::ip::tcp::resolver::iterator()) {
+    while (destination != tcp::resolver::iterator()) {
         endpoint = *destination++;
     }
     endpoint.port(port);
 
-    auto session = std::make_shared<HttpClientSession>(ioc, req, cb);
+    auto session = std::make_shared<HttpClientSession>(ioc, endpoint, req, cb);
 
-    session->socket_.async_connect(
-        endpoint, [=](const boost::system::error_code& ec) {
-            /// TODO: I think I should just call again if ec == EINTR
-            if (ec) {
-                BOOST_LOG_TRIVIAL(error)
-                    << boost::format(
-                           "Could not connect to %1%:%2%, message: %3% (%4%)") %
-                           sn_address % port % ec.message() % ec.value();
-                /// TODO: handle error better here
-                cb({SNodeError::NO_REACH, nullptr});
-                return;
-            }
-
-            session->on_connect();
-        });
+    session->start();
 }
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
@@ -166,12 +159,6 @@ void request_swarm_update(boost::asio::io_context& ioc,
 
 namespace http_server {
 
-using error_code = boost::system::error_code;
-
-static void log_error(const error_code& ec) {
-    std::cerr << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
-}
-
 // "Loop" forever accepting new connections.
 static void
 accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
@@ -200,8 +187,8 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
     const auto address =
         boost::asio::ip::make_address(ip); /// throws if incorrect
 
-    boost::asio::ip::tcp::acceptor acceptor{ioc, {address, port}};
-    boost::asio::ip::tcp::socket socket{ioc};
+    tcp::acceptor acceptor{ioc, {address, port}};
+    tcp::socket socket{ioc};
 
     accept_connection(ioc, acceptor, socket, sn, channelEncryption);
 
@@ -214,11 +201,10 @@ connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ServiceNode& sn,
                            ChannelEncryption<std::string>& channelEncryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
-      channelCipher_(channelEncryption),
-      deadline_(ioc, std::chrono::seconds(60)), poll_timer_(ioc) {
+      channelCipher_(channelEncryption), deadline_(ioc, SESSION_TIME_LIMIT),
+      poll_timer_(ioc) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
-    /// NOTE: I'm not sure if the timer is working properly
 }
 
 connection_t::~connection_t() { BOOST_LOG_TRIVIAL(trace) << "~connection_t"; }
@@ -772,8 +758,10 @@ void connection_t::register_deadline() {
 
 /// TODO: make generic, avoid message copy
 HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
+                                     const tcp::endpoint& ep,
                                      const request_t& req, http_callback_t cb)
-    : ioc_(ioc), socket_(ioc), callback_(cb) {
+    : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
+      deadline_timer_(ioc) {
 
     req_.method(http::verb::post);
     req_.version(11);
@@ -793,8 +781,7 @@ void HttpClientSession::on_connect() {
                                 std::placeholders::_2));
 }
 
-void HttpClientSession::on_write(boost::system::error_code ec,
-                                 std::size_t bytes_transferred) {
+void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     BOOST_LOG_TRIVIAL(trace) << "on write";
     if (ec) {
@@ -812,8 +799,7 @@ void HttpClientSession::on_write(boost::system::error_code ec,
                                std::placeholders::_1, std::placeholders::_2));
 }
 
-void HttpClientSession::on_read(boost::system::error_code ec,
-                                std::size_t bytes_transferred) {
+void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     BOOST_LOG_TRIVIAL(trace)
         << "Successfully received " << bytes_transferred << " bytes";
@@ -834,6 +820,7 @@ void HttpClientSession::on_read(boost::system::error_code ec,
 
     // Gracefully close the socket
     socket_.shutdown(tcp::socket::shutdown_both, ec);
+    deadline_timer_.cancel();
 
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
@@ -846,6 +833,35 @@ void HttpClientSession::on_read(boost::system::error_code ec,
     init_callback(std::move(body));
 
     // If we get here then the connection is closed gracefully
+}
+
+void HttpClientSession::start() {
+    auto self = shared_from_this();
+    socket_.async_connect(endpoint_, [=](const error_code& ec) {
+        /// TODO: I think I should just call again if ec == EINTR
+        if (ec) {
+            BOOST_LOG_TRIVIAL(error)
+                << boost::format(
+                       "Could not connect to %1, message: %2% (%3%)") %
+                       endpoint_ % ec.message() % ec.value();
+            callback_({SNodeError::NO_REACH, nullptr});
+            return;
+        }
+
+        self->on_connect();
+    });
+
+    deadline_timer_.expires_after(SESSION_TIME_LIMIT);
+    deadline_timer_.async_wait([self](const error_code& ec) {
+        if (ec) {
+            if (ec != boost::asio::error::operation_aborted) {
+                log_error(ec);
+            }
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "socket timed out";
+            self->socket_.close();
+        }
+    });
 }
 
 void HttpClientSession::init_callback(std::shared_ptr<std::string>&& body) {
