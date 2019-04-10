@@ -8,7 +8,8 @@ set_property(TARGET Test PROPERTY CXX_STANDARD 11)
 
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../pow pow)
-target_link_libraries(Test PRIVATE storage pow)
+loki_add_subdirectory(../utils utils)
+target_link_libraries(Test PRIVATE storage pow utils)
 
 # boost
 find_package(Boost

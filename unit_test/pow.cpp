@@ -26,23 +26,24 @@ BOOST_AUTO_TEST_CASE(util_parses_a_valid_ttl) {
 }
 
 BOOST_AUTO_TEST_CASE(it_checks_a_valid_pow) {
-    const auto nonce = "AAAAAAABBCE=";
-    const auto timestamp = "1549252654";
+    const auto nonce = "AAAAAAAaFio=";
+    const auto timestamp = "1554859211";
     const auto ttl = "345600";
     const auto pubkey =
-        "05d5970e75efb8e8daccd4d07f5f59e744c3aea25cec8bfa3e43674c4a55875f4d";
+        "054368520005786b249bcd461d28f75e560ea794014eeb17fcf6003f37d876783e";
     const auto data =
-        "CAESvgMKA1BVVBIPL2FwaS92MS9tZXNzYWdlGqIDCGUSQjA1ZDU5NzBlNzVlZmI4ZThkYW"
-        "NjZDRkMDdmNWY1OWU3NDRjM2FlYTI1Y2VjOGJmYTNlNDM2NzRjNGE1NTg3NWY0ZDgBKNPR"
-        "nbWLLULQAvG1sbxpwQY7xXBBWLvYDDtHNBpHtxAMim7+"
-        "iSqYYfWvwrobXbUSMP55nAiIUr6iJtvM4OzQoZSV/"
-        "zCz5tN9T5tKAvkiVkTyAXva7Re8BO8HX3ra+zPWDsXYw12w9XA4cxY95Y/"
-        "6agyMjNDAhj2bhUCMiZNd8dpl5VvKxwFKdxP4zVruKRdAaJy1/xB1gCfZ/hkh2xX90n/"
-        "4p4SlPj/XGmjSQ73h6PWm5/"
-        "qb2tPNmpkb6uuPD3GpZzxxf4pyMETwhhyruJ6KLxV0eUYh5haHxgjJbs+"
-        "OcwjoNpGOEhDCgThcQait2Iyb4ahMWVSjt9vxrfL/7I3HbFtMT+En1J7RutRkWX6YvGHN/"
-        "gJApKpfGatKZAwdnUeZy+EUTuZnRzvSLOwOL6HsOFvuq4k3gQ5v5+"
-        "ZPfNxSO9T6JvrGzRxofo7edadxn/hqi6dkHU7koHNAjSD2AQ==";
+        "CAESvgMKA1BVVBIPL2FwaS92MS9tZXNzYWdlGqIDCGUSQjA1NDM2ODUyMDAwNTc4NmIyND"
+        "liY2Q0NjFkMjhmNzVlNTYwZWE3OTQwMTRlZWIxN2ZjZjYwMDNmMzdkODc2NzgzNDgBKID0"
+        "0qagLULQAksmCNIm0urN9g/"
+        "z2jBn0iLuaDPrrZnsLeRj9MD4eVDG0qTOD2Hg84LWswV3YAzb2Xku7LyTaitU3lhRAyDZR"
+        "ByjSZ2nWphSnzrkFaKhfKrHuzzDNDSGZsK9B1xM+lZJ/"
+        "cR05Nn8fshfbW1CdINfNIiSK1qW2d/mfe3DI/"
+        "CqShvA8D0r7LdbSq0tGH7JUIESu1OqJNePc46kLS0sMQ24YOitPtXSxUxbHrdBalydOqpY"
+        "NGWGl4dtzOMr35Z0vCz/u25ROajbcj1D7hf40dyIv9RT/"
+        "wwo52CiwtbrFdXc84K0yDKTnPu6QoTKoiVt+hftgKv0o/"
+        "ruRN40fLSGl0KD+FqLf4Oqe5u1MaDDoUlLW1tdw6gsPSUxgQPWkJ6qda3t+"
+        "IioolNQWidLcKg4WXvSwWRO6bDLNXfyDLd9UwcpHRus5UYnmc9BTjiXHQP8pWc4ciCMAQ="
+        "=";
     std::string messageHash;
     BOOST_CHECK_EQUAL(
         checkPoW(nonce, timestamp, ttl, pubkey, data, messageHash), true);
