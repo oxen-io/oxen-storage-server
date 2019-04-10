@@ -181,12 +181,12 @@ bool Database::bulk_store(const std::vector<service_node::storage::Item>& items)
         return false;
     }
 
-    for (const auto& item : items) {
-        try {
+    try {
+        for (const auto& item : items) {
             store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp, item.nonce, DuplicateHandling::IGNORE);
-        } catch(...) {
-            fprintf(stderr, "Can't store item with hash %s during bulk", item.hash.substr(7).c_str());
         }
+    } catch(...) {
+        fprintf(stderr, "Failed to store items during bulk operation");
     }
 
     if (sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, &errmsg) != SQLITE_OK)
