@@ -4,13 +4,13 @@
 #include <functional>
 #include <thread>
 
-constexpr auto TICK_FREQUENCY = std::chrono::seconds(10);
+constexpr auto TICK_PERIOD = std::chrono::seconds(10);
 using Callback = std::function<void()>;
 class Timer {
 
   public:
     Timer(Callback action)
-        : timer_(service_, TICK_FREQUENCY), action_(action) {}
+        : timer_(service_, TICK_PERIOD), action_(action) {}
 
     ~Timer() {
         service_.stop();
@@ -36,7 +36,7 @@ class Timer {
         }
         /// todo: check if I need to catch any exceptions
         action_();
-        timer_.expires_at(timer_.expiry() + TICK_FREQUENCY);
+        timer_.expires_at(timer_.expiry() + TICK_PERIOD);
         timer_.async_wait(
             std::bind(&Timer::mem_tick, this, std::placeholders::_1));
     }
