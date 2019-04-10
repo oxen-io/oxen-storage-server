@@ -75,8 +75,25 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
     Database storage(".");
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+    // store using the same hash, FAIL is default behaviour
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::DuplicateHandling::FAIL) == false);
+}
+
+BOOST_AUTO_TEST_CASE(it_returns_true_when_storing_existing_with_ignore_constraint) {
+    StorageRAIIFixture fixture;
+
+    const auto hash = "myhash";
+    const auto pubkey = "mypubkey";
+    const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
+    const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
+
+    Database storage(".");
+
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce) == false);
+    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce, Database::DuplicateHandling::IGNORE) == true);
 }
 
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
@@ -164,4 +181,133 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
+    StorageRAIIFixture fixture;
+
+    const auto pubkey = "mypubkey";
+    const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
+    const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
+
+    const size_t num_items = 10000;
+
+    Database storage(".");
+
+    // bulk store
+    {
+        std::vector<service_node::storage::Item> items;
+        for (int i = 0; i < num_items; ++i) {
+            items.push_back({
+                std::to_string(i),
+                pubkey,
+                timestamp,
+                ttl,
+                timestamp + ttl,
+                nonce,
+                bytes
+            });
+        }
+
+        BOOST_CHECK(storage.bulk_store(items));
+    }
+
+    // retrieve
+    {
+        std::vector<service_node::storage::Item> items;
+
+        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
+        BOOST_CHECK_EQUAL(items.size(), num_items);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
+    StorageRAIIFixture fixture;
+
+    const auto pubkey = "mypubkey";
+    const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
+    const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
+
+    const size_t num_items = 10000;
+
+    Database storage(".");
+
+    // insert existing
+    BOOST_CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
+
+    // bulk store
+    {
+        std::vector<service_node::storage::Item> items;
+        for (int i = 0; i < num_items; ++i) {
+            items.push_back({
+                std::to_string(i),
+                pubkey,
+                timestamp,
+                ttl,
+                timestamp + ttl,
+                nonce,
+                bytes
+            });
+        }
+
+        BOOST_CHECK(storage.bulk_store(items));
+    }
+
+    // retrieve
+    {
+        std::vector<service_node::storage::Item> items;
+
+        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
+        BOOST_CHECK_EQUAL(items.size(), num_items);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(bulk_performance_check) {
+    StorageRAIIFixture fixture;
+
+    const auto pubkey = "mypubkey";
+    const auto bytes = "bytesasstring";
+    const auto nonce = "nonce";
+    const uint64_t ttl = 123456;
+    const uint64_t timestamp = util::get_time_ms();
+
+    const size_t num_items = 10000;
+
+    std::vector<service_node::storage::Item> items;
+    for (int i = 0; i < num_items; ++i) {
+        items.push_back({
+            std::to_string(i),
+            pubkey,
+            timestamp,
+            ttl,
+            timestamp + ttl,
+            nonce,
+            bytes
+        });
+    }
+
+    // bulk store
+    {
+        Database storage(".");
+        const auto start = std::chrono::steady_clock::now();
+        storage.bulk_store(items);
+        const auto end = std::chrono::steady_clock::now();
+        const auto diff = end - start;
+        std::cout << "bulk: " << std::chrono::duration<double, std::milli>(diff).count() << " ms" << std::endl;
+    }
+
+    // single stores
+    {
+        Database storage(".");
+        const auto start = std::chrono::steady_clock::now();
+        for (const auto& item : items) {
+            storage.store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp, item.nonce);
+        }
+        const auto end = std::chrono::steady_clock::now();
+        const auto diff = end - start;
+        std::cout << "singles:" << std::chrono::duration<double, std::milli>(diff).count() << " ms" << std::endl;
+    }
+}
 BOOST_AUTO_TEST_SUITE_END()
