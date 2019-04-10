@@ -42,9 +42,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
     const auto& our_swarm_snodes = our_swarm_it->snodes;
     const auto our_swarm_id = our_swarm_it->swarm_id;
 
-    if (swarm_peers_.empty()) {
-
-        assert(cur_swarm_id_ == UINT64_MAX);
+    if (cur_swarm_id_ == UINT64_MAX) {
 
         BOOST_LOG_TRIVIAL(info)
             << "EVENT: started SN in swarm: " << our_swarm_id;
