@@ -57,8 +57,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
         BOOST_CHECK_EQUAL(items.size(), 1);
         BOOST_CHECK_EQUAL(items[0].pub_key, pubkey);
         BOOST_CHECK_EQUAL(items[0].hash, hash);
-        BOOST_CHECK_EQUAL((items[0].expiration_timestamp - items[0].timestamp),
-                          (ttl * 1000));
+        BOOST_CHECK_EQUAL((items[0].expiration_timestamp - items[0].timestamp), ttl);
         BOOST_CHECK_EQUAL(items[0].data, bytes);
     }
 }

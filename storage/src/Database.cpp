@@ -129,7 +129,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
                      const std::string& bytes, uint64_t ttl, uint64_t timestamp,
                      const std::string& nonce) {
 
-    const auto exp_time = timestamp + (ttl * 1000);
+    const auto exp_time = timestamp + ttl;
 
     sqlite3_bind_text(save_stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(save_stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
