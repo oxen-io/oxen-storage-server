@@ -37,4 +37,14 @@ clean:
 clean-all:
 	rm -rf build
 
-.PHONY: all clean
+format:
+	clang-format -style=file -i \
+		pow/**/*.{cpp,hpp} \
+		crypto/**/*.{cpp,hpp} \
+		storage/**/*.{cpp,hpp} \
+		utils/**/*.{cpp,hpp} \
+		httpserver/*.{cpp,h} \
+		unit_test/*.cpp
+
+
+.PHONY: all clean format

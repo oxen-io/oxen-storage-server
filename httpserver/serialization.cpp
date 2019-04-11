@@ -47,7 +47,7 @@ void serialize_message(std::string& res, const T& msg) {
     serialize_integer(res, msg.timestamp);
     serialize(res, msg.nonce);
 
-    BOOST_LOG_TRIVIAL(debug) << "serialized message: " << msg.data;
+    BOOST_LOG_TRIVIAL(trace) << "serialized message: " << msg.data;
 }
 
 template void serialize_message(std::string& res, const message_t& msg);

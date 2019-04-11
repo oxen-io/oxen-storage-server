@@ -20,8 +20,11 @@ endif ()
 target_link_libraries(crypto PRIVATE OpenSSL::SSL)
 
 target_include_directories(crypto
-    PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src
+    PUBLIC
+    ${CMAKE_CURRENT_LIST_DIR}/include
+    PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors
 )
 
 if (NOT Boost_FOUND)
