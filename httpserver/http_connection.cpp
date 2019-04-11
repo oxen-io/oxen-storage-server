@@ -41,7 +41,8 @@ namespace loki {
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(5);
 
 static void log_error(const error_code& ec) {
-    BOOST_LOG_TRIVIAL(error) << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
+    BOOST_LOG_TRIVIAL(error)
+        << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
 }
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
@@ -842,7 +843,7 @@ void HttpClientSession::start() {
         if (ec) {
             BOOST_LOG_TRIVIAL(error)
                 << boost::format(
-                       "Could not connect to %1, message: %2% (%3%)") %
+                       "Could not connect to %1%, message: %2% (%3%)") %
                        endpoint_ % ec.message() % ec.value();
             callback_({SNodeError::NO_REACH, nullptr});
             return;
