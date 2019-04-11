@@ -134,15 +134,11 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
 
     BOOST_LOG_TRIVIAL(trace) << "=== Deserializing ===";
 
-    auto it = blob.begin();
-
     constexpr size_t PK_SIZE = 66; // characters in hex;
 
     std::vector<message_t> result;
 
     string_view slice{blob};
-
-    bool success = false;
 
     while (!slice.empty()) {
 
