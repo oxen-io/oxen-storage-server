@@ -50,13 +50,18 @@ class HttpClientSession
     using tcp = boost::asio::ip::tcp;
 
     boost::asio::io_context& ioc_;
+    tcp::socket socket_;
+    tcp::endpoint endpoint_;
+    http_callback_t callback_;
+    boost::asio::steady_timer deadline_timer_;
+
     boost::beast::flat_buffer buffer_;
     request_t req_;
     response_t res_;
 
-    http_callback_t callback_;
-
     bool used_callback_ = false;
+
+    void on_connect();
 
     void on_write(boost::system::error_code ec, std::size_t bytes_transferred);
 
@@ -65,12 +70,12 @@ class HttpClientSession
     void init_callback(std::shared_ptr<std::string>&& body);
 
   public:
-    tcp::socket socket_;
     // Resolver and socket require an io_context
-    explicit HttpClientSession(boost::asio::io_context& ioc,
-                               const request_t& req, http_callback_t cb);
+    HttpClientSession(boost::asio::io_context& ioc, const tcp::endpoint& ep,
+                      const request_t& req, http_callback_t cb);
 
-    void on_connect();
+    // initiate the client connection
+    void start();
 
     ~HttpClientSession();
 };
