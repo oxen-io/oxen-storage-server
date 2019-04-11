@@ -27,20 +27,19 @@ constexpr auto data =
 
 BOOST_AUTO_TEST_CASE(util_parses_a_valid_ttl) {
     uint64_t ttl;
-    BOOST_CHECK_EQUAL(util::parseTTL("0", ttl), true);
-    BOOST_CHECK_EQUAL(ttl, 0);
+    BOOST_CHECK_EQUAL(util::parseTTL("0", ttl), false);
 
-    BOOST_CHECK_EQUAL(util::parseTTL("1", ttl), true);
-    BOOST_CHECK_EQUAL(ttl, 1);
+    BOOST_CHECK_EQUAL(util::parseTTL("10000", ttl), true);
+    BOOST_CHECK_EQUAL(ttl, 10000);
 
-    BOOST_CHECK_EQUAL(util::parseTTL("1000", ttl), true);
-    BOOST_CHECK_EQUAL(ttl, 1000);
+    BOOST_CHECK_EQUAL(util::parseTTL("1000000", ttl), true);
+    BOOST_CHECK_EQUAL(ttl, 1000000);
     // Maximum time to live of 4 days
-    BOOST_CHECK_EQUAL(util::parseTTL("345600", ttl), true);
-    BOOST_CHECK_EQUAL(ttl, 345600);
+    BOOST_CHECK_EQUAL(util::parseTTL("345600000", ttl), true);
+    BOOST_CHECK_EQUAL(ttl, 345600000);
 
-    BOOST_CHECK_EQUAL(util::parseTTL("345601", ttl), false);
-    BOOST_CHECK_EQUAL(util::parseTTL("-1", ttl), false);
+    BOOST_CHECK_EQUAL(util::parseTTL("3456010000", ttl), false);
+    BOOST_CHECK_EQUAL(util::parseTTL("-1000", ttl), false);
     BOOST_CHECK_EQUAL(util::parseTTL("abcvs", ttl), false);
     BOOST_CHECK_EQUAL(util::parseTTL("", ttl), false);
 }
