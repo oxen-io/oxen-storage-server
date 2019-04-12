@@ -21,8 +21,18 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
+namespace service_node {
+namespace storage {
+class Item;
+}
+} // namespace service_node
+
+using service_node::storage::Item;
+
 namespace loki {
 using swarm_callback_t = std::function<void(const all_swarms_t&)>;
+
+class message_t;
 
 enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH };
 
@@ -111,18 +121,24 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;
 
-    // Used in case of long polling to keep track of how many
-    // times the database has already been polled internally
-    uint32_t long_polling_counter = 0;
-
-    // The timer used for internal db polling
-    boost::asio::steady_timer poll_timer_;
-
     ServiceNode& service_node_;
 
     ChannelEncryption<std::string>& channelCipher_;
 
     std::stringstream bodyStream_;
+
+    // Note that we are only sending a single message through the
+    // notification mechanism. If we somehow accumulated multiple
+    // messages before notification event happens (unlikely), the
+    // following messages will be delivered with the client's
+    // consequent (and immediate) retrieve request
+    struct notification_context_t {
+        // The timer used for internal db polling
+        boost::asio::steady_timer timer;
+        // the message is stored here momentarily; needed because
+        // we can't pass it using current notification mechanism
+        boost::optional<message_t> message;
+    } notification_ctx_;
 
   public:
     connection_t(boost::asio::io_context& ioc, tcp::socket socket,
@@ -134,12 +150,14 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Initiate the asynchronous operations associated with the connection.
     void start();
 
+    void notify(const message_t& msg);
+
   private:
     /// Asynchronously receive a complete request message.
     void read_request();
 
     /// Check the database for new data, reschedule if empty
-    void poll_db(std::string pk, std::string last_hash);
+    void poll_db(const std::string& pk, const std::string& last_hash);
 
     /// Determine what needs to be done with the request message
     /// (synchronously).
@@ -152,6 +170,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void process_snodes_by_pk(const nlohmann::json& params);
 
     void process_retrieve_all();
+
+    template <typename T>
+    void respond_with_messages(const std::vector<T>& messages);
 
     /// Asynchronously transmit the response message.
     void write_response();

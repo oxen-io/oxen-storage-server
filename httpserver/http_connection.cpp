@@ -38,7 +38,7 @@ using error_code = boost::system::error_code;
 
 namespace loki {
 
-constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(5);
+constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
 static void log_error(const error_code& ec) {
     BOOST_LOG_TRIVIAL(error)
@@ -203,7 +203,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ChannelEncryption<std::string>& channelEncryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
       channelCipher_(channelEncryption), deadline_(ioc, SESSION_TIME_LIMIT),
-      poll_timer_(ioc) {
+      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
 }
@@ -213,6 +213,15 @@ connection_t::~connection_t() { BOOST_LOG_TRIVIAL(trace) << "~connection_t"; }
 void connection_t::start() {
     register_deadline();
     read_request();
+}
+
+void connection_t::notify(const message_t& msg) {
+    BOOST_LOG_TRIVIAL(debug)
+        << "Processing message notification: " << msg.data;
+    // save messages, so we can access them once the timer event happens
+    notification_ctx_.message = msg;
+    // the timer callback will be called once we complete the current callback
+    notification_ctx_.timer.cancel();
 }
 
 // Asynchronously receive a complete request message.
@@ -303,7 +312,7 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
             bodyStream_ << "All good!";
         } else if (target == "/quit") {
-            BOOST_LOG_TRIVIAL(trace) << "got /quit request";
+            BOOST_LOG_TRIVIAL(info) << "got /quit request";
             ioc_.stop();
             // exit(0);
         } else if (target == "/purge") {
@@ -579,8 +588,32 @@ constexpr auto DB_POLL_INTERVAL = std::chrono::milliseconds(200);
 constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
 constexpr uint32_t DB_POLL_LIMIT = LONG_POLL_TIMEOUT / DB_POLL_INTERVAL;
 
-/// TODO: get rid of argument copying
-void connection_t::poll_db(std::string pk, std::string last_hash) {
+template <typename T>
+void connection_t::respond_with_messages(const std::vector<T>& items) {
+
+    json res_body;
+    json messages = json::array();
+
+    for (const auto& item : items) {
+        json message;
+        message["hash"] = item.hash;
+        /// TODO: calculate expiration time once only?
+        message["expiration"] = item.timestamp + item.ttl;
+        message["data"] = item.data;
+        messages.push_back(message);
+    }
+
+    res_body["messages"] = messages;
+
+    response_.result(http::status::ok);
+    response_.set(http::field::content_type, "application/json");
+    bodyStream_ << res_body.dump();
+
+    this->write_response();
+}
+
+void connection_t::poll_db(const std::string& pk,
+                           const std::string& last_hash) {
 
     std::vector<Item> items;
 
@@ -597,40 +630,42 @@ void connection_t::poll_db(std::string pk, std::string last_hash) {
     const bool lp_requested =
         request_.find("X-Loki-Long-Poll") != request_.end();
 
-    if (items.empty() && lp_requested && long_polling_counter < DB_POLL_LIMIT) {
+    if (!items.empty()) {
+        BOOST_LOG_TRIVIAL(trace)
+            << "Successfully retrieved messages for " << pk.substr(0, 2)
+            << "..." << pk.substr(pk.length() - 3, pk.length() - 1);
+    }
 
-        // initiate a timer to poll for new messages
-        long_polling_counter += 1;
-        poll_timer_.expires_after(DB_POLL_INTERVAL);
-        poll_timer_.async_wait(std::bind(&connection_t::poll_db,
-                                         shared_from_this(), pk, last_hash));
+    if (items.empty() && lp_requested) {
+
+        auto self = shared_from_this();
+
+        // Instead of responding immediately, we delay the response
+        // until new data arrives for this PubKey
+        service_node_.register_listener(pk, self);
+
+        notification_ctx_.timer.expires_after(LONG_POLL_TIMEOUT);
+        notification_ctx_.timer.async_wait([=](const error_code& ec) {
+            // we use timer cancellation as notification mechanism
+            if (ec == boost::asio::error::operation_aborted) {
+
+                std::vector<message_t> items;
+                auto msg = notification_ctx_.message;
+                if (msg) {
+                    items.push_back(*msg);
+                }
+
+                respond_with_messages(items);
+            }
+
+            respond_with_messages<Item>({});
+        });
+
+        BOOST_LOG_TRIVIAL(error) << "just registered notification";
 
     } else {
 
-        json res_body;
-        json messages = json::array();
-
-        for (const auto& item : items) {
-            json message;
-            message["hash"] = item.hash;
-            message["expiration"] = item.expiration_timestamp;
-            message["data"] = item.data;
-            messages.push_back(message);
-        }
-
-        res_body["messages"] = messages;
-
-        if (!items.empty()) {
-            BOOST_LOG_TRIVIAL(trace)
-                << "Successfully retrieved messages for " << pk.substr(0, 2)
-                << "..." << pk.substr(pk.length() - 3, pk.length() - 1);
-        }
-
-        response_.result(http::status::ok);
-        response_.set(http::field::content_type, "application/json");
-        bodyStream_ << res_body.dump();
-
-        this->write_response();
+        respond_with_messages(items);
     }
 }
 
@@ -855,7 +890,7 @@ void HttpClientSession::start() {
                 log_error(ec);
             }
         } else {
-            BOOST_LOG_TRIVIAL(error) << "socket timed out";
+            BOOST_LOG_TRIVIAL(error) << "client socket timed out";
             self->socket_.close();
         }
     });
