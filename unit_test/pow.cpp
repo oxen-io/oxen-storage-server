@@ -3,7 +3,7 @@
 
 #include <boost/test/unit_test.hpp>
 
-BOOST_AUTO_TEST_SUITE(pow)
+BOOST_AUTO_TEST_SUITE(pow_unit_test)
 
 namespace valid_pow {
 constexpr auto pubkey =

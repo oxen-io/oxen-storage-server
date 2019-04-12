@@ -42,3 +42,7 @@ list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../contrib")
 set(sodium_USE_STATIC_LIBS ON)
 find_package(sodium REQUIRED)
 target_link_libraries(crypto PUBLIC sodium)
+
+if (UNIX AND NOT APPLE)
+    target_link_libraries(crypto PUBLIC pthread dl)
+endif ()

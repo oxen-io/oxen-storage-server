@@ -278,27 +278,27 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
     // bulk store
     {
         Database storage(".");
-        const auto start = std::chrono::steady_clock::now();
+        const auto start = boost::chrono::steady_clock::now();
         storage.bulk_store(items);
-        const auto end = std::chrono::steady_clock::now();
+        const auto end = boost::chrono::steady_clock::now();
         const auto diff = end - start;
         std::cout << "bulk: "
-                  << std::chrono::duration<double, std::milli>(diff).count()
+                  << boost::chrono::duration<double, boost::milli>(diff).count()
                   << " ms" << std::endl;
     }
 
     // single stores
     {
         Database storage(".");
-        const auto start = std::chrono::steady_clock::now();
+        const auto start = boost::chrono::steady_clock::now();
         for (const auto& item : items) {
             storage.store(item.hash, item.pub_key, item.data, item.ttl,
                           item.timestamp, item.nonce);
         }
-        const auto end = std::chrono::steady_clock::now();
+        const auto end = boost::chrono::steady_clock::now();
         const auto diff = end - start;
         std::cout << "singles:"
-                  << std::chrono::duration<double, std::milli>(diff).count()
+                  << boost::chrono::duration<double, boost::milli>(diff).count()
                   << " ms" << std::endl;
     }
 }
