@@ -24,8 +24,6 @@ struct message_t {
           nonce(nonce) {}
 };
 
-using message_ptr = std::shared_ptr<message_t>;
-
 } // namespace loki
 
 namespace std {
