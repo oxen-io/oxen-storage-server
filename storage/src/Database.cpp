@@ -110,19 +110,20 @@ void Database::open_and_prepare(const std::string& db_path) {
     if (!save_or_ignore_stmt)
         throw std::runtime_error("could not prepare the bulk save statement");
 
-    get_all_for_pk_stmt =
-        prepare_statement("SELECT * FROM Data WHERE `Owner` = ?;");
+    get_all_for_pk_stmt = prepare_statement(
+        "SELECT * FROM Data WHERE `Owner` = ? ORDER BY rowid;");
     if (!get_all_for_pk_stmt)
         throw std::runtime_error(
             "could not prepare the get all for pk statement");
 
-    get_all_stmt = prepare_statement("SELECT * FROM Data;");
+    get_all_stmt = prepare_statement("SELECT * FROM Data ORDER BY rowid;");
     if (!get_all_stmt)
         throw std::runtime_error("could not prepare the get all statement");
 
-    get_stmt = prepare_statement(
-        "SELECT * FROM `Data` WHERE `Owner` == ? AND rowid >"
-        "COALESCE((SELECT `rowid` FROM `Data` WHERE `Hash` = ?), 0);");
+    get_stmt =
+        prepare_statement("SELECT * FROM `Data` WHERE `Owner` == ? AND rowid >"
+                          "COALESCE((SELECT `rowid` FROM `Data` WHERE `Hash` = "
+                          "?), 0) ORDER BY rowid;");
     if (!get_stmt)
         throw std::runtime_error("could not prepare get statement");
 
