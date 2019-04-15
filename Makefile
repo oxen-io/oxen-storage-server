@@ -11,7 +11,7 @@ ifeq ($(USE_SINGLE_BUILD_DIR),)
   TOP_DIR   := ../../../..
 else
   BUILD_DIR := build
-  TOP_DIR   := ../..
+  TOP_DIR   := ../
 endif
 
 ifeq ($(GEN),)
