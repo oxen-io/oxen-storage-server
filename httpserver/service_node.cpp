@@ -86,12 +86,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-void ServiceNode::relay_one(const message_ptr msg, sn_record_t sn) const {
+void ServiceNode::relay_one(const message_t& msg, sn_record_t sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << sn;
 
     request_t req;
-    serialize_message(req.body(), *msg);
+    serialize_message(req.body(), msg);
 
     req.target("/v1/swarms/push");
 
@@ -122,7 +122,7 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
 }
 
 /// initiate a /swarms/push request
-void ServiceNode::push_message(const message_ptr msg) {
+void ServiceNode::push_message(const message_t& msg) {
 
     if (!swarm_)
         return;
@@ -139,7 +139,7 @@ void ServiceNode::push_message(const message_ptr msg) {
 }
 
 /// do this asynchronously on a different thread? (on the same thread?)
-bool ServiceNode::process_store(const message_ptr msg) {
+bool ServiceNode::process_store(const message_t& msg) {
 
     /// TODO: accept messages if they are coming from other service nodes
 
@@ -159,14 +159,14 @@ bool ServiceNode::process_store(const message_ptr msg) {
     return true;
 }
 
-void ServiceNode::process_push(const message_ptr msg) { save_if_new(msg); }
+void ServiceNode::process_push(const message_t& msg) { save_if_new(msg); }
 
-void ServiceNode::save_if_new(const message_ptr msg) {
+void ServiceNode::save_if_new(const message_t& msg) {
 
-    db_->store(msg->hash, msg->pub_key, msg->data, msg->ttl, msg->timestamp,
-               msg->nonce);
+    db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
+               msg.nonce);
 
-    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg->data;
+    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg.data;
 }
 
 void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
@@ -355,9 +355,8 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
 
     for (auto& msg : messages) {
 
-        /// shouldn't have to create shared ptr here...
         // TODO: Actually use the message values here
-        save_if_new(std::make_shared<message_t>(msg));
+        save_if_new(msg);
     }
 
     BOOST_LOG_TRIVIAL(trace) << "saving all: end";

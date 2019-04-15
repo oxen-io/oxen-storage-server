@@ -284,12 +284,8 @@ void connection_t::process_request() {
                 deserialize_messages(request_.body());
             assert(messages.size() == 1);
 
-            auto msg = std::make_shared<message_t>(messages[0]);
-
-            BOOST_LOG_TRIVIAL(trace) << "got PK: " << msg->pub_key;
-
             /// TODO: this will need to be done asynchronoulsy
-            service_node_.process_push(msg);
+            service_node_.process_push(messages.front());
 
             response_.result(http::status::ok);
         } else if (target == "/retrieve_all") {
@@ -458,8 +454,8 @@ void connection_t::process_store(const json& params) {
     bool success;
 
     try {
-        auto msg = std::make_shared<message_t>(pubKey, data, messageHash,
-                                               ttlInt, timestampInt, nonce);
+        const auto msg =
+            message_t{pubKey, data, messageHash, ttlInt, timestampInt, nonce};
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
