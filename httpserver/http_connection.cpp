@@ -656,9 +656,12 @@ void connection_t::poll_db(const std::string& pk,
                 }
 
                 respond_with_messages(items);
+            } else {
+                // If we are here, the notification timer expired
+                // with no messages ready
+                respond_with_messages<Item>({});
             }
 
-            respond_with_messages<Item>({});
         });
 
         BOOST_LOG_TRIVIAL(error) << "just registered notification";
