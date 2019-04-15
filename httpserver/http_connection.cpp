@@ -216,8 +216,7 @@ void connection_t::start() {
 }
 
 void connection_t::notify(const message_t& msg) {
-    BOOST_LOG_TRIVIAL(debug)
-        << "Processing message notification: " << msg.data;
+    BOOST_LOG_TRIVIAL(debug) << "Processing message notification: " << msg.data;
     // save messages, so we can access them once the timer event happens
     notification_ctx_.message = msg;
     // the timer callback will be called once we complete the current callback
@@ -334,6 +333,13 @@ void connection_t::process_request() {
     }
 }
 
+static std::string obfuscate_pubkey(const std::string& pk) {
+    std::string res = pk.substr(0, 2);
+    res += "...";
+    res += pk.substr(pk.length() - 3, pk.length() - 1);
+    return res;
+}
+
 // Asynchronously transmit the response message.
 void connection_t::write_response() {
 
@@ -354,9 +360,7 @@ void connection_t::write_response() {
             body += e.what();
             BOOST_LOG_TRIVIAL(error)
                 << "Internal Server Error. Could not encrypt response for "
-                << ephemKey.substr(0, 2) << "..."
-                << ephemKey.substr(ephemKey.length() - 3,
-                                   ephemKey.length() - 1);
+                << obfuscate_pubkey(ephemKey);
         }
     }
 #endif
@@ -472,8 +476,7 @@ void connection_t::process_store(const json& params) {
         bodyStream_ << e.what();
         BOOST_LOG_TRIVIAL(error)
             << "Internal Server Error. Could not store message for "
-            << pubKey.substr(0, 2) << "..."
-            << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
+            << obfuscate_pubkey(pubKey);
         return;
     }
 
@@ -487,8 +490,7 @@ void connection_t::process_store(const json& params) {
 
     response_.result(http::status::ok);
     BOOST_LOG_TRIVIAL(trace)
-        << "Successfully stored message for " << pubKey.substr(0, 2) << "..."
-        << pubKey.substr(pubKey.length() - 3, pubKey.length() - 1);
+        << "Successfully stored message for " << obfuscate_pubkey(pubKey);
 }
 
 void connection_t::process_snodes_by_pk(const json& params) {
@@ -622,8 +624,7 @@ void connection_t::poll_db(const std::string& pk,
         response_.set(http::field::content_type, "text/plain");
         BOOST_LOG_TRIVIAL(error)
             << "Internal Server Error. Could not retrieve messages for "
-            << pk.substr(0, 2) << "..."
-            << pk.substr(pk.length() - 3, pk.length() - 1);
+            << obfuscate_pubkey(pk);
         return;
     }
 
@@ -631,9 +632,7 @@ void connection_t::poll_db(const std::string& pk,
         request_.find("X-Loki-Long-Poll") != request_.end();
 
     if (!items.empty()) {
-        BOOST_LOG_TRIVIAL(trace)
-            << "Successfully retrieved messages for " << pk.substr(0, 2)
-            << "..." << pk.substr(pk.length() - 3, pk.length() - 1);
+        BOOST_LOG_TRIVIAL(trace) << obfuscate_pubkey(pk);
     }
 
     if (items.empty() && lp_requested) {
@@ -661,7 +660,6 @@ void connection_t::poll_db(const std::string& pk,
                 // with no messages ready
                 respond_with_messages<Item>({});
             }
-
         });
 
         BOOST_LOG_TRIVIAL(error) << "just registered notification";
