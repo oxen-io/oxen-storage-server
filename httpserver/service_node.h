@@ -65,9 +65,9 @@ class ServiceNode {
 
     boost::asio::steady_timer update_timer_;
 
-    void push_message(const message_ptr msg);
+    void push_message(const message_t& msg);
 
-    void save_if_new(const message_ptr msg);
+    void save_if_new(const message_t& msg);
 
     /// request swarm info from the blockchain
     void update_swarms();
@@ -83,7 +83,7 @@ class ServiceNode {
     void salvage_data() const;
 
     /// used on push and on swarm bootstrapping
-    void relay_one(const message_ptr msg, sn_record_t address) const;
+    void relay_one(const message_t& msg, sn_record_t address) const;
 
     /// used for SN bootstrapping
     void relay_batch(const std::string& data, sn_record_t address) const;
@@ -96,10 +96,10 @@ class ServiceNode {
     ~ServiceNode();
 
     /// Process message received from a client, return false if not in a swarm
-    bool process_store(const message_ptr msg);
+    bool process_store(const message_t& msg);
 
     /// Process message relayed from another SN from our swarm
-    void process_push(const message_ptr msg);
+    void process_push(const message_t& msg);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_all(std::shared_ptr<std::string> blob);
