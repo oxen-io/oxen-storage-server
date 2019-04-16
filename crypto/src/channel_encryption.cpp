@@ -1,5 +1,4 @@
 #include "channel_encryption.hpp"
-#include "lokid_key.h"
 
 #include <boost/algorithm/hex.hpp>
 #include <openssl/evp.h>
@@ -16,11 +15,8 @@ std::vector<uint8_t> hexToBytes(const std::string& hex) {
 }
 
 template <typename T>
-ChannelEncryption<T>::ChannelEncryption(const std::string& key_path) {
-    // Lokid uses ed25519
-    this->private_key = parseLokidKey(key_path);
-    this->public_key = calcPublicKey(this->private_key);
-}
+ChannelEncryption<T>::ChannelEncryption(const std::vector<uint8_t>& private_key)
+: private_key_(private_key) {}
 
 template <typename T>
 std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(
@@ -29,7 +25,7 @@ std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(
     if (pubKey.size() != crypto_scalarmult_curve25519_BYTES) {
         throw std::runtime_error("Bad pubKey size");
     }
-    if (crypto_scalarmult(sharedSecret.data(), this->private_key.data(),
+    if (crypto_scalarmult(sharedSecret.data(), this->private_key_.data(),
                           pubKey.data()) != 0) {
         throw std::runtime_error(
             "Shared key derivation failed (crypto_scalarmult)");
