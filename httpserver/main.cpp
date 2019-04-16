@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
 
         boost::asio::io_context ioc{1};
 
+        // ed25519 key
         const std::vector<uint8_t> private_key = parseLokidKey(lokidKeyPath);
         ChannelEncryption<std::string> channelEncryption(private_key);
         const std::vector<uint8_t> public_key = calcPublicKey(private_key);
