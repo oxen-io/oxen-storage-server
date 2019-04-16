@@ -632,7 +632,8 @@ void connection_t::poll_db(const std::string& pk,
         request_.find("X-Loki-Long-Poll") != request_.end();
 
     if (!items.empty()) {
-        BOOST_LOG_TRIVIAL(trace) << obfuscate_pubkey(pk);
+        BOOST_LOG_TRIVIAL(trace)
+            << "Successfully retrieved messages for " << obfuscate_pubkey(pk);
     }
 
     if (items.empty() && lp_requested) {
