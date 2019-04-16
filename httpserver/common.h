@@ -5,6 +5,27 @@ struct sn_record_t {
     std::string address; // Snode address
 };
 
+namespace loki {
+
+/// message as received by client
+struct message_t {
+
+    std::string pub_key;
+    std::string data;
+    std::string hash;
+    uint64_t ttl;
+    uint64_t timestamp;
+    std::string nonce;
+
+    message_t(const std::string& pk, const std::string& text,
+              const std::string& hash, uint64_t ttl, uint64_t timestamp,
+              const std::string& nonce)
+        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp),
+          nonce(nonce) {}
+};
+
+} // namespace loki
+
 namespace std {
 
 template <>

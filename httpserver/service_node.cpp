@@ -24,8 +24,7 @@
 using service_node::storage::Item;
 
 namespace loki {
-
-void say_hello(const boost::system::error_code& ec) { std::cout << "hello\n"; }
+using http_server::connection_t;
 
 /// TODO: can we reuse context (reset it)?
 std::string hash_data(std::string data) {
@@ -121,6 +120,32 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
         });
 }
 
+void ServiceNode::register_listener(const std::string& pk,
+                                    const std::shared_ptr<connection_t>& c) {
+    pk_to_listeners[pk].push_back(c);
+    BOOST_LOG_TRIVIAL(debug) << "register pubkey: " << pk
+                             << ", total pubkeys: " << pk_to_listeners.size();
+}
+
+void ServiceNode::notify_listeners(const std::string& pk,
+                                   const message_t& msg) {
+
+    auto it = pk_to_listeners.find(pk);
+
+    if (it != pk_to_listeners.end()) {
+
+        auto& listeners = it->second;
+
+        BOOST_LOG_TRIVIAL(debug)
+            << "number of notified listeners: " << listeners.size();
+
+        for (auto& c : listeners) {
+            c->notify(msg);
+        }
+        pk_to_listeners.erase(it);
+    }
+}
+
 /// initiate a /swarms/push request
 void ServiceNode::push_message(const message_t& msg) {
 
@@ -163,10 +188,11 @@ void ServiceNode::process_push(const message_t& msg) { save_if_new(msg); }
 
 void ServiceNode::save_if_new(const message_t& msg) {
 
-    db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
-               msg.nonce);
-
-    BOOST_LOG_TRIVIAL(trace) << "saving message: " << msg.data;
+    if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
+                   msg.nonce)) {
+        notify_listeners(msg.pub_key, msg);
+        BOOST_LOG_TRIVIAL(trace) << "saved message: " << msg.data;
+    }
 }
 
 void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
@@ -339,6 +365,8 @@ void ServiceNode::purge_outdated() {
 
 void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
 
+    // Note: we only receive batches on bootstrap (new swarm/new snode)
+
     /// This should already be checked, but just to be sure
     if (!blob || *blob == "")
         return;
@@ -354,8 +382,6 @@ void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
                              << " messages form peers, size: " << blob->size();
 
     for (auto& msg : messages) {
-
-        // TODO: Actually use the message values here
         save_if_new(msg);
     }
 

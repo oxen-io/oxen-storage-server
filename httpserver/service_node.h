@@ -24,24 +24,11 @@ class Item;
 
 namespace loki {
 
-/// message as received by client
-struct message_t {
+namespace http_server {
+class connection_t;
+}
 
-    std::string pub_key;
-    std::string data;
-    std::string hash;
-    uint64_t ttl;
-    uint64_t timestamp;
-    std::string nonce;
-
-    message_t(const std::string& pk, const std::string& text,
-              const std::string& hash, uint64_t ttl, uint64_t timestamp,
-              const std::string& nonce)
-        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp),
-          nonce(nonce) {}
-};
-
-using message_ptr = std::shared_ptr<message_t>;
+using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
 class Swarm;
 
@@ -53,6 +40,8 @@ struct snode_stats_t {
 
 /// All service node logic that is not network-specific
 class ServiceNode {
+    using pub_key_t = std::string;
+    using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
 
@@ -64,6 +53,9 @@ class ServiceNode {
     sn_record_t our_address_;
 
     boost::asio::steady_timer update_timer_;
+
+    /// map pubkeys to a list of connections to be notified
+    std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
     void push_message(const message_t& msg);
 
@@ -94,6 +86,13 @@ class ServiceNode {
                 const std::string& dbLocation);
 
     ~ServiceNode();
+
+    // Register a connection as waiting for new data for pk
+    void register_listener(const std::string& pk,
+                           const connection_ptr& connection);
+
+    // Notify listeners of a new message for pk
+    void notify_listeners(const std::string& pk, const message_t& msg);
 
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
