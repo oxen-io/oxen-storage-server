@@ -109,7 +109,7 @@ void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
 
     request_t req;
     req.body() = data;
-    req.target("/v1/swarms/push_all");
+    req.target("/v1/swarms/push_batch");
 
     make_http_request(
         ioc_, sn.address, sn.port, req, [this, sn](sn_response_t&& res) {
@@ -144,6 +144,22 @@ void ServiceNode::notify_listeners(const std::string& pk,
         }
         pk_to_listeners.erase(it);
     }
+}
+
+void ServiceNode::reset_listeners() {
+
+    /// It is probably not worth it to try to
+    /// determine which connections needn't
+    /// be reset (most of them will need to be),
+    /// so we just reset all connections for
+    /// simplicity
+    for (auto& entry : pk_to_listeners) {
+        for (auto& c : entry.second) {
+            c->reset();
+        }
+    }
+
+    pk_to_listeners.clear();
 }
 
 /// initiate a /swarms/push request
@@ -193,6 +209,21 @@ void ServiceNode::save_if_new(const message_t& msg) {
         notify_listeners(msg.pub_key, msg);
         BOOST_LOG_TRIVIAL(trace) << "saved message: " << msg.data;
     }
+}
+
+void ServiceNode::save_bulk(const std::vector<Item>& items) {
+
+    if (!db_->bulk_store(items)) {
+        BOOST_LOG_TRIVIAL(error) << "failed to save batch to the database";
+        return;
+    }
+
+    BOOST_LOG_TRIVIAL(trace) << "saved messages count: " << items.size();
+
+    // For batches, it is not trivial to get the list of saved (new)
+    // messages, so we are only going to "notify" clients with no data
+    // effectively resetting the connection.
+    reset_listeners();
 }
 
 void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
@@ -363,27 +394,31 @@ void ServiceNode::purge_outdated() {
     return;
 }
 
-void ServiceNode::process_push_all(std::shared_ptr<std::string> blob) {
-
+void ServiceNode::process_push_batch(const std::string& blob) {
     // Note: we only receive batches on bootstrap (new swarm/new snode)
 
-    /// This should already be checked, but just to be sure
-    if (!blob || *blob == "")
+    if (blob.empty())
         return;
 
-    if (*blob == "")
-        return;
-
-    std::vector<message_t> messages = deserialize_messages(*blob);
+    const std::vector<message_t> messages = deserialize_messages(blob);
 
     BOOST_LOG_TRIVIAL(trace) << "saving all: begin";
 
     BOOST_LOG_TRIVIAL(debug) << "got " << messages.size()
-                             << " messages form peers, size: " << blob->size();
+                             << " messages from peers, size: " << blob.size();
 
-    for (auto& msg : messages) {
-        save_if_new(msg);
-    }
+    std::vector<Item> items;
+    items.reserve(messages.size());
+
+    // Promoting message_t to Item:
+    std::transform(messages.begin(), messages.end(), std::back_inserter(items),
+                   [](const message_t& m) {
+                       return Item{m.hash, m.pub_key,           m.timestamp,
+                                   m.ttl,  m.timestamp + m.ttl, m.nonce,
+                                   m.data};
+                   });
+
+    save_bulk(items);
 
     BOOST_LOG_TRIVIAL(trace) << "saving all: end";
 }

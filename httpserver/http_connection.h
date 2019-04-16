@@ -152,6 +152,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void notify(const message_t& msg);
 
+    /// "Reset" the connection by sending an empty message list
+    void reset();
+
   private:
     /// Asynchronously receive a complete request message.
     void read_request();
