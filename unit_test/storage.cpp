@@ -3,11 +3,12 @@
 
 #include <iostream>
 #include <string>
+#include <chrono>
+#include <thread>
 
-#include <boost/chrono.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/test/unit_test.hpp>
-#include <boost/thread/thread.hpp>
+
 
 struct StorageRAIIFixture {
     StorageRAIIFixture() {
@@ -178,7 +179,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     // the timer kicks in every 10 seconds
     // give 100ms to perform the cleanup
     std::cout << "waiting for cleanup timer..." << std::endl;
-    boost::this_thread::sleep_for(boost::chrono::milliseconds(10000 + 100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000 + 100));
 
     {
         std::vector<service_node::storage::Item> items;
@@ -278,27 +279,27 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
     // bulk store
     {
         Database storage(".");
-        const auto start = boost::chrono::steady_clock::now();
+        const auto start = std::chrono::steady_clock::now();
         storage.bulk_store(items);
-        const auto end = boost::chrono::steady_clock::now();
+        const auto end = std::chrono::steady_clock::now();
         const auto diff = end - start;
         std::cout << "bulk: "
-                  << boost::chrono::duration<double, boost::milli>(diff).count()
+                  << std::chrono::duration<double, std::milli>(diff).count()
                   << " ms" << std::endl;
     }
 
     // single stores
     {
         Database storage(".");
-        const auto start = boost::chrono::steady_clock::now();
+        const auto start = std::chrono::steady_clock::now();
         for (const auto& item : items) {
             storage.store(item.hash, item.pub_key, item.data, item.ttl,
                           item.timestamp, item.nonce);
         }
-        const auto end = boost::chrono::steady_clock::now();
+        const auto end = std::chrono::steady_clock::now();
         const auto diff = end - start;
         std::cout << "singles:"
-                  << boost::chrono::duration<double, boost::milli>(diff).count()
+                  << std::chrono::duration<double, std::milli>(diff).count()
                   << " ms" << std::endl;
     }
 }
