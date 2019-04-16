@@ -3,11 +3,12 @@
 
 #include <iostream>
 #include <string>
+#include <chrono>
+#include <thread>
 
-#include <boost/chrono.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/test/unit_test.hpp>
-#include <boost/thread/thread.hpp>
+
 
 struct StorageRAIIFixture {
     StorageRAIIFixture() {
@@ -178,7 +179,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     // the timer kicks in every 10 seconds
     // give 100ms to perform the cleanup
     std::cout << "waiting for cleanup timer..." << std::endl;
-    boost::this_thread::sleep_for(boost::chrono::milliseconds(10000 + 100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000 + 100));
 
     {
         std::vector<service_node::storage::Item> items;
