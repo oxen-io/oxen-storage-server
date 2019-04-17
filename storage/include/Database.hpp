@@ -19,7 +19,6 @@ class Database {
 
     enum class DuplicateHandling { IGNORE, FAIL };
 
-    /// this is low-level logic (separate?)
     bool store(const std::string& hash, const std::string& pubKey,
                const std::string& bytes, uint64_t ttl, uint64_t timestamp,
                const std::string& nonce,

@@ -61,6 +61,9 @@ class ServiceNode {
 
     void save_if_new(const message_t& msg);
 
+    // Save items to the database, notifying listeners as necessary
+    void save_bulk(const std::vector<service_node::storage::Item>& items);
+
     /// request swarm info from the blockchain
     void update_swarms();
 
@@ -94,6 +97,10 @@ class ServiceNode {
     // Notify listeners of a new message for pk
     void notify_listeners(const std::string& pk, const message_t& msg);
 
+    // Send "empty" responses to all listeners effectively resetting their
+    // connections
+    void reset_listeners();
+
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
 
@@ -101,7 +108,7 @@ class ServiceNode {
     void process_push(const message_t& msg);
 
     /// Process incoming blob of messages: add to DB if new
-    void process_push_all(std::shared_ptr<std::string> blob);
+    void process_push_batch(const std::string& blob);
 
     bool is_pubkey_for_us(const std::string& pk) const;
 

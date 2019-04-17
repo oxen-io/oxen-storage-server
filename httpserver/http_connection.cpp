@@ -223,6 +223,11 @@ void connection_t::notify(const message_t& msg) {
     notification_ctx_.timer.cancel();
 }
 
+void connection_t::reset() {
+    BOOST_LOG_TRIVIAL(debug) << "Resetting the connection";
+    notification_ctx_.timer.cancel();
+}
+
 // Asynchronously receive a complete request message.
 void connection_t::read_request() {
 
@@ -298,13 +303,12 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
         } else if (target == "/retrieve_all") {
             process_retrieve_all();
-        } else if (target == "/v1/swarms/push_all") {
+        } else if (target == "/v1/swarms/push_batch") {
             response_.result(http::status::ok);
 
             std::string body = request_.body();
 
-            // TODO: investigate whether I need a string here
-            service_node_.process_push_all(std::make_shared<std::string>(body));
+            service_node_.process_push_batch(body);
 
         } else if (target == "/test") {
             // response_.body() = "all good!";
