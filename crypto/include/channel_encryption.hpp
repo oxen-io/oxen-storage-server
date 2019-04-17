@@ -7,7 +7,7 @@
 template <typename T>
 class ChannelEncryption {
   public:
-    ChannelEncryption(const std::string& key_path = "");
+    ChannelEncryption(const std::vector<uint8_t>& private_key);
     ~ChannelEncryption() = default;
 
     T encrypt(const T& plainText, const std::string& pubKey) const;
@@ -17,8 +17,5 @@ class ChannelEncryption {
   private:
     std::vector<uint8_t>
     calculateSharedSecret(const std::vector<uint8_t>& pubKey) const;
-    std::vector<uint8_t> private_key;
-
-  public:
-    std::vector<uint8_t> public_key;
+    const std::vector<uint8_t> private_key_;
 };

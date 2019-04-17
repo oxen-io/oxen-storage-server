@@ -1,5 +1,6 @@
 #include "channel_encryption.hpp"
 #include "http_connection.h"
+#include "lokid_key.h"
 #include "service_node.h"
 #include "swarm.h"
 
@@ -118,9 +119,11 @@ int main(int argc, char* argv[]) {
 
         boost::asio::io_context ioc{1};
 
-        ChannelEncryption<std::string> channelEncryption(lokidKeyPath);
-        loki::ServiceNode service_node(ioc, port, channelEncryption.public_key,
-                                       dbLocation);
+        // ed25519 key
+        const std::vector<uint8_t> private_key = parseLokidKey(lokidKeyPath);
+        ChannelEncryption<std::string> channelEncryption(private_key);
+        const std::vector<uint8_t> public_key = calcPublicKey(private_key);
+        loki::ServiceNode service_node(ioc, port, public_key, dbLocation);
 
         /// Should run http server
         loki::http_server::run(ioc, ip, port, service_node, channelEncryption);
