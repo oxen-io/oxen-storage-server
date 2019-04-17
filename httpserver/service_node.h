@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include <boost/asio.hpp>
+#include <boost/beast/http.hpp>
 #include <boost/optional.hpp>
 
 #include "common.h"
@@ -22,6 +23,9 @@ class Item;
 } // namespace storage
 } // namespace service_node
 
+namespace http = boost::beast::http;
+using request_t = http::request<http::string_body>;
+
 namespace loki {
 
 namespace http_server {
@@ -36,6 +40,29 @@ struct snode_stats_t {
 
     // how many times a single push failed
     uint64_t relay_fails = 0;
+};
+
+/// Represents failed attempt at communicating with a SNode
+/// (currently only for single messages)
+class FailedWork : public std::enable_shared_from_this<FailedWork> {
+    boost::asio::io_context& ioc_;
+    boost::asio::steady_timer retry_timer_;
+    sn_record_t sn_;
+    const request_t request_;
+
+    uint32_t attempt_count_ = 0;
+
+    void retry(std::shared_ptr<FailedWork>&& self);
+
+  public:
+    FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
+               const request_t& req);
+
+    ~FailedWork();
+    /// Initiates the timer for retrying (which cannot be done directly in
+    /// the constructor as it is not possible to create a shared ptr
+    /// to itself before the construction is done)
+    void init_timer();
 };
 
 /// All service node logic that is not network-specific

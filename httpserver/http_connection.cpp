@@ -65,7 +65,8 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
     }
     endpoint.port(port);
 
-    auto session = std::make_shared<HttpClientSession>(ioc, endpoint, req, cb);
+    auto session =
+        std::make_shared<HttpClientSession>(ioc, endpoint, req, std::move(cb));
 
     session->start();
 }
@@ -793,7 +794,7 @@ void connection_t::register_deadline() {
 /// TODO: make generic, avoid message copy
 HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const tcp::endpoint& ep,
-                                     const request_t& req, http_callback_t cb)
+                                     const request_t& req, http_callback_t&& cb)
     : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
       deadline_timer_(ioc) {
 
@@ -821,6 +822,7 @@ void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
     if (ec) {
         BOOST_LOG_TRIVIAL(error) << "Error on write, ec: " << ec.value()
                                  << ". Message: " << ec.message();
+        trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
 
@@ -850,11 +852,11 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
     } else {
         BOOST_LOG_TRIVIAL(error)
             << "Error on read: " << ec.value() << ". Message: " << ec.message();
+        trigger_callback(SNodeError::ERROR_OTHER, nullptr);
     }
 
     // Gracefully close the socket
     socket_.shutdown(tcp::socket::shutdown_both, ec);
-    deadline_timer_.cancel();
 
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
@@ -864,43 +866,46 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
         return;
     }
 
-    init_callback(std::move(body));
+    trigger_callback(SNodeError::NO_ERROR, std::move(body));
 
     // If we get here then the connection is closed gracefully
 }
 
 void HttpClientSession::start() {
-    auto self = shared_from_this();
-    socket_.async_connect(endpoint_, [=](const error_code& ec) {
-        /// TODO: I think I should just call again if ec == EINTR
-        if (ec) {
-            BOOST_LOG_TRIVIAL(error)
-                << boost::format(
-                       "Could not connect to %1%, message: %2% (%3%)") %
-                       endpoint_ % ec.message() % ec.value();
-            callback_({SNodeError::NO_REACH, nullptr});
-            return;
-        }
+    socket_.async_connect(
+        endpoint_, [this, self = shared_from_this()](const error_code& ec) {
+            /// TODO: I think I should just call again if ec == EINTR
+            if (ec) {
+                BOOST_LOG_TRIVIAL(error)
+                    << boost::format(
+                           "Could not connect to %1%, message: %2% (%3%)") %
+                           endpoint_ % ec.message() % ec.value();
+                trigger_callback(SNodeError::NO_REACH, nullptr);
+                return;
+            }
 
-        self->on_connect();
-    });
+            self->on_connect();
+        });
 
     deadline_timer_.expires_after(SESSION_TIME_LIMIT);
-    deadline_timer_.async_wait([self](const error_code& ec) {
-        if (ec) {
-            if (ec != boost::asio::error::operation_aborted) {
-                log_error(ec);
+    deadline_timer_.async_wait(
+        [self = shared_from_this()](const error_code& ec) {
+            if (ec) {
+                if (ec != boost::asio::error::operation_aborted) {
+                    log_error(ec);
+                }
+            } else {
+                BOOST_LOG_TRIVIAL(error) << "client socket timed out";
+                self->socket_.close();
             }
-        } else {
-            BOOST_LOG_TRIVIAL(error) << "client socket timed out";
-            self->socket_.close();
-        }
-    });
+        });
 }
 
-void HttpClientSession::init_callback(std::shared_ptr<std::string>&& body) {
-    ioc_.post(std::bind(callback_, sn_response_t{SNodeError::NO_ERROR, body}));
+void HttpClientSession::trigger_callback(SNodeError error,
+                                      std::shared_ptr<std::string>&& body) {
+    ioc_.post(std::bind(callback_, sn_response_t{error, body}));
     used_callback_ = true;
+    deadline_timer_.cancel();
 }
 
 /// We execute callback (if haven't already) here to make sure it is called

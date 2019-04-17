@@ -26,6 +26,50 @@ using service_node::storage::Item;
 namespace loki {
 using http_server::connection_t;
 
+constexpr std::array<std::chrono::seconds, 5> RETRY_INTERVALS = {
+    std::chrono::seconds(5), std::chrono::seconds(10), std::chrono::seconds(20),
+    std::chrono::seconds(40), std::chrono::seconds(80)};
+
+FailedWork::FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
+                       const request_t& req)
+    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(req) {}
+
+void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
+
+    attempt_count_ += 1;
+    if (attempt_count_ > RETRY_INTERVALS.size()) {
+        BOOST_LOG_TRIVIAL(debug)
+            << "Gave up after " << attempt_count_ << " attempts";
+        return;
+    }
+
+    retry_timer_.expires_after(RETRY_INTERVALS[attempt_count_ - 1]);
+    BOOST_LOG_TRIVIAL(debug)
+        << "Will retry in " << RETRY_INTERVALS[attempt_count_ - 1].count()
+        << " secs";
+
+    retry_timer_.async_wait(
+        [self = std::move(self)](const boost::system::error_code& ec) mutable {
+            const auto& sn = self->sn_;
+
+            make_http_request(
+                self->ioc_, sn.address, sn.port, self->request_,
+                [self = std::move(self)](sn_response_t&& res) mutable {
+                    if (res.error_code != SNodeError::NO_ERROR) {
+                        BOOST_LOG_TRIVIAL(error)
+                            << "Could not relay one: " << self->sn_
+                            << " (attempt #" << self->attempt_count_ << ")";
+                        /// TODO: record failure here as well?
+                        self->retry(std::move(self));
+                    }
+                });
+        });
+}
+
+FailedWork::~FailedWork() { BOOST_LOG_TRIVIAL(trace) << "~FailedWork()"; }
+
+void FailedWork::init_timer() { retry(shared_from_this()); }
+
 /// TODO: can we reuse context (reset it)?
 std::string hash_data(std::string data) {
 
@@ -87,18 +131,27 @@ ServiceNode::~ServiceNode() = default;
 
 void ServiceNode::relay_one(const message_t& msg, sn_record_t sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to " << sn;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to: " << sn;
 
     request_t req;
     serialize_message(req.body(), msg);
-
     req.target("/v1/swarms/push");
 
     make_http_request(
-        ioc_, sn.address, sn.port, req, [this, sn](sn_response_t&& res) {
+        ioc_, sn.address, sn.port, req,
+        [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
-                BOOST_LOG_TRIVIAL(error) << "Could not relay one to: " << sn;
                 snode_report_[sn].relay_fails += 1;
+
+                if (res.error_code == SNodeError::NO_REACH) {
+                    BOOST_LOG_TRIVIAL(error)
+                        << "Could not relay one to: " << sn << " (Unreachable)";
+                } else if (res.error_code == SNodeError::ERROR_OTHER) {
+                    BOOST_LOG_TRIVIAL(error) << "Could not relay one to: " << sn
+                                             << " (Generic error)";
+                }
+
+                std::make_shared<FailedWork>(ioc_, sn, req)->init_timer();
             }
         });
 }
@@ -191,7 +244,7 @@ void ServiceNode::save_if_new(const message_t& msg) {
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
                    msg.nonce)) {
         notify_listeners(msg.pub_key, msg);
-        BOOST_LOG_TRIVIAL(trace) << "saved message: " << msg.data;
+        BOOST_LOG_TRIVIAL(debug) << "saved message: " << msg.data;
     }
 }
 

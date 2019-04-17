@@ -77,12 +77,12 @@ class HttpClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void init_callback(std::shared_ptr<std::string>&& body);
+    void trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body);
 
   public:
     // Resolver and socket require an io_context
     HttpClientSession(boost::asio::io_context& ioc, const tcp::endpoint& ep,
-                      const request_t& req, http_callback_t cb);
+                      const request_t& req, http_callback_t&& cb);
 
     // initiate the client connection
     void start();
