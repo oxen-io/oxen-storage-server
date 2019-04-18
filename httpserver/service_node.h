@@ -56,7 +56,7 @@ class FailedWork : public std::enable_shared_from_this<FailedWork> {
 
   public:
     FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-               const std::shared_ptr<request_t> req);
+               std::shared_ptr<request_t> req);
 
     ~FailedWork();
     /// Initiates the timer for retrying (which cannot be done directly in

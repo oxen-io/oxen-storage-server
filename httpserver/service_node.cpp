@@ -31,7 +31,7 @@ constexpr std::array<std::chrono::seconds, 5> RETRY_INTERVALS = {
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
 FailedWork::FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-                       const std::shared_ptr<request_t> req)
+                       std::shared_ptr<request_t> req)
     : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)) {}
 
 void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
