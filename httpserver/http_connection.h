@@ -77,7 +77,8 @@ class HttpClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body);
+    void trigger_callback(SNodeError error,
+                          std::shared_ptr<std::string>&& body);
 
   public:
     // Resolver and socket require an io_context

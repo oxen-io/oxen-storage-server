@@ -902,7 +902,7 @@ void HttpClientSession::start() {
 }
 
 void HttpClientSession::trigger_callback(SNodeError error,
-                                      std::shared_ptr<std::string>&& body) {
+                                         std::shared_ptr<std::string>&& body) {
     ioc_.post(std::bind(callback_, sn_response_t{error, body}));
     used_callback_ = true;
     deadline_timer_.cancel();

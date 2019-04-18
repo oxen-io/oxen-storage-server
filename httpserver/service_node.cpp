@@ -31,8 +31,8 @@ constexpr std::array<std::chrono::seconds, 5> RETRY_INTERVALS = {
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
 FailedWork::FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-                       const request_t& req)
-    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(req) {}
+                       const std::shared_ptr<request_t> req)
+    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)) {}
 
 void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
 
@@ -53,7 +53,7 @@ void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
             const auto& sn = self->sn_;
 
             make_http_request(
-                self->ioc_, sn.address, sn.port, self->request_,
+                self->ioc_, sn.address, sn.port, *self->request_,
                 [self = std::move(self)](sn_response_t&& res) mutable {
                     if (res.error_code != SNodeError::NO_ERROR) {
                         BOOST_LOG_TRIVIAL(error)
@@ -129,17 +129,16 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-void ServiceNode::relay_one(const message_t& msg, sn_record_t sn) const {
+void ServiceNode::relay_one(const std::shared_ptr<request_t>& req,
+                            sn_record_t sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying a message to: " << sn;
 
-    request_t req;
-    serialize_message(req.body(), msg);
-    req.target("/v1/swarms/push");
-
+    // TODO: consider storing a shared_ptr inside http session instead of a copy
+    // (that might be annoying for requests that don't want to create a
+    // shared_ptr, like swarm updates)
     make_http_request(
-        ioc_, sn.address, sn.port, req,
-        [this, sn, req](sn_response_t&& res) {
+        ioc_, sn.address, sn.port, *req, [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
                 snode_report_[sn].relay_fails += 1;
 
@@ -210,9 +209,13 @@ void ServiceNode::push_message(const message_t& msg) {
     BOOST_LOG_TRIVIAL(debug)
         << "push_message to " << others.size() << " other nodes";
 
+    auto req = std::make_shared<request_t>();
+    serialize_message(req->body(), msg);
+    req->target("/v1/swarms/push");
+
     for (const auto& address : others) {
         /// send a request asynchronously
-        relay_one(msg, address);
+        relay_one(req, address);
     }
 }
 

@@ -48,7 +48,7 @@ class FailedWork : public std::enable_shared_from_this<FailedWork> {
     boost::asio::io_context& ioc_;
     boost::asio::steady_timer retry_timer_;
     sn_record_t sn_;
-    const request_t request_;
+    const std::shared_ptr<request_t> request_;
 
     uint32_t attempt_count_ = 0;
 
@@ -56,7 +56,7 @@ class FailedWork : public std::enable_shared_from_this<FailedWork> {
 
   public:
     FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-               const request_t& req);
+               const std::shared_ptr<request_t> req);
 
     ~FailedWork();
     /// Initiates the timer for retrying (which cannot be done directly in
@@ -102,7 +102,8 @@ class ServiceNode {
     void salvage_data() const;
 
     /// used on push and on swarm bootstrapping
-    void relay_one(const message_t& msg, sn_record_t address) const;
+    void relay_one(const std::shared_ptr<request_t>& req,
+                   sn_record_t address) const;
 
     /// used for SN bootstrapping
     void relay_batch(const std::string& data, sn_record_t address) const;
