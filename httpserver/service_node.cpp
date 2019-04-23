@@ -30,11 +30,12 @@ constexpr std::array<std::chrono::seconds, 5> RETRY_INTERVALS = {
     std::chrono::seconds(5), std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
-FailedWork::FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-                       std::shared_ptr<request_t> req)
+FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
+                                           const sn_record_t& sn,
+                                           std::shared_ptr<request_t> req)
     : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)) {}
 
-void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
+void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
 
     attempt_count_ += 1;
     if (attempt_count_ > RETRY_INTERVALS.size()) {
@@ -70,9 +71,11 @@ void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
         });
 }
 
-FailedWork::~FailedWork() { BOOST_LOG_TRIVIAL(trace) << "~FailedWork()"; }
+FailedRequestHandler::~FailedRequestHandler() {
+    BOOST_LOG_TRIVIAL(trace) << "~FailedRequestHandler()";
+}
 
-void FailedWork::init_timer() { retry(shared_from_this()); }
+void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
 
 /// TODO: can we reuse context (reset it)?
 std::string hash_data(std::string data) {
@@ -154,7 +157,8 @@ void ServiceNode::relay_one(const std::shared_ptr<request_t>& req,
                                              << " (Generic error)";
                 }
 
-                std::make_shared<FailedWork>(ioc_, sn, req)->init_timer();
+                std::make_shared<FailedRequestHandler>(ioc_, sn, req)
+                    ->init_timer();
             }
         });
 }

@@ -44,7 +44,8 @@ struct snode_stats_t {
 
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
-class FailedWork : public std::enable_shared_from_this<FailedWork> {
+class FailedRequestHandler
+    : public std::enable_shared_from_this<FailedRequestHandler> {
     boost::asio::io_context& ioc_;
     boost::asio::steady_timer retry_timer_;
     sn_record_t sn_;
@@ -52,13 +53,13 @@ class FailedWork : public std::enable_shared_from_this<FailedWork> {
 
     uint32_t attempt_count_ = 0;
 
-    void retry(std::shared_ptr<FailedWork>&& self);
+    void retry(std::shared_ptr<FailedRequestHandler>&& self);
 
   public:
-    FailedWork(boost::asio::io_context& ioc, const sn_record_t& sn,
-               std::shared_ptr<request_t> req);
+    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
+                         std::shared_ptr<request_t> req);
 
-    ~FailedWork();
+    ~FailedRequestHandler();
     /// Initiates the timer for retrying (which cannot be done directly in
     /// the constructor as it is not possible to create a shared ptr
     /// to itself before the construction is done)
