@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include <boost/asio.hpp>
+#include <boost/beast/http.hpp>
 #include <boost/optional.hpp>
 
 #include "common.h"
@@ -22,6 +23,9 @@ class Item;
 } // namespace storage
 } // namespace service_node
 
+namespace http = boost::beast::http;
+using request_t = http::request<http::string_body>;
+
 namespace loki {
 
 namespace http_server {
@@ -36,6 +40,30 @@ struct snode_stats_t {
 
     // how many times a single push failed
     uint64_t relay_fails = 0;
+};
+
+/// Represents failed attempt at communicating with a SNode
+/// (currently only for single messages)
+class FailedRequestHandler
+    : public std::enable_shared_from_this<FailedRequestHandler> {
+    boost::asio::io_context& ioc_;
+    boost::asio::steady_timer retry_timer_;
+    sn_record_t sn_;
+    const std::shared_ptr<request_t> request_;
+
+    uint32_t attempt_count_ = 0;
+
+    void retry(std::shared_ptr<FailedRequestHandler>&& self);
+
+  public:
+    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
+                         std::shared_ptr<request_t> req);
+
+    ~FailedRequestHandler();
+    /// Initiates the timer for retrying (which cannot be done directly in
+    /// the constructor as it is not possible to create a shared ptr
+    /// to itself before the construction is done)
+    void init_timer();
 };
 
 /// All service node logic that is not network-specific
@@ -78,7 +106,8 @@ class ServiceNode {
     void salvage_data() const;
 
     /// used on push and on swarm bootstrapping
-    void relay_one(const message_t& msg, sn_record_t address) const;
+    void relay_one(const std::shared_ptr<request_t>& req,
+                   sn_record_t address) const;
 
     /// used for SN bootstrapping
     void relay_batch(const std::string& data, sn_record_t address) const;
