@@ -5,13 +5,13 @@
 
 namespace service_node {
 namespace storage {
-class Item;
+struct Item;
 }
 } // namespace service_node
 
 namespace loki {
 
-class message_t;
+struct message_t;
 
 template <typename T>
 void serialize_message(std::string& buf, const T& msg);
