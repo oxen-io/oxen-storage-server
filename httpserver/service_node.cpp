@@ -50,10 +50,14 @@ void FailedWork::retry(std::shared_ptr<FailedWork>&& self) {
 
     retry_timer_.async_wait(
         [self = std::move(self)](const boost::system::error_code& ec) mutable {
+            /// Save some references before possibly moved out of `self`
             const auto& sn = self->sn_;
+            auto& ioc = self->ioc_;
+            const auto& req = *self->request_;
 
+            /// Request will be copied here
             make_http_request(
-                self->ioc_, sn.address, sn.port, *self->request_,
+                ioc, sn.address, sn.port, req,
                 [self = std::move(self)](sn_response_t&& res) mutable {
                     if (res.error_code != SNodeError::NO_ERROR) {
                         BOOST_LOG_TRIVIAL(error)
