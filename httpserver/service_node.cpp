@@ -158,7 +158,7 @@ ServiceNode::~ServiceNode() = default;
 void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
                             sn_record_t sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a data to: " << sn;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
     make_http_request(
         ioc_, sn.address, sn.port, req, [this, sn, req](sn_response_t&& res) {
