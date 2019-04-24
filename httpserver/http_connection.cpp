@@ -46,7 +46,7 @@ static void log_error(const error_code& ec) {
 }
 
 void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
-                       uint16_t port, const request_t& req,
+                       uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb) {
 
     error_code ec;
@@ -69,18 +69,6 @@ void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
         std::make_shared<HttpClientSession>(ioc, endpoint, req, std::move(cb));
 
     session->start();
-}
-
-void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
-                       uint16_t port, std::string target, std::string body,
-                       http_callback_t&& cb) {
-
-    request_t req;
-
-    req.body() = body;
-    req.target(target);
-
-    make_http_request(ioc, sn_address, port, req, std::move(cb));
 }
 
 static void
@@ -151,7 +139,13 @@ void request_swarm_update(boost::asio::io_context& ioc,
             }
         })#";
 
-    make_http_request(ioc, ip, port, target, req_body,
+    auto req = std::make_shared<request_t>();
+
+    req->body() = req_body;
+    req->method(http::verb::post);
+    req->target(target);
+
+    make_http_request(ioc, ip, port, req,
                       [cb = std::move(cb)](const sn_response_t&& res) {
                           if (res.body) {
                               parse_swarm_update(res.body, std::move(cb));
@@ -798,23 +792,15 @@ void connection_t::register_deadline() {
 /// TODO: make generic, avoid message copy
 HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const tcp::endpoint& ep,
-                                     const request_t& req, http_callback_t&& cb)
+                                     const std::shared_ptr<request_t>& req, http_callback_t&& cb)
     : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
-      deadline_timer_(ioc) {
-
-    req_.method(http::verb::post);
-    req_.version(11);
-    req_.target(req.target());
-    req_.set(http::field::host, "localhost");
-    req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-    req_.body() = req.body();
-    req_.prepare_payload();
+      deadline_timer_(ioc), req_(req) {
 }
 
 void HttpClientSession::on_connect() {
 
     BOOST_LOG_TRIVIAL(trace) << "on connect";
-    http::async_write(socket_, req_,
+    http::async_write(socket_, *req_,
                       std::bind(&HttpClientSession::on_write,
                                 shared_from_this(), std::placeholders::_1,
                                 std::placeholders::_2));
@@ -854,6 +840,8 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
         }
 
     } else {
+
+        /// Do we need to handle `operation aborted` separately here (due to deadline timer)?
         BOOST_LOG_TRIVIAL(error)
             << "Error on read: " << ec.value() << ". Message: " << ec.message();
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);

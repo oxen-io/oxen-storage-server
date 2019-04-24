@@ -54,7 +54,8 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
             /// Save some references before possibly moved out of `self`
             const auto& sn = self->sn_;
             auto& ioc = self->ioc_;
-            const auto& req = *self->request_;
+            /// TODO: investigate whether we can get rid of the extra ptr copy here?
+            const std::shared_ptr<request_t> req = self->request_;
 
             /// Request will be copied here
             make_http_request(
@@ -113,6 +114,24 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
+static std::shared_ptr<request_t> make_post_request(const char* target, std::string&& data) {
+    auto req = std::make_shared<request_t>();
+    req->body() = std::move(data);
+    req->method(http::verb::post);
+    req->set(http::field::host, "service node");
+    req->target(target);
+    req->prepare_payload();
+    return req;
+}
+
+static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
+    return make_post_request("/v1/swarms/push_batch", std::move(data));
+}
+
+static std::shared_ptr<request_t> make_push_request(std::string&& data) {
+    return make_post_request("/v1/swarms/push", std::move(data));
+}
+
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const std::vector<uint8_t>& public_key,
                          const std::string& dbLocation)
@@ -136,46 +155,26 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-void ServiceNode::relay_one(const std::shared_ptr<request_t>& req,
+void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
                             sn_record_t sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a message to: " << sn;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
-    // TODO: consider storing a shared_ptr inside http session instead of a copy
-    // (that might be annoying for requests that don't want to create a
-    // shared_ptr, like swarm updates)
     make_http_request(
-        ioc_, sn.address, sn.port, *req, [this, sn, req](sn_response_t&& res) {
+        ioc_, sn.address, sn.port, req, [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
                 snode_report_[sn].relay_fails += 1;
 
                 if (res.error_code == SNodeError::NO_REACH) {
                     BOOST_LOG_TRIVIAL(error)
-                        << "Could not relay one to: " << sn << " (Unreachable)";
+                        << "Could not relay data to: " << sn << " (Unreachable)";
                 } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                    BOOST_LOG_TRIVIAL(error) << "Could not relay one to: " << sn
+                    BOOST_LOG_TRIVIAL(error) << "Could not relay data to: " << sn
                                              << " (Generic error)";
                 }
 
                 std::make_shared<FailedRequestHandler>(ioc_, sn, req)
                     ->init_timer();
-            }
-        });
-}
-
-void ServiceNode::relay_batch(const std::string& data, sn_record_t sn) const {
-
-    BOOST_LOG_TRIVIAL(debug) << "Relaying a batch to " << sn;
-
-    request_t req;
-    req.body() = data;
-    req.target("/v1/swarms/push_batch");
-
-    make_http_request(
-        ioc_, sn.address, sn.port, req, [this, sn](sn_response_t&& res) {
-            if (res.error_code != SNodeError::NO_ERROR) {
-                BOOST_LOG_TRIVIAL(error) << "Could not relay batch to: " << sn;
-                snode_report_[sn].relay_fails += 1;
             }
         });
 }
@@ -233,13 +232,13 @@ void ServiceNode::push_message(const message_t& msg) {
     BOOST_LOG_TRIVIAL(debug)
         << "push_message to " << others.size() << " other nodes";
 
-    auto req = std::make_shared<request_t>();
-    serialize_message(req->body(), msg);
-    req->target("/v1/swarms/push");
+    std::string body;
+    serialize_message(body, msg);
+    auto req = make_push_request(std::move(body));
 
     for (const auto& address : others) {
         /// send a request asynchronously
-        relay_one(req, address);
+        relay_data(req, address);
     }
 }
 
@@ -322,16 +321,30 @@ void ServiceNode::swarm_timer_tick() {
     update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
+static std::vector<std::shared_ptr<request_t>>
+to_requests(std::vector<std::string>&& data) {
+
+    std::vector<std::shared_ptr<request_t>> result;
+    result.reserve(data.size());
+
+    std::transform(std::make_move_iterator(data.begin()),
+                   std::make_move_iterator(data.end()),
+                   std::back_inserter(result), make_push_all_request);
+    return result;
+}
+
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
     db_->retrieve("", all_entries, "");
 
-    const std::vector<std::string> data = serialize_messages(all_entries);
+    std::vector<std::string> data = serialize_messages(all_entries);
+    std::vector<std::shared_ptr<request_t>> batches = to_requests(std::move(data));
+
 
     for (const sn_record_t& sn : peers) {
-        for (const std::string& batch : data) {
-            relay_batch(batch, sn);
+        for (const std::shared_ptr<request_t>& batch : batches) {
+            relay_data(batch, sn);
         }
     }
 }
@@ -421,13 +434,14 @@ void ServiceNode::bootstrap_swarms(
         /// what if not found?
         const size_t idx = swarm_id_to_idx[swarm_id];
 
-        const std::vector<std::string> data = serialize_messages(kv.second);
+        std::vector<std::string> data = serialize_messages(kv.second);
+        std::vector<std::shared_ptr<request_t>> batches = to_requests(std::move(data));
 
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
         for (const sn_record_t& sn : all_swarms[idx].snodes) {
-            for (const std::string& batch : data) {
-                relay_batch(batch, sn);
+            for (const std::shared_ptr<request_t>& batch : batches) {
+                relay_data(batch, sn);
             }
         }
     }

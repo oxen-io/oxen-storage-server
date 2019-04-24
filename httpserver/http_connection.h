@@ -44,11 +44,7 @@ struct sn_response_t {
 using http_callback_t = std::function<void(sn_response_t)>;
 
 void make_http_request(boost::asio::io_context& ioc, std::string ip,
-                       uint16_t port, const request_t& req,
-                       http_callback_t&& cb);
-
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
-                       uint16_t port, std::string target, std::string body,
+                       uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
 
 void request_swarm_update(boost::asio::io_context& ioc,
@@ -66,7 +62,10 @@ class HttpClientSession
     boost::asio::steady_timer deadline_timer_;
 
     boost::beast::flat_buffer buffer_;
-    request_t req_;
+    /// NOTE: this needs to be a shared pointer since
+    /// it is very common for the same request to be
+    /// sent to multiple snodes
+    std::shared_ptr<request_t> req_;
     response_t res_;
 
     bool used_callback_ = false;
@@ -83,7 +82,7 @@ class HttpClientSession
   public:
     // Resolver and socket require an io_context
     HttpClientSession(boost::asio::io_context& ioc, const tcp::endpoint& ep,
-                      const request_t& req, http_callback_t&& cb);
+                      const std::shared_ptr<request_t>& req, http_callback_t&& cb);
 
     // initiate the client connection
     void start();
