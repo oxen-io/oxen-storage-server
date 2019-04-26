@@ -19,7 +19,7 @@ class Database;
 
 namespace service_node {
 namespace storage {
-class Item;
+struct Item;
 } // namespace storage
 } // namespace service_node
 

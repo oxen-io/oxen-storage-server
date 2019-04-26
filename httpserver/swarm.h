@@ -8,7 +8,7 @@
 
 namespace boost {
 namespace asio {
-struct io_context;
+class io_context;
 }
 } // namespace boost
 

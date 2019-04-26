@@ -585,9 +585,7 @@ void connection_t::handle_wrong_swarm(const std::string& pubKey) {
     BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
 }
 
-constexpr auto DB_POLL_INTERVAL = std::chrono::milliseconds(200);
 constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
-constexpr uint32_t DB_POLL_LIMIT = LONG_POLL_TIMEOUT / DB_POLL_INTERVAL;
 
 template <typename T>
 void connection_t::respond_with_messages(const std::vector<T>& items) {

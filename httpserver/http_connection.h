@@ -23,7 +23,7 @@ using response_t = http::response<http::string_body>;
 
 namespace service_node {
 namespace storage {
-class Item;
+struct Item;
 }
 } // namespace service_node
 
@@ -32,7 +32,7 @@ using service_node::storage::Item;
 namespace loki {
 using swarm_callback_t = std::function<void(const all_swarms_t&)>;
 
-class message_t;
+struct message_t;
 
 enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH };
 
@@ -115,15 +115,15 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // as opposed to directly after connection_t::process_request
     bool delay_response_ = false;
 
-    /// TODO: move these if possible
-    std::map<std::string, std::string> header_;
+    ServiceNode& service_node_;
+
+    ChannelEncryption<std::string>& channelCipher_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;
 
-    ServiceNode& service_node_;
-
-    ChannelEncryption<std::string>& channelCipher_;
+    /// TODO: move these if possible
+    std::map<std::string, std::string> header_;
 
     std::stringstream bodyStream_;
 
