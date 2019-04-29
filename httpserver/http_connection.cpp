@@ -40,6 +40,10 @@ namespace loki {
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
+// Note: on the client side the limit is different
+// as it is not encrypted/encoded there yet
+constexpr size_t MAX_MESSAGE_BODY = 3100;
+
 static void log_error(const error_code& ec) {
     BOOST_LOG_TRIVIAL(error)
         << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
@@ -415,6 +419,13 @@ void connection_t::process_store(const json& params) {
         response_.result(http::status::bad_request);
         bodyStream_ << "Pubkey must be 66 characters long";
         BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
+        return;
+    }
+
+    if (data.size() > MAX_MESSAGE_BODY) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "Message body exceeds maximum allowed length of " << MAX_MESSAGE_BODY;
+        BOOST_LOG_TRIVIAL(error) << "Message body too long: " << data.size();
         return;
     }
 
