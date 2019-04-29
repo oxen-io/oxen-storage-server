@@ -142,9 +142,6 @@ class ServiceNode {
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
 
-    /// remove all data that doesn't belong to this swarm
-    void purge_outdated();
-
     /// return all messages for a particular PK (in JSON)
     bool
     get_all_messages(std::vector<service_node::storage::Item>& all_entries);

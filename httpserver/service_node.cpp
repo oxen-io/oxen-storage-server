@@ -309,8 +309,6 @@ void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
         /// Go through all our PK and push them accordingly
         salvage_data();
     }
-
-    this->purge_outdated();
 }
 
 void ServiceNode::swarm_timer_tick() {
@@ -464,12 +462,6 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) {
     BOOST_LOG_TRIVIAL(trace) << "get all messages";
 
     return db_->retrieve("", all_entries, "");
-}
-
-void ServiceNode::purge_outdated() {
-
-    /// TODO: use database instead, for now it is a no-op
-    return;
 }
 
 void ServiceNode::process_push_batch(const std::string& blob) {

@@ -310,9 +310,6 @@ void connection_t::process_request() {
         } else if (target == "/quit") {
             BOOST_LOG_TRIVIAL(info) << "got /quit request";
             ioc_.stop();
-        } else if (target == "/purge") {
-            BOOST_LOG_TRIVIAL(trace) << "got /purge request";
-            service_node_.purge_outdated();
         }
 #endif
         else {
