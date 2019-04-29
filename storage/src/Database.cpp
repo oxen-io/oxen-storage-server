@@ -88,11 +88,13 @@ void Database::open_and_prepare(const std::string& db_path) {
         "CREATE UNIQUE INDEX IF NOT EXISTS `idx_data_hash` ON `Data` (`Hash`);"
         "CREATE INDEX IF NOT EXISTS `idx_data_owner` on `Data` ('Owner');";
 
-    char** errMsg = nullptr;
-    rc = sqlite3_exec(db, create_table_query, nullptr, nullptr, errMsg);
+    char* errMsg = nullptr;
+    rc = sqlite3_exec(db, create_table_query, nullptr, nullptr, &errMsg);
     if (rc) {
-        printf("%s\n", *errMsg);
-        sqlite3_free(errMsg);
+        if (errMsg) {
+            printf("%s\n", errMsg);
+            sqlite3_free(errMsg);
+        }
         throw std::runtime_error("Can't create table");
     }
 
