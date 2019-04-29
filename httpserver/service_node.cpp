@@ -504,8 +504,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
     if (!swarm_)
         return false;
-    const auto& all_swarms = swarm_->all_swarms();
-    return swarm_->is_pubkey_for_us(all_swarms, pk);
+    return swarm_->is_pubkey_for_us(pk);
 }
 
 std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
