@@ -144,6 +144,7 @@ void request_swarm_update(boost::asio::io_context& ioc,
     req->body() = req_body;
     req->method(http::verb::post);
     req->target(target);
+    req->prepare_payload();
 
     make_http_request(ioc, ip, port, req,
                       [cb = std::move(cb)](const sn_response_t&& res) {
