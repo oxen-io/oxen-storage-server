@@ -35,7 +35,7 @@ static const LogLevelMap logLevelMap{
 
 void usage(char* argv[]) {
     std::cerr << "Usage: " << argv[0]
-              << " <address> <port> [--lokid-key path] [--db-location "
+              << " <address> <port> --lokid-key path [--db-location "
                  "path] [--log-level level]\n";
     std::cerr << "  For IPv4, try:\n";
     std::cerr << "    receiver 0.0.0.0 80\n";
