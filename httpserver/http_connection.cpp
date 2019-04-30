@@ -83,11 +83,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
 
     try {
-        const json service_node_states_string = body["result"]["as_json"];
-        const std::string list_string =
-            service_node_states_string.get<std::string>();
-        const json service_node_states =
-            json::parse(list_string, nullptr, false);
+        const json service_node_states = body["result"]["service_node_states"];
 
         for (const auto& sn_json : service_node_states) {
             const std::string pubkey = sn_json["pubkey"].get<std::string>();
@@ -134,8 +130,7 @@ void request_swarm_update(boost::asio::io_context& ioc,
             "id":"0",
             "method":"get_service_nodes",
             "params": {
-                "sevice_node_pubkeys": [],
-                "include_json": true
+                "sevice_node_pubkeys": []
             }
         })#";
 
