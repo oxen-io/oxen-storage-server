@@ -41,7 +41,11 @@ namespace loki {
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
 // Note: on the client side the limit is different
-// as it is not encrypted/encoded there yet
+// as it is not encrypted/encoded there yet.
+// The choice is somewhat arbitrary but it roughly
+// corresponds to the client-side limit of 2000 chars
+// of unencrypted message body in our experiments
+// (rounded up)
 constexpr size_t MAX_MESSAGE_BODY = 3100;
 
 static void log_error(const error_code& ec) {
