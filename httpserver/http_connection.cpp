@@ -309,6 +309,10 @@ void connection_t::process_request() {
             process_retrieve_all();
         } else if (target == "/quit") {
             BOOST_LOG_TRIVIAL(info) << "got /quit request";
+            // a bit of a hack: sending response manually
+            delay_response_ = true;
+            response_.result(http::status::ok);
+            write_response();
             ioc_.stop();
         }
 #endif
@@ -421,7 +425,8 @@ void connection_t::process_store(const json& params) {
 
     if (data.size() > MAX_MESSAGE_BODY) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "Message body exceeds maximum allowed length of " << MAX_MESSAGE_BODY;
+        bodyStream_ << "Message body exceeds maximum allowed length of "
+                    << MAX_MESSAGE_BODY;
         BOOST_LOG_TRIVIAL(error) << "Message body too long: " << data.size();
         return;
     }

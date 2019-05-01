@@ -82,7 +82,8 @@ class HttpClientSession
   public:
     // Resolver and socket require an io_context
     HttpClientSession(boost::asio::io_context& ioc, const tcp::endpoint& ep,
-                      const std::shared_ptr<request_t>& req, http_callback_t&& cb);
+                      const std::shared_ptr<request_t>& req,
+                      http_callback_t&& cb);
 
     // initiate the client connection
     void start();

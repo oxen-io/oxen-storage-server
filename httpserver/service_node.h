@@ -107,7 +107,7 @@ class ServiceNode {
 
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,
-                   sn_record_t address) const;
+                    sn_record_t address) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,

@@ -54,7 +54,8 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
             /// Save some references before possibly moved out of `self`
             const auto& sn = self->sn_;
             auto& ioc = self->ioc_;
-            /// TODO: investigate whether we can get rid of the extra ptr copy here?
+            /// TODO: investigate whether we can get rid of the extra ptr copy
+            /// here?
             const std::shared_ptr<request_t> req = self->request_;
 
             /// Request will be copied here
@@ -114,7 +115,8 @@ std::string hash_data(std::string data) {
     return std::string(ss.str());
 }
 
-static std::shared_ptr<request_t> make_post_request(const char* target, std::string&& data) {
+static std::shared_ptr<request_t> make_post_request(const char* target,
+                                                    std::string&& data) {
     auto req = std::make_shared<request_t>();
     req->body() = std::move(data);
     req->method(http::verb::post);
@@ -156,7 +158,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 ServiceNode::~ServiceNode() = default;
 
 void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
-                            sn_record_t sn) const {
+                             sn_record_t sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
@@ -167,10 +169,12 @@ void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
 
                 if (res.error_code == SNodeError::NO_REACH) {
                     BOOST_LOG_TRIVIAL(error)
-                        << "Could not relay data to: " << sn << " (Unreachable)";
+                        << "Could not relay data to: " << sn
+                        << " (Unreachable)";
                 } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                    BOOST_LOG_TRIVIAL(error) << "Could not relay data to: " << sn
-                                             << " (Generic error)";
+                    BOOST_LOG_TRIVIAL(error)
+                        << "Could not relay data to: " << sn
+                        << " (Generic error)";
                 }
 
                 std::make_shared<FailedRequestHandler>(ioc_, sn, req)
@@ -337,8 +341,8 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     db_->retrieve("", all_entries, "");
 
     std::vector<std::string> data = serialize_messages(all_entries);
-    std::vector<std::shared_ptr<request_t>> batches = to_requests(std::move(data));
-
+    std::vector<std::shared_ptr<request_t>> batches =
+        to_requests(std::move(data));
 
     for (const sn_record_t& sn : peers) {
         for (const std::shared_ptr<request_t>& batch : batches) {
@@ -433,7 +437,8 @@ void ServiceNode::bootstrap_swarms(
         const size_t idx = swarm_id_to_idx[swarm_id];
 
         std::vector<std::string> data = serialize_messages(kv.second);
-        std::vector<std::shared_ptr<request_t>> batches = to_requests(std::move(data));
+        std::vector<std::shared_ptr<request_t>> batches =
+            to_requests(std::move(data));
 
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
