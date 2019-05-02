@@ -12,9 +12,9 @@ extern "C" {
 
 namespace fs = boost::filesystem;
 
-constexpr size_t KEY_LENGTH = 32;
+namespace loki {
 
-std::vector<uint8_t> parseLokidKey(const std::string& path) {
+private_key_t parseLokidKey(const std::string& path) {
     fs::path p(path);
 
     if (p.empty()) {
@@ -36,24 +36,29 @@ std::vector<uint8_t> parseLokidKey(const std::string& path) {
         throw std::runtime_error("Could not open the key file");
     }
 
-    const std::vector<uint8_t> private_key(
+    const std::vector<uint8_t> file_content(
         std::istreambuf_iterator<char>(input), {});
 
-    if (private_key.size() != KEY_LENGTH) {
+    if (file_content.size() != KEY_LENGTH) {
         auto err_msg = boost::str(
             boost::format("Bad private key length: %1% (expected: %2%)") %
-            private_key.size() % KEY_LENGTH);
+            file_content.size() % KEY_LENGTH);
         throw std::runtime_error(err_msg);
     }
+    
+    private_key_t private_key;
+    std::copy(file_content.begin(), file_content.end(), private_key.begin());
 
     return private_key;
 }
 
-std::vector<uint8_t> calcPublicKey(const std::vector<uint8_t>& private_key) {
+public_key_t calcPublicKey(const private_key_t& private_key) {
     ge25519_p3 A;
     ge25519_scalarmult_base(&A, private_key.data());
-    std::vector<uint8_t> publicKey(KEY_LENGTH);
+    public_key_t publicKey;
     ge25519_p3_tobytes(publicKey.data(), &A);
 
     return publicKey;
 }
+
+} // namespace loki

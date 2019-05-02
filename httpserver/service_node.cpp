@@ -135,20 +135,23 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
 }
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                         const std::vector<uint8_t>& public_key,
+                         const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location)
     : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
-      update_timer_(ioc, std::chrono::milliseconds(100)) {
+      update_timer_(ioc, std::chrono::milliseconds(100)),
+      lokid_key_pair_(lokid_key_pair) {
 
 #ifndef INTEGRATION_TEST
     char buf[64] = {0};
     std::string our_address;
-    if (char const* dest = util::base32z_encode(public_key, buf)) {
+    if (char const* dest =
+            util::base32z_encode(lokid_key_pair_.public_key, buf)) {
         our_address.append(dest);
         our_address.append(".snode");
+        our_address_.address = dest;
     }
+    // TODO: fail hard if we can't encode our public key
     BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
-    our_address_.address = our_address;
 #endif
     our_address_.port = port;
 

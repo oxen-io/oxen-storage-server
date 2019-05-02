@@ -32,6 +32,8 @@ namespace http_server {
 class connection_t;
 }
 
+struct lokid_key_pair_t;
+
 using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
 class Swarm;
@@ -85,6 +87,8 @@ class ServiceNode {
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
+    const loki::lokid_key_pair_t& lokid_key_pair_;
+
     void push_message(const message_t& msg);
 
     void save_if_new(const message_t& msg);
@@ -111,7 +115,7 @@ class ServiceNode {
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                const std::vector<uint8_t>& public_key,
+                const loki::lokid_key_pair_t& key_pair,
                 const std::string& db_location);
 
     ~ServiceNode();
