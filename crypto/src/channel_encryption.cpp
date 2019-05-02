@@ -16,7 +16,7 @@ std::vector<uint8_t> hexToBytes(const std::string& hex) {
 
 template <typename T>
 ChannelEncryption<T>::ChannelEncryption(const std::vector<uint8_t>& private_key)
-: private_key_(private_key) {}
+    : private_key_(private_key) {}
 
 template <typename T>
 std::vector<uint8_t> ChannelEncryption<T>::calculateSharedSecret(

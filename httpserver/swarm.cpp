@@ -137,9 +137,8 @@ static uint64_t hex_to_u64(const std::string& pk) {
     return res;
 }
 
-bool Swarm::is_pubkey_for_us(const std::vector<SwarmInfo>& all_swarms,
-                             const std::string& pk) const {
-    return cur_swarm_id_ == get_swarm_by_pk(all_swarms, pk);
+bool Swarm::is_pubkey_for_us(const std::string& pk) const {
+    return cur_swarm_id_ == get_swarm_by_pk(all_cur_swarms_, pk);
 }
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,

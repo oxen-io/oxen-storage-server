@@ -40,6 +40,14 @@ namespace loki {
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
+// Note: on the client side the limit is different
+// as it is not encrypted/encoded there yet.
+// The choice is somewhat arbitrary but it roughly
+// corresponds to the client-side limit of 2000 chars
+// of unencrypted message body in our experiments
+// (rounded up)
+constexpr size_t MAX_MESSAGE_BODY = 3100;
+
 static void log_error(const error_code& ec) {
     BOOST_LOG_TRIVIAL(error)
         << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
@@ -292,8 +300,6 @@ void connection_t::process_request() {
             service_node_.process_push(messages.front());
 
             response_.result(http::status::ok);
-        } else if (target == "/retrieve_all") {
-            process_retrieve_all();
         } else if (target == "/v1/swarms/push_batch") {
             response_.result(http::status::ok);
 
@@ -301,18 +307,20 @@ void connection_t::process_request() {
 
             service_node_.process_push_batch(body);
 
-        } else if (target == "/test") {
-            // response_.body() = "all good!";
-            response_.result(http::status::ok);
-            bodyStream_ << "All good!";
+        }
+#ifdef INTEGRATION_TEST
+        else if (target == "/retrieve_all") {
+            process_retrieve_all();
         } else if (target == "/quit") {
             BOOST_LOG_TRIVIAL(info) << "got /quit request";
+            // a bit of a hack: sending response manually
+            delay_response_ = true;
+            response_.result(http::status::ok);
+            write_response();
             ioc_.stop();
-            // exit(0);
-        } else if (target == "/purge") {
-            BOOST_LOG_TRIVIAL(trace) << "got /purge request";
-            service_node_.purge_outdated();
-        } else {
+        }
+#endif
+        else {
             BOOST_LOG_TRIVIAL(error) << "unknown target: " << target;
             response_.result(http::status::not_found);
         }
@@ -419,12 +427,22 @@ void connection_t::process_store(const json& params) {
         return;
     }
 
+    if (data.size() > MAX_MESSAGE_BODY) {
+        response_.result(http::status::bad_request);
+        bodyStream_ << "Message body exceeds maximum allowed length of "
+                    << MAX_MESSAGE_BODY;
+        BOOST_LOG_TRIVIAL(error) << "Message body too long: " << data.size();
+        return;
+    }
+
     if (!service_node_.is_pubkey_for_us(pubKey)) {
         handle_wrong_swarm(pubKey);
         return;
     }
 
+#ifdef INTEGRATION_TEST
     BOOST_LOG_TRIVIAL(trace) << "store body: " << data;
+#endif
 
     uint64_t ttlInt;
     if (!util::parseTTL(ttl, ttlInt)) {
@@ -786,10 +804,10 @@ void connection_t::register_deadline() {
 /// TODO: make generic, avoid message copy
 HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const tcp::endpoint& ep,
-                                     const std::shared_ptr<request_t>& req, http_callback_t&& cb)
+                                     const std::shared_ptr<request_t>& req,
+                                     http_callback_t&& cb)
     : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
-      deadline_timer_(ioc), req_(req) {
-}
+      deadline_timer_(ioc), req_(req) {}
 
 void HttpClientSession::on_connect() {
 
@@ -835,7 +853,8 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     } else {
 
-        /// Do we need to handle `operation aborted` separately here (due to deadline timer)?
+        /// Do we need to handle `operation aborted` separately here (due to
+        /// deadline timer)?
         BOOST_LOG_TRIVIAL(error)
             << "Error on read: " << ec.value() << ". Message: " << ec.message();
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);

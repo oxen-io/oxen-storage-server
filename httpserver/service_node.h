@@ -107,7 +107,7 @@ class ServiceNode {
 
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,
-                   sn_record_t address) const;
+                    sn_record_t address) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
@@ -141,9 +141,6 @@ class ServiceNode {
     void swarm_timer_tick();
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
-
-    /// remove all data that doesn't belong to this swarm
-    void purge_outdated();
 
     /// return all messages for a particular PK (in JSON)
     bool
