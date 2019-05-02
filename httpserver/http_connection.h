@@ -43,7 +43,7 @@ struct sn_response_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
-void make_http_request(boost::asio::io_context& ioc, std::string ip,
+void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
 
@@ -118,7 +118,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     ServiceNode& service_node_;
 
-    ChannelEncryption<std::string>& channelCipher_;
+    ChannelEncryption<std::string>& channel_cipher_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;
@@ -126,7 +126,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// TODO: move these if possible
     std::map<std::string, std::string> header_;
 
-    std::stringstream bodyStream_;
+    std::stringstream body_stream_;
 
     // Note that we are only sending a single message through the
     // notification mechanism. If we somehow accumulated multiple
@@ -144,7 +144,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
   public:
     connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                  ServiceNode& sn,
-                 ChannelEncryption<std::string>& channelEncryption);
+                 ChannelEncryption<std::string>& channel_encryption);
 
     ~connection_t();
 

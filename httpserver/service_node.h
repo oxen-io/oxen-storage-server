@@ -95,7 +95,7 @@ class ServiceNode {
     /// request swarm info from the blockchain
     void update_swarms();
 
-    void on_swarm_update(all_swarms_t all_swarms);
+    void on_swarm_update(const all_swarms_t& all_swarms);
 
     void bootstrap_peers(const std::vector<sn_record_t>& peers) const;
 
@@ -107,12 +107,12 @@ class ServiceNode {
 
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,
-                    sn_record_t address) const;
+                    const sn_record_t& address) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                 const std::vector<uint8_t>& public_key,
-                const std::string& dbLocation);
+                const std::string& db_location);
 
     ~ServiceNode();
 
