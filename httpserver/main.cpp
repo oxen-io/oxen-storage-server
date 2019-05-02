@@ -129,8 +129,11 @@ int main(int argc, char* argv[]) {
         /// Should run http server
         loki::http_server::run(ioc, ip, port, service_node, channel_encryption);
 
-    } catch (std::exception const& e) {
+    } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
+        return EXIT_FAILURE;
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(fatal) << "Unknown exception caught in main.";
         return EXIT_FAILURE;
     }
 }
