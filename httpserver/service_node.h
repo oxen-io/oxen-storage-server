@@ -14,6 +14,8 @@
 #include "swarm.h"
 
 static constexpr uint16_t SNODE_PORT = 8080;
+static constexpr auto LOKI_SENDER_SNODE_PUBKEY = "X-Loki-Snode-PubKey";
+static constexpr auto LOKI_SNODE_SIGNATURE = "X-Loki-Snode-Signature";
 
 class Database;
 
@@ -145,6 +147,8 @@ class ServiceNode {
     void swarm_timer_tick();
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
+
+    bool is_snode_address_known(const std::string&);
 
     /// return all messages for a particular PK (in JSON)
     bool

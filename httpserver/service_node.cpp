@@ -1,25 +1,20 @@
 #include "service_node.h"
 
 #include "Database.hpp"
-#include "lokid_key.h"
-#include "utils.hpp"
-
 #include "Item.hpp"
 #include "http_connection.h"
+#include "lokid_key.h"
+#include "serialization.h"
+#include "signature.hpp"
+#include "utils.hpp"
 
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
-
 #include <boost/log/trivial.hpp>
-
-/// move this out
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-
-#include "serialization.h"
 
 using service_node::storage::Item;
 
@@ -78,42 +73,6 @@ FailedRequestHandler::~FailedRequestHandler() {
 }
 
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
-
-/// TODO: can we reuse context (reset it)?
-std::string hash_data(std::string data) {
-
-    unsigned char result[EVP_MAX_MD_SIZE];
-
-    /// Allocate and init digest context
-    EVP_MD_CTX* mdctx = EVP_MD_CTX_create();
-
-    /// Set the method
-    EVP_DigestInit_ex(mdctx, EVP_sha512(), NULL);
-
-    /// Do the hashing, can be called multiple times (?)
-    /// to hash
-    EVP_DigestUpdate(mdctx, data.data(), data.size());
-
-    unsigned int md_len;
-
-    EVP_DigestFinal_ex(mdctx, result, &md_len);
-
-    /// Clean up the context
-    EVP_MD_CTX_destroy(mdctx);
-
-    /// Not sure if this is needed
-    EVP_cleanup();
-
-    /// store into the string
-    /// TODO: use binary instead?
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < EVP_MAX_MD_SIZE; i++) {
-        ss << std::setw(2) << static_cast<unsigned>(result[i]);
-    }
-
-    return std::string(ss.str());
-}
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
@@ -347,6 +306,22 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     std::vector<std::shared_ptr<request_t>> batches =
         to_requests(std::move(data));
 
+    /// Attach signature and pubkey
+    assert(data.size() == batches.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+        const auto hash = signature::hash_data(data[i]);
+        signature::signature sig;
+        signature::generate_signature(hash, lokid_key_pair_.public_key,
+                                      lokid_key_pair_.private_key, sig);
+        std::string raw_sig;
+        raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+        raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+        const std::string sig_b64 =
+            boost::beast::detail::base64_encode(raw_sig);
+        batches[i]->set(LOKI_SNODE_SIGNATURE, sig_b64);
+        batches[i]->set(LOKI_SENDER_SNODE_PUBKEY, our_address_.address);
+    }
+
     for (const sn_record_t& sn : peers) {
         for (const std::shared_ptr<request_t>& batch : batches) {
             relay_data(batch, sn);
@@ -443,6 +418,21 @@ void ServiceNode::bootstrap_swarms(
         std::vector<std::shared_ptr<request_t>> batches =
             to_requests(std::move(data));
 
+        /// Attach signature and pubkey
+        for (size_t i = 0; i < data.size(); ++i) {
+            const auto hash = signature::hash_data(data[i]);
+            signature::signature sig;
+            signature::generate_signature(hash, lokid_key_pair_.public_key,
+                                          lokid_key_pair_.private_key, sig);
+            std::string raw_sig;
+            raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+            raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+            const std::string sig_b64 =
+                boost::beast::detail::base64_encode(raw_sig);
+            batches[i]->set(LOKI_SNODE_SIGNATURE, sig_b64);
+            batches[i]->set(LOKI_SENDER_SNODE_PUBKEY, our_address_.address);
+        }
+
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
         for (const sn_record_t& sn : all_swarms[idx].snodes) {
@@ -488,6 +478,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     std::vector<Item> items;
     items.reserve(messages.size());
 
+    // TODO: avoid copying m.data
     // Promoting message_t to Item:
     std::transform(messages.begin(), messages.end(), std::back_inserter(items),
                    [](const message_t& m) {
@@ -524,6 +515,19 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
     BOOST_LOG_TRIVIAL(fatal) << "Something went wrong in get_snodes_by_pk";
 
     return {};
+}
+
+bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
+    const auto& all_swarms = swarm_->all_swarms();
+
+    return std::any_of(all_swarms.begin(), all_swarms.end(),
+                       [&sn_address](const SwarmInfo& swarmInfo) {
+                           return std::any_of(
+                               swarmInfo.snodes.begin(), swarmInfo.snodes.end(),
+                               [&sn_address](const sn_record_t& sn_record) {
+                                   return sn_record.address == sn_address;
+                               });
+                       });
 }
 
 } // namespace loki

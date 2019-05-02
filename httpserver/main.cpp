@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <utility> // for std::pair
@@ -137,10 +138,15 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context ioc{1};
 
         // ed25519 key
-        const std::vector<uint8_t> private_key = parseLokidKey(lokid_key_path);
-        ChannelEncryption<std::string> channel_encryption(private_key);
-        const std::vector<uint8_t> public_key = calcPublicKey(private_key);
-        loki::ServiceNode service_node(ioc, port, public_key, db_location);
+        const auto private_key = loki::parseLokidKey(lokid_key_path);
+        const auto public_key = loki::calcPublicKey(private_key);
+
+        // TODO: avoid conversion to vector
+        const std::vector<uint8_t> priv(private_key.begin(), private_key.end());
+        ChannelEncryption<std::string> channel_encryption(priv);
+
+        loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
+        loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location);
 
         /// Should run http server
         loki::http_server::run(ioc, ip, port, service_node, channel_encryption);

@@ -18,9 +18,9 @@
 #include "Item.hpp"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
-#include "service_node.h"
-
 #include "serialization.h"
+#include "service_node.h"
+#include "signature.hpp"
 
 using json = nlohmann::json;
 
@@ -30,7 +30,7 @@ using namespace service_node;
 
 /// +===========================================
 
-static const std::string LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
+static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
 
 using service_node::storage::Item;
 
@@ -257,6 +257,36 @@ void connection_t::read_request() {
     http::async_read(socket_, buffer_, request_, on_data);
 }
 
+bool connection_t::verify_signature() {
+    const std::vector<std::string> keys = {LOKI_SENDER_SNODE_PUBKEY,
+                                           LOKI_SNODE_SIGNATURE};
+    if (!parse_header(keys)) {
+        BOOST_LOG_TRIVIAL(error) << "Missing signature headers";
+        response_.body() = "Missing signature headers";
+        response_.result(http::status::bad_request);
+        return false;
+    }
+
+    const auto& signature = header_[LOKI_SNODE_SIGNATURE];
+    const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY];
+
+    /// Known service node
+    const std::string snode_address = public_key_b32z + std::string(".snode");
+    if (!service_node_.is_snode_address_known(snode_address)) {
+        response_.body() = "Unknown service node";
+        response_.result(http::status::unauthorized);
+        return false;
+    }
+
+    const auto batch_hash = signature::hash_data(request_.body());
+    bool ok =
+        signature::check_signature(signature, batch_hash, public_key_b32z);
+    if (!ok) {
+        BOOST_LOG_TRIVIAL(warning) << "Could not validate batch signature";
+    }
+    return ok;
+}
+
 // Determine what needs to be done with the request message.
 void connection_t::process_request() {
 
@@ -291,6 +321,12 @@ void connection_t::process_request() {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
 
+            if (!verify_signature()) {
+                response_.result(http::status::bad_request);
+                response_.body() = "Could not validate batch signature";
+                return;
+            }
+
             /// NOTE:: we only expect one message here, but
             /// for now lets reuse the function we already have
             std::vector<message_t> messages =
@@ -302,6 +338,11 @@ void connection_t::process_request() {
 
             response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_batch") {
+            if (!verify_signature()) {
+                response_.result(http::status::bad_request);
+                response_.body() = "Could not validate batch signature";
+                return;
+            }
             response_.result(http::status::ok);
             service_node_.process_push_batch(request_.body());
 

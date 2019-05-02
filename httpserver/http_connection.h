@@ -192,6 +192,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     bool parse_header(T key_list);
 
     void handle_wrong_swarm(const std::string& pubKey);
+
+    bool verify_signature();
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
