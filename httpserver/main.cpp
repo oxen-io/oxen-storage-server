@@ -86,10 +86,26 @@ int main(int argc, char* argv[]) {
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
         if (vm.count("output-log")) {
-            auto sink = logging::add_file_log(log_location + ".out");
-            sink->locked_backend()->auto_flush(true);
-            BOOST_LOG_TRIVIAL(info)
-                << "Outputting logs to " << log_location << ".out";
+
+            // TODO: remove this line once confirmed that no one
+            // is relying on this
+            log_location += ".out";
+
+            // Hacky, but I couldn't find a way to recover from
+            // boost throwing on invalid file and apparently poisoning
+            // the logging mechanism...
+            std::ofstream input(log_location);
+
+            if (input.is_open()) {
+                input.close();
+                auto sink = logging::add_file_log(log_location);
+                sink->locked_backend()->auto_flush(true);
+                BOOST_LOG_TRIVIAL(info)
+                    << "Outputting logs to " << log_location;
+            } else {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Could not open " << log_location;
+            }
         }
 
         logging::trivial::severity_level logLevel;
@@ -130,6 +146,8 @@ int main(int argc, char* argv[]) {
         loki::http_server::run(ioc, ip, port, service_node, channel_encryption);
 
     } catch (const std::exception& e) {
+        // It seems possible for logging to throw its own exception,
+        // in which case it will be propagated to libc...
         BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
         return EXIT_FAILURE;
     } catch (...) {
