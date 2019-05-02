@@ -136,8 +136,8 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const std::vector<uint8_t>& public_key,
-                         const std::string& dbLocation)
-    : ioc_(ioc), db_(std::make_unique<Database>(dbLocation)),
+                         const std::string& db_location)
+    : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
       update_timer_(ioc, std::chrono::milliseconds(100)) {
 
 #ifndef INTEGRATION_TEST
@@ -158,7 +158,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 ServiceNode::~ServiceNode() = default;
 
 void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
-                             sn_record_t sn) const {
+                             const sn_record_t& sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
@@ -293,7 +293,7 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     reset_listeners();
 }
 
-void ServiceNode::on_swarm_update(all_swarms_t all_swarms) {
+void ServiceNode::on_swarm_update(const all_swarms_t& all_swarms) {
     if (!swarm_) {
         BOOST_LOG_TRIVIAL(trace) << "initialized our swarm";
         swarm_ = std::make_unique<Swarm>(our_address_);

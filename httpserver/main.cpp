@@ -68,33 +68,34 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        std::string lokidKeyPath;
-        std::string dbLocation(".");
-        std::string logLocation;
-        std::string logLevelString("info");
+        std::string lokid_key_path;
+        std::string db_location(".");
+        std::string log_location;
+        std::string log_level_string("info");
 
         const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
         std::string ip = argv[1];
 
         po::options_description desc;
-        desc.add_options()("lokid-key", po::value(&lokidKeyPath),
-                           "")("db-location", po::value(&dbLocation),
-                               "")("output-log", po::value(&logLocation), "")(
-            "log-level", po::value(&logLevelString), "");
+        desc.add_options()("lokid-key", po::value(&lokid_key_path),
+                           "")("db-location", po::value(&db_location),
+                               "")("output-log", po::value(&log_location), "")(
+            "log-level", po::value(&log_level_string), "");
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
         if (vm.count("output-log")) {
-            auto sink = logging::add_file_log(logLocation + ".out");
+            auto sink = logging::add_file_log(log_location + ".out");
             sink->locked_backend()->auto_flush(true);
             BOOST_LOG_TRIVIAL(info)
-                << "Outputting logs to " << logLocation << ".out";
+                << "Outputting logs to " << log_location << ".out";
         }
 
         logging::trivial::severity_level logLevel;
-        if (!parseLogLevel(logLevelString, logLevel)) {
-            BOOST_LOG_TRIVIAL(error) << "Incorrect log level" << logLevelString;
+        if (!parseLogLevel(log_level_string, logLevel)) {
+            BOOST_LOG_TRIVIAL(error)
+                << "Incorrect log level" << log_level_string;
             usage(argv);
             return EXIT_FAILURE;
         }
@@ -102,16 +103,16 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        BOOST_LOG_TRIVIAL(info) << "Setting log level to " << logLevelString;
+        BOOST_LOG_TRIVIAL(info) << "Setting log level to " << log_level_string;
 
         if (vm.count("lokid-key")) {
             BOOST_LOG_TRIVIAL(info)
-                << "Setting Lokid key path to " << lokidKeyPath;
+                << "Setting Lokid key path to " << lokid_key_path;
         }
 
         if (vm.count("db-location")) {
             BOOST_LOG_TRIVIAL(info)
-                << "Setting database location to " << dbLocation;
+                << "Setting database location to " << db_location;
         }
 
         BOOST_LOG_TRIVIAL(info)
@@ -120,13 +121,13 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context ioc{1};
 
         // ed25519 key
-        const std::vector<uint8_t> private_key = parseLokidKey(lokidKeyPath);
-        ChannelEncryption<std::string> channelEncryption(private_key);
+        const std::vector<uint8_t> private_key = parseLokidKey(lokid_key_path);
+        ChannelEncryption<std::string> channel_encryption(private_key);
         const std::vector<uint8_t> public_key = calcPublicKey(private_key);
-        loki::ServiceNode service_node(ioc, port, public_key, dbLocation);
+        loki::ServiceNode service_node(ioc, port, public_key, db_location);
 
         /// Should run http server
-        loki::http_server::run(ioc, ip, port, service_node, channelEncryption);
+        loki::http_server::run(ioc, ip, port, service_node, channel_encryption);
 
     } catch (std::exception const& e) {
         BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();

@@ -53,8 +53,9 @@ static void log_error(const error_code& ec) {
         << boost::format("Error(%1%): %2%\n") % ec.value() % ec.message();
 }
 
-void make_http_request(boost::asio::io_context& ioc, std::string sn_address,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
+void make_http_request(boost::asio::io_context& ioc,
+                       const std::string& sn_address, uint16_t port,
+                       const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb) {
 
     error_code ec;
@@ -163,24 +164,24 @@ namespace http_server {
 static void
 accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
                   tcp::socket& socket, ServiceNode& sn,
-                  ChannelEncryption<std::string>& channelEncryption) {
+                  ChannelEncryption<std::string>& channel_encryption) {
 
     acceptor.async_accept(socket, [&](const error_code& ec) {
         BOOST_LOG_TRIVIAL(trace) << "connection accepted";
         if (!ec)
             std::make_shared<connection_t>(ioc, std::move(socket), sn,
-                                           channelEncryption)
+                                           channel_encryption)
                 ->start();
 
         if (ec)
             log_error(ec);
 
-        accept_connection(ioc, acceptor, socket, sn, channelEncryption);
+        accept_connection(ioc, acceptor, socket, sn, channel_encryption);
     });
 }
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption) {
+         ServiceNode& sn, ChannelEncryption<std::string>& channel_encryption) {
 
     BOOST_LOG_TRIVIAL(trace) << "http server run";
 
@@ -190,7 +191,7 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
     tcp::acceptor acceptor{ioc, {address, port}};
     tcp::socket socket{ioc};
 
-    accept_connection(ioc, acceptor, socket, sn, channelEncryption);
+    accept_connection(ioc, acceptor, socket, sn, channel_encryption);
 
     ioc.run();
 }
@@ -199,9 +200,9 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
 connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ServiceNode& sn,
-                           ChannelEncryption<std::string>& channelEncryption)
+                           ChannelEncryption<std::string>& channel_encryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
-      channelCipher_(channelEncryption), deadline_(ioc, SESSION_TIME_LIMIT),
+      channel_cipher_(channel_encryption), deadline_(ioc, SESSION_TIME_LIMIT),
       notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
@@ -302,10 +303,7 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_batch") {
             response_.result(http::status::ok);
-
-            std::string body = request_.body();
-
-            service_node_.process_push_batch(body);
+            service_node_.process_push_batch(request_.body());
 
         }
 #ifdef INTEGRATION_TEST
@@ -346,14 +344,14 @@ static std::string obfuscate_pubkey(const std::string& pk) {
 // Asynchronously transmit the response message.
 void connection_t::write_response() {
 
-    std::string body = bodyStream_.str();
+    std::string body = body_stream_.str();
 
 #ifndef DISABLE_ENCRYPTION
     const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
     if (it != header_.end()) {
         const std::string& ephemKey = it->second;
         try {
-            body = channelCipher_.encrypt(body, ephemKey);
+            body = channel_cipher_.encrypt(body, ephemKey);
             body = boost::beast::detail::base64_encode(body);
             response_.set(http::field::content_type, "text/plain");
         } catch (const std::exception& e) {
@@ -388,7 +386,7 @@ bool connection_t::parse_header(T key_list) {
         if (it == request_.end()) {
             response_.result(http::status::bad_request);
             response_.set(http::field::content_type, "text/plain");
-            bodyStream_ << "Missing field in header : " << key;
+            body_stream_ << "Missing field in header : " << key;
 
             BOOST_LOG_TRIVIAL(error) << "Missing field in header : " << key;
             return false;
@@ -406,8 +404,8 @@ void connection_t::process_store(const json& params) {
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            bodyStream_ << boost::format("invalid json: no `%1%` field") %
-                               field;
+            body_stream_ << boost::format("invalid json: no `%1%` field") %
+                                field;
             BOOST_LOG_TRIVIAL(error)
                 << boost::format("Bad client request: no `%1%` field") % field;
             return;
@@ -422,15 +420,15 @@ void connection_t::process_store(const json& params) {
 
     if (pubKey.size() != 66) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "Pubkey must be 66 characters long";
+        body_stream_ << "Pubkey must be 66 characters long";
         BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
         return;
     }
 
     if (data.size() > MAX_MESSAGE_BODY) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "Message body exceeds maximum allowed length of "
-                    << MAX_MESSAGE_BODY;
+        body_stream_ << "Message body exceeds maximum allowed length of "
+                     << MAX_MESSAGE_BODY;
         BOOST_LOG_TRIVIAL(error) << "Message body too long: " << data.size();
         return;
     }
@@ -448,7 +446,7 @@ void connection_t::process_store(const json& params) {
     if (!util::parseTTL(ttl, ttlInt)) {
         response_.result(http::status::forbidden);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << "Provided TTL is not valid.";
+        body_stream_ << "Provided TTL is not valid.";
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid TTL " << ttl;
         return;
     }
@@ -456,7 +454,7 @@ void connection_t::process_store(const json& params) {
     if (!util::parseTimestamp(timestamp, ttlInt, timestampInt)) {
         response_.result(http::status::not_acceptable);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << "Timestamp error: check your clock";
+        body_stream_ << "Timestamp error: check your clock";
         BOOST_LOG_TRIVIAL(error)
             << "Forbidden. Invalid Timestamp " << timestamp;
         return;
@@ -471,7 +469,7 @@ void connection_t::process_store(const json& params) {
     if (!validPoW) {
         response_.result(http::status::forbidden);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << "Provided PoW nonce is not valid.";
+        body_stream_ << "Provided PoW nonce is not valid.";
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid PoW nonce " << nonce;
         return;
     }
@@ -486,7 +484,7 @@ void connection_t::process_store(const json& params) {
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << e.what();
+        body_stream_ << e.what();
         BOOST_LOG_TRIVIAL(error)
             << "Internal Server Error. Could not store message for "
             << obfuscate_pubkey(pubKey);
@@ -496,7 +494,7 @@ void connection_t::process_store(const json& params) {
     if (!success) {
         response_.result(http::status::service_unavailable);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << "Service node is initializing";
+        body_stream_ << "Service node is initializing";
         BOOST_LOG_TRIVIAL(warning) << "Service node is initializing";
         return;
     }
@@ -510,7 +508,7 @@ void connection_t::process_snodes_by_pk(const json& params) {
 
     if (!params.contains("pubKey")) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "invalid json: no `pubKey` field";
+        body_stream_ << "invalid json: no `pubKey` field";
         BOOST_LOG_TRIVIAL(error) << "Bad client request: no `pubKey` field";
         return;
     }
@@ -519,7 +517,7 @@ void connection_t::process_snodes_by_pk(const json& params) {
 
     if (pubKey.size() != 66) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "Pubkey must be 66 characters long";
+        body_stream_ << "Pubkey must be 66 characters long";
         BOOST_LOG_TRIVIAL(error) << "Pubkey must be 66 characters long ";
         return;
     }
@@ -544,7 +542,7 @@ void connection_t::process_snodes_by_pk(const json& params) {
     response_.set(http::field::content_type, "application/json");
 
     /// This might throw if not utf-8 endoded
-    bodyStream_ << res_body.dump();
+    body_stream_ << res_body.dump();
 }
 
 void connection_t::process_retrieve_all() {
@@ -570,7 +568,7 @@ void connection_t::process_retrieve_all() {
     json res_body;
     res_body["messages"] = messages;
 
-    bodyStream_ << res_body.dump();
+    body_stream_ << res_body.dump();
     response_.result(http::status::ok);
 }
 
@@ -595,7 +593,7 @@ void connection_t::handle_wrong_swarm(const std::string& pubKey) {
     response_.set(http::field::content_type, "application/json");
 
     /// This might throw if not utf-8 endoded
-    bodyStream_ << res_body.dump();
+    body_stream_ << res_body.dump();
     BOOST_LOG_TRIVIAL(info) << "Client request for different swarm received";
 }
 
@@ -620,7 +618,7 @@ void connection_t::respond_with_messages(const std::vector<T>& items) {
 
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
-    bodyStream_ << res_body.dump();
+    body_stream_ << res_body.dump();
 
     this->write_response();
 }
@@ -689,8 +687,8 @@ void connection_t::process_retrieve(const json& params) {
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            bodyStream_ << boost::format("invalid json: no `%1%` field") %
-                               field;
+            body_stream_ << boost::format("invalid json: no `%1%` field") %
+                                field;
             BOOST_LOG_TRIVIAL(error)
                 << boost::format("Bad client request: no `%1%` field") % field;
             return;
@@ -713,7 +711,7 @@ void connection_t::process_retrieve(const json& params) {
 }
 
 void connection_t::process_client_req() {
-    std::string plainText = request_.body();
+    std::string plain_text = request_.body();
 
 #ifndef DISABLE_ENCRYPTION
     const std::vector<std::string> keys = {LOKI_EPHEMKEY_HEADER};
@@ -724,23 +722,23 @@ void connection_t::process_client_req() {
 
     try {
         const std::string decoded =
-            boost::beast::detail::base64_decode(plainText);
-        plainText =
-            channelCipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
+            boost::beast::detail::base64_decode(plain_text);
+        plain_text =
+            channel_cipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
     } catch (const std::exception& e) {
         response_.result(http::status::bad_request);
         response_.set(http::field::content_type, "text/plain");
-        bodyStream_ << "Could not decode/decrypt body: ";
-        bodyStream_ << e.what();
+        body_stream_ << "Could not decode/decrypt body: ";
+        body_stream_ << e.what();
         BOOST_LOG_TRIVIAL(error) << "Bad Request. Could not decrypt body";
         return;
     }
 #endif
 
-    json body = json::parse(plainText, nullptr, false);
+    const json body = json::parse(plain_text, nullptr, false);
     if (body == nlohmann::detail::value_t::discarded) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "invalid json";
+        body_stream_ << "invalid json";
         BOOST_LOG_TRIVIAL(error) << "Bad client request: invalid json";
         return;
     }
@@ -748,7 +746,7 @@ void connection_t::process_client_req() {
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "invalid json: no `method` field";
+        body_stream_ << "invalid json: no `method` field";
         BOOST_LOG_TRIVIAL(error) << "Bad client request: no method field";
         return;
     }
@@ -758,7 +756,7 @@ void connection_t::process_client_req() {
     const auto params_it = body.find("params");
     if (params_it == body.end() || !params_it->is_object()) {
         response_.result(http::status::bad_request);
-        bodyStream_ << "invalid json: no `params` field";
+        body_stream_ << "invalid json: no `params` field";
         BOOST_LOG_TRIVIAL(error) << "Bad client request: no params field";
         return;
     }
@@ -771,7 +769,7 @@ void connection_t::process_client_req() {
         process_snodes_by_pk(*params_it);
     } else {
         response_.result(http::status::bad_request);
-        bodyStream_ << "no method" << method_name;
+        body_stream_ << "no method" << method_name;
         BOOST_LOG_TRIVIAL(error)
             << boost::format("Bad Request. Unknown method '%1%'") % method_name;
     }
