@@ -11,6 +11,7 @@ extern "C" {
 
 #include <cstdint>
 #include <string>
+#include <cstring> // for memcmp
 
 namespace signature {
 
