@@ -12,14 +12,16 @@ extern "C" {
 #include <cstdint>
 #include <string>
 #include <cstring> // for memcmp
+#include <algorithm>
+#include <iterator>
 
 namespace signature {
 
 using ec_point = std::array<uint8_t, 32>;
 struct s_comm {
-    hash h;
-    ec_point key;
-    ec_point comm;
+    uint8_t h[32];
+    uint8_t key[32];
+    uint8_t comm[32];
 };
 
 void random_scalar(ec_scalar& k) {
@@ -64,14 +66,14 @@ void generate_signature(const hash& prefix_hash, const public_key& pub,
         assert(pub == t2);
     }
 #endif
-    buf.h = prefix_hash;
-    buf.key = pub;
+    std::copy(prefix_hash.begin(), prefix_hash.end(), std::begin(buf.h));
+    std::copy(pub.begin(), pub.end(), std::begin(buf.key));
 try_again:
     random_scalar(k);
-    if (((const uint32_t*)(&k))[7] == 0) // we don't want tiny numbers here
+    if (k[7] == 0) // we don't want tiny numbers here
         goto try_again;
     ge_scalarmult_base(&tmp3, k.data());
-    ge_p3_tobytes(buf.comm.data(), &tmp3);
+    ge_p3_tobytes(buf.comm, &tmp3);
     hash_to_scalar(&buf, sizeof(s_comm), sig.c);
     if (!sc_isnonzero((const unsigned char*)sig.c.data()))
         goto try_again;
@@ -87,8 +89,8 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
     ec_scalar c;
     s_comm buf;
     //    assert(check_key(pub));
-    buf.h = prefix_hash;
-    buf.key = pub;
+    std::copy(prefix_hash.begin(), prefix_hash.end(), std::begin(buf.h));
+    std::copy(pub.begin(), pub.end(), std::begin(buf.key));
     if (ge_frombytes_vartime(&tmp3, pub.data()) != 0) {
         return false;
     }
@@ -97,11 +99,11 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
         return false;
     }
     ge_double_scalarmult_base_vartime(&tmp2, sig.c.data(), &tmp3, sig.r.data());
-    ge_tobytes(buf.comm.data(), &tmp2);
+    ge_tobytes(buf.comm, &tmp2);
     static const ec_point infinity = {{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-    if (memcmp(&buf.comm, &infinity, 32) == 0)
+    if (memcmp(buf.comm, &infinity, 32) == 0)
         return false;
     hash_to_scalar(&buf, sizeof(s_comm), c);
     sc_sub(c.data(), c.data(), sig.c.data());
