@@ -11,7 +11,7 @@ set(SOURCES
     include/channel_encryption.hpp
     src/channel_encryption.cpp
     src/signature.cpp
-    include/signature.hpp
+    include/signature.h
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops-data.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.h

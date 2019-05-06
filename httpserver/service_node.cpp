@@ -5,7 +5,7 @@
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "serialization.h"
-#include "signature.hpp"
+#include "signature.h"
 #include "utils.hpp"
 
 #include <chrono>
@@ -297,6 +297,25 @@ to_requests(std::vector<std::string>&& data) {
     return result;
 }
 
+void ServiceNode::attach_signature(
+    const std::vector<std::string>& data,
+    std::vector<std::shared_ptr<request_t>>& batches) const {
+    assert(data.size() == batches.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+        const auto hash = hash_data(data[i]);
+        signature sig;
+        generate_signature(hash, lokid_key_pair_, sig);
+        std::string raw_sig;
+        raw_sig.reserve(sig.c.size() + sig.r.size());
+        raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+        raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+        const std::string sig_b64 =
+            boost::beast::detail::base64_encode(raw_sig);
+        batches[i]->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
+        batches[i]->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
+    }
+}
+
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
@@ -306,21 +325,7 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     std::vector<std::shared_ptr<request_t>> batches =
         to_requests(std::move(data));
 
-    /// Attach signature and pubkey
-    assert(data.size() == batches.size());
-    for (size_t i = 0; i < data.size(); ++i) {
-        const auto hash = signature::hash_data(data[i]);
-        signature::signature sig;
-        signature::generate_signature(hash, lokid_key_pair_.public_key,
-                                      lokid_key_pair_.private_key, sig);
-        std::string raw_sig;
-        raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
-        raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-        const std::string sig_b64 =
-            boost::beast::detail::base64_encode(raw_sig);
-        batches[i]->set(LOKI_SNODE_SIGNATURE, sig_b64);
-        batches[i]->set(LOKI_SENDER_SNODE_PUBKEY, our_address_.address);
-    }
+    attach_signature(data, batches);
 
     for (const sn_record_t& sn : peers) {
         for (const std::shared_ptr<request_t>& batch : batches) {
@@ -418,20 +423,7 @@ void ServiceNode::bootstrap_swarms(
         std::vector<std::shared_ptr<request_t>> batches =
             to_requests(std::move(data));
 
-        /// Attach signature and pubkey
-        for (size_t i = 0; i < data.size(); ++i) {
-            const auto hash = signature::hash_data(data[i]);
-            signature::signature sig;
-            signature::generate_signature(hash, lokid_key_pair_.public_key,
-                                          lokid_key_pair_.private_key, sig);
-            std::string raw_sig;
-            raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
-            raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-            const std::string sig_b64 =
-                boost::beast::detail::base64_encode(raw_sig);
-            batches[i]->set(LOKI_SNODE_SIGNATURE, sig_b64);
-            batches[i]->set(LOKI_SENDER_SNODE_PUBKEY, our_address_.address);
-        }
+        attach_signature(data, batches);
 
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
@@ -521,9 +513,10 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
     const auto& all_swarms = swarm_->all_swarms();
 
     return std::any_of(all_swarms.begin(), all_swarms.end(),
-                       [&sn_address](const SwarmInfo& swarmInfo) {
+                       [&sn_address](const SwarmInfo& swarm_info) {
                            return std::any_of(
-                               swarmInfo.snodes.begin(), swarmInfo.snodes.end(),
+                               swarm_info.snodes.begin(),
+                               swarm_info.snodes.end(),
                                [&sn_address](const sn_record_t& sn_record) {
                                    return sn_record.address == sn_address;
                                });

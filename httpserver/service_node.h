@@ -11,11 +11,10 @@
 #include <boost/optional.hpp>
 
 #include "common.h"
+#include "lokid_key.h"
 #include "swarm.h"
 
 static constexpr uint16_t SNODE_PORT = 8080;
-static constexpr auto LOKI_SENDER_SNODE_PUBKEY = "X-Loki-Snode-PubKey";
-static constexpr auto LOKI_SNODE_SIGNATURE = "X-Loki-Snode-Signature";
 
 class Database;
 
@@ -89,7 +88,7 @@ class ServiceNode {
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
-    const loki::lokid_key_pair_t& lokid_key_pair_;
+    loki::lokid_key_pair_t lokid_key_pair_;
 
     void push_message(const message_t& msg);
 
@@ -110,6 +109,10 @@ class ServiceNode {
     /// Distribute all our data to where it belongs
     /// (called when our old node got dissolved)
     void salvage_data() const;
+
+    void
+    attach_signature(const std::vector<std::string>& data,
+                     std::vector<std::shared_ptr<request_t>>& batches) const;
 
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,

@@ -20,7 +20,7 @@
 #include "http_connection.h"
 #include "serialization.h"
 #include "service_node.h"
-#include "signature.hpp"
+#include "signature.h"
 
 using json = nlohmann::json;
 
@@ -258,29 +258,27 @@ void connection_t::read_request() {
 }
 
 bool connection_t::verify_signature() {
-    const std::vector<std::string> keys = {LOKI_SENDER_SNODE_PUBKEY,
-                                           LOKI_SNODE_SIGNATURE};
-    if (!parse_header(keys)) {
+    if (!parse_header(LOKI_SENDER_SNODE_PUBKEY_HEADER,
+                      LOKI_SNODE_SIGNATURE_HEADER)) {
         BOOST_LOG_TRIVIAL(error) << "Missing signature headers";
         response_.body() = "Missing signature headers";
         response_.result(http::status::bad_request);
         return false;
     }
 
-    const auto& signature = header_[LOKI_SNODE_SIGNATURE];
-    const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY];
+    const auto& signature = header_[LOKI_SNODE_SIGNATURE_HEADER];
+    const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY_HEADER];
 
     /// Known service node
-    const std::string snode_address = public_key_b32z + std::string(".snode");
+    const std::string snode_address = public_key_b32z + ".snode";
     if (!service_node_.is_snode_address_known(snode_address)) {
         response_.body() = "Unknown service node";
         response_.result(http::status::unauthorized);
         return false;
     }
 
-    const auto batch_hash = signature::hash_data(request_.body());
-    bool ok =
-        signature::check_signature(signature, batch_hash, public_key_b32z);
+    const auto batch_hash = hash_data(request_.body());
+    bool ok = check_signature(signature, batch_hash, public_key_b32z);
     if (!ok) {
         BOOST_LOG_TRIVIAL(warning) << "Could not validate batch signature";
     }
@@ -323,7 +321,7 @@ void connection_t::process_request() {
 
             if (!verify_signature()) {
                 response_.result(http::status::bad_request);
-                response_.body() = "Could not validate batch signature";
+                response_.body() = "Could not validate signature";
                 return;
             }
 
@@ -420,21 +418,18 @@ void connection_t::write_response() {
     });
 }
 
-template <typename T>
-bool connection_t::parse_header(T key_list) {
-    for (const auto key : key_list) {
-        const auto it = request_.find(key);
-        if (it == request_.end()) {
-            response_.result(http::status::bad_request);
-            response_.set(http::field::content_type, "text/plain");
-            body_stream_ << "Missing field in header : " << key;
-
-            BOOST_LOG_TRIVIAL(error) << "Missing field in header : " << key;
-            return false;
-        }
-        header_[key] = it->value().to_string();
+bool connection_t::parse_header(const char* key) {
+    const auto it = request_.find(key);
+    if (it == request_.end()) {
+        return false;
     }
+    header_[key] = it->value().to_string();
     return true;
+}
+
+template <typename... Args>
+bool connection_t::parse_header(const char* first, Args... args) {
+    return parse_header(first) && parse_header(args...);
 }
 
 void connection_t::process_store(const json& params) {
@@ -755,8 +750,7 @@ void connection_t::process_client_req() {
     std::string plain_text = request_.body();
 
 #ifndef DISABLE_ENCRYPTION
-    const std::vector<std::string> keys = {LOKI_EPHEMKEY_HEADER};
-    if (!parse_header(keys)) {
+    if (!parse_header(LOKI_EPHEMKEY_HEADER)) {
         BOOST_LOG_TRIVIAL(error) << "Could not parse headers\n";
         return;
     }

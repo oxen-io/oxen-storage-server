@@ -13,7 +13,6 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <thread>
 #include <utility> // for std::pair
@@ -104,8 +103,7 @@ int main(int argc, char* argv[]) {
                 BOOST_LOG_TRIVIAL(info)
                     << "Outputting logs to " << log_location;
             } else {
-                BOOST_LOG_TRIVIAL(error)
-                    << "Could not open " << log_location;
+                BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
             }
         }
 

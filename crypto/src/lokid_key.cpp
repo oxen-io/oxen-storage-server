@@ -45,7 +45,7 @@ private_key_t parseLokidKey(const std::string& path) {
             file_content.size() % KEY_LENGTH);
         throw std::runtime_error(err_msg);
     }
-    
+
     private_key_t private_key;
     std::copy(file_content.begin(), file_content.end(), private_key.begin());
 
