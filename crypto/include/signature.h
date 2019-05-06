@@ -6,10 +6,11 @@
 
 namespace loki {
 
-using hash = std::array<uint8_t, 32>;
-// using public_key_t = std::array<uint8_t, 32>;
-// using secret_key_t = std::array<uint8_t, 32>;
-using ec_scalar = std::array<uint8_t, 32>;
+constexpr size_t HASH_SIZE = 32;
+constexpr size_t EC_SCALAR_SIZE = 32;
+
+using hash = std::array<uint8_t, HASH_SIZE>;
+using ec_scalar = std::array<uint8_t, EC_SCALAR_SIZE>;
 
 struct signature {
     ec_scalar c, r;
