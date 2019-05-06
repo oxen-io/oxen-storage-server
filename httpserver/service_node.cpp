@@ -325,7 +325,9 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     std::vector<std::shared_ptr<request_t>> batches =
         to_requests(std::move(data));
 
+#ifndef DISABLE_SNODE_SIGNATURE
     attach_signature(data, batches);
+#endif
 
     for (const sn_record_t& sn : peers) {
         for (const std::shared_ptr<request_t>& batch : batches) {
@@ -423,7 +425,9 @@ void ServiceNode::bootstrap_swarms(
         std::vector<std::shared_ptr<request_t>> batches =
             to_requests(std::move(data));
 
+#ifndef DISABLE_SNODE_SIGNATURE
         attach_signature(data, batches);
+#endif
 
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 

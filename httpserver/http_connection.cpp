@@ -319,11 +319,13 @@ void connection_t::process_request() {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
 
+#ifndef DISABLE_SNODE_SIGNATURE
             if (!verify_signature()) {
                 response_.result(http::status::bad_request);
                 body_stream_ << "Could not validate signature\n";
                 return;
             }
+#endif
 
             /// NOTE:: we only expect one message here, but
             /// for now lets reuse the function we already have
@@ -336,11 +338,13 @@ void connection_t::process_request() {
 
             response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_batch") {
+#ifndef DISABLE_SNODE_SIGNATURE
             if (!verify_signature()) {
                 response_.result(http::status::bad_request);
                 body_stream_ << "Could not validate batch signature\n";
                 return;
             }
+#endif
             response_.result(http::status::ok);
             service_node_.process_push_batch(request_.body());
 
