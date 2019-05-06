@@ -16,7 +16,7 @@ extern "C" {
 #include <iterator>
 #include <string>
 
-static_assert(crypto_generichash_BYTES == 32);
+static_assert(crypto_generichash_BYTES == 32, "Wrong hash size!");
 
 namespace loki {
 
