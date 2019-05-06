@@ -17,12 +17,14 @@
 #include <boost/log/trivial.hpp>
 
 using service_node::storage::Item;
+using namespace std::chrono_literals;
 
 namespace loki {
 using http_server::connection_t;
 
-constexpr std::array<std::chrono::seconds, 5> RETRY_INTERVALS = {
-    std::chrono::seconds(5), std::chrono::seconds(10), std::chrono::seconds(20),
+constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
+    std::chrono::seconds(1),  std::chrono::seconds(5),
+    std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
 FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
@@ -74,6 +76,9 @@ FailedRequestHandler::~FailedRequestHandler() {
 
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
 
+/// TODO: there should be config.h to store constants like these
+constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
+
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
     auto req = std::make_shared<request_t>();
@@ -97,8 +102,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location)
     : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
-      update_timer_(ioc, std::chrono::milliseconds(100)),
-      lokid_key_pair_(lokid_key_pair) {
+      update_timer_(ioc), lokid_key_pair_(lokid_key_pair) {
 
 #ifndef INTEGRATION_TEST
     char buf[64] = {0};
@@ -124,6 +128,8 @@ void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
+    // Note: often one of the reason for failure here is that the node has just
+    // deregistered but our SN hasn't updated its swarm list yet.
     make_http_request(
         ioc_, sn.address, sn.port, req, [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
@@ -255,13 +261,34 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     reset_listeners();
 }
 
-void ServiceNode::on_swarm_update(const all_swarms_t& all_swarms) {
+void ServiceNode::on_swarm_update(const block_update_t& bu) {
     if (!swarm_) {
-        BOOST_LOG_TRIVIAL(trace) << "initialized our swarm";
+        BOOST_LOG_TRIVIAL(info) << "Initialized our swarm";
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
-    const SwarmEvents events = swarm_->update_swarms(all_swarms);
+    if (bu.height != block_height_) {
+        BOOST_LOG_TRIVIAL(debug)
+            << boost::format("new block, height: %1%, hash: %2%") % bu.height %
+                   bu.block_hash;
+
+        if (bu.height != block_height_ + 1) {
+            BOOST_LOG_TRIVIAL(warning)
+                << "Skipped block(s), old: " << block_height_
+                << " new: " << bu.height;
+
+            /// TODO: if we skipped a block, should we try to run peer tests for
+            /// them as well?
+        }
+        block_height_ = bu.height;
+        block_hash_ = bu.block_hash;
+
+    } else {
+        BOOST_LOG_TRIVIAL(trace) << "(repeated) block height: " << bu.height;
+        return;
+    }
+
+    const SwarmEvents events = swarm_->update_swarms(bu.swarms);
 
     if (!events.new_snodes.empty()) {
         bootstrap_peers(events.new_snodes);
@@ -275,13 +302,15 @@ void ServiceNode::on_swarm_update(const all_swarms_t& all_swarms) {
         /// Go through all our PK and push them accordingly
         salvage_data();
     }
+
+    perform_peer_test();
 }
 
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb));
-    update_timer_.expires_after(std::chrono::seconds(2));
+    update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
@@ -314,6 +343,58 @@ void ServiceNode::attach_signature(
         batches[i]->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
         batches[i]->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
     }
+}
+
+void ServiceNode::perform_peer_test() {
+
+    // 1. Select the tester/testee pair
+
+    std::vector<sn_record_t> members_pk = swarm_->other_nodes();
+
+    members_pk.push_back(our_address_);
+
+    std::sort(members_pk.begin(), members_pk.end());
+
+    std::cout << "peers: " << std::endl;
+    for (auto& pk : members_pk) {
+        std::cout << pk.address << ":" << pk.port << std::endl;
+    }
+    if (members_pk.size() < 2) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Could not initiate peer test: swarm too small";
+        return;
+    }
+
+    uint64_t seed;
+    if (block_hash_.size() < sizeof(seed)) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Could not initiate peer test: invalid block hash";
+        return;
+    }
+
+    std::memcpy(&seed, block_hash_.data(), sizeof(seed));
+    std::mt19937_64 mt(seed);
+    auto tester_idx =
+        util::uniform_distribution_portable(mt, members_pk.size());
+    sn_record_t tester = members_pk[tester_idx];
+    std::cout << "     tester is: " << tester.port << std::endl;
+
+    members_pk.erase(members_pk.begin() + tester_idx);
+    auto testee_idx =
+        util::uniform_distribution_portable(mt, members_pk.size());
+    sn_record_t testee = members_pk[testee_idx];
+    std::cout << "     testee is: " << testee.port << std::endl;
+
+    if (tester == our_address_) {
+        std::cout << "WE are the tester!\n";
+    } else {
+        // TODO: see if we are the testee
+        return;
+    }
+
+    // 2. TODO: If we are the tester, send a test request to a testee
+
+
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {

@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <random>
 
 namespace util {
 
@@ -104,5 +105,7 @@ bool base32z_decode(const Stack& stack, V& value) {
 }
 
 std::string hex64_to_base32z(const std::string& src);
+
+uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n);
 
 } // namespace util

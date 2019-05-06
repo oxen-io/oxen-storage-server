@@ -33,7 +33,7 @@ struct Item;
 using service_node::storage::Item;
 
 namespace loki {
-using swarm_callback_t = std::function<void(const all_swarms_t&)>;
+using swarm_callback_t = std::function<void(const block_update_t&)>;
 
 struct message_t;
 
