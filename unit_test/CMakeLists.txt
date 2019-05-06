@@ -5,17 +5,18 @@ add_executable (Test
     storage.cpp
     pow.cpp
     serialization.cpp
+    signature.cpp
     ../httpserver/serialization.cpp
 )
-
-set_property(TARGET Test PROPERTY CXX_STANDARD 11)
 
 # library under test
 
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../utils utils)
-target_link_libraries(Test PRIVATE storage pow utils)
+loki_add_subdirectory(../crypto crypto)
+
+target_link_libraries(Test PRIVATE storage pow utils crypto)
 target_include_directories(Test PRIVATE ../httpserver)
 
 # boost

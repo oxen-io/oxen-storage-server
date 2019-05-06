@@ -11,6 +11,7 @@
 #include <boost/optional.hpp>
 
 #include "common.h"
+#include "lokid_key.h"
 #include "swarm.h"
 
 static constexpr uint16_t SNODE_PORT = 8080;
@@ -31,6 +32,8 @@ namespace loki {
 namespace http_server {
 class connection_t;
 }
+
+struct lokid_key_pair_t;
 
 using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
@@ -85,6 +88,8 @@ class ServiceNode {
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
+    loki::lokid_key_pair_t lokid_key_pair_;
+
     void push_message(const message_t& msg);
 
     void save_if_new(const message_t& msg);
@@ -105,13 +110,17 @@ class ServiceNode {
     /// (called when our old node got dissolved)
     void salvage_data() const;
 
+    void
+    attach_signature(const std::vector<std::string>& data,
+                     std::vector<std::shared_ptr<request_t>>& batches) const;
+
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,
                     const sn_record_t& address) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                const std::vector<uint8_t>& public_key,
+                const loki::lokid_key_pair_t& key_pair,
                 const std::string& db_location);
 
     ~ServiceNode();
@@ -141,6 +150,8 @@ class ServiceNode {
     void swarm_timer_tick();
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
+
+    bool is_snode_address_known(const std::string&);
 
     /// return all messages for a particular PK (in JSON)
     bool

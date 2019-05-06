@@ -1,25 +1,20 @@
 #include "service_node.h"
 
 #include "Database.hpp"
-#include "lokid_key.h"
-#include "utils.hpp"
-
 #include "Item.hpp"
 #include "http_connection.h"
+#include "lokid_key.h"
+#include "serialization.h"
+#include "signature.h"
+#include "utils.hpp"
 
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
-
 #include <boost/log/trivial.hpp>
-
-/// move this out
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-
-#include "serialization.h"
 
 using service_node::storage::Item;
 
@@ -79,42 +74,6 @@ FailedRequestHandler::~FailedRequestHandler() {
 
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
 
-/// TODO: can we reuse context (reset it)?
-std::string hash_data(std::string data) {
-
-    unsigned char result[EVP_MAX_MD_SIZE];
-
-    /// Allocate and init digest context
-    EVP_MD_CTX* mdctx = EVP_MD_CTX_create();
-
-    /// Set the method
-    EVP_DigestInit_ex(mdctx, EVP_sha512(), NULL);
-
-    /// Do the hashing, can be called multiple times (?)
-    /// to hash
-    EVP_DigestUpdate(mdctx, data.data(), data.size());
-
-    unsigned int md_len;
-
-    EVP_DigestFinal_ex(mdctx, result, &md_len);
-
-    /// Clean up the context
-    EVP_MD_CTX_destroy(mdctx);
-
-    /// Not sure if this is needed
-    EVP_cleanup();
-
-    /// store into the string
-    /// TODO: use binary instead?
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < EVP_MAX_MD_SIZE; i++) {
-        ss << std::setw(2) << static_cast<unsigned>(result[i]);
-    }
-
-    return std::string(ss.str());
-}
-
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
     auto req = std::make_shared<request_t>();
@@ -135,20 +94,23 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
 }
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
-                         const std::vector<uint8_t>& public_key,
+                         const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location)
     : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
-      update_timer_(ioc, std::chrono::milliseconds(100)) {
+      update_timer_(ioc, std::chrono::milliseconds(100)),
+      lokid_key_pair_(lokid_key_pair) {
 
 #ifndef INTEGRATION_TEST
     char buf[64] = {0};
     std::string our_address;
-    if (char const* dest = util::base32z_encode(public_key, buf)) {
+    if (char const* dest =
+            util::base32z_encode(lokid_key_pair_.public_key, buf)) {
         our_address.append(dest);
         our_address.append(".snode");
+        our_address_.address = dest;
     }
+    // TODO: fail hard if we can't encode our public key
     BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
-    our_address_.address = our_address;
 #endif
     our_address_.port = port;
 
@@ -335,6 +297,25 @@ to_requests(std::vector<std::string>&& data) {
     return result;
 }
 
+void ServiceNode::attach_signature(
+    const std::vector<std::string>& data,
+    std::vector<std::shared_ptr<request_t>>& batches) const {
+    assert(data.size() == batches.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+        const auto hash = hash_data(data[i]);
+        signature sig;
+        generate_signature(hash, lokid_key_pair_, sig);
+        std::string raw_sig;
+        raw_sig.reserve(sig.c.size() + sig.r.size());
+        raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+        raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+        const std::string sig_b64 =
+            boost::beast::detail::base64_encode(raw_sig);
+        batches[i]->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
+        batches[i]->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
+    }
+}
+
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
@@ -343,6 +324,10 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     std::vector<std::string> data = serialize_messages(all_entries);
     std::vector<std::shared_ptr<request_t>> batches =
         to_requests(std::move(data));
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    attach_signature(data, batches);
+#endif
 
     for (const sn_record_t& sn : peers) {
         for (const std::shared_ptr<request_t>& batch : batches) {
@@ -440,6 +425,10 @@ void ServiceNode::bootstrap_swarms(
         std::vector<std::shared_ptr<request_t>> batches =
             to_requests(std::move(data));
 
+#ifndef DISABLE_SNODE_SIGNATURE
+        attach_signature(data, batches);
+#endif
+
         BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
 
         for (const sn_record_t& sn : all_swarms[idx].snodes) {
@@ -485,6 +474,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     std::vector<Item> items;
     items.reserve(messages.size());
 
+    // TODO: avoid copying m.data
     // Promoting message_t to Item:
     std::transform(messages.begin(), messages.end(), std::back_inserter(items),
                    [](const message_t& m) {
@@ -521,6 +511,20 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
     BOOST_LOG_TRIVIAL(fatal) << "Something went wrong in get_snodes_by_pk";
 
     return {};
+}
+
+bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
+    const auto& all_swarms = swarm_->all_swarms();
+
+    return std::any_of(all_swarms.begin(), all_swarms.end(),
+                       [&sn_address](const SwarmInfo& swarm_info) {
+                           return std::any_of(
+                               swarm_info.snodes.begin(),
+                               swarm_info.snodes.end(),
+                               [&sn_address](const sn_record_t& sn_record) {
+                                   return sn_record.address == sn_address;
+                               });
+                       });
 }
 
 } // namespace loki

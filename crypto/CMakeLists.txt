@@ -10,6 +10,11 @@ set(SOURCES
     include/lokid_key.h
     include/channel_encryption.hpp
     src/channel_encryption.cpp
+    src/signature.cpp
+    include/signature.h
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops-data.c
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.h
 )
 
 add_library(crypto STATIC ${SOURCES})
@@ -26,6 +31,10 @@ target_include_directories(crypto
     ${CMAKE_CURRENT_LIST_DIR}/src
     ${CMAKE_CURRENT_LIST_DIR}/../vendors
 )
+
+loki_add_subdirectory(../utils utils)
+
+target_link_libraries(crypto PUBLIC utils)
 
 if (NOT Boost_FOUND)
     find_package(Boost REQUIRED system filesystem)

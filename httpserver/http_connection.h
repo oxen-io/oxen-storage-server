@@ -13,6 +13,9 @@
 
 #include "swarm.h"
 
+constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
+constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
+
 template <typename T>
 class ChannelEncryption;
 
@@ -188,10 +191,15 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void register_deadline();
 
     /// TODO: should move somewhere else
-    template <typename T>
-    bool parse_header(T key_list);
+
+    bool parse_header(const char* key);
+
+    template <typename... Args>
+    bool parse_header(const char* first, Args... args);
 
     void handle_wrong_swarm(const std::string& pubKey);
+
+    bool verify_signature();
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
