@@ -267,24 +267,29 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
-    if (bu.height != block_height_) {
+    if (bu.block_hash != block_hash_) {
+
         BOOST_LOG_TRIVIAL(debug)
             << boost::format("new block, height: %1%, hash: %2%") % bu.height %
                    bu.block_hash;
 
-        if (bu.height != block_height_ + 1) {
+        if (bu.height > block_height_ + 1) {
             BOOST_LOG_TRIVIAL(warning)
-                << "Skipped block(s), old: " << block_height_
+                << "Skipped some block(s), old: " << block_height_
                 << " new: " << bu.height;
-
             /// TODO: if we skipped a block, should we try to run peer tests for
             /// them as well?
+        } else if (bu.height <= block_height_) {
+            // TODO: investigate how testing will be affected under reorg
+            BOOST_LOG_TRIVIAL(warning)
+                << "new block height is not higher than the current height";
         }
+
         block_height_ = bu.height;
         block_hash_ = bu.block_hash;
 
     } else {
-        BOOST_LOG_TRIVIAL(trace) << "(repeated) block height: " << bu.height;
+        BOOST_LOG_TRIVIAL(trace) << "already seen this block";
         return;
     }
 
@@ -355,10 +360,6 @@ void ServiceNode::perform_peer_test() {
 
     std::sort(members_pk.begin(), members_pk.end());
 
-    std::cout << "peers: " << std::endl;
-    for (auto& pk : members_pk) {
-        std::cout << pk.address << ":" << pk.port << std::endl;
-    }
     if (members_pk.size() < 2) {
         BOOST_LOG_TRIVIAL(error)
             << "Could not initiate peer test: swarm too small";
@@ -393,8 +394,6 @@ void ServiceNode::perform_peer_test() {
     }
 
     // 2. TODO: If we are the tester, send a test request to a testee
-
-
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {

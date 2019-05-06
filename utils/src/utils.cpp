@@ -91,10 +91,10 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
 /// Returns a random number from [0, n); (copied from lokid)
 uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n)
 {
-  uint64_t secureMax = mersenne_twister.max() - mersenne_twister.max() % n;
+  const uint64_t secure_max = mersenne_twister.max() - mersenne_twister.max() % n;
   uint64_t x;
-  do x = mersenne_twister(); while (x >= secureMax);
-  return  x / (secureMax / n);
+  do x = mersenne_twister(); while (x >= secure_max);
+  return  x / (secure_max / n);
 }
 
 } // namespace util
