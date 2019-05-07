@@ -13,6 +13,7 @@ struct Item {
         : hash(hash), pub_key(pubKey), timestamp(timestamp), ttl(ttl),
           expiration_timestamp(expirationTimestamp), nonce(nonce), data(bytes) {
     }
+    Item() = default;
     std::string hash;
     std::string pub_key;
     uint64_t timestamp;

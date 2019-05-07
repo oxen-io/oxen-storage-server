@@ -30,6 +30,13 @@ class Database {
                   std::vector<service_node::storage::Item>& items,
                   const std::string& lastHash);
 
+    // Return the total number of messages stored
+    bool get_message_count(uint64_t& count);
+
+    // Get message with by `index` (must be smaller than the result of
+    // `get_message_count`).
+    bool retrieve_by_index(uint64_t index, service_node::storage::Item& item);
+
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
     void open_and_prepare(const std::string& db_path);
@@ -42,6 +49,8 @@ class Database {
     sqlite3_stmt* get_all_for_pk_stmt;
     sqlite3_stmt* get_all_stmt;
     sqlite3_stmt* get_stmt;
+    sqlite3_stmt* get_row_count_stmt;
+    sqlite3_stmt* get_by_index_stmt;
     sqlite3_stmt* delete_expired_stmt;
 
     std::unique_ptr<Timer> cleanup_timer;
