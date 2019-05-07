@@ -88,8 +88,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
         BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
         return;
     }
-    all_swarms_t all_swarms;
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+    block_update_t bu;
 
     try {
         const json service_node_states = body["result"]["service_node_states"];
@@ -109,17 +109,21 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
 
             swarm_map[swarm_id].push_back(sn);
         }
+
+        bu.height = body["result"]["height"].get<uint64_t>();
+        bu.block_hash = body["result"]["block_hash"].get<std::string>();
+
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
         return;
     }
 
     for (auto const& swarm : swarm_map) {
-        all_swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
+        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
     }
 
     try {
-        cb(all_swarms);
+        cb(bu);
     } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(error)
             << "Exception caught on swarm update: " << e.what();

@@ -76,6 +76,8 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
 
+    uint64_t block_height_ = 0;
+    std::string block_hash_ = "";
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
     // performance report for other snodes
@@ -100,7 +102,7 @@ class ServiceNode {
     /// request swarm info from the blockchain
     void update_swarms();
 
-    void on_swarm_update(const all_swarms_t& all_swarms);
+    void on_swarm_update(const block_update_t& bu);
 
     void bootstrap_peers(const std::vector<sn_record_t>& peers) const;
 
@@ -117,6 +119,12 @@ class ServiceNode {
     /// used on push and on swarm bootstrapping
     void relay_data(const std::shared_ptr<request_t>& req,
                     const sn_record_t& address) const;
+
+    /// Request swarm structure from the deamon and reset the timer
+    void swarm_timer_tick();
+
+    /// Actually perform peer testing
+    void perform_peer_test();
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
@@ -146,8 +154,6 @@ class ServiceNode {
     void process_push_batch(const std::string& blob);
 
     bool is_pubkey_for_us(const std::string& pk) const;
-
-    void swarm_timer_tick();
 
     std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
 
