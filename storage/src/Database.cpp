@@ -4,6 +4,7 @@
 
 #include "sqlite3.h"
 #include <exception>
+#include <boost/log/trivial.hpp>
 
 using namespace service_node::storage;
 
@@ -129,11 +130,99 @@ void Database::open_and_prepare(const std::string& db_path) {
     if (!get_stmt)
         throw std::runtime_error("could not prepare get statement");
 
+    get_row_count_stmt = prepare_statement("SELECT count(*) FROM `Data`;");
+    if (!get_row_count_stmt)
+        throw std::runtime_error("could not prepare row count statement");
+
+    get_by_index_stmt = prepare_statement("SELECT * FROM `Data` LIMIT ?, 1;");
+    if (!get_by_index_stmt)
+        throw std::runtime_error("could not prepare get by index statement");
+
     delete_expired_stmt =
         prepare_statement("DELETE FROM `Data` WHERE `TimeExpires` <= ?");
     if (!delete_expired_stmt)
         throw std::runtime_error(
             "could not prepare 'delete expired' statement");
+}
+
+bool Database::get_message_count(uint64_t& count) {
+
+    int rc;
+    bool success = false;
+    while (true) {
+        rc = sqlite3_step(get_row_count_stmt);
+        if (rc == SQLITE_BUSY) {
+            continue;
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else if (rc == SQLITE_ROW) {
+            count = sqlite3_column_int64(get_row_count_stmt, 0);
+            success = true;
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "Could not execute `count` db statement";
+            break;
+        }
+    }
+
+    rc = sqlite3_reset(get_by_index_stmt);
+    if (rc != SQLITE_OK) {
+        BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
+        success = false;
+    }
+
+    return success;
+}
+
+/// Extract item from the result of a successfull select statement execution
+static Item extract_item(sqlite3_stmt* stmt) {
+
+    Item item;
+
+    // "If the SQL statement does not currently point to a valid row, or if the
+    // column index is out of range, the result is undefined"
+    item.hash = std::string((const char*)sqlite3_column_text(stmt, 0));
+    item.pub_key = std::string((const char*)sqlite3_column_text(stmt, 1));
+    item.ttl = sqlite3_column_int64(stmt, 2);
+    item.timestamp = sqlite3_column_int64(stmt, 3);
+    item.expiration_timestamp = sqlite3_column_int64(stmt, 4);
+    item.nonce = std::string((const char*)sqlite3_column_text(stmt, 5));
+    item.data = std::string((char*)sqlite3_column_blob(stmt, 6),
+                            sqlite3_column_bytes(stmt, 6));
+    return item;
+}
+
+bool Database::retrieve_by_index(uint64_t index, Item& item) {
+
+    sqlite3_bind_int64(get_by_index_stmt, 1, index);
+
+    bool success = false;
+    int rc;
+    while (true) {
+        rc = sqlite3_step(get_by_index_stmt);
+        if (rc == SQLITE_BUSY) {
+            continue;
+        } else if (rc == SQLITE_DONE) {
+            // Note that if the index is out of bounds, we will get here
+            // returning an empty Item
+            break;
+        } else if (rc == SQLITE_ROW) {
+            item = extract_item(get_by_index_stmt);
+            success = true;
+            break;
+        } else {
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not execute `retrieve by index` db statement";
+            break;
+        }
+    }
+
+    rc = sqlite3_reset(get_by_index_stmt);
+    if (rc != SQLITE_OK) {
+        BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
+        success = false;
+    }
+
+    return success;
 }
 
 bool Database::store(const std::string& hash, const std::string& pubKey,
@@ -147,6 +236,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
                              ? save_or_ignore_stmt
                              : save_stmt;
 
+    // TODO: bind can return errors, handle them
     sqlite3_bind_text(stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, ttl);
@@ -167,16 +257,15 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             result = true;
             break;
         } else {
-            throw std::runtime_error("could not store into db");
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not execute `store` db statement, ec: " << rc;
+            break;
         }
     }
-    int reset_rc = sqlite3_reset(stmt);
-    // If the most recent call to sqlite3_step(S) for the prepared statement S
-    // indicated an error, then sqlite3_reset(S) returns an appropriate error
-    // code.
-    if (reset_rc != SQLITE_OK && reset_rc != rc) {
-        throw new std::logic_error(
-            "could not reset statement: unexpected value");
+
+    rc = sqlite3_reset(stmt);
+    if (rc != SQLITE_OK) {
+        BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
     }
     return result;
 }
@@ -220,30 +309,27 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
         sqlite3_bind_text(stmt, 2, lastHash.c_str(), -1, SQLITE_STATIC);
     }
 
+    bool success = false;
+
     while (true) {
-        int res = sqlite3_step(stmt);
-        if (res == SQLITE_DONE)
+        int rc = sqlite3_step(stmt);
+        if (rc == SQLITE_DONE) {
+            success = true;
             break;
-        if (res != SQLITE_ROW)
-            throw std::runtime_error("ERROR: SQL runtime error");
-        const auto hash =
-            std::string((const char*)sqlite3_column_text(stmt, 0));
-        const auto pub_key =
-            std::string((const char*)sqlite3_column_text(stmt, 1));
-        const auto ttl = sqlite3_column_int64(stmt, 2);
-        const auto timestamp = sqlite3_column_int64(stmt, 3);
-        const auto time_expires = sqlite3_column_int64(stmt, 4);
-        const auto nonce =
-            std::string((const char*)sqlite3_column_text(stmt, 5));
-        const auto bytes = std::string((char*)sqlite3_column_blob(stmt, 6),
-                                       sqlite3_column_bytes(stmt, 6));
-        items.emplace_back(hash, pub_key, timestamp, ttl, time_expires, nonce,
-                           bytes);
+        } else if (rc == SQLITE_ROW) {
+            auto item = extract_item(stmt);
+            items.push_back(std::move(item));
+        } else {
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not execute `retrieve` db statement, ec: " << rc;
+            break;
+        }
     }
 
     int rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        return false;
+        BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
+        success = false;
     }
-    return true;
+    return success;
 }
