@@ -138,6 +138,10 @@ void Database::open_and_prepare(const std::string& db_path) {
     if (!get_by_index_stmt)
         throw std::runtime_error("could not prepare get by index statement");
 
+    get_by_hash_stmt = prepare_statement("SELECT * FROM `Data` WHERE `Hash` = ?;");
+    if (!get_by_hash_stmt)
+        throw std::runtime_error("could not prepare get by hash statement");
+
     delete_expired_stmt =
         prepare_statement("DELETE FROM `Data` WHERE `TimeExpires` <= ?");
     if (!delete_expired_stmt)
@@ -217,6 +221,38 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
     }
 
     rc = sqlite3_reset(get_by_index_stmt);
+    if (rc != SQLITE_OK) {
+        BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
+        success = false;
+    }
+
+    return success;
+}
+
+bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
+
+    sqlite3_bind_text(get_by_hash_stmt, 1, msg_hash.c_str(), -1, SQLITE_STATIC);
+
+    bool success = false;
+    int rc;
+    while (true) {
+        rc = sqlite3_step(get_by_hash_stmt);
+        if (rc == SQLITE_BUSY) {
+            continue;
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else if (rc == SQLITE_ROW) {
+            item = extract_item(get_by_hash_stmt);
+            success = true;
+            break;
+        } else {
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not execute `retrieve by hash` db statement, ec: " << rc;
+            break;
+        }
+    }
+
+    rc = sqlite3_reset(get_by_hash_stmt);
     if (rc != SQLITE_OK) {
         BOOST_LOG_TRIVIAL(error) << "sqlite reset error: " << rc;
         success = false;
