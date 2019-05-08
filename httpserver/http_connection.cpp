@@ -95,9 +95,10 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
         const json service_node_states = body["result"]["service_node_states"];
 
         for (const auto& sn_json : service_node_states) {
-            const std::string pubkey = sn_json["pubkey"].get<std::string>();
-            const swarm_id_t swarm_id =
-                sn_json["info"]["swarm_id"].get<swarm_id_t>();
+            const std::string pubkey =
+                sn_json["service_node_pubkey"].get<std::string>();
+
+            const swarm_id_t swarm_id = sn_json["swarm_id"].get<swarm_id_t>();
 #ifndef INTEGRATION_TEST
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");

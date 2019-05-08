@@ -569,12 +569,19 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 }
 
 bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
-    if (!swarm_)
+    if (!swarm_) {
+        BOOST_LOG_TRIVIAL(trace) << "swarm data missing";
         return false;
+    }
     return swarm_->is_pubkey_for_us(pk);
 }
 
 std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
+
+    if (swarm_) {
+        BOOST_LOG_TRIVIAL(trace) << "swarm data missing";
+        return {};
+    }
 
     const auto& all_swarms = swarm_->all_swarms();
 
@@ -594,6 +601,13 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
 }
 
 bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
+
+    // TODO: need more robust handling of uninitialized swarm_
+    if (swarm_) {
+        BOOST_LOG_TRIVIAL(trace) << "swarm data missing";
+        return {};
+    }
+
     const auto& all_swarms = swarm_->all_swarms();
 
     return std::any_of(all_swarms.begin(), all_swarms.end(),
