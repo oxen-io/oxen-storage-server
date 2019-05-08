@@ -578,7 +578,7 @@ bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
 
 std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
 
-    if (swarm_) {
+    if (!swarm_) {
         BOOST_LOG_TRIVIAL(trace) << "swarm data missing";
         return {};
     }
@@ -603,7 +603,7 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
 bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 
     // TODO: need more robust handling of uninitialized swarm_
-    if (swarm_) {
+    if (!swarm_) {
         BOOST_LOG_TRIVIAL(trace) << "swarm data missing";
         return {};
     }
