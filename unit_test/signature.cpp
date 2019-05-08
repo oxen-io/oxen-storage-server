@@ -42,8 +42,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
     lokid_key_pair_t key_pair{secret_key, public_key};
-    signature sig;
-    generate_signature(hash, key_pair, sig);
+    const auto sig = generate_signature(hash, key_pair);
     const bool verified = check_signature(sig, hash, public_key);
     BOOST_CHECK(verified);
 }
@@ -61,8 +60,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
     lokid_key_pair_t key_pair{secret_key, public_key};
-    signature sig;
-    generate_signature(hash, key_pair, sig);
+    const auto sig = generate_signature(hash, key_pair);
 
     // convert signature to base64 and public key to base32z
     std::string raw_sig;
@@ -91,8 +89,7 @@ BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
     lokid_key_pair_t key_pair{secret_key, public_key};
-    signature sig;
-    generate_signature(hash, key_pair, sig);
+    auto sig = generate_signature(hash, key_pair);
 
     // amend signature
     sig.c[4]++;

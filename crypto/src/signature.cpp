@@ -54,11 +54,12 @@ hash hash_data(const std::string& data) {
     return hash;
 }
 
-void generate_signature(const hash& prefix_hash,
-                        const lokid_key_pair_t& key_pair, signature& sig) {
+signature generate_signature(const hash& prefix_hash,
+                             const lokid_key_pair_t& key_pair) {
     ge_p3 tmp3;
     ec_scalar k;
     s_comm buf;
+    signature sig;
 #if !defined(NDEBUG)
     {
         ge_p3 t;
@@ -85,6 +86,7 @@ try_again:
               k.data());
     if (!sc_isnonzero((const unsigned char*)sig.r.data()))
         goto try_again;
+    return sig;
 }
 
 bool check_signature(const signature& sig, const hash& prefix_hash,
