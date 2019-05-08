@@ -247,6 +247,7 @@ void connection_t::read_request() {
             self->process_request();
         } catch (const std::exception& e) {
             BOOST_LOG_TRIVIAL(error) << "Exception caught: " << e.what();
+            self->body_stream_ << e.what();
         }
 
         if (!self->delay_response_) {

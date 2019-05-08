@@ -8,9 +8,11 @@
 
 namespace util {
 
+bool validateTTL(uint64_t ttlInt);
 // Convert ttl string into uint64_t, return bool for success/fail
 bool parseTTL(const std::string& ttlString, uint64_t& ttl);
 
+bool validateTimestamp(uint64_t timestamp, uint64_t ttl);
 // Convert timestamp string into uint64_t, return bool for success/fail
 bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
                     uint64_t& timestamp);

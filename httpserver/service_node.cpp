@@ -4,10 +4,12 @@
 #include "Item.hpp"
 #include "http_connection.h"
 #include "lokid_key.h"
+#include "pow.hpp"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -91,6 +93,33 @@ static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
 
 static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
+}
+
+template <class T>
+static bool verify_message(const T& msg, const char* error_message = nullptr) {
+    if (!util::validateTTL(msg.ttl)) {
+        if (error_message)
+            error_message = "Provided TTL is not valid";
+        return false;
+    }
+    if (!util::validateTimestamp(msg.timestamp, msg.ttl)) {
+        if (error_message)
+            error_message = "Provided timestamp is not valid";
+        return false;
+    }
+    std::string hash;
+    if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
+                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash)) {
+        if (error_message)
+            error_message = "Provided PoW nonce is not valid";
+        return false;
+    }
+    if (hash != msg.hash) {
+        if (error_message)
+            error_message = "Incorrect hash provided";
+        return false;
+    }
+    return true;
 }
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
@@ -229,7 +258,14 @@ bool ServiceNode::process_store(const message_t& msg) {
     return true;
 }
 
-void ServiceNode::process_push(const message_t& msg) { save_if_new(msg); }
+void ServiceNode::process_push(const message_t& msg) {
+#ifndef DISABLE_POW
+    char* error_msg;
+    if (!verify_message(msg, error_msg))
+        throw std::runtime_error(error_msg);
+#endif
+    save_if_new(msg);
+}
 
 void ServiceNode::save_if_new(const message_t& msg) {
 
@@ -464,12 +500,24 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    const std::vector<message_t> messages = deserialize_messages(blob);
+    std::vector<message_t> messages = deserialize_messages(blob);
 
     BOOST_LOG_TRIVIAL(trace) << "saving all: begin";
 
     BOOST_LOG_TRIVIAL(debug) << "got " << messages.size()
                              << " messages from peers, size: " << blob.size();
+
+#ifndef DISABLE_POW
+    const auto it = std::remove_if(messages.begin(), messages.end(),
+                                   [](const message_t& message) {
+                                       return verify_message(message) == false;
+                                   });
+    messages.erase(it, messages.end());
+    if (it != messages.end()) {
+        BOOST_LOG_TRIVIAL(warning)
+            << "Some of the batch messages were removed due to incorrect PoW";
+    }
+#endif
 
     std::vector<Item> items;
     items.reserve(messages.size());

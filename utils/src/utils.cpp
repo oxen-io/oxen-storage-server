@@ -49,14 +49,7 @@ std::string hex64_to_base32z(const std::string& src) {
     return result;
 }
 
-bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
-                    uint64_t& timestamp) {
-    try {
-        timestamp = std::stoull(timestampString);
-    } catch (...) {
-        return false;
-    }
-
+bool validateTimestamp(uint64_t timestamp, uint64_t ttl) {
     const uint64_t cur_time = get_time_ms();
     // Timestamp must not be in the future (with some tolerance)
     if (timestamp > cur_time + 10000)
@@ -72,6 +65,21 @@ bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
     return true;
 }
 
+bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
+                    uint64_t& timestamp) {
+    try {
+        timestamp = std::stoull(timestampString);
+    } catch (...) {
+        return false;
+    }
+
+    return validateTimestamp(timestamp, ttl);
+}
+
+bool validateTTL(uint64_t ttlInt) {
+    return (ttlInt >= 10 * 1000 && ttlInt <= 96 * 60 * 60 * 1000);
+}
+
 bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
     int ttlInt;
     try {
@@ -81,7 +89,7 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
     }
 
     // Minimum time to live of 10 seconds, maximum of 4 days
-    if (ttlInt < 10 * 1000 || ttlInt > 96 * 60 * 60 * 1000)
+    if (!validateTTL(ttlInt))
         return false;
 
     ttl = static_cast<uint64_t>(ttlInt);
