@@ -10,6 +10,20 @@ endfunction()
 
 project(storage_server)
 
+option(INTEGRATION_TEST "build for integration test" OFF)
+
+if (INTEGRATION_TEST)
+    add_definitions(-DDISABLE_POW)
+    add_definitions(-DINTEGRATION_TEST)
+endif()
+
+option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
+    ON)
+
+if (DISABLE_SNODE_SIGNATURE)
+    add_definitions(-DDISABLE_SNODE_SIGNATURE)
+endif()
+
 loki_add_subdirectory(utils)
 loki_add_subdirectory(crypto)
 loki_add_subdirectory(pow)

@@ -26,10 +26,22 @@ BUILD_STATIC ?= ON
 
 MKDIR := mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR)
 
-MAKE_CMD := $(CMAKE) $(TOP_DIR) -DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_TESTS=$(BUILD_TESTS) && cmake --build .
-
 all:
-	$(MKDIR) && $(MAKE_CMD)
+	$(MKDIR) && \
+	$(CMAKE) $(TOP_DIR) \
+		-DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		-DBUILD_TESTS=$(BUILD_TESTS) \
+		&& cmake --build .
+
+integration-test:
+	$(MKDIR) && \
+	$(CMAKE) $(TOP_DIR) \
+		-DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		-DBUILD_TESTS=$(BUILD_TESTS) \
+		-DINTEGRATION_TEST=ON \
+		&& cmake --build .
 
 clean:
 	rm -rf build/$(SUB_DIR)
