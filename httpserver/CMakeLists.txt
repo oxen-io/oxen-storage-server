@@ -1,13 +1,6 @@
 cmake_minimum_required(VERSION 2.8.0)
 
 add_definitions(-DDISABLE_ENCRYPTION)
-option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
-       ON)
-
-if (DISABLE_SNODE_SIGNATURE)
-    add_definitions(-DDISABLE_SNODE_SIGNATURE)
-endif()
-
 
 project(httpserver)
 
