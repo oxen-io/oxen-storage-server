@@ -95,28 +95,27 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-template <class T>
-static bool verify_message(const T& msg, const char* error_message = nullptr) {
+static bool verify_message(const message_t& msg, const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
-            error_message = "Provided TTL is not valid";
+            *error_message = "Provided TTL is not valid";
         return false;
     }
     if (!util::validateTimestamp(msg.timestamp, msg.ttl)) {
         if (error_message)
-            error_message = "Provided timestamp is not valid";
+            *error_message = "Provided timestamp is not valid";
         return false;
     }
     std::string hash;
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash)) {
         if (error_message)
-            error_message = "Provided PoW nonce is not valid";
+            *error_message = "Provided PoW nonce is not valid";
         return false;
     }
     if (hash != msg.hash) {
         if (error_message)
-            error_message = "Incorrect hash provided";
+            *error_message = "Incorrect hash provided";
         return false;
     }
     return true;
@@ -260,8 +259,8 @@ bool ServiceNode::process_store(const message_t& msg) {
 
 void ServiceNode::process_push(const message_t& msg) {
 #ifndef DISABLE_POW
-    char* error_msg;
-    if (!verify_message(msg, error_msg))
+    const char* error_msg;
+    if (!verify_message(msg, &error_msg))
         throw std::runtime_error(error_msg);
 #endif
     save_if_new(msg);

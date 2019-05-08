@@ -77,6 +77,7 @@ bool parseTimestamp(const std::string& timestampString, const uint64_t ttl,
 }
 
 bool validateTTL(uint64_t ttlInt) {
+    // Minimum time to live of 10 seconds, maximum of 4 days
     return (ttlInt >= 10 * 1000 && ttlInt <= 96 * 60 * 60 * 1000);
 }
 
@@ -88,7 +89,6 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
         return false;
     }
 
-    // Minimum time to live of 10 seconds, maximum of 4 days
     if (!validateTTL(ttlInt))
         return false;
 
