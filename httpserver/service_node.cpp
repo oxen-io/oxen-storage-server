@@ -133,17 +133,15 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
       update_timer_(ioc), lokid_key_pair_(lokid_key_pair) {
 
     char buf[64] = {0};
-    std::string our_address;
     if (char const* dest =
             util::base32z_encode(lokid_key_pair_.public_key, buf)) {
-        our_address.append(dest);
-        our_address.append(".snode");
         our_address_.address = dest;
+        our_address_.address.append(".snode");
     } else {
         throw std::runtime_error("Could not encode our public key");
     }
     // TODO: fail hard if we can't encode our public key
-    BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
+    BOOST_LOG_TRIVIAL(info) << "Read our snode address: " << our_address_;
     our_address_.port = port;
 
     swarm_timer_tick();
@@ -387,7 +385,14 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     const std::string sig_b64 = boost::beast::detail::base64_encode(raw_sig);
 
     request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
-    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
+
+    // TODO: store both clean and .snode versions of the address
+    std::string stripped = our_address_.address;
+    size_t pos = stripped.find(".snode");
+    if (pos != std::string::npos) {
+        stripped.erase(pos);
+    }
+    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, stripped);
 }
 
 void ServiceNode::perform_peer_test() {
