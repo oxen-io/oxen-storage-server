@@ -33,6 +33,7 @@
 
 # Custom
 build
+deps
 
 # Vscode settings
 .vscode
