@@ -346,6 +346,8 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     } else {
         BOOST_LOG_TRIVIAL(trace) << "already seen this block";
+        update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
+        update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
         return;
     }
 
@@ -365,14 +367,14 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     }
 
     initiate_peer_test();
+    update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
+    update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
-    update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>
