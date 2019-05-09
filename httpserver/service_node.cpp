@@ -409,10 +409,10 @@ void ServiceNode::update_swarms() {
 
     // TODO: this should be changed to lokid
 
-    const uint16_t port = 7777;
-    const char* ip = "0.0.0.0";
+    static const uint16_t port = 22023;
+    static const char* ip = "127.0.0.1";
 
-    std::string req_body =
+    static std::string req_body =
         R"#({
             "jsonrpc":"2.0",
             "id":"0",
