@@ -3,6 +3,7 @@
 #include "lokid_key.h"
 #include "service_node.h"
 #include "swarm.h"
+#include "version.h"
 
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
@@ -36,7 +37,7 @@ static const LogLevelMap logLevelMap{
 void usage(char* argv[]) {
     std::cerr << "Usage: " << argv[0]
               << " <address> <port> --lokid-key path [--db-location "
-                 "path] [--log-level level]\n";
+                 "path] [--log-level level] [--output-log path] [--version]\n";
     std::cerr << "  For IPv4, try:\n";
     std::cerr << "    receiver 0.0.0.0 80\n";
     std::cerr << "  For IPv6, try:\n";
@@ -63,7 +64,7 @@ bool parseLogLevel(const std::string& input,
 int main(int argc, char* argv[]) {
     try {
         // Check command line arguments.
-        if (argc < 3) {
+        if (argc < 2) {
             usage(argv);
             return EXIT_FAILURE;
         }
@@ -72,19 +73,37 @@ int main(int argc, char* argv[]) {
         std::string db_location(".");
         std::string log_location;
         std::string log_level_string("info");
-
-        const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
-        std::string ip = argv[1];
+        bool print_version = false;
 
         po::options_description desc;
         desc.add_options()("lokid-key", po::value(&lokid_key_path),
                            "")("db-location", po::value(&db_location),
                                "")("output-log", po::value(&log_location), "")(
-            "log-level", po::value(&log_level_string), "");
+            "log-level", po::value(&log_level_string),
+            "")("version,v", po::bool_switch(&print_version), "");
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
+
+        std::cout << "Loki Storage Server v" << STORAGE_SERVER_VERSION_STRING
+                  << std::endl
+                  << " git commit hash: " << STORAGE_SERVER_GIT_HASH_STRING
+                  << std::endl
+                  << " build time: " << STORAGE_SERVER_BUILD_TIME << std::endl;
+
+        if (print_version) {
+            return EXIT_SUCCESS;
+        }
+
+        if (argc < 3) {
+            usage(argv);
+            return EXIT_FAILURE;
+        }
+
+        const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
+        std::string ip = argv[1];
+
         if (vm.count("output-log")) {
 
             // TODO: remove this line once confirmed that no one
