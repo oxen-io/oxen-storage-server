@@ -139,6 +139,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
         our_address.append(dest);
         our_address.append(".snode");
         our_address_.address = dest;
+    } else {
+        throw std::runtime_error("Could not encode our public key");
     }
     // TODO: fail hard if we can't encode our public key
     BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
