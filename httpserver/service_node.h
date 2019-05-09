@@ -39,6 +39,8 @@ using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
 class Swarm;
 
+struct signature;
+
 struct snode_stats_t {
 
     // how many times a single push failed
@@ -112,13 +114,15 @@ class ServiceNode {
     /// (called when our old node got dissolved)
     void salvage_data() const;
 
-    void
-    attach_signature(const std::vector<std::string>& data,
-                     std::vector<std::shared_ptr<request_t>>& batches) const;
+    void attach_signature(std::shared_ptr<request_t>& request,
+                          const signature& sig) const;
 
     /// used on push and on swarm bootstrapping
-    void relay_data(const std::shared_ptr<request_t>& req,
+    void send_sn_request(const std::shared_ptr<request_t>& req,
                     const sn_record_t& address) const;
+    void
+    relay_messages(const std::vector<service_node::storage::Item>& messages,
+                   const std::vector<sn_record_t>& snodes) const;
 
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();

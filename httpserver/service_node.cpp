@@ -132,7 +132,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
       update_timer_(ioc), lokid_key_pair_(lokid_key_pair) {
 
-#ifndef INTEGRATION_TEST
     char buf[64] = {0};
     std::string our_address;
     if (char const* dest =
@@ -143,7 +142,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     }
     // TODO: fail hard if we can't encode our public key
     BOOST_LOG_TRIVIAL(info) << "Read snode address " << our_address;
-#endif
     our_address_.port = port;
 
     swarm_timer_tick();
@@ -151,7 +149,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
+void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                              const sn_record_t& sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
@@ -234,11 +232,21 @@ void ServiceNode::push_message(const message_t& msg) {
 
     std::string body;
     serialize_message(body, msg);
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    const auto hash = hash_data(body);
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+#endif
+
     auto req = make_push_request(std::move(body));
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    attach_signature(req, signature);
+#endif
 
     for (const auto& address : others) {
         /// send a request asynchronously
-        relay_data(req, address);
+        send_sn_request(req, address);
     }
 }
 
@@ -355,7 +363,7 @@ void ServiceNode::swarm_timer_tick() {
 }
 
 static std::vector<std::shared_ptr<request_t>>
-to_requests(std::vector<std::string>&& data) {
+make_batch_requests(std::vector<std::string>&& data) {
 
     std::vector<std::shared_ptr<request_t>> result;
     result.reserve(data.size());
@@ -366,23 +374,18 @@ to_requests(std::vector<std::string>&& data) {
     return result;
 }
 
-void ServiceNode::attach_signature(
-    const std::vector<std::string>& data,
-    std::vector<std::shared_ptr<request_t>>& batches) const {
-    assert(data.size() == batches.size());
-    for (size_t i = 0; i < data.size(); ++i) {
-        const auto hash = hash_data(data[i]);
-        signature sig;
-        generate_signature(hash, lokid_key_pair_, sig);
-        std::string raw_sig;
-        raw_sig.reserve(sig.c.size() + sig.r.size());
-        raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
-        raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-        const std::string sig_b64 =
-            boost::beast::detail::base64_encode(raw_sig);
-        batches[i]->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
-        batches[i]->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
-    }
+void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
+                                   const signature& sig) const {
+
+    std::string raw_sig;
+    raw_sig.reserve(sig.c.size() + sig.r.size());
+    raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+    raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+
+    const std::string sig_b64 = boost::beast::detail::base64_encode(raw_sig);
+
+    request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
+    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.address);
 }
 
 void ServiceNode::perform_peer_test() {
@@ -436,19 +439,7 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
     std::vector<Item> all_entries;
     db_->retrieve("", all_entries, "");
 
-    std::vector<std::string> data = serialize_messages(all_entries);
-    std::vector<std::shared_ptr<request_t>> batches =
-        to_requests(std::move(data));
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    attach_signature(data, batches);
-#endif
-
-    for (const sn_record_t& sn : peers) {
-        for (const std::shared_ptr<request_t>& batch : batches) {
-            relay_data(batch, sn);
-        }
-    }
+    relay_messages(all_entries, peers);
 }
 
 template <typename T>
@@ -536,20 +527,38 @@ void ServiceNode::bootstrap_swarms(
         /// what if not found?
         const size_t idx = swarm_id_to_idx[swarm_id];
 
-        std::vector<std::string> data = serialize_messages(kv.second);
-        std::vector<std::shared_ptr<request_t>> batches =
-            to_requests(std::move(data));
+        relay_messages(kv.second, all_swarms[idx].snodes);
+    }
+}
+
+void ServiceNode::relay_messages(
+    const std::vector<service_node::storage::Item>& messages,
+    const std::vector<sn_record_t>& snodes) const {
+    std::vector<std::string> data = serialize_messages(messages);
 
 #ifndef DISABLE_SNODE_SIGNATURE
-        attach_signature(data, batches);
+    std::vector<signature> signatures;
+    signatures.reserve(data.size());
+    for (const auto& d : data) {
+        const auto hash = hash_data(d);
+        signatures.push_back(generate_signature(hash, lokid_key_pair_));
+    }
 #endif
 
-        BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
+    std::vector<std::shared_ptr<request_t>> batches =
+        make_batch_requests(std::move(data));
 
-        for (const sn_record_t& sn : all_swarms[idx].snodes) {
-            for (const std::shared_ptr<request_t>& batch : batches) {
-                relay_data(batch, sn);
-            }
+#ifndef DISABLE_SNODE_SIGNATURE
+    assert(batches.size() == signatures.size());
+    for (size_t i = 0; i < batches.size(); ++i) {
+        attach_signature(batches[i], signatures[i]);
+    }
+#endif
+
+    BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
+    for (const sn_record_t& sn : snodes) {
+        for (const std::shared_ptr<request_t>& batch : batches) {
+            send_sn_request(batch, sn);
         }
     }
 }

@@ -274,12 +274,15 @@ bool connection_t::verify_signature() {
     const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY_HEADER];
 
     /// Known service node
+#ifndef INTEGRATION_TEST
     const std::string snode_address = public_key_b32z + ".snode";
     if (!service_node_.is_snode_address_known(snode_address)) {
         body_stream_ << "Unknown service node\n";
+        BOOST_LOG_TRIVIAL(error) << "Discarding signature from unknown service node " << public_key_b32z;
         response_.result(http::status::unauthorized);
         return false;
     }
+#endif
 
     const auto batch_hash = hash_data(request_.body());
     bool ok = check_signature(signature, batch_hash, public_key_b32z);
