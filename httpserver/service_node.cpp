@@ -121,7 +121,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
 ServiceNode::~ServiceNode() = default;
 
-void ServiceNode::relay_data(const std::shared_ptr<request_t>& req,
+void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                              const sn_record_t& sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
@@ -218,7 +218,7 @@ void ServiceNode::push_message(const message_t& msg) {
 
     for (const auto& address : others) {
         /// send a request asynchronously
-        relay_data(req, address);
+        send_sn_request(req, address);
     }
 }
 
@@ -328,7 +328,7 @@ void ServiceNode::swarm_timer_tick() {
 }
 
 static std::vector<std::shared_ptr<request_t>>
-to_requests(std::vector<std::string>&& data) {
+make_batch_requests(std::vector<std::string>&& data) {
 
     std::vector<std::shared_ptr<request_t>> result;
     result.reserve(data.size());
@@ -403,8 +403,6 @@ void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
     db_->retrieve("", all_entries, "");
-
-    std::vector<std::string> data = serialize_messages(all_entries);
 
     relay_messages(all_entries, peers);
 }
@@ -494,8 +492,6 @@ void ServiceNode::bootstrap_swarms(
         /// what if not found?
         const size_t idx = swarm_id_to_idx[swarm_id];
 
-        const std::vector<std::string> data = serialize_messages(kv.second);
-
         relay_messages(kv.second, all_swarms[idx].snodes);
     }
 }
@@ -515,7 +511,7 @@ void ServiceNode::relay_messages(
 #endif
 
     std::vector<std::shared_ptr<request_t>> batches =
-        to_requests(std::move(data));
+        make_batch_requests(std::move(data));
 
 #ifndef DISABLE_SNODE_SIGNATURE
     assert(batches.size() == signatures.size());
@@ -527,7 +523,7 @@ void ServiceNode::relay_messages(
     BOOST_LOG_TRIVIAL(info) << "serialized batches: " << data.size();
     for (const sn_record_t& sn : snodes) {
         for (const std::shared_ptr<request_t>& batch : batches) {
-            relay_data(batch, sn);
+            send_sn_request(batch, sn);
         }
     }
 }

@@ -118,7 +118,7 @@ class ServiceNode {
                           const signature& sig) const;
 
     /// used on push and on swarm bootstrapping
-    void relay_data(const std::shared_ptr<request_t>& req,
+    void send_sn_request(const std::shared_ptr<request_t>& req,
                     const sn_record_t& address) const;
     void
     relay_messages(const std::vector<service_node::storage::Item>& messages,
