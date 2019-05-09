@@ -92,13 +92,13 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
     block_update_t bu;
 
     try {
-        const json service_node_states = body["result"]["service_node_states"];
+        const json service_node_states = body.at("result").at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
             const std::string pubkey =
-                sn_json["service_node_pubkey"].get<std::string>();
+                sn_json.at("service_node_pubkey").get<std::string>();
 
-            const swarm_id_t swarm_id = sn_json["swarm_id"].get<swarm_id_t>();
+            const swarm_id_t swarm_id = sn_json.at("swarm_id").get<swarm_id_t>();
 #ifndef INTEGRATION_TEST
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
@@ -111,8 +111,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
             swarm_map[swarm_id].push_back(sn);
         }
 
-        bu.height = body["result"]["height"].get<uint64_t>();
-        bu.block_hash = body["result"]["block_hash"].get<std::string>();
+        bu.height = body.at("result").at("height").get<uint64_t>();
+        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
 
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
