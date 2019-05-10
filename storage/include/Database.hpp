@@ -8,13 +8,15 @@
 #include <string>
 #include <vector>
 
+#include <boost/asio.hpp>
+
 struct sqlite3;
 struct sqlite3_stmt;
 class Timer;
 
 class Database {
   public:
-    Database(const std::string& db_path);
+    Database(boost::asio::io_context& ioc, const std::string& db_path);
     ~Database();
 
     enum class DuplicateHandling { IGNORE, FAIL };
@@ -53,5 +55,5 @@ class Database {
     sqlite3_stmt* get_by_index_stmt;
     sqlite3_stmt* delete_expired_stmt;
 
-    std::unique_ptr<Timer> cleanup_timer;
+    boost::asio::steady_timer cleanup_timer_;
 };

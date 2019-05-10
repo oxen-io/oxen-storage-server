@@ -4,7 +4,6 @@ set(SOURCES
     include/Database.hpp
     include/Item.hpp
     src/Database.cpp
-    src/Timer.hpp
 )
 
 add_library(storage STATIC ${SOURCES})
