@@ -132,11 +132,11 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
 }
 
 void request_swarm_update(boost::asio::io_context& ioc,
-                          const swarm_callback_t&& cb) {
+                          const swarm_callback_t&& cb,
+                          uint16_t lokid_rpc_port) {
     BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
 
     const std::string ip = "127.0.0.1";
-    const uint16_t port = 38157;
     const std::string target = "/json_rpc";
     const std::string req_body =
         R"#({
@@ -155,7 +155,7 @@ void request_swarm_update(boost::asio::io_context& ioc,
     req->target(target);
     req->prepare_payload();
 
-    make_http_request(ioc, ip, port, req,
+    make_http_request(ioc, ip, lokid_rpc_port, req,
                       [cb = std::move(cb)](const sn_response_t&& res) {
                           if (res.body) {
                               parse_swarm_update(res.body, std::move(cb));

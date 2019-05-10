@@ -51,7 +51,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        http_callback_t&& cb);
 
 void request_swarm_update(boost::asio::io_context& ioc,
-                          const swarm_callback_t&& cb);
+                          const swarm_callback_t&& cb, uint16_t lokid_rpc_port);
 
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {

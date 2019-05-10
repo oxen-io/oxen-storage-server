@@ -128,9 +128,11 @@ static bool verify_message(const message_t& msg, const char** error_message = nu
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
-                         const std::string& db_location)
+                         const std::string& db_location,
+                         uint16_t lokid_rpc_port)
     : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
-      update_timer_(ioc), lokid_key_pair_(lokid_key_pair) {
+      update_timer_(ioc), lokid_key_pair_(lokid_key_pair),
+      lokid_rpc_port_(lokid_rpc_port) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -357,7 +359,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
-    request_swarm_update(ioc_, std::move(cb));
+    request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
     update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }

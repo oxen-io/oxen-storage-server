@@ -74,13 +74,15 @@ int main(int argc, char* argv[]) {
         std::string log_location;
         std::string log_level_string("info");
         bool print_version = false;
+        uint16_t lokid_rpc_port = 38157;
 
         po::options_description desc;
         desc.add_options()("lokid-key", po::value(&lokid_key_path),
                            "")("db-location", po::value(&db_location),
                                "")("output-log", po::value(&log_location), "")(
             "log-level", po::value(&log_level_string),
-            "")("version,v", po::bool_switch(&print_version), "");
+            "")("version,v", po::bool_switch(&print_version),
+                "")("lokid-rpc-port", po::value(&lokid_rpc_port));
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -149,6 +151,11 @@ int main(int argc, char* argv[]) {
                 << "Setting database location to " << db_location;
         }
 
+        if (vm.count("lokid-rpc-port")) {
+            BOOST_LOG_TRIVIAL(info)
+                << "Setting lokid RPC port to " << lokid_rpc_port;
+        }
+
         BOOST_LOG_TRIVIAL(info)
             << "Listening at address " << ip << " port " << port << std::endl;
 
@@ -163,7 +170,8 @@ int main(int argc, char* argv[]) {
         ChannelEncryption<std::string> channel_encryption(priv);
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
-        loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location);
+        loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location,
+                                       lokid_rpc_port);
 
         /// Should run http server
         loki::http_server::run(ioc, ip, port, service_node, channel_encryption);

@@ -79,6 +79,7 @@ class ServiceNode {
     boost::asio::io_context& ioc_;
 
     uint64_t block_height_ = 0;
+    const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
@@ -133,7 +134,7 @@ class ServiceNode {
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location);
+                const std::string& db_location, uint16_t lokid_rpc_port);
 
     ~ServiceNode();
 
