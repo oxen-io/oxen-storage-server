@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <chrono>
 
 /// This file fails to link on linux when trying to use std:: for threading and
 /// chrono
@@ -29,7 +30,8 @@ BOOST_AUTO_TEST_SUITE(storage)
 BOOST_AUTO_TEST_CASE(it_creates_the_database_file) {
     StorageRAIIFixture fixture;
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
     BOOST_CHECK(boost::filesystem::exists("storage.db"));
 }
 
@@ -43,13 +45,15 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
     {
-        Database storage(".");
+        boost::asio::io_context ioc;
+        Database storage(ioc, ".");
         BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
         // the database is closed when storage goes out of scope
     }
     {
         // re-open the database
-        Database storage(".");
+        boost::asio::io_context ioc;
+        Database storage(ioc, ".");
 
         std::vector<service_node::storage::Item> items;
         const auto lastHash = "";
@@ -75,7 +79,8 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash, FAIL is default behaviour
@@ -94,7 +99,8 @@ BOOST_AUTO_TEST_CASE(
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
@@ -105,7 +111,8 @@ BOOST_AUTO_TEST_CASE(
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
     StorageRAIIFixture fixture;
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
@@ -132,7 +139,8 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
 BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     StorageRAIIFixture fixture;
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     const size_t num_entries = 1000;
     for (size_t i = 0; i < num_entries; i++) {
@@ -165,7 +173,14 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
 
     const auto pubkey = "mypubkey";
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+
+    Database storage(ioc, ".");
+
+    /// Note: `Database` is not thread safe
+    /// and not meant to be used in this way;
+    /// However, it should be fine for tests
+    std::thread t([&]() { ioc.run(); });
 
     BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
@@ -189,6 +204,9 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
         BOOST_CHECK_EQUAL(items.size(), 1);
         BOOST_CHECK_EQUAL(items[0].hash, "hash0");
     }
+
+    ioc.stop();
+    t.join();
 }
 
 BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
@@ -202,7 +220,8 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
 
     const size_t num_items = 10000;
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     // bulk store
     {
@@ -235,7 +254,8 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 
     const size_t num_items = 10000;
 
-    Database storage(".");
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
 
     // insert existing
     BOOST_CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
@@ -279,7 +299,8 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
 
     // bulk store
     {
-        Database storage(".");
+        boost::asio::io_context ioc;
+        Database storage(ioc, ".");
         const auto start = boost::chrono::steady_clock::now();
         storage.bulk_store(items);
         const auto end = boost::chrono::steady_clock::now();
@@ -291,7 +312,8 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
 
     // single stores
     {
-        Database storage(".");
+        boost::asio::io_context ioc;
+        Database storage(ioc, ".");
         const auto start = boost::chrono::steady_clock::now();
         for (const auto& item : items) {
             storage.store(item.hash, item.pub_key, item.data, item.ttl,
