@@ -45,12 +45,12 @@ struct hash<sn_record_t> {
 
 } // namespace std
 
-inline bool operator <(const sn_record_t& lhs, const sn_record_t& rhs) {
-    #ifdef INTEGRATION_TEST
-        return lhs.port < rhs.port;
-    #else
-        return lhs.address < rhs.address;
-    #endif
+inline bool operator<(const sn_record_t& lhs, const sn_record_t& rhs) {
+#ifdef INTEGRATION_TEST
+    return lhs.port < rhs.port;
+#else
+    return lhs.address < rhs.address;
+#endif
 }
 
 static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {

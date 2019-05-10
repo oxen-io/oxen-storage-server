@@ -123,6 +123,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     ChannelEncryption<std::string>& channel_cipher_;
 
+    // The timer for repeating an action within one connection
+    boost::asio::steady_timer repeat_timer_;
+    int repetition_count_ = 0;
+
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;
 
@@ -190,7 +194,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // Check whether we have spent enough time on this connection.
     void register_deadline();
 
-    /// TODO: should move somewhere else
+    /// Process message test request and repeat if necessary
+    void process_message_test(uint64_t height, const std::string& msg_hash);
 
     bool parse_header(const char* key);
 

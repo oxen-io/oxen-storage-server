@@ -38,7 +38,8 @@ class Database {
     bool retrieve_by_index(uint64_t index, service_node::storage::Item& item);
 
     // Get message by `msg_hash`, return true if found
-    bool retrieve_by_hash(const std::string& msg_hash, service_node::storage::Item& item);
+    bool retrieve_by_hash(const std::string& msg_hash,
+                          service_node::storage::Item& item);
 
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);

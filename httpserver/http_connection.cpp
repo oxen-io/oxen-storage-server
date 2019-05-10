@@ -39,6 +39,7 @@ using error_code = boost::system::error_code;
 namespace loki {
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
+constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
 // Note: on the client side the limit is different
 // as it is not encrypted/encoded there yet.
@@ -92,13 +93,15 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
     block_update_t bu;
 
     try {
-        const json service_node_states = body.at("result").at("service_node_states");
+        const json service_node_states =
+            body.at("result").at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
             const std::string pubkey =
                 sn_json.at("service_node_pubkey").get<std::string>();
 
-            const swarm_id_t swarm_id = sn_json.at("swarm_id").get<swarm_id_t>();
+            const swarm_id_t swarm_id =
+                sn_json.at("swarm_id").get<swarm_id_t>();
 #ifndef INTEGRATION_TEST
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
@@ -207,7 +210,8 @@ connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ServiceNode& sn,
                            ChannelEncryption<std::string>& channel_encryption)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
-      channel_cipher_(channel_encryption), deadline_(ioc, SESSION_TIME_LIMIT),
+      channel_cipher_(channel_encryption), repeat_timer_(ioc),
+      deadline_(ioc, SESSION_TIME_LIMIT),
       notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
@@ -278,7 +282,9 @@ bool connection_t::verify_signature() {
     const std::string snode_address = public_key_b32z + ".snode";
     if (!service_node_.is_snode_address_known(snode_address)) {
         body_stream_ << "Unknown service node\n";
-        BOOST_LOG_TRIVIAL(error) << "Discarding signature from unknown service node " << public_key_b32z;
+        BOOST_LOG_TRIVIAL(error)
+            << "Discarding signature from unknown service node "
+            << public_key_b32z;
         response_.result(http::status::unauthorized);
         return false;
     }
@@ -292,6 +298,43 @@ bool connection_t::verify_signature() {
         body_stream_ << msg;
     }
     return ok;
+}
+
+void connection_t::process_message_test(uint64_t height,
+                                        const std::string& msg_hash) {
+
+    BOOST_LOG_TRIVIAL(debug)
+        << "Performing message test, attempt: " << repetition_count_;
+
+    std::string answer;
+
+    MessageTestStatus status =
+        service_node_.process_msg_test(height, msg_hash, answer);
+    if (status == MessageTestStatus::SUCCESS) {
+        delay_response_ = true;
+        body_stream_ << answer;
+        response_.result(http::status::ok);
+        this->write_response();
+    } else if (status == MessageTestStatus::RETRY) {
+        delay_response_ = true;
+        repetition_count_++;
+
+        repeat_timer_.expires_after(TEST_RETRY_PERIOD);
+        repeat_timer_.async_wait([self = shared_from_this(), height,
+                                  msg_hash](const error_code& ec) {
+            if (ec) {
+                if (ec != boost::asio::error::operation_aborted) {
+                    log_error(ec);
+                }
+            } else {
+                self->process_message_test(height, msg_hash);
+            }
+        });
+
+    } else {
+        response_.result(http::status::bad_request);
+        /// TODO: send a helpful error message
+    }
 }
 
 // Determine what needs to be done with the request message.
@@ -342,7 +385,6 @@ void connection_t::process_request() {
                 deserialize_messages(request_.body());
             assert(messages.size() == 1);
 
-            /// TODO: this will need to be done asynchronoulsy
             service_node_.process_push(messages.front());
 
             response_.result(http::status::ok);
@@ -357,6 +399,34 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
             service_node_.process_push_batch(request_.body());
 
+        } else if (target == "/msg_test") {
+            BOOST_LOG_TRIVIAL(debug) << "Got message test request";
+
+            using nlohmann::json;
+
+            const json body = json::parse(request_.body(), nullptr, false);
+
+            if (body == nlohmann::detail::value_t::discarded) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Bad snode test request: invalid json";
+                response_.result(http::status::bad_request);
+                return;
+            }
+
+            uint64_t blk_height;
+            std::string msg_hash;
+
+            try {
+                blk_height = body.at("height").get<uint64_t>();
+                msg_hash = body.at("hash").get<std::string>();
+            } catch (...) {
+                response_.result(http::status::bad_request);
+                BOOST_LOG_TRIVIAL(error)
+                    << "Bad snode test request: missing fields in json";
+                return;
+            }
+
+            this->process_message_test(blk_height, msg_hash);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
