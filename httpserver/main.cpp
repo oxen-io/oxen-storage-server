@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
         std::string log_location;
         std::string log_level_string("info");
         bool print_version = false;
-        uint16_t lokid_rpc_port = 38157;
+        uint16_t lokid_rpc_port = 22023;
 
         po::options_description desc;
         desc.add_options()("lokid-key", po::value(&lokid_key_path),
