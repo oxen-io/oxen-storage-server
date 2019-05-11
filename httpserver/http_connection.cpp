@@ -160,6 +160,7 @@ void request_swarm_update(boost::asio::io_context& ioc,
                           if (res.body) {
                               parse_swarm_update(res.body, std::move(cb));
                           }
+                          BOOST_LOG_TRIVIAL(error) << "ERROR: Didn't get swarm request body";
                       });
 }
 

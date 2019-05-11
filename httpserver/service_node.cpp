@@ -79,7 +79,7 @@ FailedRequestHandler::~FailedRequestHandler() {
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
 
 /// TODO: there should be config.h to store constants like these
-constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
+constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 10000ms;
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
@@ -146,6 +146,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     BOOST_LOG_TRIVIAL(info) << "Read our snode address: " << our_address_;
     our_address_.port = port;
 
+    BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
 }
 
