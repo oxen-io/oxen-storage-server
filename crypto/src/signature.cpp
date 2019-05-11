@@ -11,6 +11,7 @@ extern "C" {
 #include <sodium/randombytes.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstring> // for memcmp
 #include <iterator>
