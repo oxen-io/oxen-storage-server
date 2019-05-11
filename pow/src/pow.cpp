@@ -15,7 +15,7 @@
 
 const int BYTE_LEN = 8;
 #ifdef NDEBUG
-const int NONCE_TRIALS = 1000;
+const int NONCE_TRIALS = 100;
 #else
 const int NONCE_TRIALS = 10;
 #endif
