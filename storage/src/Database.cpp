@@ -24,8 +24,7 @@ Database::Database(boost::asio::io_context& ioc, const std::string& db_path)
     : cleanup_timer_(ioc) {
     open_and_prepare(db_path);
 
-    cleanup_timer_.expires_after(CLEANUP_PERIOD);
-    cleanup_timer_.async_wait(std::bind(&Database::perform_cleanup, this));
+    perform_cleanup();
 }
 
 void Database::perform_cleanup() {
