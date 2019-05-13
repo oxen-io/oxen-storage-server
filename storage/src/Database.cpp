@@ -1,5 +1,4 @@
 #include "Database.hpp"
-#include "Timer.hpp"
 #include "utils.hpp"
 
 #include "sqlite3.h"
@@ -7,6 +6,8 @@
 #include <boost/log/trivial.hpp>
 
 using namespace service_node::storage;
+
+constexpr auto CLEANUP_PERIOD = std::chrono::seconds(10);
 
 Database::~Database() {
     sqlite3_finalize(save_stmt);
@@ -19,10 +20,11 @@ Database::~Database() {
     std::cerr << "~Database\n";
 }
 
-Database::Database(const std::string& db_path)
-    : cleanup_timer(new Timer(std::bind(&Database::perform_cleanup, this))) {
+Database::Database(boost::asio::io_context& ioc, const std::string& db_path)
+    : cleanup_timer_(ioc) {
     open_and_prepare(db_path);
-    cleanup_timer->start();
+
+    perform_cleanup();
 }
 
 void Database::perform_cleanup() {
@@ -49,6 +51,9 @@ void Database::perform_cleanup() {
     if (reset_rc != SQLITE_OK && reset_rc != rc) {
         fprintf(stderr, "sql error: unexpected value from sqlite3_reset");
     }
+
+    cleanup_timer_.expires_after(CLEANUP_PERIOD);
+    cleanup_timer_.async_wait(std::bind(&Database::perform_cleanup, this));
 }
 
 sqlite3_stmt* Database::prepare_statement(const std::string& query) {

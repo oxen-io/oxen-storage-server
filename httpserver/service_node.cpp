@@ -130,7 +130,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
                          uint16_t lokid_rpc_port)
-    : ioc_(ioc), db_(std::make_unique<Database>(db_location)),
+    : ioc_(ioc), db_(std::make_unique<Database>(ioc, db_location)),
       update_timer_(ioc), lokid_key_pair_(lokid_key_pair),
       lokid_rpc_port_(lokid_rpc_port) {
 
