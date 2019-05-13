@@ -442,6 +442,12 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
 
     auto req = make_post_request("/msg_test", json_body.dump());
 
+#ifndef DISABLE_SNODE_SIGNATURE
+    const auto hash = hash_data(req->body());
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+    attach_signature(req, signature);
+#endif
+
     make_http_request(ioc_, testee.address, testee.port, req, callback);
 }
 
