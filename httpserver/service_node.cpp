@@ -100,7 +100,8 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-static bool verify_message(const message_t& msg, const char** error_message = nullptr) {
+static bool verify_message(const message_t& msg,
+                           const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
             *error_message = "Provided TTL is not valid";
@@ -153,7 +154,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 ServiceNode::~ServiceNode() = default;
 
 void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
-                             const sn_record_t& sn) const {
+                                  const sn_record_t& sn) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
@@ -334,6 +335,8 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         block_height_ = bu.height;
         block_hash_ = bu.block_hash;
 
+        block_hashes_cache_.push_back(std::make_pair(bu.height, bu.block_hash));
+
     } else {
         BOOST_LOG_TRIVIAL(trace) << "already seen this block";
         return;
@@ -354,7 +357,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         salvage_data();
     }
 
-    perform_peer_test();
+    initiate_peer_test();
 }
 
 void ServiceNode::swarm_timer_tick() {
@@ -398,50 +401,219 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, stripped);
 }
 
-void ServiceNode::perform_peer_test() {
+void abort_if_integration_test() {
+#ifdef INTEGRATION_TEST
+    abort();
+#endif
+}
 
-    // 1. Select the tester/testee pair
+void ServiceNode::send_message_test_req(const sn_record_t& testee,
+                                        const Item& item) {
 
-    std::vector<sn_record_t> members_pk = swarm_->other_nodes();
+    auto callback = [testee, item,
+                     height = this->block_height_](sn_response_t&& res) {
+        if (res.error_code == SNodeError::NO_ERROR && res.body) {
+            if (*res.body == item.data) {
+                BOOST_LOG_TRIVIAL(debug)
+                    << "Message test is successful for: " << testee
+                    << " at height: " << height;
+            } else {
+                BOOST_LOG_TRIVIAL(warning)
+                    << "Test answer doesn't match for: " << testee
+                    << " at height: " << height;
 
-    members_pk.push_back(our_address_);
+#ifdef INTEGRATION_TEST
+                BOOST_LOG_TRIVIAL(warning)
+                    << "got: " << *res.body << " expected: " << item.data;
+#endif
+                abort_if_integration_test();
+            }
+        } else {
+            BOOST_LOG_TRIVIAL(error)
+                << "Failed to send a message test request to snode: " << testee;
 
-    std::sort(members_pk.begin(), members_pk.end());
+            abort_if_integration_test();
+        }
+    };
 
-    if (members_pk.size() < 2) {
+    nlohmann::json json_body;
+
+    json_body["height"] = block_height_;
+    json_body["hash"] = item.hash;
+
+    auto req = make_post_request("/msg_test", json_body.dump());
+
+    make_http_request(ioc_, testee.address, testee.port, req, callback);
+}
+
+// Deterministically selects two random swarm members; returns true on success
+bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
+                                       sn_record_t& testee) {
+
+    std::vector<sn_record_t> members = swarm_->other_nodes();
+    members.push_back(our_address_);
+
+    if (members.size() < 2) {
         BOOST_LOG_TRIVIAL(error)
             << "Could not initiate peer test: swarm too small";
-        return;
+        return false;
+    }
+
+    std::sort(members.begin(), members.end());
+
+    std::string block_hash;
+    if (blk_height == block_height_) {
+        block_hash = block_hash_;
+    } else if (blk_height < block_height_) {
+
+        BOOST_LOG_TRIVIAL(debug)
+            << "got message test request for an older block";
+
+        const auto it =
+            std::find_if(block_hashes_cache_.begin(), block_hashes_cache_.end(),
+                         [=](const std::pair<uint64_t, std::string>& val) {
+                             return val.first == blk_height;
+                         });
+
+        if (it != block_hashes_cache_.end()) {
+            block_hash = it->second;
+        } else {
+            BOOST_LOG_TRIVIAL(warning)
+                << "Could not find hash for a given block height";
+            // TODO: request from lokid?
+            return false;
+        }
+    } else {
+        assert(false);
+        BOOST_LOG_TRIVIAL(error)
+            << "Could not find hash: block height is in the future";
+        return false;
     }
 
     uint64_t seed;
-    if (block_hash_.size() < sizeof(seed)) {
+    if (block_hash.size() < sizeof(seed)) {
         BOOST_LOG_TRIVIAL(error)
             << "Could not initiate peer test: invalid block hash";
-        return;
+        return false;
     }
 
-    std::memcpy(&seed, block_hash_.data(), sizeof(seed));
+    std::memcpy(&seed, block_hash.data(), sizeof(seed));
     std::mt19937_64 mt(seed);
-    auto tester_idx =
-        util::uniform_distribution_portable(mt, members_pk.size());
-    sn_record_t tester = members_pk[tester_idx];
-    std::cout << "     tester is: " << tester.port << std::endl;
+    const auto tester_idx =
+        util::uniform_distribution_portable(mt, members.size());
+    tester = members[tester_idx];
 
-    members_pk.erase(members_pk.begin() + tester_idx);
-    auto testee_idx =
-        util::uniform_distribution_portable(mt, members_pk.size());
-    sn_record_t testee = members_pk[testee_idx];
-    std::cout << "     testee is: " << testee.port << std::endl;
+    uint64_t testee_idx;
+    do {
+        testee_idx = util::uniform_distribution_portable(mt, members.size());
+    } while (testee_idx == tester_idx);
 
-    if (tester == our_address_) {
-        std::cout << "WE are the tester!\n";
-    } else {
-        // TODO: see if we are the testee
+    testee = members[testee_idx];
+
+    return true;
+}
+
+MessageTestStatus ServiceNode::process_msg_test_req(uint64_t blk_height,
+                                                    const std::string& msg_hash,
+                                                    std::string& answer) {
+
+    // 1. Check height, retry if we are behind
+    std::string block_hash;
+
+    if (blk_height > block_height_) {
+        BOOST_LOG_TRIVIAL(warning)
+            << "Our blockchain is behind, height: " << block_height_
+            << ", requested: " << blk_height;
+        return MessageTestStatus::RETRY;
+    }
+
+    // 2. Check tester/testee pair
+    {
+        sn_record_t tester;
+        sn_record_t testee;
+        derive_tester_testee(blk_height, tester, testee);
+
+        if (testee != our_address_) {
+            BOOST_LOG_TRIVIAL(warning)
+                << "We are NOT the testee for height: " << blk_height;
+            return MessageTestStatus::ERROR;
+        }
+
+        // TODO: check tester
+    }
+
+    // 3. If for a current/past block, try to respond right away
+    Item item;
+    if (!db_->retrieve_by_hash(msg_hash, item)) {
+        BOOST_LOG_TRIVIAL(error) << "Could not find a message by given hash";
+        return MessageTestStatus::RETRY;
+    }
+
+    answer = item.data;
+    return MessageTestStatus::SUCCESS;
+}
+
+bool ServiceNode::select_random_message(Item& item) {
+
+    uint64_t message_count;
+    if (!db_->get_message_count(message_count)) {
+        BOOST_LOG_TRIVIAL(error) << "could not count messages in the database";
+        return false;
+    }
+
+    BOOST_LOG_TRIVIAL(info) << "total messages: " << message_count;
+
+    if (message_count == 0) {
+        BOOST_LOG_TRIVIAL(warning)
+            << "no messages in the database to initiate a peer test";
+        return false;
+    }
+
+    // SNodes don't have to agree on this, rather they should use different
+    // messages
+    const uint64_t seed =
+        std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::mt19937_64 mt(seed);
+    const auto msg_idx = util::uniform_distribution_portable(mt, message_count);
+
+    if (!db_->retrieve_by_index(msg_idx, item)) {
+        BOOST_LOG_TRIVIAL(error)
+            << "could not retrieve message by index: " << msg_idx;
+        return false;
+    }
+
+    return true;
+}
+
+void ServiceNode::initiate_peer_test() {
+
+    // 1. Select the tester/testee pair
+    sn_record_t tester, testee;
+    if (!derive_tester_testee(block_height_, tester, testee)) {
         return;
     }
 
-    // 2. TODO: If we are the tester, send a test request to a testee
+    BOOST_LOG_TRIVIAL(trace)
+        << "For height " << block_height_ << " the tester is " << tester
+        << " testee: " << testee;
+
+    if (tester != our_address_) {
+        /// Not our turn to initiate a test
+        return;
+    }
+
+    // 2. Select a message
+    Item item;
+    if (!this->select_random_message(item)) {
+        BOOST_LOG_TRIVIAL(error) << "Could not select a message for testing";
+        return;
+    }
+
+    BOOST_LOG_TRIVIAL(trace)
+        << "selected random message : " << item.hash << ", " << item.data;
+
+    // 3. Initiate testing request
+    send_message_test_req(testee, item);
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {

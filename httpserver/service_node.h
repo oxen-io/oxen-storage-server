@@ -8,6 +8,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/circular_buffer.hpp>
 #include <boost/optional.hpp>
 
 #include "common.h"
@@ -15,6 +16,7 @@
 #include "swarm.h"
 
 static constexpr uint16_t SNODE_PORT = 8080;
+static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 
 class Database;
 
@@ -71,6 +73,8 @@ class FailedRequestHandler
     void init_timer();
 };
 
+enum class MessageTestStatus { SUCCESS, RETRY, ERROR };
+
 /// All service node logic that is not network-specific
 class ServiceNode {
     using pub_key_t = std::string;
@@ -87,6 +91,10 @@ class ServiceNode {
     mutable std::unordered_map<sn_record_t, snode_stats_t> snode_report_;
 
     sn_record_t our_address_;
+
+    /// Cache for block_height/block_hash mapping
+    boost::circular_buffer<std::pair<uint64_t, std::string>>
+        block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
 
     boost::asio::steady_timer update_timer_;
 
@@ -120,7 +128,7 @@ class ServiceNode {
 
     /// used on push and on swarm bootstrapping
     void send_sn_request(const std::shared_ptr<request_t>& req,
-                    const sn_record_t& address) const;
+                         const sn_record_t& address) const;
     void
     relay_messages(const std::vector<service_node::storage::Item>& messages,
                    const std::vector<sn_record_t>& snodes) const;
@@ -128,8 +136,19 @@ class ServiceNode {
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
 
-    /// Actually perform peer testing
-    void perform_peer_test();
+    /// Return tester/testee pair based on block_height
+    bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
+                              sn_record_t& testee);
+
+    /// Send a request to a SN under test
+    void send_message_test_req(const sn_record_t& testee,
+                               const service_node::storage::Item& item);
+
+    /// Check if it is our turn to test and initiate peer test if so
+    void initiate_peer_test();
+
+    // Select a random message from our database, return false on error
+    bool select_random_message(service_node::storage::Item& item);
 
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
@@ -157,6 +176,11 @@ class ServiceNode {
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
+
+    // Attempt to find an answer (message body) to the message test
+    MessageTestStatus process_msg_test_req(uint64_t blk_height,
+                                           const std::string& msg_hash,
+                                           std::string& answer);
 
     bool is_pubkey_for_us(const std::string& pk) const;
 
