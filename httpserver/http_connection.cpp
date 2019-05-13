@@ -300,8 +300,8 @@ bool connection_t::verify_signature() {
     return ok;
 }
 
-void connection_t::process_message_test(uint64_t height,
-                                        const std::string& msg_hash) {
+void connection_t::process_message_test_req(uint64_t height,
+                                            const std::string& msg_hash) {
 
     BOOST_LOG_TRIVIAL(debug)
         << "Performing message test, attempt: " << repetition_count_;
@@ -309,7 +309,7 @@ void connection_t::process_message_test(uint64_t height,
     std::string answer;
 
     const MessageTestStatus status =
-        service_node_.process_msg_test(height, msg_hash, answer);
+        service_node_.process_msg_test_req(height, msg_hash, answer);
     if (status == MessageTestStatus::SUCCESS) {
         delay_response_ = true;
         body_stream_ << answer;
@@ -327,7 +327,7 @@ void connection_t::process_message_test(uint64_t height,
                     log_error(ec);
                 }
             } else {
-                self->process_message_test(height, msg_hash);
+                self->process_message_test_req(height, msg_hash);
             }
         });
 
@@ -434,7 +434,7 @@ void connection_t::process_request() {
                 return;
             }
 
-            this->process_message_test(blk_height, msg_hash);
+            this->process_message_test_req(blk_height, msg_hash);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {

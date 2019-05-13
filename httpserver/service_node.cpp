@@ -512,9 +512,9 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     return true;
 }
 
-MessageTestStatus ServiceNode::process_msg_test(uint64_t blk_height,
-                                                const std::string& msg_hash,
-                                                std::string& answer) {
+MessageTestStatus ServiceNode::process_msg_test_req(uint64_t blk_height,
+                                                    const std::string& msg_hash,
+                                                    std::string& answer) {
 
     // 1. Check height, retry if we are behind
     std::string block_hash;

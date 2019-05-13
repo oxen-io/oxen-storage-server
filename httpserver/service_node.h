@@ -178,9 +178,9 @@ class ServiceNode {
     void process_push_batch(const std::string& blob);
 
     // Attempt to find an answer (message body) to the message test
-    MessageTestStatus process_msg_test(uint64_t blk_height,
-                                       const std::string& msg_hash,
-                                       std::string& answer);
+    MessageTestStatus process_msg_test_req(uint64_t blk_height,
+                                           const std::string& msg_hash,
+                                           std::string& answer);
 
     bool is_pubkey_for_us(const std::string& pk) const;
 
