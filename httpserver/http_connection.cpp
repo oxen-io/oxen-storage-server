@@ -308,7 +308,7 @@ void connection_t::process_message_test(uint64_t height,
 
     std::string answer;
 
-    MessageTestStatus status =
+    const MessageTestStatus status =
         service_node_.process_msg_test(height, msg_hash, answer);
     if (status == MessageTestStatus::SUCCESS) {
         delay_response_ = true;
@@ -374,7 +374,7 @@ void connection_t::process_request() {
 #ifndef DISABLE_SNODE_SIGNATURE
             if (!verify_signature()) {
                 response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate signature\n";
+                body_stream_ << "Could not validate signature from snode\n";
                 return;
             }
 #endif
@@ -392,7 +392,7 @@ void connection_t::process_request() {
 #ifndef DISABLE_SNODE_SIGNATURE
             if (!verify_signature()) {
                 response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate batch signature\n";
+                body_stream_ << "Could not validate signature from snode\n";
                 return;
             }
 #endif
@@ -401,6 +401,14 @@ void connection_t::process_request() {
 
         } else if (target == "/msg_test") {
             BOOST_LOG_TRIVIAL(debug) << "Got message test request";
+
+#ifndef DISABLE_SNODE_SIGNATURE
+            if (!verify_signature()) {
+                response_.result(http::status::bad_request);
+                body_stream_ << "Could not validate signature from snode\n";
+                return;
+            }
+#endif
 
             using nlohmann::json;
 

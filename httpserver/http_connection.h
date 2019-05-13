@@ -46,6 +46,8 @@ struct sn_response_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
+// TODO: the name should indicate that we are actually trying to send data
+// unlike in `make_post_request`
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);

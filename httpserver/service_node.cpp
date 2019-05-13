@@ -440,12 +440,7 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
     json_body["height"] = block_height_;
     json_body["hash"] = item.hash;
 
-    auto req = std::make_shared<request_t>();
-    req->method(http::verb::post);
-    req->set(http::field::host, "service node");
-    req->body() = json_body.dump();
-    req->target("/msg_test");
-    req->prepare_payload();
+    auto req = make_post_request("/msg_test", json_body.dump());
 
     make_http_request(ioc_, testee.address, testee.port, req, callback);
 }
@@ -473,21 +468,25 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         BOOST_LOG_TRIVIAL(debug)
             << "got message test request for an older block";
 
-        auto it =
+        const auto it =
             std::find_if(block_hashes_cache_.begin(), block_hashes_cache_.end(),
                          [=](const std::pair<uint64_t, std::string>& val) {
                              return val.first == blk_height;
                          });
 
         if (it != block_hashes_cache_.end()) {
-
-            std::cerr << "found hash from cache: " << it->second << std::endl;
             block_hash = it->second;
         } else {
-            std::cerr << "not found in cache\n";
+            BOOST_LOG_TRIVIAL(warning)
+                << "Could not find hash for a given block height";
+            // TODO: request from lokid?
             return false;
         }
     } else {
+        assert(false);
+        BOOST_LOG_TRIVIAL(error)
+            << "Could not find hash: block height is in the future";
+        return false;
     }
 
     uint64_t seed;
@@ -499,7 +498,8 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
 
     std::memcpy(&seed, block_hash.data(), sizeof(seed));
     std::mt19937_64 mt(seed);
-    auto tester_idx = util::uniform_distribution_portable(mt, members.size());
+    const auto tester_idx =
+        util::uniform_distribution_portable(mt, members.size());
     tester = members[tester_idx];
 
     uint64_t testee_idx;
@@ -537,6 +537,8 @@ MessageTestStatus ServiceNode::process_msg_test(uint64_t blk_height,
                 << "We are NOT the testee for height: " << blk_height;
             return MessageTestStatus::ERROR;
         }
+
+        // TODO: check tester
     }
 
     // 3. If for a current/past block, try to respond right away
@@ -568,10 +570,10 @@ bool ServiceNode::select_random_message(Item& item) {
 
     // SNodes don't have to agree on this, rather they should use different
     // messages
-    uint64_t seed =
+    const uint64_t seed =
         std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::mt19937_64 mt(seed);
-    auto msg_idx = util::uniform_distribution_portable(mt, message_count);
+    const auto msg_idx = util::uniform_distribution_portable(mt, message_count);
 
     if (!db_->retrieve_by_index(msg_idx, item)) {
         BOOST_LOG_TRIVIAL(error)
