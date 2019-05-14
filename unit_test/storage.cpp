@@ -281,8 +281,6 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 }
 
 BOOST_AUTO_TEST_CASE(bulk_performance_check) {
-    StorageRAIIFixture fixture;
-
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
     const auto nonce = "nonce";
@@ -299,6 +297,7 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
 
     // bulk store
     {
+        StorageRAIIFixture fixture;
         boost::asio::io_context ioc;
         Database storage(ioc, ".");
         const auto start = boost::chrono::steady_clock::now();
@@ -312,6 +311,7 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
 
     // single stores
     {
+        StorageRAIIFixture fixture;
         boost::asio::io_context ioc;
         Database storage(ioc, ".");
         const auto start = boost::chrono::steady_clock::now();
