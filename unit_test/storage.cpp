@@ -326,4 +326,55 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
                   << " ms" << std::endl;
     }
 }
+
+BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
+    StorageRAIIFixture fixture;
+
+    boost::asio::io_context ioc;
+    Database storage(ioc, ".");
+
+    const size_t num_entries = 100;
+    for (size_t i = 0; i < num_entries; i++) {
+        const auto hash = std::string("hash") + std::to_string(i);
+        storage.store(hash, "mypubkey", "bytesasstring", 100000,
+                      util::get_time_ms(), "nonce");
+    }
+
+    // should return every items
+    {
+        std::vector<service_node::storage::Item> items;
+        const auto lastHash = "";
+        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
+        BOOST_CHECK_EQUAL(items.size(), num_entries);
+    }
+
+    // should return 10 items
+    {
+        const int num_results = 10;
+        std::vector<service_node::storage::Item> items;
+        const auto lastHash = "";
+        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        BOOST_CHECK_EQUAL(items.size(), num_results);
+    }
+
+
+    // should return 88 items
+    {
+        const int num_results = 88;
+        std::vector<service_node::storage::Item> items;
+        const auto lastHash = "";
+        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        BOOST_CHECK_EQUAL(items.size(), num_results);
+    }
+
+    // should return num_entries items
+    {
+        const int num_results = 2 * num_entries;
+        std::vector<service_node::storage::Item> items;
+        const auto lastHash = "";
+        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        BOOST_CHECK_EQUAL(items.size(), num_entries);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

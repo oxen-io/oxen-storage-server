@@ -84,6 +84,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 #else
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
+constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
@@ -632,7 +633,7 @@ void ServiceNode::initiate_peer_test() {
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
-    db_->retrieve("", all_entries, "");
+    get_all_messages(all_entries);
 
     relay_messages(all_entries, peers);
 }
@@ -670,7 +671,7 @@ void ServiceNode::bootstrap_swarms(
     const auto& all_swarms = swarm_->all_swarms();
 
     std::vector<Item> all_entries;
-    if (!db_->retrieve("", all_entries, "")) {
+    if (!get_all_messages(all_entries)) {
         BOOST_LOG_TRIVIAL(error)
             << "could not retrieve entries from the database\n";
         return;
@@ -767,10 +768,10 @@ void ServiceNode::salvage_data() const {
 bool ServiceNode::retrieve(const std::string& pubKey,
                            const std::string& last_hash,
                            std::vector<Item>& items) {
-    return db_->retrieve(pubKey, items, last_hash);
+    return db_->retrieve(pubKey, items, last_hash, CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) {
+bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
     BOOST_LOG_TRIVIAL(trace) << "get all messages";
 

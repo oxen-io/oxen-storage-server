@@ -30,7 +30,7 @@ class Database {
 
     bool retrieve(const std::string& key,
                   std::vector<service_node::storage::Item>& items,
-                  const std::string& lastHash);
+                  const std::string& lastHash, int num_results = -1);
 
     // Return the total number of messages stored
     bool get_message_count(uint64_t& count);
