@@ -113,12 +113,14 @@ static bool verify_message(const message_t& msg,
         return false;
     }
     std::string hash;
+#ifndef DISABLE_POW
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;
     }
+#endif
     if (hash != msg.hash) {
         if (error_message)
             *error_message = "Incorrect hash provided";
