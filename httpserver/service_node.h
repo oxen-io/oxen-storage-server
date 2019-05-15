@@ -179,6 +179,7 @@ class ServiceNode {
 
     // Attempt to find an answer (message body) to the message test
     MessageTestStatus process_msg_test_req(uint64_t blk_height,
+                                           const std::string& tester_addr,
                                            const std::string& msg_hash,
                                            std::string& answer);
 

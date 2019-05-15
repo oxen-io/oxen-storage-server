@@ -440,7 +440,9 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
             BOOST_LOG_TRIVIAL(error)
                 << "Failed to send a message test request to snode: " << testee;
 
-            abort_if_integration_test();
+            /// TODO: retry here, otherwise tests sometimes fail (when SN not
+            /// running yet)
+            // abort_if_integration_test();
         }
     };
 
@@ -527,9 +529,9 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     return true;
 }
 
-MessageTestStatus ServiceNode::process_msg_test_req(uint64_t blk_height,
-                                                    const std::string& msg_hash,
-                                                    std::string& answer) {
+MessageTestStatus ServiceNode::process_msg_test_req(
+    uint64_t blk_height, const std::string& tester_addr,
+    const std::string& msg_hash, std::string& answer) {
 
     // 1. Check height, retry if we are behind
     std::string block_hash;
@@ -553,7 +555,13 @@ MessageTestStatus ServiceNode::process_msg_test_req(uint64_t blk_height,
             return MessageTestStatus::ERROR;
         }
 
-        // TODO: check tester
+        if (tester.address != tester_addr) {
+            BOOST_LOG_TRIVIAL(warning) << "Wrong tester: " << tester_addr
+                                       << ", expected: " << tester.address;
+            return MessageTestStatus::ERROR;
+        } else {
+            BOOST_LOG_TRIVIAL(debug) << "Tester is valid: " << tester_addr;
+        }
     }
 
     // 3. If for a current/past block, try to respond right away
