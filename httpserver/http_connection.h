@@ -197,7 +197,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void register_deadline();
 
     /// Process message test request and repeat if necessary
-    void process_message_test_req(uint64_t height, const std::string& msg_hash);
+    void process_message_test_req(uint64_t height,
+                                  const std::string& tester_addr,
+                                  const std::string& msg_hash);
 
     bool parse_header(const char* key);
 

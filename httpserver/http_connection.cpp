@@ -308,6 +308,7 @@ bool connection_t::verify_signature() {
 }
 
 void connection_t::process_message_test_req(uint64_t height,
+                                            const std::string& tester_addr,
                                             const std::string& msg_hash) {
 
     BOOST_LOG_TRIVIAL(debug)
@@ -315,8 +316,8 @@ void connection_t::process_message_test_req(uint64_t height,
 
     std::string answer;
 
-    const MessageTestStatus status =
-        service_node_.process_msg_test_req(height, msg_hash, answer);
+    const MessageTestStatus status = service_node_.process_msg_test_req(
+        height, tester_addr, msg_hash, answer);
     if (status == MessageTestStatus::SUCCESS) {
         delay_response_ = true;
         body_stream_ << answer;
@@ -327,14 +328,14 @@ void connection_t::process_message_test_req(uint64_t height,
         repetition_count_++;
 
         repeat_timer_.expires_after(TEST_RETRY_PERIOD);
-        repeat_timer_.async_wait([self = shared_from_this(), height,
-                                  msg_hash](const error_code& ec) {
+        repeat_timer_.async_wait([self = shared_from_this(), height, msg_hash,
+                                  tester_addr](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
                     log_error(ec);
                 }
             } else {
-                self->process_message_test_req(height, msg_hash);
+                self->process_message_test_req(height, tester_addr, msg_hash);
             }
         });
 
@@ -441,7 +442,15 @@ void connection_t::process_request() {
                 return;
             }
 
-            this->process_message_test_req(blk_height, msg_hash);
+            std::string tester_pk;
+#ifndef DISABLE_SNODE_SIGNATURE
+            // Note we know that the header is present because we already
+            // verified the signature (how can we enforce that in code?)
+            tester_pk = header_.at(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+            tester_pk.append(".snode");
+#endif
+
+            this->process_message_test_req(blk_height, tester_pk, msg_hash);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
