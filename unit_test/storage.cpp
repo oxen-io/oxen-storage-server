@@ -340,7 +340,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
                       util::get_time_ms(), "nonce");
     }
 
-    // should return every items
+    // should return all items
     {
         std::vector<service_node::storage::Item> items;
         const auto lastHash = "";
