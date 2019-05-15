@@ -79,7 +79,11 @@ FailedRequestHandler::~FailedRequestHandler() {
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
 
 /// TODO: there should be config.h to store constants like these
-constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 10000ms;
+#ifdef INTEGRATION_TEST
+constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
+#else
+constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
+#endif
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
                                                     std::string&& data) {
@@ -405,6 +409,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
 
 void abort_if_integration_test() {
 #ifdef INTEGRATION_TEST
+    BOOST_LOG_TRIVIAL(error) << "ABORT in integration test";
     abort();
 #endif
 }

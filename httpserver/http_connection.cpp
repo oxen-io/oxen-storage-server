@@ -62,8 +62,13 @@ void make_http_request(boost::asio::io_context& ioc,
     error_code ec;
     tcp::endpoint endpoint;
     tcp::resolver resolver(ioc);
+#ifdef INTEGRATION_TEST
+    tcp::resolver::iterator destination =
+        resolver.resolve("0.0.0.0", "http", ec);
+#else
     tcp::resolver::iterator destination =
         resolver.resolve(sn_address, "http", ec);
+#endif
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
             << "Failed to parse the IP address. Error code = " << ec.value()
@@ -102,13 +107,14 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
-#ifndef INTEGRATION_TEST
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
+#ifndef INTEGRATION_TEST
             const sn_record_t sn{SNODE_PORT, snode_address};
 #else
-            const sn_record_t sn{static_cast<uint16_t>(stoi(pubkey)),
-                                 "0.0.0.0"};
+            const std::string port = sn_json.at("port").get<std::string>();
+            const sn_record_t sn{static_cast<uint16_t>(stoi(port)),
+                                 snode_address};
 #endif
 
             swarm_map[swarm_id].push_back(sn);
@@ -163,7 +169,8 @@ void request_swarm_update(boost::asio::io_context& ioc,
                           if (res.body) {
                               parse_swarm_update(res.body, std::move(cb));
                           } else {
-                            BOOST_LOG_TRIVIAL(error) << "ERROR: Didn't get swarm request body";
+                              BOOST_LOG_TRIVIAL(error)
+                                  << "ERROR: Didn't get swarm request body";
                           }
                       });
 }
@@ -280,7 +287,6 @@ bool connection_t::verify_signature() {
     const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY_HEADER];
 
     /// Known service node
-#ifndef INTEGRATION_TEST
     const std::string snode_address = public_key_b32z + ".snode";
     if (!service_node_.is_snode_address_known(snode_address)) {
         body_stream_ << "Unknown service node\n";
@@ -290,7 +296,6 @@ bool connection_t::verify_signature() {
         response_.result(http::status::unauthorized);
         return false;
     }
-#endif
 
     const auto batch_hash = hash_data(request_.body());
     bool ok = check_signature(signature, batch_hash, public_key_b32z);
