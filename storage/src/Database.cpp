@@ -119,7 +119,7 @@ void Database::open_and_prepare(const std::string& db_path) {
         throw std::runtime_error("could not prepare the bulk save statement");
 
     get_all_for_pk_stmt = prepare_statement(
-        "SELECT * FROM Data WHERE `Owner` = ? ORDER BY rowid;");
+        "SELECT * FROM Data WHERE `Owner` = ? ORDER BY rowid LIMIT ?;");
     if (!get_all_for_pk_stmt)
         throw std::runtime_error(
             "could not prepare the get all for pk statement");
@@ -131,7 +131,7 @@ void Database::open_and_prepare(const std::string& db_path) {
     get_stmt =
         prepare_statement("SELECT * FROM `Data` WHERE `Owner` == ? AND rowid >"
                           "COALESCE((SELECT `rowid` FROM `Data` WHERE `Hash` = "
-                          "?), 0) ORDER BY rowid;");
+                          "?), 0) ORDER BY rowid LIMIT ?;");
     if (!get_stmt)
         throw std::runtime_error("could not prepare get statement");
 
@@ -338,7 +338,7 @@ bool Database::bulk_store(
 }
 
 bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
-                        const std::string& lastHash) {
+                        const std::string& lastHash, int num_results) {
 
     sqlite3_stmt* stmt;
 
@@ -347,10 +347,12 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     } else if (lastHash.empty()) {
         stmt = get_all_for_pk_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 2, num_results);
     } else {
         stmt = get_stmt;
         sqlite3_bind_text(stmt, 1, pubKey.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, lastHash.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 3, num_results);
     }
 
     bool success = false;
