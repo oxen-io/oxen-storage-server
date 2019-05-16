@@ -179,11 +179,10 @@ namespace http_server {
 
 // "Loop" forever accepting new connections.
 static void
-accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
-                  tcp::socket& socket, ServiceNode& sn,
+accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor, ServiceNode& sn,
                   ChannelEncryption<std::string>& channel_encryption) {
 
-    acceptor.async_accept(socket, [&](const error_code& ec) {
+    acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         BOOST_LOG_TRIVIAL(trace) << "connection accepted";
         if (!ec)
             std::make_shared<connection_t>(ioc, std::move(socket), sn,
@@ -193,7 +192,7 @@ accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
         if (ec)
             log_error(ec);
 
-        accept_connection(ioc, acceptor, socket, sn, channel_encryption);
+        accept_connection(ioc, acceptor, sn, channel_encryption);
     });
 }
 
@@ -206,9 +205,8 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
         boost::asio::ip::make_address(ip); /// throws if incorrect
 
     tcp::acceptor acceptor{ioc, {address, port}};
-    tcp::socket socket{ioc};
 
-    accept_connection(ioc, acceptor, socket, sn, channel_encryption);
+    accept_connection(ioc, acceptor, sn, channel_encryption);
 
     ioc.run();
 }
