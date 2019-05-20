@@ -190,8 +190,8 @@ class ServiceNode {
     bool is_snode_address_known(const std::string&);
 
     /// return all messages for a particular PK (in JSON)
-    bool
-    get_all_messages(std::vector<service_node::storage::Item>& all_entries) const;
+    bool get_all_messages(
+        std::vector<service_node::storage::Item>& all_entries) const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

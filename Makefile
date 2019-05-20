@@ -43,6 +43,9 @@ integration-test:
 		-DINTEGRATION_TEST=ON \
 		&& cmake --build .
 
+tests: all
+	./$(BUILD_DIR)/unit_test/Test --log_level=all
+
 clean:
 	rm -rf build/$(SUB_DIR)
 

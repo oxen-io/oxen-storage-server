@@ -1,9 +1,9 @@
 #include "Database.hpp"
 #include "utils.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <string>
-#include <chrono>
 
 /// This file fails to link on linux when trying to use std:: for threading and
 /// chrono
@@ -356,7 +356,6 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
         BOOST_CHECK_EQUAL(items.size(), num_results);
     }
-
 
     // should return 88 items
     {

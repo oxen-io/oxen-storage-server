@@ -4,8 +4,22 @@ add_definitions(-DDISABLE_ENCRYPTION)
 
 project(httpserver)
 
-set(HEADER_FILES http_connection.h swarm.h service_node.h serialization.h ../external/json.hpp)
-set(SRC_FILES main.cpp http_connection.cpp swarm.cpp service_node.cpp serialization.cpp)
+set(HEADER_FILES
+    http_connection.h
+    swarm.h
+    service_node.h
+    serialization.h
+    rate_limiter.h
+    ../external/json.hpp)
+
+set(SRC_FILES
+    main.cpp
+    http_connection.cpp
+    swarm.cpp
+    service_node.cpp
+    serialization.cpp
+    rate_limiter.cpp
+    )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
 
