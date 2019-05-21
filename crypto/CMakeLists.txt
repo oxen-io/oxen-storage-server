@@ -15,6 +15,11 @@ set(SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops-data.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.h
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.h
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.c
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/int-util.h
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.h
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.c
 )
 
 add_library(crypto STATIC ${SOURCES})

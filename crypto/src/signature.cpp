@@ -3,6 +3,7 @@
 
 extern "C" {
 #include "loki/crypto-ops/crypto-ops.h"
+#include "loki/crypto-ops/hash-ops.h"
 }
 
 #include <boost/beast/core/detail/base64.hpp>
@@ -39,10 +40,7 @@ void random_scalar(ec_scalar& k) {
 }
 
 bool hash_to_scalar(const void* input, size_t size, ec_scalar& output) {
-    if (crypto_generichash_blake2b(output.data(), output.size(),
-                                   static_cast<const unsigned char*>(input),
-                                   size, nullptr, 0) == -1)
-        return false;
+    cn_fast_hash(input, size, reinterpret_cast<char*>(output.data()));
     sc_reduce32(output.data());
     return true;
 }
