@@ -15,6 +15,7 @@
 #include <functional>
 #include <iostream>
 #include <openssl/sha.h>
+#include <sodium.h>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -175,6 +176,64 @@ void request_swarm_update(boost::asio::io_context& ioc,
                       });
 }
 
+static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
+
+    constexpr size_t res_len = 32 * 2 + 1;
+
+    char hex[res_len];
+
+    sodium_bin2hex(hex, res_len, arr.data(), 32);
+
+    return std::string(hex);
+}
+
+/// should probably have a method for talking to our daemon
+void request_blockchain_test(boost::asio::io_context& ioc,
+                             uint16_t lokid_rpc_port,
+                             const lokid_key_pair_t& keypair,
+                             bc_test_params_t params,
+                             str_body_callback_t&& cb) {
+
+    BOOST_LOG_TRIVIAL(debug)
+        << "Requesting our lokid to perform blockchain test";
+
+    const std::string ip = "127.0.0.1";
+    const std::string target = "/json_rpc";
+
+    nlohmann::json json_params;
+
+    json_params["max_height"] = params.max_height;
+    json_params["seed"] = params.seed;
+
+    const auto hash = hash_data(json_params.dump());
+    auto sig = generate_signature(hash, keypair);
+
+    nlohmann::json req_body;
+
+    req_body["jsonrpc"] = "2.0";
+    req_body["id"] = "0";
+    req_body["method"] = "perform_blockchain_test";
+    req_body["params"]["signed_params"] = json_params.dump();
+    req_body["params"]["signature"] = arr32_to_hex(sig.c) + arr32_to_hex(sig.r);
+
+    auto req = std::make_shared<request_t>();
+
+    req->body() = req_body.dump();
+    req->method(http::verb::post);
+    req->target(target);
+    req->prepare_payload();
+
+    make_http_request(ioc, ip, lokid_rpc_port, req,
+                      [cb = std::move(cb)](const sn_response_t&& res) {
+                          if (res.body) {
+                              cb(*res.body);
+                          } else {
+                              BOOST_LOG_TRIVIAL(error)
+                                  << "Didn't get blockchain test request body";
+                          }
+                      });
+}
+
 namespace http_server {
 
 // "Loop" forever accepting new connections.
@@ -319,16 +378,16 @@ bool connection_t::verify_signature(const std::string& signature,
     return check_signature(signature, body_hash, public_key_b32z);
 }
 
-void connection_t::process_message_test_req(uint64_t height,
+void connection_t::process_storage_test_req(uint64_t height,
                                             const std::string& tester_addr,
                                             const std::string& msg_hash) {
 
     BOOST_LOG_TRIVIAL(debug)
-        << "Performing message test, attempt: " << repetition_count_;
+        << "Performing storage test, attempt: " << repetition_count_;
 
     std::string answer;
 
-    const MessageTestStatus status = service_node_.process_msg_test_req(
+    const MessageTestStatus status = service_node_.process_storage_test_req(
         height, tester_addr, msg_hash, answer);
     if (status == MessageTestStatus::SUCCESS) {
         delay_response_ = true;
@@ -347,7 +406,7 @@ void connection_t::process_message_test_req(uint64_t height,
                     log_error(ec);
                 }
             } else {
-                self->process_message_test_req(height, tester_addr, msg_hash);
+                self->process_storage_test_req(height, tester_addr, msg_hash);
             }
         });
 
@@ -386,7 +445,6 @@ void connection_t::process_request() {
                     << e.what();
             }
 
-            /// Make sure only service nodes can use this API
         } else if (target == "/v1/swarms/push") {
 
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
@@ -415,8 +473,8 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
             service_node_.process_push_batch(request_.body());
 
-        } else if (target == "/msg_test") {
-            BOOST_LOG_TRIVIAL(debug) << "Got message test request";
+        } else if (target == "v1/swarms/storage_test") {
+            BOOST_LOG_TRIVIAL(debug) << "Got storage test request";
 
 #ifndef DISABLE_SNODE_SIGNATURE
             if (!validate_snode_request()) {
@@ -456,7 +514,55 @@ void connection_t::process_request() {
             tester_pk.append(".snode");
 #endif
 
-            this->process_message_test_req(blk_height, tester_pk, msg_hash);
+            this->process_storage_test_req(blk_height, tester_pk, msg_hash);
+        } else if (target == "/v1/swarms/blockchain_test") {
+            BOOST_LOG_TRIVIAL(debug) << "Got blockchain test request";
+
+#ifndef DISABLE_SNODE_SIGNATURE
+            if (!verify_signature()) {
+                response_.result(http::status::bad_request);
+                body_stream_ << "Could not validate signature from snode\n";
+                return;
+            }
+
+            using nlohmann::json;
+
+            const json body = json::parse(request_.body(), nullptr, false);
+
+            if (body == nlohmann::detail::value_t::discarded) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Bad snode test request: invalid json";
+                response_.result(http::status::bad_request);
+                return;
+            }
+
+            bc_test_params_t params;
+
+            try {
+                params.max_height = body.at("max_height").get<uint64_t>();
+                params.seed = body.at("seed").get<uint64_t>();
+            } catch (...) {
+                response_.result(http::status::bad_request);
+                BOOST_LOG_TRIVIAL(error)
+                    << "Bad snode test request: missing fields in json";
+                return;
+            }
+
+            delay_response_ = true;
+
+            auto callback = [this](blockchain_test_answer_t answer) {
+                this->response_.result(http::status::ok);
+
+                nlohmann::json json_res;
+                json_res["res_height"] = answer.res_height;
+
+                this->body_stream_ << json_res.dump();
+                this->write_response();
+            };
+
+            service_node_.perform_blockchain_test(params, callback);
+#endif
+
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {

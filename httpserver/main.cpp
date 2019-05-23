@@ -11,6 +11,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
+#include <sodium.h>
 
 #include <cstdlib>
 #include <iomanip>
@@ -161,6 +162,11 @@ int main(int argc, char* argv[]) {
             << "Listening at address " << ip << " port " << port << std::endl;
 
         boost::asio::io_context ioc{1};
+
+        if (sodium_init() != 0) {
+            BOOST_LOG_TRIVIAL(fatal) << "Could not initialize libsodium";
+            return EXIT_FAILURE;
+        }
 
         // ed25519 key
         const auto private_key = loki::parseLokidKey(lokid_key_path);

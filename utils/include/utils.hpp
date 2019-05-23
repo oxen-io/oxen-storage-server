@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <random>
 #include <stdint.h>
 #include <string>
