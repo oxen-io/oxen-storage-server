@@ -19,6 +19,8 @@ constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
 template <typename T>
 class ChannelEncryption;
 
+class RateLimiter;
+
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
 using request_t = http::request<http::string_body>;
@@ -125,6 +127,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     ChannelEncryption<std::string>& channel_cipher_;
 
+    RateLimiter& rate_limiter_;
+
     // The timer for repeating an action within one connection
     boost::asio::steady_timer repeat_timer_;
     int repetition_count_ = 0;
@@ -153,7 +157,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
   public:
     connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                  ServiceNode& sn,
-                 ChannelEncryption<std::string>& channel_encryption);
+                 ChannelEncryption<std::string>& channel_encryption,
+                 RateLimiter& rate_limiter);
 
     ~connection_t();
 
@@ -208,11 +213,14 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void handle_wrong_swarm(const std::string& pubKey);
 
-    bool verify_signature();
+    bool validate_snode_request();
+    bool verify_signature(const std::string& signature,
+                          const std::string& public_key_b32z);
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption);
+         ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption,
+         RateLimiter& rate_limiter);
 
 } // namespace http_server
 

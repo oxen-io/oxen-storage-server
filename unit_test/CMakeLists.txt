@@ -6,7 +6,10 @@ add_executable (Test
     pow.cpp
     serialization.cpp
     signature.cpp
+    rate_limiter.cpp
+    # TODO: remove once httpserver provides a static lib to link against
     ../httpserver/serialization.cpp
+    ../httpserver/rate_limiter.cpp
 )
 
 # library under test

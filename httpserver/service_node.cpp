@@ -776,7 +776,8 @@ void ServiceNode::salvage_data() const {
 bool ServiceNode::retrieve(const std::string& pubKey,
                            const std::string& last_hash,
                            std::vector<Item>& items) {
-    return db_->retrieve(pubKey, items, last_hash, CLIENT_RETRIEVE_MESSAGE_LIMIT);
+    return db_->retrieve(pubKey, items, last_hash,
+                         CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {

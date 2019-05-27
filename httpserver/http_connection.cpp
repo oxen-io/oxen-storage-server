@@ -1,5 +1,12 @@
+#include "http_connection.h"
 #include "Database.hpp"
+#include "Item.hpp"
+#include "channel_encryption.hpp"
 #include "pow.hpp"
+#include "rate_limiter.h"
+#include "serialization.h"
+#include "service_node.h"
+#include "signature.h"
 #include "utils.hpp"
 
 #include <chrono>
@@ -14,13 +21,6 @@
 
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/log/trivial.hpp>
-
-#include "Item.hpp"
-#include "channel_encryption.hpp"
-#include "http_connection.h"
-#include "serialization.h"
-#include "service_node.h"
-#include "signature.h"
 
 using json = nlohmann::json;
 
@@ -179,25 +179,28 @@ namespace http_server {
 
 // "Loop" forever accepting new connections.
 static void
-accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor, ServiceNode& sn,
-                  ChannelEncryption<std::string>& channel_encryption) {
+accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
+                  ServiceNode& sn,
+                  ChannelEncryption<std::string>& channel_encryption,
+                  RateLimiter& rate_limiter) {
 
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         BOOST_LOG_TRIVIAL(trace) << "connection accepted";
         if (!ec)
             std::make_shared<connection_t>(ioc, std::move(socket), sn,
-                                           channel_encryption)
+                                           channel_encryption, rate_limiter)
                 ->start();
 
         if (ec)
             log_error(ec);
 
-        accept_connection(ioc, acceptor, sn, channel_encryption);
+        accept_connection(ioc, acceptor, sn, channel_encryption, rate_limiter);
     });
 }
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channel_encryption) {
+         ServiceNode& sn, ChannelEncryption<std::string>& channel_encryption,
+         RateLimiter& rate_limiter) {
 
     BOOST_LOG_TRIVIAL(trace) << "http server run";
 
@@ -206,7 +209,7 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
     tcp::acceptor acceptor{ioc, {address, port}};
 
-    accept_connection(ioc, acceptor, sn, channel_encryption);
+    accept_connection(ioc, acceptor, sn, channel_encryption, rate_limiter);
 
     ioc.run();
 }
@@ -215,11 +218,13 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
 connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
                            ServiceNode& sn,
-                           ChannelEncryption<std::string>& channel_encryption)
+                           ChannelEncryption<std::string>& channel_encryption,
+                           RateLimiter& rate_limiter)
     : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
       channel_cipher_(channel_encryption), repeat_timer_(ioc),
       deadline_(ioc, SESSION_TIME_LIMIT),
-      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
+      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}),
+      rate_limiter_(rate_limiter) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
 }
@@ -274,13 +279,12 @@ void connection_t::read_request() {
     http::async_read(socket_, buffer_, request_, on_data);
 }
 
-bool connection_t::verify_signature() {
+bool connection_t::validate_snode_request() {
     if (!parse_header(LOKI_SENDER_SNODE_PUBKEY_HEADER,
                       LOKI_SNODE_SIGNATURE_HEADER)) {
         BOOST_LOG_TRIVIAL(error) << "Missing signature headers";
         return false;
     }
-
     const auto& signature = header_[LOKI_SNODE_SIGNATURE_HEADER];
     const auto& public_key_b32z = header_[LOKI_SENDER_SNODE_PUBKEY_HEADER];
 
@@ -295,14 +299,24 @@ bool connection_t::verify_signature() {
         return false;
     }
 
-    const auto batch_hash = hash_data(request_.body());
-    bool ok = check_signature(signature, batch_hash, public_key_b32z);
-    if (!ok) {
+    if (!verify_signature(signature, public_key_b32z)) {
         constexpr auto msg = "Could not verify batch signature";
         BOOST_LOG_TRIVIAL(warning) << msg;
         body_stream_ << msg;
+        response_.result(http::status::unauthorized);
+        return false;
     }
-    return ok;
+    if (rate_limiter_.should_rate_limit(public_key_b32z)) {
+        response_.result(http::status::too_many_requests);
+        return false;
+    }
+    return true;
+}
+
+bool connection_t::verify_signature(const std::string& signature,
+                                    const std::string& public_key_b32z) {
+    const auto body_hash = hash_data(request_.body());
+    return check_signature(signature, body_hash, public_key_b32z);
 }
 
 void connection_t::process_message_test_req(uint64_t height,
@@ -378,9 +392,7 @@ void connection_t::process_request() {
             BOOST_LOG_TRIVIAL(trace) << "swarms/push";
 
 #ifndef DISABLE_SNODE_SIGNATURE
-            if (!verify_signature()) {
-                response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate signature from snode\n";
+            if (!validate_snode_request()) {
                 return;
             }
 #endif
@@ -396,9 +408,7 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_batch") {
 #ifndef DISABLE_SNODE_SIGNATURE
-            if (!verify_signature()) {
-                response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate signature from snode\n";
+            if (!validate_snode_request()) {
                 return;
             }
 #endif
@@ -409,9 +419,7 @@ void connection_t::process_request() {
             BOOST_LOG_TRIVIAL(debug) << "Got message test request";
 
 #ifndef DISABLE_SNODE_SIGNATURE
-            if (!verify_signature()) {
-                response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate signature from snode\n";
+            if (!validate_snode_request()) {
                 return;
             }
 #endif
