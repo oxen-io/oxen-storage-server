@@ -629,7 +629,8 @@ void connection_t::process_store(const json& params) {
     std::string messageHash;
 
     const bool validPoW =
-        checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash);
+        checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
+                 service_node_.get_pow_difficulty());
 #ifndef DISABLE_POW
     if (!validPoW) {
         response_.result(http::status::forbidden);

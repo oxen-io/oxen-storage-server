@@ -105,7 +105,7 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-static bool verify_message(const message_t& msg,
+static bool verify_message(const message_t& msg, const int pow_difficulty,
                            const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
@@ -120,7 +120,7 @@ static bool verify_message(const message_t& msg,
     std::string hash;
 #ifndef DISABLE_POW
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
-                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash)) {
+                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash, pow_difficulty)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;
@@ -137,10 +137,10 @@ static bool verify_message(const message_t& msg,
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
-                         uint16_t lokid_rpc_port)
+                         uint16_t lokid_rpc_port, const int pow_difficulty)
     : ioc_(ioc), db_(std::make_unique<Database>(ioc, db_location)),
       update_timer_(ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_rpc_port_(lokid_rpc_port) {
+      lokid_rpc_port_(lokid_rpc_port), pow_difficulty_(pow_difficulty) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -285,7 +285,7 @@ bool ServiceNode::process_store(const message_t& msg) {
 void ServiceNode::process_push(const message_t& msg) {
 #ifndef DISABLE_POW
     const char* error_msg;
-    if (!verify_message(msg, &error_msg))
+    if (!verify_message(msg, pow_difficulty_, &error_msg))
         throw std::runtime_error(error_msg);
 #endif
     save_if_new(msg);
@@ -780,6 +780,10 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
+int ServiceNode::get_pow_difficulty() const {
+    return pow_difficulty_;
+}
+
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
     BOOST_LOG_TRIVIAL(trace) << "get all messages";
@@ -802,8 +806,8 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
 #ifndef DISABLE_POW
     const auto it = std::remove_if(messages.begin(), messages.end(),
-                                   [](const message_t& message) {
-                                       return verify_message(message) == false;
+                                   [this](const message_t& message) {
+                                       return verify_message(message, pow_difficulty_) == false;
                                    });
     messages.erase(it, messages.end());
     if (it != messages.end()) {
