@@ -17,6 +17,7 @@
 
 static constexpr uint16_t SNODE_PORT = 8080;
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
+static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 
 class Database;
 
@@ -82,6 +83,7 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
 
+    int pow_difficulty_ = 100;
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
@@ -153,7 +155,8 @@ class ServiceNode {
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, uint16_t lokid_rpc_port);
+                const std::string& db_location, uint16_t lokid_rpc_port,
+                const int pow_difficulty);
 
     ~ServiceNode();
 
@@ -192,6 +195,9 @@ class ServiceNode {
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(
         std::vector<service_node::storage::Item>& all_entries) const;
+
+    // Return the current PoW difficulty
+    int get_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

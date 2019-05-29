@@ -41,6 +41,7 @@ target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
 target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
+target_link_libraries(httpserver PRIVATE resolv)
 target_link_libraries(httpserver PRIVATE crypto)
 
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)

@@ -14,11 +14,6 @@
 #include <string.h>
 
 const int BYTE_LEN = 8;
-#ifdef NDEBUG
-const int NONCE_TRIALS = 100;
-#else
-const int NONCE_TRIALS = 10;
-#endif
 using uint64Bytes = std::array<uint8_t, BYTE_LEN>;
 
 // This enforces that the result array has the most significant byte at index 0
@@ -42,7 +37,8 @@ bool multWillOverflow(uint64_t left, uint64_t right) {
 
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
-              const std::string& data, std::string& messageHash) {
+              const std::string& data, std::string& messageHash,
+              const int& difficulty) {
     const std::string payload = timestamp + ttl + recipient + data;
 
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
@@ -63,10 +59,10 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     if (overflow)
         return false;
     uint64_t lenPlusInnerFrac = totalLen + innerFrac;
-    overflow = multWillOverflow(NONCE_TRIALS, lenPlusInnerFrac);
+    overflow = multWillOverflow(difficulty, lenPlusInnerFrac);
     if (overflow)
         return false;
-    uint64_t denominator = NONCE_TRIALS * lenPlusInnerFrac;
+    uint64_t denominator = difficulty * lenPlusInnerFrac;
     uint64_t targetNum = std::numeric_limits<uint64_t>::max() / denominator;
 
     uint64Bytes target;
