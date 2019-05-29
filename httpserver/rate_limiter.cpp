@@ -2,6 +2,10 @@
 
 #include <algorithm>
 
+
+constexpr uint32_t RateLimiter::BUCKET_SIZE;
+constexpr uint32_t RateLimiter::TOKEN_RATE;
+
 using namespace std::chrono_literals;
 
 constexpr static std::chrono::microseconds TOKEN_PERIOD_US =
