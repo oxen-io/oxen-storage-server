@@ -49,6 +49,8 @@ struct snode_stats_t {
     uint64_t relay_fails = 0;
 };
 
+int query_pow_difficulty();
+
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
 class FailedRequestHandler
@@ -97,7 +99,9 @@ class ServiceNode {
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
 
-    boost::asio::steady_timer update_timer_;
+    boost::asio::steady_timer pow_update_timer_;
+
+    boost::asio::steady_timer swarm_update_timer_;
 
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
@@ -137,6 +141,9 @@ class ServiceNode {
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
 
+    /// Update PoW difficulty from DNS text record
+    void pow_difficulty_timer_tick();
+
     /// Return tester/testee pair based on block_height
     bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
                               sn_record_t& testee);
@@ -154,8 +161,7 @@ class ServiceNode {
   public:
     ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, uint16_t lokid_rpc_port,
-                const int pow_difficulty);
+                const std::string& db_location, uint16_t lokid_rpc_port);
 
     ~ServiceNode();
 
