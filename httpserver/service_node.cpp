@@ -34,19 +34,27 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
 int query_pow_difficulty() {
     int response;
     unsigned char query_buffer[1024] = {};
-    response = res_query(POW_DIFFICULTY_URL, C_IN, ns_t_txt, query_buffer,
+    response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
                          sizeof(query_buffer));
     int pow_difficulty;
     ns_msg nsMsg;
-    ns_initparse(query_buffer, response, &nsMsg);
+    if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
+        return -1;
+    }
     ns_rr rr;
-    ns_parserr(&nsMsg, ns_s_an, 0, &rr);
+    if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
+        return -1;
+    }
 
     try {
         const json difficulty_json =
             json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
         pow_difficulty =
             std::stoi(difficulty_json.at("difficulty").get<std::string>());
+        BOOST_LOG_TRIVIAL(info)
+            << "Read PoW difficulty: " << std::to_string(pow_difficulty);
         return pow_difficulty;
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
@@ -131,7 +139,7 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-static bool verify_message(const message_t& msg, const int pow_difficulty,
+static bool verify_message(const message_t& msg, int pow_difficulty,
                            const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
@@ -396,7 +404,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 }
 
 void ServiceNode::pow_difficulty_timer_tick() {
-    int new_difficulty = query_pow_difficulty();
+    const int new_difficulty = query_pow_difficulty();
     if (new_difficulty != -1) {
         pow_difficulty_ = new_difficulty;
     }
@@ -410,7 +418,8 @@ void ServiceNode::swarm_timer_tick() {
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
     swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    swarm_update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
+    swarm_update_timer_.async_wait(
+        boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>

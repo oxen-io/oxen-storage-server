@@ -633,8 +633,8 @@ void connection_t::process_store(const json& params) {
                  service_node_.get_pow_difficulty());
 #ifndef DISABLE_POW
     if (!validPoW) {
-        response_.result(http::status::payment_required);
-        response_.set(http::field::content_type, "text/plain");
+        response_.result(432);
+        response_.set(http::field::content_type, "application/json");
 
         json res_body;
         res_body["difficulty"] = service_node_.get_pow_difficulty();
@@ -671,6 +671,10 @@ void connection_t::process_store(const json& params) {
     }
 
     response_.result(http::status::ok);
+    response_.set(http::field::content_type, "application/json");
+    json res_body;
+    res_body["difficulty"] = service_node_.get_pow_difficulty();
+    body_stream_ << res_body.dump();
     BOOST_LOG_TRIVIAL(trace)
         << "Successfully stored message for " << obfuscate_pubkey(pubKey);
 }

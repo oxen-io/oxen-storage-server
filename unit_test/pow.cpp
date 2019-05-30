@@ -63,14 +63,16 @@ BOOST_AUTO_TEST_CASE(it_checks_an_invalid_timestamp) {
     using namespace valid_pow;
     std::string messageHash;
     BOOST_CHECK_EQUAL(
-        checkPoW(nonce, "1549252653", ttl, pubkey, data, messageHash, 10), false);
+        checkPoW(nonce, "1549252653", ttl, pubkey, data, messageHash, 10),
+        false);
 }
 
 BOOST_AUTO_TEST_CASE(it_checks_an_invalid_ttl) {
     using namespace valid_pow;
     std::string messageHash;
     BOOST_CHECK_EQUAL(
-        checkPoW(nonce, timestamp, "345601", pubkey, data, messageHash, 10), false);
+        checkPoW(nonce, timestamp, "345601", pubkey, data, messageHash, 10),
+        false);
 }
 
 BOOST_AUTO_TEST_CASE(it_checks_an_invalid_pubkey) {
