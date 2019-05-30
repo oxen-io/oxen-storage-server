@@ -618,10 +618,15 @@ void connection_t::process_store(const json& params) {
                  service_node_.get_pow_difficulty());
 #ifndef DISABLE_POW
     if (!validPoW) {
-        response_.result(http::status::forbidden);
+        response_.result(http::status::payment_required);
         response_.set(http::field::content_type, "text/plain");
-        body_stream_ << "Provided PoW nonce is not valid.\n";
+
+        json res_body;
+        res_body["difficulty"] = service_node_.get_pow_difficulty();
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid PoW nonce " << nonce;
+
+        /// This might throw if not utf-8 endoded
+        body_stream_ << res_body.dump();
         return;
     }
 #endif
