@@ -13,11 +13,13 @@
 #include <chrono>
 #include <fstream>
 #include <iomanip>
+#include <resolv.h>
 
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
 #include <boost/log/trivial.hpp>
 
+using json = nlohmann::json;
 using service_node::storage::Item;
 using namespace std::chrono_literals;
 
@@ -28,6 +30,29 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
     std::chrono::seconds(1),  std::chrono::seconds(5),
     std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
+
+int query_pow_difficulty() {
+    int response;
+    unsigned char query_buffer[1024] = {};
+    response = res_query(POW_DIFFICULTY_URL, C_IN, ns_t_txt, query_buffer,
+                         sizeof(query_buffer));
+    int pow_difficulty;
+    ns_msg nsMsg;
+    ns_initparse(query_buffer, response, &nsMsg);
+    ns_rr rr;
+    ns_parserr(&nsMsg, ns_s_an, 0, &rr);
+
+    try {
+        const json difficulty_json =
+            json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
+        pow_difficulty =
+            std::stoi(difficulty_json.at("difficulty").get<std::string>());
+        return pow_difficulty;
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
+        return -1;
+    }
+}
 
 FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
                                            const sn_record_t& sn,
@@ -84,6 +109,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 #else
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
+constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
@@ -120,7 +146,8 @@ static bool verify_message(const message_t& msg, const int pow_difficulty,
     std::string hash;
 #ifndef DISABLE_POW
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
-                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash, pow_difficulty)) {
+                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
+                  pow_difficulty)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;
@@ -137,10 +164,10 @@ static bool verify_message(const message_t& msg, const int pow_difficulty,
 ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
-                         uint16_t lokid_rpc_port, const int pow_difficulty)
+                         uint16_t lokid_rpc_port)
     : ioc_(ioc), db_(std::make_unique<Database>(ioc, db_location)),
-      update_timer_(ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_rpc_port_(lokid_rpc_port), pow_difficulty_(pow_difficulty) {
+      swarm_update_timer_(ioc), pow_update_timer_(ioc),
+      lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -156,6 +183,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
+    pow_difficulty_timer_tick();
 }
 
 ServiceNode::~ServiceNode() = default;
@@ -367,12 +395,22 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     initiate_peer_test();
 }
 
+void ServiceNode::pow_difficulty_timer_tick() {
+    int new_difficulty = query_pow_difficulty();
+    if (new_difficulty != -1) {
+        pow_difficulty_ = new_difficulty;
+    }
+    pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
+    pow_update_timer_.async_wait(
+        boost::bind(&ServiceNode::pow_difficulty_timer_tick, this));
+}
+
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
-    update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
+    swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
+    swarm_update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>
@@ -780,9 +818,7 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-int ServiceNode::get_pow_difficulty() const {
-    return pow_difficulty_;
-}
+int ServiceNode::get_pow_difficulty() const { return pow_difficulty_; }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
@@ -805,10 +841,10 @@ void ServiceNode::process_push_batch(const std::string& blob) {
                              << " messages from peers, size: " << blob.size();
 
 #ifndef DISABLE_POW
-    const auto it = std::remove_if(messages.begin(), messages.end(),
-                                   [this](const message_t& message) {
-                                       return verify_message(message, pow_difficulty_) == false;
-                                   });
+    const auto it = std::remove_if(
+        messages.begin(), messages.end(), [this](const message_t& message) {
+            return verify_message(message, pow_difficulty_) == false;
+        });
     messages.erase(it, messages.end());
     if (it != messages.end()) {
         BOOST_LOG_TRIVIAL(warning)

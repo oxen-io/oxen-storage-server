@@ -12,7 +12,6 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
 
-#include <resolv.h>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -21,7 +20,6 @@
 #include <utility> // for std::pair
 #include <vector>
 
-using json = nlohmann::json;
 using namespace service_node;
 namespace po = boost::program_options;
 namespace logging = boost::log;
@@ -174,25 +172,8 @@ int main(int argc, char* argv[]) {
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
 
-        int response;
-        unsigned char query_buffer[1024];
-        response = res_query(POW_DIFFICULTY_URL, C_IN, ns_t_txt, query_buffer, sizeof(query_buffer));
-        int pow_difficulty;
-        ns_msg nsMsg;
-        ns_initparse(query_buffer, response, &nsMsg);
-        ns_rr rr;
-        ns_parserr(&nsMsg, ns_s_an, 0, &rr);
-
-        try {
-            const json difficulty_json = json::parse(ns_rr_rdata(rr) + 1, nullptr, false);
-            pow_difficulty = std::stoi(difficulty_json.at("difficulty").get<std::string>());
-        } catch (...) {
-            BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
-            return EXIT_FAILURE;
-        }
-
         loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location,
-                                       lokid_rpc_port, pow_difficulty);
+                                       lokid_rpc_port);
         RateLimiter rate_limiter;
 
         /// Should run http server
