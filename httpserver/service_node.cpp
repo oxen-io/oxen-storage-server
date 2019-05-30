@@ -410,7 +410,8 @@ void ServiceNode::swarm_timer_tick() {
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
     request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
     swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    swarm_update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
+    swarm_update_timer_.async_wait(
+        boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>
