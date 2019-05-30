@@ -399,7 +399,7 @@ void ServiceNode::perform_blockchain_test(
 
             const json body = json::parse(body_str, nullptr, false);
 
-            if (body == nlohmann::detail::value_t::discarded) {
+            if (body.is_discarded()) {
                 BOOST_LOG_TRIVIAL(error)
                     << "Bad lokid rpc response: invalid json";
                 return;

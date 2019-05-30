@@ -91,7 +91,7 @@ static void
 parse_swarm_update(const std::shared_ptr<std::string>& response_body,
                    const swarm_callback_t&& cb) {
     const json body = json::parse(*response_body, nullptr, false);
-    if (body == nlohmann::detail::value_t::discarded) {
+    if (body.is_discarded()) {
         BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
         return;
     }
@@ -200,21 +200,13 @@ void request_blockchain_test(boost::asio::io_context& ioc,
     const std::string ip = "127.0.0.1";
     const std::string target = "/json_rpc";
 
-    nlohmann::json json_params;
-
-    json_params["max_height"] = params.max_height;
-    json_params["seed"] = params.seed;
-
-    const auto hash = hash_data(json_params.dump());
-    auto sig = generate_signature(hash, keypair);
-
     nlohmann::json req_body;
 
     req_body["jsonrpc"] = "2.0";
     req_body["id"] = "0";
     req_body["method"] = "perform_blockchain_test";
-    req_body["params"]["signed_params"] = json_params.dump();
-    req_body["params"]["signature"] = arr32_to_hex(sig.c) + arr32_to_hex(sig.r);
+    req_body["params"]["max_height"] = params.max_height;
+    req_body["params"]["seed"] = params.seed;
 
     auto req = std::make_shared<request_t>();
 
@@ -519,17 +511,17 @@ void connection_t::process_request() {
             BOOST_LOG_TRIVIAL(debug) << "Got blockchain test request";
 
 #ifndef DISABLE_SNODE_SIGNATURE
-            if (!verify_signature()) {
-                response_.result(http::status::bad_request);
-                body_stream_ << "Could not validate signature from snode\n";
+
+            if (!validate_snode_request()) {
                 return;
             }
+#endif
 
             using nlohmann::json;
 
             const json body = json::parse(request_.body(), nullptr, false);
 
-            if (body == nlohmann::detail::value_t::discarded) {
+            if (body.is_discarded()) {
                 BOOST_LOG_TRIVIAL(error)
                     << "Bad snode test request: invalid json";
                 response_.result(http::status::bad_request);
@@ -561,7 +553,6 @@ void connection_t::process_request() {
             };
 
             service_node_.perform_blockchain_test(params, callback);
-#endif
 
         }
 #ifdef INTEGRATION_TEST
