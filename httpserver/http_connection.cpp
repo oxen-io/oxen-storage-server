@@ -618,7 +618,7 @@ void connection_t::process_store(const json& params) {
                  service_node_.get_pow_difficulty());
 #ifndef DISABLE_POW
     if (!validPoW) {
-        response_.result(http::status::payment_required);
+        response_.result(432);
         response_.set(http::field::content_type, "application/json");
 
         json res_body;

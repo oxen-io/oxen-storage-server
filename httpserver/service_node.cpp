@@ -34,7 +34,7 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
 int query_pow_difficulty() {
     int response;
     unsigned char query_buffer[1024] = {};
-    response = res_query(POW_DIFFICULTY_URL, C_IN, ns_t_txt, query_buffer,
+    response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
                          sizeof(query_buffer));
     int pow_difficulty;
     ns_msg nsMsg;
@@ -47,6 +47,8 @@ int query_pow_difficulty() {
             json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
         pow_difficulty =
             std::stoi(difficulty_json.at("difficulty").get<std::string>());
+        BOOST_LOG_TRIVIAL(info)
+            << "Read PoW difficulty: " << std::to_string(pow_difficulty);
         return pow_difficulty;
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
