@@ -5,6 +5,7 @@
 #include "pow.hpp"
 #include "rate_limiter.h"
 #include "serialization.h"
+#include "server_certificates.h"
 #include "service_node.h"
 #include "signature.h"
 #include "utils.hpp"
@@ -179,7 +180,8 @@ namespace http_server {
 
 // "Loop" forever accepting new connections.
 static void
-accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
+accept_connection(boost::asio::io_context& ioc,
+                  boost::asio::ssl::context& ssl_ctx, tcp::acceptor& acceptor,
                   ServiceNode& sn,
                   ChannelEncryption<std::string>& channel_encryption,
                   RateLimiter& rate_limiter) {
@@ -187,14 +189,15 @@ accept_connection(boost::asio::io_context& ioc, tcp::acceptor& acceptor,
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         BOOST_LOG_TRIVIAL(trace) << "connection accepted";
         if (!ec)
-            std::make_shared<connection_t>(ioc, std::move(socket), sn,
+            std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
                                            channel_encryption, rate_limiter)
                 ->start();
 
         if (ec)
             log_error(ec);
 
-        accept_connection(ioc, acceptor, sn, channel_encryption, rate_limiter);
+        accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
+                          rate_limiter);
     });
 }
 
@@ -209,22 +212,27 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
     tcp::acceptor acceptor{ioc, {address, port}};
 
-    accept_connection(ioc, acceptor, sn, channel_encryption, rate_limiter);
+    ssl::context ssl_ctx{ssl::context::sslv23};
+
+    load_server_certificate(ssl_ctx);
+
+    accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
+                      rate_limiter);
 
     ioc.run();
 }
 
 /// ============ connection_t ============
 
-connection_t::connection_t(boost::asio::io_context& ioc, tcp::socket socket,
-                           ServiceNode& sn,
+connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
+                           tcp::socket socket, ServiceNode& sn,
                            ChannelEncryption<std::string>& channel_encryption,
                            RateLimiter& rate_limiter)
-    : ioc_(ioc), socket_(std::move(socket)), service_node_(sn),
-      channel_cipher_(channel_encryption), repeat_timer_(ioc),
-      deadline_(ioc, SESSION_TIME_LIMIT),
-      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}),
-      rate_limiter_(rate_limiter) {
+    : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
+      stream_(socket_, ssl_ctx_), service_node_(sn),
+      channel_cipher_(channel_encryption), rate_limiter_(rate_limiter),
+      repeat_timer_(ioc), deadline_(ioc, SESSION_TIME_LIMIT),
+      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
 }
@@ -233,6 +241,23 @@ connection_t::~connection_t() { BOOST_LOG_TRIVIAL(trace) << "~connection_t"; }
 
 void connection_t::start() {
     register_deadline();
+    do_handshake();
+}
+
+void connection_t::do_handshake() {
+    // Perform the SSL handshake
+    stream_.async_handshake(ssl::stream_base::server,
+                            std::bind(&connection_t::on_handshake,
+                                      shared_from_this(),
+                                      std::placeholders::_1));
+}
+
+void connection_t::on_handshake(boost::system::error_code ec) {
+    if (ec) {
+        BOOST_LOG_TRIVIAL(warning) << "ssl handshake failed:" << ec.message();
+        return;
+    }
+
     read_request();
 }
 
@@ -276,7 +301,7 @@ void connection_t::read_request() {
         }
     };
 
-    http::async_read(socket_, buffer_, request_, on_data);
+    http::async_read(stream_, buffer_, request_, on_data);
 }
 
 bool connection_t::validate_snode_request() {
@@ -525,8 +550,8 @@ void connection_t::write_response() {
 
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much
-    http::async_write(socket_, response_, [self](error_code ec, size_t) {
-        self->socket_.shutdown(tcp::socket::shutdown_send, ec);
+    http::async_write(stream_, response_, [self](error_code ec, size_t) {
+        self->do_close();
         self->deadline_.cancel();
     });
 }
@@ -942,6 +967,19 @@ void connection_t::register_deadline() {
             self->socket_.close(ec);
         }
     });
+}
+
+void connection_t::do_close() {
+    // Perform the SSL shutdown
+    stream_.async_shutdown(std::bind(
+        &connection_t::on_shutdown, shared_from_this(), std::placeholders::_1));
+}
+
+void connection_t::on_shutdown(boost::system::error_code ec) {
+    if (ec)
+        BOOST_LOG_TRIVIAL(error) << "Could not close ssl stream gracefully";
+
+    // At this point the connection is closed gracefully
 }
 
 /// ============
