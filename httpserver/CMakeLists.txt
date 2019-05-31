@@ -37,7 +37,7 @@ find_package(Boost
     program_options
 )
 
-target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
+target_link_libraries(httpserver PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)

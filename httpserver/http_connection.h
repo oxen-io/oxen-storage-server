@@ -6,6 +6,7 @@
 
 #include "../external/json.hpp"
 #include <boost/asio.hpp>
+#include <boost/asio/ssl/stream.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
@@ -22,6 +23,7 @@ class ChannelEncryption;
 class RateLimiter;
 
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
+namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
@@ -106,12 +108,14 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
   private:
     boost::asio::io_context& ioc_;
+    ssl::context& ssl_ctx_;
 
     // The socket for the currently connected client.
     tcp::socket socket_;
 
     // The buffer for performing reads.
     boost::beast::flat_buffer buffer_{8192};
+    ssl::stream<tcp::socket&> stream_;
 
     // The request message.
     request_t request_;
@@ -155,8 +159,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     } notification_ctx_;
 
   public:
-    connection_t(boost::asio::io_context& ioc, tcp::socket socket,
-                 ServiceNode& sn,
+    connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
+                 tcp::socket socket, ServiceNode& sn,
                  ChannelEncryption<std::string>& channel_encryption,
                  RateLimiter& rate_limiter);
 
@@ -171,8 +175,13 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void reset();
 
   private:
+    void do_handshake();
+    void on_handshake(boost::system::error_code ec);
     /// Asynchronously receive a complete request message.
     void read_request();
+
+    void do_close();
+    void on_shutdown(boost::system::error_code ec);
 
     /// Check the database for new data, reschedule if empty
     void poll_db(const std::string& pk, const std::string& last_hash);
