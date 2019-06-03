@@ -39,7 +39,6 @@ using error_code = boost::system::error_code;
 
 namespace loki {
 
-constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
 // Note: on the client side the limit is different

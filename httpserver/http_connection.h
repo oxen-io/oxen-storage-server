@@ -50,6 +50,8 @@ struct sn_response_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
+constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
+
 // TODO: the name should indicate that we are actually trying to send data
 // unlike in `make_post_request`
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
