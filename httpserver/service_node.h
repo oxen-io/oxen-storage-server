@@ -133,6 +133,9 @@ class ServiceNode {
     relay_messages(const std::vector<service_node::storage::Item>& messages,
                    const std::vector<sn_record_t>& snodes) const;
 
+    /// Reset the swarm timer
+    void reset_swarm_timer();
+
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
 

@@ -346,8 +346,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     } else {
         BOOST_LOG_TRIVIAL(trace) << "already seen this block";
-        update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-        update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
+        reset_swarm_timer();
         return;
     }
 
@@ -367,6 +366,10 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     }
 
     initiate_peer_test();
+    reset_swarm_timer();
+}
+
+void ServiceNode::reset_swarm_timer() {
     update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     update_timer_.async_wait(boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
