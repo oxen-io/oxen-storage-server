@@ -3,6 +3,7 @@
 #include "Database.hpp"
 #include "Item.hpp"
 #include "http_connection.h"
+#include "https_client.h"
 #include "lokid_key.h"
 #include "pow.hpp"
 #include "serialization.h"
@@ -29,6 +30,13 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
     std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
+static void make_sn_request(boost::asio::io_context& ioc,
+                            const std::string& sn_address, uint16_t port,
+                            const std::shared_ptr<request_t>& req,
+                            http_callback_t&& cb) {
+    return make_https_request(ioc, sn_address, port, req, std::move(cb));
+}
+
 FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
                                            const sn_record_t& sn,
                                            std::shared_ptr<request_t> req)
@@ -48,28 +56,28 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
         << "Will retry in " << RETRY_INTERVALS[attempt_count_ - 1].count()
         << " secs";
 
-    retry_timer_.async_wait(
-        [self = std::move(self)](const boost::system::error_code& ec) mutable {
-            /// Save some references before possibly moved out of `self`
-            const auto& sn = self->sn_;
-            auto& ioc = self->ioc_;
-            /// TODO: investigate whether we can get rid of the extra ptr copy
-            /// here?
-            const std::shared_ptr<request_t> req = self->request_;
+    retry_timer_.async_wait([self = std::move(self)](
+                                const boost::system::error_code& ec) mutable {
+        /// Save some references before possibly moved out of `self`
+        const auto& sn = self->sn_;
+        auto& ioc = self->ioc_;
+        /// TODO: investigate whether we can get rid of the extra ptr copy
+        /// here?
+        const std::shared_ptr<request_t> req = self->request_;
 
-            /// Request will be copied here
-            make_http_request(
-                ioc, sn.address, sn.port, req,
-                [self = std::move(self)](sn_response_t&& res) mutable {
-                    if (res.error_code != SNodeError::NO_ERROR) {
-                        BOOST_LOG_TRIVIAL(error)
-                            << "Could not relay one: " << self->sn_
-                            << " (attempt #" << self->attempt_count_ << ")";
-                        /// TODO: record failure here as well?
-                        self->retry(std::move(self));
-                    }
-                });
-        });
+        /// Request will be copied here
+        make_sn_request(ioc, sn.address, sn.port, req,
+                        [self = std::move(self)](sn_response_t&& res) mutable {
+                            if (res.error_code != SNodeError::NO_ERROR) {
+                                BOOST_LOG_TRIVIAL(error)
+                                    << "Could not relay one: " << self->sn_
+                                    << " (attempt #" << self->attempt_count_
+                                    << ")";
+                                /// TODO: record failure here as well?
+                                self->retry(std::move(self));
+                            }
+                        });
+    });
 }
 
 FailedRequestHandler::~FailedRequestHandler() {
@@ -167,7 +175,7 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
 
     // Note: often one of the reason for failure here is that the node has just
     // deregistered but our SN hasn't updated its swarm list yet.
-    make_http_request(
+    make_sn_request(
         ioc_, sn.address, sn.port, req, [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
                 snode_report_[sn].relay_fails += 1;
@@ -459,7 +467,7 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    make_http_request(ioc_, testee.address, testee.port, req, callback);
+    make_sn_request(ioc_, testee.address, testee.port, req, callback);
 }
 
 // Deterministically selects two random swarm members; returns true on success
