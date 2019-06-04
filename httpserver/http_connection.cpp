@@ -109,13 +109,10 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
                 sn_json.at("swarm_id").get<swarm_id_t>();
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
-#ifndef INTEGRATION_TEST
-            const sn_record_t sn{SNODE_PORT, snode_address};
-#else
-            const std::string port = sn_json.at("port").get<std::string>();
+            const std::string port =
+                sn_json.at("storage_port").get<std::string>();
             const sn_record_t sn{static_cast<uint16_t>(stoi(port)),
                                  snode_address};
-#endif
 
             swarm_map[swarm_id].push_back(sn);
         }
