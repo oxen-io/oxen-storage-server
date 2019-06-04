@@ -679,11 +679,10 @@ void connection_t::process_snodes_by_pk(const json& params) {
     json snodes = json::array();
 
     for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-        snodes.push_back(std::to_string(sn.port));
-#else
-        snodes.push_back(sn.address);
-#endif
+        json snode;
+        snode["address"] = sn.address;
+        snode["port"] = std::to_string(sn.port);
+        snodes.push_back(snode);
     }
 
     res_body["snodes"] = snodes;
