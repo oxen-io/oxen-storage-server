@@ -133,7 +133,7 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-static bool verify_message(const message_t& msg, const int pow_difficulty,
+static bool verify_message(const message_t& msg, int pow_difficulty,
                            const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
@@ -398,7 +398,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 }
 
 void ServiceNode::pow_difficulty_timer_tick() {
-    int new_difficulty = query_pow_difficulty();
+    const int new_difficulty = query_pow_difficulty();
     if (new_difficulty != -1) {
         pow_difficulty_ = new_difficulty;
     }
