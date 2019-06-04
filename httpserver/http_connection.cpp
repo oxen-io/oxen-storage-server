@@ -546,6 +546,25 @@ bool connection_t::parse_header(const char* first, Args... args) {
     return parse_header(first) && parse_header(args...);
 }
 
+json connection_t::get_snodes_json_by_pk(const std::string& pubKey) {
+
+    std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+
+    json res_body;
+    json snodes = json::array();
+
+    for (const auto& sn : nodes) {
+        json snode;
+        snode["address"] = sn.address;
+        snode["port"] = std::to_string(sn.port);
+        snodes.push_back(snode);
+    }
+
+    res_body["snodes"] = snodes;
+
+    return res_body;
+}
+
 void connection_t::process_store(const json& params) {
 
     constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
@@ -672,20 +691,7 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
-
-    json res_body;
-
-    json snodes = json::array();
-
-    for (const auto& sn : nodes) {
-        json snode;
-        snode["address"] = sn.address;
-        snode["port"] = std::to_string(sn.port);
-        snodes.push_back(snode);
-    }
-
-    res_body["snodes"] = snodes;
+    json res_body = get_snodes_json_by_pk(pubKey);
 
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
@@ -722,21 +728,7 @@ void connection_t::process_retrieve_all() {
 }
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
-    const std::vector<sn_record_t> nodes =
-        service_node_.get_snodes_by_pk(pubKey);
-
-    json res_body;
-    json snodes = json::array();
-
-    for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-        snodes.push_back(std::to_string(sn.port));
-#else
-        snodes.push_back(sn.address);
-#endif
-    }
-
-    res_body["snodes"] = snodes;
+    json res_body = get_snodes_json_by_pk(pubKey);
 
     response_.result(http::status::misdirected_request);
     response_.set(http::field::content_type, "application/json");
