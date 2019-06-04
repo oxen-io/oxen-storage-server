@@ -38,9 +38,15 @@ int query_pow_difficulty() {
                          sizeof(query_buffer));
     int pow_difficulty;
     ns_msg nsMsg;
-    ns_initparse(query_buffer, response, &nsMsg);
+    if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
+        return -1;
+    }
     ns_rr rr;
-    ns_parserr(&nsMsg, ns_s_an, 0, &rr);
+    if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
+        return -1;
+    }
 
     try {
         const json difficulty_json =
