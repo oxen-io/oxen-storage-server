@@ -11,7 +11,9 @@ set(HEADER_FILES
     serialization.h
     rate_limiter.h
     ../external/json.hpp
-    https_client.h)
+    https_client.h
+    server_certificates.h
+    )
 
 set(SRC_FILES
     main.cpp
