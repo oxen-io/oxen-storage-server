@@ -3,6 +3,7 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/ssl/context.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/log/trivial.hpp>
 
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
@@ -13,49 +14,30 @@
 
 #include <cstddef>
 #include <fstream>
-#include <iostream>
 #include <memory>
 
-int callback(int p, int n, void* arg) {
-    char c = 'B';
-
-    if (p == 0)
-        c = '.';
-    if (p == 1)
-        c = '+';
-    if (p == 2)
-        c = '*';
-    if (p == 3)
-        c = '\n';
-    std::cout << c;
-
-    if ((n % 10) == 0)
-        std::cout << std::flush;
-
-    return 1;
-}
 void generate_dh_pem(const char* dh_path) {
     const int prime_len = 2048;
     const int generator = DH_GENERATOR_2;
     DH* dh = DH_new();
     if (dh == NULL) {
-        printf("Alloc for dh failed\n");
+        BOOST_LOG_TRIVIAL(error) << "Alloc for dh failed";
         ERR_print_errors_fp(stderr);
         abort();
     }
-    std::cout << "Generating DH parameter, this might take a while..."
-              << std::endl;
+    BOOST_LOG_TRIVIAL(info)
+        << "Generating DH parameter, this might take a while...";
 
     const int res =
         DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
-        printf("Alloc for dh failed\n");
+        BOOST_LOG_TRIVIAL(error) << "Alloc for dh failed";
         ERR_print_errors_fp(stderr);
         abort();
     }
 
-    std::cout << "DH parameter done!" << std::endl;
+    BOOST_LOG_TRIVIAL(info) << "DH parameter done!";
     FILE* pFile = NULL;
     pFile = fopen(dh_path, "wt");
     PEM_write_DHparams(pFile, dh);
@@ -180,8 +162,6 @@ void generate_cert(const char* cert_path, const char* key_path) {
 
     mkcert(&x509, &pkey, 2048, 1, 10000);
 
-    //    RSA* rsa = EVP_PKEY_get1_RSA(pkey);
-    //    RSA_print_fp(stdout,rsa,0);
     X509_print_fp(stdout, x509);
 
     FILE* key_f = fopen(key_path, "wt");
@@ -221,34 +201,14 @@ inline void load_server_certificate(boost::asio::ssl::context& ctx) {
         generate_dh_pem(dh_path);
     }
 
-    std::ifstream file(cert_path);
-    const std::string cert((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-    file.close();
-
-    file.open(key_path);
-    const std::string key((std::istreambuf_iterator<char>(file)),
-                          std::istreambuf_iterator<char>());
-    file.close();
-
-    file.open(dh_path);
-    const std::string dh((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
-    file.close();
-
-    ctx.set_password_callback(
-        [](std::size_t, boost::asio::ssl::context_base::password_purpose) {
-            return "test";
-        });
-
     ctx.set_options(boost::asio::ssl::context::default_workarounds |
                     boost::asio::ssl::context::no_sslv2 |
                     boost::asio::ssl::context::single_dh_use);
 
-    ctx.use_certificate_chain(boost::asio::buffer(cert.data(), cert.size()));
+    ctx.use_certificate_chain_file(cert_path);
 
-    ctx.use_private_key(boost::asio::buffer(key.data(), key.size()),
-                        boost::asio::ssl::context::file_format::pem);
+    ctx.use_private_key_file(key_path,
+                             boost::asio::ssl::context::file_format::pem);
 
-    ctx.use_tmp_dh(boost::asio::buffer(dh.data(), dh.size()));
+    ctx.use_tmp_dh_file(dh_path);
 }
