@@ -171,6 +171,7 @@ int main(int argc, char* argv[]) {
         ChannelEncryption<std::string> channel_encryption(priv);
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
+
         loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location,
                                        lokid_rpc_port);
         RateLimiter rate_limiter;

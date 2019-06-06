@@ -16,6 +16,7 @@
 #include "swarm.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
+static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 
 class Database;
 
@@ -47,6 +48,8 @@ struct snode_stats_t {
     // how many times a single push failed
     uint64_t relay_fails = 0;
 };
+
+int query_pow_difficulty();
 
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
@@ -81,6 +84,7 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
 
+    int pow_difficulty_ = 100;
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
@@ -95,7 +99,9 @@ class ServiceNode {
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
 
-    boost::asio::steady_timer update_timer_;
+    boost::asio::steady_timer pow_update_timer_;
+
+    boost::asio::steady_timer swarm_update_timer_;
 
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
@@ -134,6 +140,9 @@ class ServiceNode {
 
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
+
+    /// Update PoW difficulty from DNS text record
+    void pow_difficulty_timer_tick();
 
     /// Return tester/testee pair based on block_height
     bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
@@ -191,6 +200,9 @@ class ServiceNode {
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(
         std::vector<service_node::storage::Item>& all_entries) const;
+
+    // Return the current PoW difficulty
+    int get_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);
