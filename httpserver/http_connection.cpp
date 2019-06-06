@@ -476,8 +476,13 @@ void connection_t::process_request() {
         }
         break;
     case http::verb::get:
-        BOOST_LOG_TRIVIAL(error) << "GET requests not supported";
-        response_.result(http::status::bad_request);
+        /// Accept GET json rpc requests from the deamon
+        if (target == "/json_rpc") {
+            response_.result(http::status::ok);
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "Target not supported for GET: " << target;
+            response_.result(http::status::bad_request);
+        }
         break;
     default:
         BOOST_LOG_TRIVIAL(error) << "bad request";
