@@ -7,6 +7,7 @@
 struct sn_record_t {
     uint16_t port;
     std::string address; // Snode address
+    std::string ip;      // Snode ip
 };
 
 namespace loki {

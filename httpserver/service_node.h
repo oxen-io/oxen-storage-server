@@ -15,7 +15,6 @@
 #include "lokid_key.h"
 #include "swarm.h"
 
-static constexpr uint16_t SNODE_PORT = 8080;
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 
 class Database;

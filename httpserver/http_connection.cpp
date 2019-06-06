@@ -109,13 +109,10 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
                 sn_json.at("swarm_id").get<swarm_id_t>();
             std::string snode_address = util::hex64_to_base32z(pubkey);
             snode_address.append(".snode");
-#ifndef INTEGRATION_TEST
-            const sn_record_t sn{SNODE_PORT, snode_address};
-#else
-            const std::string port = sn_json.at("port").get<std::string>();
-            const sn_record_t sn{static_cast<uint16_t>(stoi(port)),
-                                 snode_address};
-#endif
+            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
+            const std::string snode_ip =
+                sn_json.at("public_ip").get<std::string>();
+            const sn_record_t sn{port, snode_address, snode_ip};
 
             swarm_map[swarm_id].push_back(sn);
         }
@@ -546,6 +543,24 @@ bool connection_t::parse_header(const char* first, Args... args) {
     return parse_header(first) && parse_header(args...);
 }
 
+json snodes_to_json(const std::vector<sn_record_t>& snodes) {
+
+    json res_body;
+    json snodes_json = json::array();
+
+    for (const auto& sn : snodes) {
+        json snode;
+        snode["address"] = sn.address;
+        snode["port"] = std::to_string(sn.port);
+        snode["ip"] = sn.ip;
+        snodes_json.push_back(snode);
+    }
+
+    res_body["snodes"] = snodes_json;
+
+    return res_body;
+}
+
 void connection_t::process_store(const json& params) {
 
     constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
@@ -672,21 +687,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
-
-    json res_body;
-
-    json snodes = json::array();
-
-    for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-        snodes.push_back(std::to_string(sn.port));
-#else
-        snodes.push_back(sn.address);
-#endif
-    }
-
-    res_body["snodes"] = snodes;
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
@@ -723,21 +725,9 @@ void connection_t::process_retrieve_all() {
 }
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
-    const std::vector<sn_record_t> nodes =
-        service_node_.get_snodes_by_pk(pubKey);
 
-    json res_body;
-    json snodes = json::array();
-
-    for (const auto& sn : nodes) {
-#ifdef INTEGRATION_TEST
-        snodes.push_back(std::to_string(sn.port));
-#else
-        snodes.push_back(sn.address);
-#endif
-    }
-
-    res_body["snodes"] = snodes;
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::misdirected_request);
     response_.set(http::field::content_type, "application/json");
