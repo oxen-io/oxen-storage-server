@@ -189,8 +189,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void process_retrieve_all();
 
-    nlohmann::json get_snodes_json_by_pk(const std::string& pubKey) const;
-
     template <typename T>
     void respond_with_messages(const std::vector<T>& messages);
 

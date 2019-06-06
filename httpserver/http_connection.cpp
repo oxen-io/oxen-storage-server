@@ -543,22 +543,20 @@ bool connection_t::parse_header(const char* first, Args... args) {
     return parse_header(first) && parse_header(args...);
 }
 
-json connection_t::get_snodes_json_by_pk(const std::string& pubKey) const {
-
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 
     json res_body;
-    json snodes = json::array();
+    json snodes_json = json::array();
 
-    for (const auto& sn : nodes) {
+    for (const auto& sn : snodes) {
         json snode;
         snode["address"] = sn.address;
         snode["port"] = std::to_string(sn.port);
         snode["ip"] = sn.ip;
-        snodes.push_back(snode);
+        snodes_json.push_back(snode);
     }
 
-    res_body["snodes"] = snodes;
+    res_body["snodes"] = snodes_json;
 
     return res_body;
 }
@@ -689,7 +687,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    const json res_body = get_snodes_json_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
@@ -726,7 +725,9 @@ void connection_t::process_retrieve_all() {
 }
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
-    const json res_body = get_snodes_json_by_pk(pubKey);
+
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::misdirected_request);
     response_.set(http::field::content_type, "application/json");
