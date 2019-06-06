@@ -95,6 +95,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
             body = std::make_shared<std::string>(res_.body());
+            trigger_callback(SNodeError::NO_ERROR, std::move(body));
         }
 
     } else {
@@ -116,8 +117,6 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
             << "ec: " << ec.value() << ". Message: " << ec.message();
         return;
     }
-
-    trigger_callback(SNodeError::NO_ERROR, std::move(body));
 
     // If we get here then the connection is closed gracefully
 }
