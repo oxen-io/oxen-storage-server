@@ -975,6 +975,11 @@ void connection_t::do_close() {
 }
 
 void connection_t::on_shutdown(boost::system::error_code ec) {
+    if (ec == boost::asio::error::eof) {
+        // Rationale:
+        // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
+        ec.assign(0, ec.category());
+    }
     if (ec)
         BOOST_LOG_TRIVIAL(error) << "Could not close ssl stream gracefully";
 

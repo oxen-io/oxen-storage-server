@@ -32,12 +32,12 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
     std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
-    static void make_sn_request(boost::asio::io_context& ioc,
-                                const std::string& sn_address, uint16_t port,
-                                const std::shared_ptr<request_t>& req,
-                                http_callback_t&& cb) {
-        return make_https_request(ioc, sn_address, port, req, std::move(cb));
-    }
+static void make_sn_request(boost::asio::io_context& ioc,
+                            const std::string& sn_address, uint16_t port,
+                            const std::shared_ptr<request_t>& req,
+                            http_callback_t&& cb) {
+    return make_https_request(ioc, sn_address, port, req, std::move(cb));
+}
 
 int query_pow_difficulty() {
     int response;
