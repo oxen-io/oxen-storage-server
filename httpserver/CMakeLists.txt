@@ -10,7 +10,10 @@ set(HEADER_FILES
     service_node.h
     serialization.h
     rate_limiter.h
-    ../external/json.hpp)
+    ../external/json.hpp
+    https_client.h
+    server_certificates.h
+    )
 
 set(SRC_FILES
     main.cpp
@@ -19,6 +22,7 @@ set(SRC_FILES
     service_node.cpp
     serialization.cpp
     rate_limiter.cpp
+    https_client.cpp
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
@@ -37,7 +41,7 @@ find_package(Boost
     program_options
 )
 
-target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
+target_link_libraries(httpserver PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
