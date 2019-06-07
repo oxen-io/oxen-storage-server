@@ -125,6 +125,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 #else
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
+constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
@@ -182,7 +183,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
                          const std::string& db_location,
                          uint16_t lokid_rpc_port)
     : ioc_(ioc), db_(std::make_unique<Database>(ioc, db_location)),
-      swarm_update_timer_(ioc), pow_update_timer_(ioc),
+      swarm_update_timer_(ioc), pow_update_timer_(ioc), lokid_ping_timer_(ioc),
       lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
 
     char buf[64] = {0};
@@ -200,6 +201,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
     pow_difficulty_timer_tick();
+    lokid_ping_timer_tick();
 }
 
 ServiceNode::~ServiceNode() = default;
@@ -428,6 +430,37 @@ void ServiceNode::swarm_timer_tick() {
     swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     swarm_update_timer_.async_wait(
         boost::bind(&ServiceNode::swarm_timer_tick, this));
+}
+
+
+void ServiceNode::lokid_ping_timer_tick() {
+
+    const std::string ip = "127.0.0.1";
+    const std::string target = "/json_rpc";
+
+    nlohmann::json req_body;
+
+    req_body["jsonrpc"] = "2.0";
+    req_body["method"] = "storage_server_ping";
+
+    auto req = std::make_shared<request_t>();
+
+    req->body() = req_body.dump();
+    req->method(http::verb::post);
+    req->target(target);
+    req->prepare_payload();
+
+    make_http_request(ioc_, ip, lokid_rpc_port_, req, [] (const sn_response_t&& res) {
+        if (res.error_code == SNodeError::NO_ERROR) {
+            BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
+        }
+    });
+
+    lokid_ping_timer_.expires_after(LOKID_PING_INTERVAL);
+    lokid_ping_timer_.async_wait(boost::bind(&ServiceNode::lokid_ping_timer_tick, this));
+
 }
 
 static std::vector<std::shared_ptr<request_t>>

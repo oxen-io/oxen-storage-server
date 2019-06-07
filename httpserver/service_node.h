@@ -107,6 +107,8 @@ class ServiceNode {
 
     boost::asio::steady_timer swarm_update_timer_;
 
+    boost::asio::steady_timer lokid_ping_timer_;
+
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
@@ -147,6 +149,9 @@ class ServiceNode {
 
     /// Update PoW difficulty from DNS text record
     void pow_difficulty_timer_tick();
+
+    /// Ping the storage server periodically as required for uptime proofs
+    void lokid_ping_timer_tick();
 
     /// Return tester/testee pair based on block_height
     bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
