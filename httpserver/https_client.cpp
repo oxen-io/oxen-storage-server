@@ -126,7 +126,7 @@ void HttpsClientSession::start() {
     if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
-        std::cerr << ec.message() << "\n";
+        BOOST_LOG_TRIVIAL(error) << ec.message();
         return;
     }
     boost::asio::async_connect(
