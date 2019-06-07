@@ -31,6 +31,10 @@ using request_t = http::request<http::string_body>;
 
 namespace loki {
 
+struct sn_response_t;
+struct blockchain_test_answer_t;
+struct bc_test_params_t;
+
 namespace http_server {
 class connection_t;
 }
@@ -149,8 +153,18 @@ class ServiceNode {
                               sn_record_t& testee);
 
     /// Send a request to a SN under test
-    void send_message_test_req(const sn_record_t& testee,
+    void send_storage_test_req(const sn_record_t& testee,
                                const service_node::storage::Item& item);
+
+    void send_blockchain_test_req(const sn_record_t& testee,
+                                  bc_test_params_t params,
+                                  blockchain_test_answer_t answer);
+
+    /// From a peer
+    void process_blockchain_test_response(sn_response_t&& res,
+                                          blockchain_test_answer_t our_answer,
+                                          sn_record_t testee,
+                                          uint64_t bc_height);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -185,11 +199,16 @@ class ServiceNode {
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
 
-    // Attempt to find an answer (message body) to the message test
-    MessageTestStatus process_msg_test_req(uint64_t blk_height,
-                                           const std::string& tester_addr,
-                                           const std::string& msg_hash,
-                                           std::string& answer);
+    /// request blockchain test from a peer
+    void perform_blockchain_test(
+        bc_test_params_t params,
+        std::function<void(blockchain_test_answer_t)>&& cb) const;
+
+    // Attempt to find an answer (message body) to the storage test
+    MessageTestStatus process_storage_test_req(uint64_t blk_height,
+                                               const std::string& tester_addr,
+                                               const std::string& msg_hash,
+                                               std::string& answer);
 
     bool is_pubkey_for_us(const std::string& pk) const;
 

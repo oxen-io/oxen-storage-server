@@ -442,6 +442,35 @@ make_batch_requests(std::vector<std::string>&& data) {
     return result;
 }
 
+void ServiceNode::perform_blockchain_test(
+    bc_test_params_t params,
+    std::function<void(blockchain_test_answer_t)>&& cb) const {
+
+    BOOST_LOG_TRIVIAL(debug) << "Delegating blockchain test to lokid";
+    request_blockchain_test(
+        ioc_, lokid_rpc_port_, lokid_key_pair_, params,
+        [cb = std::move(cb)](const std::string& body_str) {
+            using nlohmann::json;
+
+            const json body = json::parse(body_str, nullptr, false);
+
+            if (body.is_discarded()) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Bad lokid rpc response: invalid json";
+                return;
+            }
+
+            try {
+                auto result = body.at("result");
+                uint64_t height = result.at("res_height").get<uint64_t>();
+
+                cb(blockchain_test_answer_t{height});
+
+            } catch (...) {
+            }
+        });
+}
+
 void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
                                    const signature& sig) const {
 
@@ -470,7 +499,7 @@ void abort_if_integration_test() {
 #endif
 }
 
-void ServiceNode::send_message_test_req(const sn_record_t& testee,
+void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         const Item& item) {
 
     auto callback = [testee, item,
@@ -478,7 +507,7 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
         if (res.error_code == SNodeError::NO_ERROR && res.body) {
             if (*res.body == item.data) {
                 BOOST_LOG_TRIVIAL(debug)
-                    << "Message test is successful for: " << testee
+                    << "Storage test is successful for: " << testee
                     << " at height: " << height;
             } else {
                 BOOST_LOG_TRIVIAL(warning)
@@ -493,7 +522,7 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
             }
         } else {
             BOOST_LOG_TRIVIAL(error)
-                << "Failed to send a message test request to snode: " << testee;
+                << "Failed to send a storage test request to snode: " << testee;
 
             /// TODO: retry here, otherwise tests sometimes fail (when SN not
             /// running yet)
@@ -506,7 +535,7 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
     json_body["height"] = block_height_;
     json_body["hash"] = item.hash;
 
-    auto req = make_post_request("/msg_test", json_body.dump());
+    auto req = make_post_request("v1/swarms/storage_test", json_body.dump());
 
 #ifndef DISABLE_SNODE_SIGNATURE
     const auto hash = hash_data(req->body());
@@ -515,6 +544,61 @@ void ServiceNode::send_message_test_req(const sn_record_t& testee,
 #endif
 
     make_sn_request(ioc_, testee.address, testee.port, req, callback);
+}
+
+void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
+                                           bc_test_params_t params,
+                                           blockchain_test_answer_t answer) {
+
+    nlohmann::json json_body;
+
+    json_body["max_height"] = params.max_height;
+    json_body["seed"] = params.seed;
+
+    auto req =
+        make_post_request("/v1/swarms/blockchain_test", json_body.dump());
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    const auto hash = hash_data(req->body());
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+    attach_signature(req, signature);
+#endif
+
+    make_http_request(ioc_, testee.address, testee.port, req,
+                      std::bind(&ServiceNode::process_blockchain_test_response,
+                                this, std::placeholders::_1, answer, testee,
+                                this->block_height_));
+}
+
+void ServiceNode::process_blockchain_test_response(
+    sn_response_t&& res, blockchain_test_answer_t our_answer,
+    sn_record_t testee, uint64_t bc_height) {
+
+    BOOST_LOG_TRIVIAL(debug)
+        << "Processing blockchain test response from: " << testee
+        << " at height: " << bc_height;
+
+    if (!res.body) {
+        BOOST_LOG_TRIVIAL(debug) << "Failed: empty response.";
+        return;
+    }
+
+    using nlohmann::json;
+
+    try {
+
+        const json body = json::parse(*res.body, nullptr, true);
+        uint64_t their_height = body.at("res_height").get<uint64_t>();
+
+        if (our_answer.res_height == their_height) {
+            BOOST_LOG_TRIVIAL(debug) << "Success.";
+        } else {
+            BOOST_LOG_TRIVIAL(debug) << "Failed: incorrect answer.";
+        }
+
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(debug) << "Failed: could not find answer in json.";
+    }
 }
 
 // Deterministically selects two random swarm members; returns true on success
@@ -538,7 +622,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     } else if (blk_height < block_height_) {
 
         BOOST_LOG_TRIVIAL(debug)
-            << "got message test request for an older block";
+            << "got storage test request for an older block";
 
         const auto it =
             std::find_if(block_hashes_cache_.begin(), block_hashes_cache_.end(),
@@ -584,7 +668,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     return true;
 }
 
-MessageTestStatus ServiceNode::process_msg_test_req(
+MessageTestStatus ServiceNode::process_storage_test_req(
     uint64_t blk_height, const std::string& tester_addr,
     const std::string& msg_hash, std::string& answer) {
 
@@ -613,6 +697,7 @@ MessageTestStatus ServiceNode::process_msg_test_req(
         if (tester.address != tester_addr) {
             BOOST_LOG_TRIVIAL(warning) << "Wrong tester: " << tester_addr
                                        << ", expected: " << tester.address;
+            abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
             BOOST_LOG_TRIVIAL(debug) << "Tester is valid: " << tester_addr;
@@ -679,18 +764,57 @@ void ServiceNode::initiate_peer_test() {
         return;
     }
 
-    // 2. Select a message
-    Item item;
-    if (!this->select_random_message(item)) {
-        BOOST_LOG_TRIVIAL(error) << "Could not select a message for testing";
-        return;
+    /// 2. Storage Testing
+    {
+        // 2.1. Select a message
+        Item item;
+        if (!this->select_random_message(item)) {
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not select a message for testing";
+        } else {
+            BOOST_LOG_TRIVIAL(trace)
+                << "selected random message : " << item.hash << ", "
+                << item.data;
+
+            // 2.2. Initiate testing request
+            send_storage_test_req(testee, item);
+        }
     }
 
-    BOOST_LOG_TRIVIAL(trace)
-        << "selected random message : " << item.hash << ", " << item.data;
+    // Note: might consider choosing a different tester/testee pair for
+    // different types of tests as to spread out the computations
 
-    // 3. Initiate testing request
-    send_message_test_req(testee, item);
+    /// 3. Blockchain Testing
+    {
+
+        // Distance between two consecutive checkpoints,
+        // should be in sync with lokid
+        constexpr uint64_t CHECKPOINT_DISTANCE = 4;
+        // We can be confident that blockchain data won't
+        // change if we go this many blocks back
+        constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 2;
+
+        if (block_height_ <= SAFETY_BUFFER_BLOCKS) {
+            BOOST_LOG_TRIVIAL(debug)
+                << "Blockchain too short, skipping blockchain testing.";
+            return;
+        }
+
+        bc_test_params_t params;
+        params.max_height = block_height_ - SAFETY_BUFFER_BLOCKS;
+
+        const uint64_t rng_seed = std::chrono::high_resolution_clock::now()
+                                      .time_since_epoch()
+                                      .count();
+        std::mt19937_64 mt(rng_seed);
+        params.seed = mt();
+
+        auto callback = std::bind(&ServiceNode::send_blockchain_test_req, this,
+                                  testee, params, std::placeholders::_1);
+
+        /// Compute your own answer, then initiate a test request
+        perform_blockchain_test(params, callback);
+    }
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
