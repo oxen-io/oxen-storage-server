@@ -27,7 +27,7 @@ void make_https_request(boost::asio::io_context& ioc,
         return;
     }
 
-    static ssl::context ctx{ssl::context::sslv23_client};
+    static ssl::context ctx{ssl::context::tlsv12_client};
 
     auto session = std::make_shared<HttpsClientSession>(
         ioc, ctx, std::move(resolve_results), req, std::move(cb));

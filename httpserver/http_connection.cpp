@@ -208,7 +208,7 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
     tcp::acceptor acceptor{ioc, {address, port}};
 
-    ssl::context ssl_ctx{ssl::context::sslv23};
+    ssl::context ssl_ctx{ssl::context::tlsv12};
 
     load_server_certificate(ssl_ctx);
 
