@@ -10,6 +10,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/optional.hpp>
+#include <boost/thread/thread.hpp>
 
 #include "common.h"
 #include "lokid_key.h"
@@ -87,6 +88,7 @@ class ServiceNode {
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
+    std::unique_ptr<boost::thread> pow_dns_thread_;
 
     int pow_difficulty_ = 100;
     uint64_t block_height_ = 0;

@@ -200,7 +200,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
-    pow_difficulty_timer_tick();
+    pow_dns_thread_ = std::make_unique<boost::thread>(boost::bind(&ServiceNode::pow_difficulty_timer_tick, this));
+    pow_dns_thread_->detach();
     lokid_ping_timer_tick();
 }
 
