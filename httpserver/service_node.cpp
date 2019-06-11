@@ -186,6 +186,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
       swarm_update_timer_(ioc), pow_update_timer_(ioc), lokid_ping_timer_(ioc),
       lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
 
+    // Default value
+    pow_difficulty_.store(100);
+
     char buf[64] = {0};
     if (char const* dest =
             util::base32z_encode(lokid_key_pair_.public_key, buf)) {
@@ -332,7 +335,7 @@ bool ServiceNode::process_store(const message_t& msg) {
 void ServiceNode::process_push(const message_t& msg) {
 #ifndef DISABLE_POW
     const char* error_msg;
-    if (!verify_message(msg, pow_difficulty_, &error_msg))
+    if (!verify_message(msg, pow_difficulty_.load() , &error_msg))
         throw std::runtime_error(error_msg);
 #endif
     save_if_new(msg);
@@ -417,7 +420,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 void ServiceNode::pow_difficulty_timer_tick() {
     const int new_difficulty = query_pow_difficulty();
     if (new_difficulty != -1) {
-        pow_difficulty_ = new_difficulty;
+        pow_difficulty_.store(new_difficulty);
     }
     pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
     pow_update_timer_.async_wait(
@@ -993,7 +996,7 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-int ServiceNode::get_pow_difficulty() const { return pow_difficulty_; }
+int ServiceNode::get_pow_difficulty() const { return pow_difficulty_.load(); }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
@@ -1018,7 +1021,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 #ifndef DISABLE_POW
     const auto it = std::remove_if(
         messages.begin(), messages.end(), [this](const message_t& message) {
-            return verify_message(message, pow_difficulty_) == false;
+            return verify_message(message, pow_difficulty_.load()) == false;
         });
     messages.erase(it, messages.end());
     if (it != messages.end()) {

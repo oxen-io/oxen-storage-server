@@ -90,7 +90,7 @@ class ServiceNode {
     boost::asio::io_context& ioc_;
     std::unique_ptr<boost::thread> pow_dns_thread_;
 
-    int pow_difficulty_ = 100;
+    std::atomic<int> pow_difficulty_;
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
