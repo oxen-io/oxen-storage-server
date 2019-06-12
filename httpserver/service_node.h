@@ -88,7 +88,8 @@ class ServiceNode {
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
-    std::unique_ptr<boost::thread> pow_dns_thread_;
+    boost::asio::io_context& worker_ioc_;
+    boost::thread worker_thread_;
 
     std::atomic<int> pow_difficulty_;
     uint64_t block_height_ = 0;
@@ -180,7 +181,8 @@ class ServiceNode {
     bool select_random_message(service_node::storage::Item& item);
 
   public:
-    ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+    ServiceNode(boost::asio::io_context& ioc,
+                boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
                 const std::string& db_location, uint16_t lokid_rpc_port);
 
