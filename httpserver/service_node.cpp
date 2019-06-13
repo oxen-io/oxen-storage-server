@@ -5,7 +5,6 @@
 #include "http_connection.h"
 #include "https_client.h"
 #include "lokid_key.h"
-#include "pow.hpp"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
@@ -161,10 +160,12 @@ static bool verify_message(const message_t& msg, int pow_difficulty,
         return false;
     }
     std::string hash;
+    const std::vector<pow_difficulty_t> history;
 #ifndef DISABLE_POW
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
-                  pow_difficulty)) {
+                  history)) {
+                //   pow_difficulty)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;

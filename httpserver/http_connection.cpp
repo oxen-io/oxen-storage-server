@@ -2,7 +2,6 @@
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
-#include "pow.hpp"
 #include "rate_limiter.h"
 #include "serialization.h"
 #include "server_certificates.h"
@@ -748,10 +747,12 @@ void connection_t::process_store(const json& params) {
 
     // Do not store message if the PoW provided is invalid
     std::string messageHash;
+    const std::vector<pow_difficulty_t> history;
 
     const bool validPoW =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
-                 service_node_.get_pow_difficulty());
+                history);
+                //  service_node_.get_pow_difficulty());
 #ifndef DISABLE_POW
     if (!validPoW) {
         response_.result(432);

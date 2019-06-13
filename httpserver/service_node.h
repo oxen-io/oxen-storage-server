@@ -15,6 +15,7 @@
 #include "common.h"
 #include "lokid_key.h"
 #include "swarm.h"
+#include "pow.hpp"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
