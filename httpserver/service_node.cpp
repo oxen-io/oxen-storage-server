@@ -608,7 +608,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    make_http_request(ioc_, testee.address, testee.port, req,
+    make_https_request(ioc_, testee.address, testee.port, req,
                       std::bind(&ServiceNode::process_blockchain_test_response,
                                 this, std::placeholders::_1, answer, testee,
                                 this->block_height_));
