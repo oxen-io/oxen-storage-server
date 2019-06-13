@@ -10,6 +10,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/optional.hpp>
+#include <boost/thread/thread.hpp>
 
 #include "common.h"
 #include "lokid_key.h"
@@ -87,8 +88,10 @@ class ServiceNode {
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
+    boost::asio::io_context& worker_ioc_;
+    boost::thread worker_thread_;
 
-    int pow_difficulty_ = 100;
+    std::atomic<int> pow_difficulty_;
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
@@ -178,7 +181,8 @@ class ServiceNode {
     bool select_random_message(service_node::storage::Item& item);
 
   public:
-    ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+    ServiceNode(boost::asio::io_context& ioc,
+                boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
                 const std::string& db_location, uint16_t lokid_rpc_port);
 

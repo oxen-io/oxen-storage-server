@@ -178,13 +178,19 @@ static bool verify_message(const message_t& msg, int pow_difficulty,
     return true;
 }
 
-ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
+ServiceNode::ServiceNode(boost::asio::io_context& ioc,
+                         boost::asio::io_context& worker_ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
                          uint16_t lokid_rpc_port)
-    : ioc_(ioc), db_(std::make_unique<Database>(ioc, db_location)),
-      swarm_update_timer_(ioc), pow_update_timer_(ioc), lokid_ping_timer_(ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
+    : ioc_(ioc), worker_ioc_(worker_ioc),
+      db_(std::make_unique<Database>(ioc, db_location)),
+      swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
+      pow_update_timer_(worker_ioc), lokid_key_pair_(lokid_key_pair),
+      lokid_rpc_port_(lokid_rpc_port) {
+
+    // Default value
+    pow_difficulty_.store(100);
 
     char buf[64] = {0};
     if (char const* dest =
@@ -200,11 +206,16 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc, uint16_t port,
 
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
-    pow_difficulty_timer_tick();
     lokid_ping_timer_tick();
+
+    worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
+    boost::asio::post(worker_ioc_, [this]() { pow_difficulty_timer_tick(); });
 }
 
-ServiceNode::~ServiceNode() = default;
+ServiceNode::~ServiceNode() {
+    worker_ioc_.stop();
+    worker_thread_.join();
+};
 
 void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                                   const sn_record_t& sn) const {
@@ -331,7 +342,7 @@ bool ServiceNode::process_store(const message_t& msg) {
 void ServiceNode::process_push(const message_t& msg) {
 #ifndef DISABLE_POW
     const char* error_msg;
-    if (!verify_message(msg, pow_difficulty_, &error_msg))
+    if (!verify_message(msg, pow_difficulty_.load(), &error_msg))
         throw std::runtime_error(error_msg);
 #endif
     save_if_new(msg);
@@ -416,7 +427,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 void ServiceNode::pow_difficulty_timer_tick() {
     const int new_difficulty = query_pow_difficulty();
     if (new_difficulty != -1) {
-        pow_difficulty_ = new_difficulty;
+        pow_difficulty_.store(new_difficulty);
     }
     pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
     pow_update_timer_.async_wait(
@@ -431,7 +442,6 @@ void ServiceNode::swarm_timer_tick() {
     swarm_update_timer_.async_wait(
         boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
-
 
 void ServiceNode::lokid_ping_timer_tick() {
 
@@ -450,17 +460,18 @@ void ServiceNode::lokid_ping_timer_tick() {
     req->target(target);
     req->prepare_payload();
 
-    make_http_request(ioc_, ip, lokid_rpc_port_, req, [] (const sn_response_t&& res) {
-        if (res.error_code == SNodeError::NO_ERROR) {
-            BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
-        }
-    });
+    make_http_request(
+        ioc_, ip, lokid_rpc_port_, req, [](const sn_response_t&& res) {
+            if (res.error_code == SNodeError::NO_ERROR) {
+                BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
+            } else {
+                BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
+            }
+        });
 
     lokid_ping_timer_.expires_after(LOKID_PING_INTERVAL);
-    lokid_ping_timer_.async_wait(boost::bind(&ServiceNode::lokid_ping_timer_tick, this));
-
+    lokid_ping_timer_.async_wait(
+        boost::bind(&ServiceNode::lokid_ping_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>
@@ -992,7 +1003,7 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-int ServiceNode::get_pow_difficulty() const { return pow_difficulty_; }
+int ServiceNode::get_pow_difficulty() const { return pow_difficulty_.load(); }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
@@ -1017,7 +1028,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 #ifndef DISABLE_POW
     const auto it = std::remove_if(
         messages.begin(), messages.end(), [this](const message_t& message) {
-            return verify_message(message, pow_difficulty_) == false;
+            return verify_message(message, pow_difficulty_.load()) == false;
         });
     messages.erase(it, messages.end());
     if (it != messages.end()) {

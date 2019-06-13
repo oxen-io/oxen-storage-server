@@ -162,6 +162,7 @@ int main(int argc, char* argv[]) {
             << "Listening at address " << ip << " port " << port << std::endl;
 
         boost::asio::io_context ioc{1};
+        boost::asio::io_context worker_ioc{1};
 
         if (sodium_init() != 0) {
             BOOST_LOG_TRIVIAL(fatal) << "Could not initialize libsodium";
@@ -178,8 +179,8 @@ int main(int argc, char* argv[]) {
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
 
-        loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location,
-                                       lokid_rpc_port);
+        loki::ServiceNode service_node(ioc, worker_ioc, port, lokid_key_pair,
+                                       db_location, lokid_rpc_port);
         RateLimiter rate_limiter;
 
         /// Should run http server
