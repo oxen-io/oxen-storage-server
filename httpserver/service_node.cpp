@@ -166,9 +166,10 @@ static bool verify_message(const message_t& msg,
     }
     std::string hash;
 #ifndef DISABLE_POW
+    const int difficulty = get_valid_difficulty(std::to_string(msg.timestamp), history);
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
-                  history)) {
+                  difficulty)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;
@@ -1009,8 +1010,8 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-pow_difficulty_t ServiceNode::get_pow_difficulty() const {
-    return curr_pow_difficulty_;
+int ServiceNode::get_curr_pow_difficulty() const {
+    return curr_pow_difficulty_.difficulty;
 }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {

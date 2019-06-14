@@ -238,7 +238,7 @@ class ServiceNode {
         std::vector<service_node::storage::Item>& all_entries) const;
 
     // Return the current PoW difficulty
-    pow_difficulty_t get_pow_difficulty() const;
+    int get_curr_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);

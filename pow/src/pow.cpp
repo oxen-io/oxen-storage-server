@@ -64,39 +64,40 @@ bool calcTarget(const std::string& payload, const uint64_t ttlInt,
     return true;
 }
 
-bool checkPoW(const std::string& nonce, const std::string& timestamp,
-              const std::string& ttl, const std::string& recipient,
-              const std::string& data, std::string& messageHash,
-              const std::vector<pow_difficulty_t>& difficultyHistory) {
-
-    uint64_t timestampLong;
+int get_valid_difficulty(const std::string& timestamp, const std::vector<pow_difficulty_t>& history) {
+    uint64_t timestamp_long;
     try {
-        timestampLong = std::stoull(timestamp);
+        timestamp_long = std::stoull(timestamp);
     } catch (...) {
         // Should never happen, checked previously
         return false;
     }
-    const auto msg_timestamp = std::chrono::milliseconds(timestampLong);
+    const auto msg_timestamp = std::chrono::milliseconds(timestamp_long);
 
     int difficulty = std::numeric_limits<int>::max();
-    int mostRecentDifficulty = std::numeric_limits<int>::max();
-    std::chrono::milliseconds mostRecent(0);
+    int most_recent_difficulty = std::numeric_limits<int>::max();
+    std::chrono::milliseconds most_recent(0);
     const std::chrono::milliseconds lower = msg_timestamp - TIMESTAMP_VARIANCE;
     const std::chrono::milliseconds upper = msg_timestamp + TIMESTAMP_VARIANCE;
 
-    for (auto& thisDifficulty : difficultyHistory) {
-        const std::chrono::milliseconds t = thisDifficulty.timestamp;
-        if (t < msg_timestamp && t >= mostRecent) {
-            mostRecent = t;
-            mostRecentDifficulty = thisDifficulty.difficulty;
+    for (const auto& this_difficulty : history) {
+        const std::chrono::milliseconds t = this_difficulty.timestamp;
+        if (t < msg_timestamp && t >= most_recent) {
+            most_recent = t;
+            most_recent_difficulty = this_difficulty.difficulty;
         }
 
         if (t >= lower && t <= upper) {
-            difficulty = std::min(thisDifficulty.difficulty, difficulty);
+            difficulty = std::min(this_difficulty.difficulty, difficulty);
         }
     }
-    difficulty = std::min(mostRecentDifficulty, difficulty);
+    return std::min(most_recent_difficulty, difficulty);
+}
 
+bool checkPoW(const std::string& nonce, const std::string& timestamp,
+              const std::string& ttl, const std::string& recipient,
+              const std::string& data, std::string& messageHash,
+              const int difficulty) {
     const std::string payload = timestamp + ttl + recipient + data;
     uint64_t ttlInt;
     if (!util::parseTTL(ttl, ttlInt))
