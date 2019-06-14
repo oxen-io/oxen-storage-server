@@ -98,7 +98,7 @@ class ServiceNode {
     boost::thread worker_thread_;
 
     pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
-    std::vector<pow_difficulty_t> pow_history_;
+    std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
@@ -245,10 +245,8 @@ class ServiceNode {
 
     void
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history) {
-        curr_pow_difficulty_ =
-            pow_difficulty_t{std::chrono::milliseconds{0}, 1};
         pow_history_ = new_history;
-        for (auto& difficulty : pow_history_) {
+        for (const auto& difficulty : pow_history_) {
             if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
                 curr_pow_difficulty_ = difficulty;
             }

@@ -39,7 +39,8 @@ bool multWillOverflow(uint64_t left, uint64_t right) {
            (std::numeric_limits<std::uint64_t>::max() / left < right);
 }
 
-bool calcTarget(const std::string& payload, const uint64_t ttlInt, const int difficulty, uint64Bytes& target) {
+bool calcTarget(const std::string& payload, const uint64_t ttlInt,
+                const int difficulty, uint64Bytes& target) {
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
     if (overflow)
         return false;
@@ -75,22 +76,20 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
         // Should never happen, checked previously
         return false;
     }
-    const auto timestampMilli = std::chrono::milliseconds(timestampLong);
+    const auto msg_timestamp = std::chrono::milliseconds(timestampLong);
 
     int difficulty = std::numeric_limits<int>::max();
     int mostRecentDifficulty = std::numeric_limits<int>::max();
     std::chrono::milliseconds mostRecent(0);
+    const std::chrono::milliseconds lower = msg_timestamp - TIMESTAMP_VARIANCE;
+    const std::chrono::milliseconds upper = msg_timestamp + TIMESTAMP_VARIANCE;
 
     for (auto& thisDifficulty : difficultyHistory) {
         const std::chrono::milliseconds t = thisDifficulty.timestamp;
-        if (t < timestampMilli && t >= mostRecent) {
+        if (t < msg_timestamp && t >= mostRecent) {
             mostRecent = t;
             mostRecentDifficulty = thisDifficulty.difficulty;
         }
-        const std::chrono::milliseconds lower =
-            timestampMilli - TIMESTAMP_VARIANCE;
-        const std::chrono::milliseconds upper =
-            timestampMilli + TIMESTAMP_VARIANCE;
 
         if (t >= lower && t <= upper) {
             difficulty = std::min(thisDifficulty.difficulty, difficulty);
