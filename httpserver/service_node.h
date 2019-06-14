@@ -59,8 +59,7 @@ struct snode_stats_t {
 using pow_dns_callback_t =
     std::function<void(const std::vector<pow_difficulty_t>&)>;
 
-void query_pow_difficulty(std::vector<pow_difficulty_t>& new_history,
-                          std::error_code& ec);
+std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec);
 
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)

@@ -64,7 +64,8 @@ bool calcTarget(const std::string& payload, const uint64_t ttlInt,
     return true;
 }
 
-int get_valid_difficulty(const std::string& timestamp, const std::vector<pow_difficulty_t>& history) {
+int get_valid_difficulty(const std::string& timestamp,
+                         const std::vector<pow_difficulty_t>& history) {
     uint64_t timestamp_long;
     try {
         timestamp_long = std::stoull(timestamp);
@@ -98,7 +99,14 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
               const std::string& data, std::string& messageHash,
               const int difficulty) {
-    const std::string payload = timestamp + ttl + recipient + data;
+    std::string payload;
+    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
+                    data.size());
+    payload += timestamp;
+    payload += ttl;
+    payload += recipient;
+    payload += data;
+
     uint64_t ttlInt;
     if (!util::parseTTL(ttl, ttlInt))
         return false;

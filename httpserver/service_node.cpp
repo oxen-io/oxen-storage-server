@@ -38,8 +38,8 @@ static void make_sn_request(boost::asio::io_context& ioc,
     return make_https_request(ioc, sn_address, port, req, std::move(cb));
 }
 
-void query_pow_difficulty(std::vector<pow_difficulty_t>& new_history,
-                          std::error_code& ec) {
+std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
+    std::vector<pow_difficulty_t> new_history;
     int response;
     unsigned char query_buffer[1024] = {};
     response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
@@ -49,27 +49,28 @@ void query_pow_difficulty(std::vector<pow_difficulty_t>& new_history,
     if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
         ec = std::make_error_code(std::errc::bad_message);
-        return;
+        return new_history;
     }
     ns_rr rr;
     if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
         ec = std::make_error_code(std::errc::bad_message);
-        return;
+        return new_history;
     }
 
     try {
         const json history = json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
+        new_history.reserve(history.size());
         for (const auto& el : history.items()) {
             const std::chrono::milliseconds timestamp(std::stoi(el.key()));
             const int difficulty = el.value().get<int>();
             new_history.push_back(pow_difficulty_t{timestamp, difficulty});
         }
-        return;
+        return new_history;
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
         ec = std::make_error_code(std::errc::bad_message);
-        return;
+        return new_history;
     }
 }
 
@@ -166,7 +167,8 @@ static bool verify_message(const message_t& msg,
     }
     std::string hash;
 #ifndef DISABLE_POW
-    const int difficulty = get_valid_difficulty(std::to_string(msg.timestamp), history);
+    const int difficulty =
+        get_valid_difficulty(std::to_string(msg.timestamp), history);
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
                   difficulty)) {
@@ -431,8 +433,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
 void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
     std::error_code ec;
-    std::vector<pow_difficulty_t> new_history;
-    query_pow_difficulty(new_history, ec);
+    std::vector<pow_difficulty_t> new_history = query_pow_difficulty(ec);
     if (!ec) {
         boost::asio::post(ioc_, std::bind(cb, new_history));
     }
