@@ -747,19 +747,18 @@ void connection_t::process_store(const json& params) {
 
     // Do not store message if the PoW provided is invalid
     std::string messageHash;
-    const std::vector<pow_difficulty_t> history;
+    const pow_difficulty_t curr_difficulty = service_node_.get_pow_difficulty();
 
-    const bool validPoW =
+    const bool valid_pow =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
-                history);
-                //  service_node_.get_pow_difficulty());
+                  std::vector<pow_difficulty_t>{curr_difficulty});
 #ifndef DISABLE_POW
-    if (!validPoW) {
+    if (!valid_pow) {
         response_.result(432);
         response_.set(http::field::content_type, "application/json");
 
         json res_body;
-        res_body["difficulty"] = service_node_.get_pow_difficulty();
+        res_body["difficulty"] = curr_difficulty.difficulty;
         BOOST_LOG_TRIVIAL(error) << "Forbidden. Invalid PoW nonce " << nonce;
 
         /// This might throw if not utf-8 endoded
@@ -795,7 +794,7 @@ void connection_t::process_store(const json& params) {
     response_.result(http::status::ok);
     response_.set(http::field::content_type, "application/json");
     json res_body;
-    res_body["difficulty"] = service_node_.get_pow_difficulty();
+    res_body["difficulty"] = curr_difficulty.difficulty;
     body_stream_ << res_body.dump();
     BOOST_LOG_TRIVIAL(trace)
         << "Successfully stored message for " << obfuscate_pubkey(pubKey);

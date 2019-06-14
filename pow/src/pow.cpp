@@ -16,7 +16,7 @@
 using namespace std::chrono_literals;
 
 constexpr int BYTE_LEN = 8;
-constexpr std::chrono::milliseconds TIMESTAMP_VARIANCE = 10min;
+constexpr std::chrono::milliseconds TIMESTAMP_VARIANCE = 15min;
 
 using uint64Bytes = std::array<uint8_t, BYTE_LEN>;
 
@@ -66,7 +66,7 @@ bool calcTarget(const std::string& payload, const uint64_t ttlInt, const int dif
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,
               const std::string& data, std::string& messageHash,
-              const std::vector<pow_difficulty_t>& difficulty_history) {
+              const std::vector<pow_difficulty_t>& difficultyHistory) {
 
     uint64_t timestampLong;
     try {
@@ -77,16 +77,27 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     }
     const auto timestampMilli = std::chrono::milliseconds(timestampLong);
 
-    int difficulty = 1;
+    int difficulty = std::numeric_limits<int>::max();
+    int mostRecentDifficulty = std::numeric_limits<int>::max();
+    std::chrono::milliseconds mostRecent(0);
 
-    std::vector<int> valid_difficulties;
-    for (auto& this_difficulty : difficulty_history) {
-        const std::chrono::milliseconds acceptable_timestamp =
-            this_difficulty.timestamp + TIMESTAMP_VARIANCE;
-        if (timestampMilli < acceptable_timestamp) {
-            valid_difficulties.push_back(this_difficulty.difficulty);
+    for (auto& thisDifficulty : difficultyHistory) {
+        const std::chrono::milliseconds t = thisDifficulty.timestamp;
+        if (t < timestampMilli && t >= mostRecent) {
+            mostRecent = t;
+            mostRecentDifficulty = thisDifficulty.difficulty;
+        }
+        const std::chrono::milliseconds lower =
+            timestampMilli - TIMESTAMP_VARIANCE;
+        const std::chrono::milliseconds upper =
+            timestampMilli + TIMESTAMP_VARIANCE;
+
+        if (t >= lower && t <= upper) {
+            difficulty = std::min(thisDifficulty.difficulty, difficulty);
         }
     }
+    difficulty = std::min(mostRecentDifficulty, difficulty);
+
     const std::string payload = timestamp + ttl + recipient + data;
     uint64_t ttlInt;
     if (!util::parseTTL(ttl, ttlInt))
@@ -94,34 +105,27 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     // ttl is in milliseconds, but target calculation wants seconds
     ttlInt = ttlInt / 1000;
     uint64Bytes target;
+    calcTarget(payload, ttlInt, difficulty, target);
 
-    for (auto& difficulty : valid_difficulties) {
-        calcTarget(payload, ttlInt, difficulty, target);
+    uint8_t hashResult[SHA512_DIGEST_LENGTH];
+    // Initial hash
+    SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
+    // Convert nonce to binary
+    std::string decodedNonce = boost::beast::detail::base64_decode(nonce);
+    // Convert decoded nonce string into uint8_t vector. Will have length 8
+    std::vector<uint8_t> innerPayload;
+    innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
+    innerPayload.insert(std::end(innerPayload), std::begin(decodedNonce),
+                        std::end(decodedNonce));
+    innerPayload.insert(std::end(innerPayload), hashResult,
+                        hashResult + SHA512_DIGEST_LENGTH);
+    // Final hash
+    SHA512(innerPayload.data(), innerPayload.size(), hashResult);
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+        ss << std::setw(2) << static_cast<unsigned>(hashResult[i]);
+    messageHash = ss.str();
 
-        uint8_t hashResult[SHA512_DIGEST_LENGTH];
-        // Initial hash
-        SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
-        // Convert nonce to binary
-        std::string decodedNonce = boost::beast::detail::base64_decode(nonce);
-        // Convert decoded nonce string into uint8_t vector. Will have length 8
-        std::vector<uint8_t> innerPayload;
-        innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
-        innerPayload.insert(std::end(innerPayload), std::begin(decodedNonce),
-                            std::end(decodedNonce));
-        innerPayload.insert(std::end(innerPayload), hashResult,
-                            hashResult + SHA512_DIGEST_LENGTH);
-        // Final hash
-        SHA512(innerPayload.data(), innerPayload.size(), hashResult);
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0');
-        for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
-            ss << std::setw(2) << static_cast<unsigned>(hashResult[i]);
-        messageHash = ss.str();
-
-        const bool success = memcmp(hashResult, target.data(), BYTE_LEN) < 0;
-        if (success) {
-            return true;
-        }
-    }
-    return false;
+    return memcmp(hashResult, target.data(), BYTE_LEN) < 0;
 }

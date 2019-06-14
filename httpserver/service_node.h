@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Database.hpp>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -14,8 +15,8 @@
 
 #include "common.h"
 #include "lokid_key.h"
-#include "swarm.h"
 #include "pow.hpp"
+#include "swarm.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
@@ -55,7 +56,11 @@ struct snode_stats_t {
     uint64_t relay_fails = 0;
 };
 
-int query_pow_difficulty();
+using pow_dns_callback_t =
+    std::function<void(const std::vector<pow_difficulty_t>&)>;
+
+void query_pow_difficulty(std::vector<pow_difficulty_t>& new_history,
+                          std::error_code& ec);
 
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
@@ -92,7 +97,9 @@ class ServiceNode {
     boost::asio::io_context& worker_ioc_;
     boost::thread worker_thread_;
 
-    std::atomic<int> pow_difficulty_;
+    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
+    std::vector<pow_difficulty_t> pow_history_;
+
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_ = "";
@@ -152,7 +159,7 @@ class ServiceNode {
     void swarm_timer_tick();
 
     /// Update PoW difficulty from DNS text record
-    void pow_difficulty_timer_tick();
+    void pow_difficulty_timer_tick(const pow_dns_callback_t cb);
 
     /// Ping the storage server periodically as required for uptime proofs
     void lokid_ping_timer_tick();
@@ -231,10 +238,22 @@ class ServiceNode {
         std::vector<service_node::storage::Item>& all_entries) const;
 
     // Return the current PoW difficulty
-    int get_pow_difficulty() const;
+    pow_difficulty_t get_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<service_node::storage::Item>& items);
+
+    void
+    set_difficulty_history(const std::vector<pow_difficulty_t>& new_history) {
+        curr_pow_difficulty_ =
+            pow_difficulty_t{std::chrono::milliseconds{0}, 1};
+        pow_history_ = new_history;
+        for (auto& difficulty : pow_history_) {
+            if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
+                curr_pow_difficulty_ = difficulty;
+            }
+        }
+    }
 };
 
 } // namespace loki
