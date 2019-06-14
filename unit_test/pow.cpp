@@ -2,6 +2,9 @@
 #include "utils.hpp"
 
 #include <boost/test/unit_test.hpp>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 BOOST_AUTO_TEST_SUITE(pow_unit_test)
 
@@ -23,6 +26,8 @@ constexpr auto data =
     "wwo52CiwtbrFdXc84K0yDKTnPu6QoTKoiVt+hftgKv0o/"
     "ruRN40fLSGl0KD+FqLf4Oqe5u1MaDDoUlLW1tdw6gsPSUxgQPWkJ6qda3t+"
     "IioolNQWidLcKg4WXvSwWRO6bDLNXfyDLd9UwcpHRus5UYnmc9BTjiXHQP8pWc4ciCMAQ==";
+const std::vector<pow_difficulty_t> history{
+    pow_difficulty_t{std::chrono::milliseconds(1554559211), 10}};
 } // namespace valid_pow
 
 BOOST_AUTO_TEST_CASE(util_parses_a_valid_ttl) {
@@ -103,6 +108,31 @@ BOOST_AUTO_TEST_CASE(it_checks_an_invalid_data) {
     BOOST_CHECK_EQUAL(
         checkPoW(nonce, timestamp, ttl, pubkey, wrong_data, messageHash, 10),
         false);
+}
+
+BOOST_AUTO_TEST_CASE(it_checks_correct_difficulty) {
+    using namespace valid_pow;
+    std::string messageHash;
+    const auto t = std::chrono::milliseconds(1554859211);
+    const auto t1 = t - 30min;
+    const auto t2 = t - 20min;
+
+    const std::vector<pow_difficulty_t> history1{pow_difficulty_t{t1, 1000},
+                                                 pow_difficulty_t{t2, 10}};
+    BOOST_CHECK_EQUAL(get_valid_difficulty(timestamp, history1), 10);
+
+    const auto t3 = t - 30min;
+    const auto t4 = t + 5min;
+
+    const std::vector<pow_difficulty_t> history2{pow_difficulty_t{t1, 1000},
+                                                 pow_difficulty_t{t2, 10}};
+    BOOST_CHECK_EQUAL(get_valid_difficulty(timestamp, history2), 10);
+
+    const auto t5 = t - 5min;
+    const auto t6 = t - 8min;
+    const std::vector<pow_difficulty_t> history3{pow_difficulty_t{t3, 1000},
+                                                 pow_difficulty_t{t4, 10}};
+    BOOST_CHECK_EQUAL(get_valid_difficulty(timestamp, history3), 10);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

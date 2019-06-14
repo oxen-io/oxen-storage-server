@@ -13,7 +13,11 @@
 #include <sstream>
 #include <string.h>
 
-const int BYTE_LEN = 8;
+using namespace std::chrono_literals;
+
+constexpr int BYTE_LEN = 8;
+constexpr std::chrono::milliseconds TIMESTAMP_VARIANCE = 15min;
+
 using uint64Bytes = std::array<uint8_t, BYTE_LEN>;
 
 // This enforces that the result array has the most significant byte at index 0
@@ -35,20 +39,11 @@ bool multWillOverflow(uint64_t left, uint64_t right) {
            (std::numeric_limits<std::uint64_t>::max() / left < right);
 }
 
-bool checkPoW(const std::string& nonce, const std::string& timestamp,
-              const std::string& ttl, const std::string& recipient,
-              const std::string& data, std::string& messageHash,
-              int difficulty) {
-    const std::string payload = timestamp + ttl + recipient + data;
-
+bool calcTarget(const std::string& payload, const uint64_t ttlInt,
+                const int difficulty, uint64Bytes& target) {
     bool overflow = addWillOverflow(payload.size(), BYTE_LEN);
     if (overflow)
         return false;
-    uint64_t ttlInt;
-    if (!util::parseTTL(ttl, ttlInt))
-        return false;
-    // ttl is in milliseconds, but target calculation wants seconds
-    ttlInt = ttlInt / 1000;
     uint64_t totalLen = payload.size() + BYTE_LEN;
     overflow = multWillOverflow(ttlInt, totalLen);
     if (overflow)
@@ -65,8 +60,60 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     uint64_t denominator = difficulty * lenPlusInnerFrac;
     uint64_t targetNum = std::numeric_limits<uint64_t>::max() / denominator;
 
-    uint64Bytes target;
     u64ToU8Array(targetNum, target);
+    return true;
+}
+
+int get_valid_difficulty(const std::string& timestamp,
+                         const std::vector<pow_difficulty_t>& history) {
+    uint64_t timestamp_long;
+    try {
+        timestamp_long = std::stoull(timestamp);
+    } catch (...) {
+        // Should never happen, checked previously
+        return false;
+    }
+    const auto msg_timestamp = std::chrono::milliseconds(timestamp_long);
+
+    int difficulty = std::numeric_limits<int>::max();
+    int most_recent_difficulty = std::numeric_limits<int>::max();
+    std::chrono::milliseconds most_recent(0);
+    const std::chrono::milliseconds lower = msg_timestamp - TIMESTAMP_VARIANCE;
+    const std::chrono::milliseconds upper = msg_timestamp + TIMESTAMP_VARIANCE;
+
+    for (const auto& this_difficulty : history) {
+        const std::chrono::milliseconds t = this_difficulty.timestamp;
+        if (t < msg_timestamp && t >= most_recent) {
+            most_recent = t;
+            most_recent_difficulty = this_difficulty.difficulty;
+        }
+
+        if (t >= lower && t <= upper) {
+            difficulty = std::min(this_difficulty.difficulty, difficulty);
+        }
+    }
+    return std::min(most_recent_difficulty, difficulty);
+}
+
+bool checkPoW(const std::string& nonce, const std::string& timestamp,
+              const std::string& ttl, const std::string& recipient,
+              const std::string& data, std::string& messageHash,
+              const int difficulty) {
+    std::string payload;
+    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
+                    data.size());
+    payload += timestamp;
+    payload += ttl;
+    payload += recipient;
+    payload += data;
+
+    uint64_t ttlInt;
+    if (!util::parseTTL(ttl, ttlInt))
+        return false;
+    // ttl is in milliseconds, but target calculation wants seconds
+    ttlInt = ttlInt / 1000;
+    uint64Bytes target;
+    calcTarget(payload, ttlInt, difficulty, target);
 
     uint8_t hashResult[SHA512_DIGEST_LENGTH];
     // Initial hash

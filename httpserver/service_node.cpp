@@ -5,7 +5,6 @@
 #include "http_connection.h"
 #include "https_client.h"
 #include "lokid_key.h"
-#include "pow.hpp"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
@@ -39,7 +38,8 @@ static void make_sn_request(boost::asio::io_context& ioc,
     return make_https_request(ioc, sn_address, port, req, std::move(cb));
 }
 
-int query_pow_difficulty() {
+std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
+    std::vector<pow_difficulty_t> new_history;
     int response;
     unsigned char query_buffer[1024] = {};
     response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
@@ -48,25 +48,29 @@ int query_pow_difficulty() {
     ns_msg nsMsg;
     if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
-        return -1;
+        ec = std::make_error_code(std::errc::bad_message);
+        return new_history;
     }
     ns_rr rr;
     if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
-        return -1;
+        ec = std::make_error_code(std::errc::bad_message);
+        return new_history;
     }
 
     try {
-        const json difficulty_json =
-            json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
-        pow_difficulty =
-            std::stoi(difficulty_json.at("difficulty").get<std::string>());
-        BOOST_LOG_TRIVIAL(info)
-            << "Read PoW difficulty: " << std::to_string(pow_difficulty);
-        return pow_difficulty;
+        const json history = json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
+        new_history.reserve(history.size());
+        for (const auto& el : history.items()) {
+            const std::chrono::milliseconds timestamp(std::stoi(el.key()));
+            const int difficulty = el.value().get<int>();
+            new_history.push_back(pow_difficulty_t{timestamp, difficulty});
+        }
+        return new_history;
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Failed to retrieve PoW difficulty";
-        return -1;
+        ec = std::make_error_code(std::errc::bad_message);
+        return new_history;
     }
 }
 
@@ -148,7 +152,8 @@ static std::shared_ptr<request_t> make_push_request(std::string&& data) {
     return make_post_request("/v1/swarms/push", std::move(data));
 }
 
-static bool verify_message(const message_t& msg, int pow_difficulty,
+static bool verify_message(const message_t& msg,
+                           const std::vector<pow_difficulty_t> history,
                            const char** error_message = nullptr) {
     if (!util::validateTTL(msg.ttl)) {
         if (error_message)
@@ -162,9 +167,11 @@ static bool verify_message(const message_t& msg, int pow_difficulty,
     }
     std::string hash;
 #ifndef DISABLE_POW
+    const int difficulty =
+        get_valid_difficulty(std::to_string(msg.timestamp), history);
     if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
                   std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
-                  pow_difficulty)) {
+                  difficulty)) {
         if (error_message)
             *error_message = "Provided PoW nonce is not valid";
         return false;
@@ -189,9 +196,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       pow_update_timer_(worker_ioc), lokid_key_pair_(lokid_key_pair),
       lokid_rpc_port_(lokid_rpc_port) {
 
-    // Default value
-    pow_difficulty_.store(100);
-
     char buf[64] = {0};
     if (char const* dest =
             util::base32z_encode(lokid_key_pair_.public_key, buf)) {
@@ -209,7 +213,10 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     lokid_ping_timer_tick();
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
-    boost::asio::post(worker_ioc_, [this]() { pow_difficulty_timer_tick(); });
+    boost::asio::post(worker_ioc_, [this]() {
+        pow_difficulty_timer_tick(std::bind(
+            &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
+    });
 }
 
 ServiceNode::~ServiceNode() {
@@ -342,7 +349,7 @@ bool ServiceNode::process_store(const message_t& msg) {
 void ServiceNode::process_push(const message_t& msg) {
 #ifndef DISABLE_POW
     const char* error_msg;
-    if (!verify_message(msg, pow_difficulty_.load(), &error_msg))
+    if (!verify_message(msg, pow_history_, &error_msg))
         throw std::runtime_error(error_msg);
 #endif
     save_if_new(msg);
@@ -424,14 +431,15 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     initiate_peer_test();
 }
 
-void ServiceNode::pow_difficulty_timer_tick() {
-    const int new_difficulty = query_pow_difficulty();
-    if (new_difficulty != -1) {
-        pow_difficulty_.store(new_difficulty);
+void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
+    std::error_code ec;
+    std::vector<pow_difficulty_t> new_history = query_pow_difficulty(ec);
+    if (!ec) {
+        boost::asio::post(ioc_, std::bind(cb, new_history));
     }
     pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
     pow_update_timer_.async_wait(
-        boost::bind(&ServiceNode::pow_difficulty_timer_tick, this));
+        boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
 }
 
 void ServiceNode::swarm_timer_tick() {
@@ -1003,7 +1011,9 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-int ServiceNode::get_pow_difficulty() const { return pow_difficulty_.load(); }
+int ServiceNode::get_curr_pow_difficulty() const {
+    return curr_pow_difficulty_.difficulty;
+}
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
@@ -1028,7 +1038,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 #ifndef DISABLE_POW
     const auto it = std::remove_if(
         messages.begin(), messages.end(), [this](const message_t& message) {
-            return verify_message(message, pow_difficulty_.load()) == false;
+            return verify_message(message, pow_history_) == false;
         });
     messages.erase(it, messages.end());
     if (it != messages.end()) {
