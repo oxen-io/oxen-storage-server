@@ -2,6 +2,7 @@
 #include "stats.h"
 #include <algorithm>
 #include <iostream>
+#include <chrono>
 
 namespace loki {
 
@@ -34,7 +35,7 @@ std::string all_stats_t::to_json(bool pretty) const {
     return json.dump(indent);
 }
 
-static void cleanup_old(std::vector<test_result_t>& tests, time_t cutoff_time) {
+static void cleanup_old(std::deque<test_result_t>& tests, time_t cutoff_time) {
 
     const auto it = std::find_if(tests.begin(), tests.end(),
                                  [cutoff_time](const test_result_t& res) {

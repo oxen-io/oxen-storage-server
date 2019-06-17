@@ -2,6 +2,8 @@
 
 #include "common.h"
 #include <unordered_map>
+#include <deque>
+#include <ctime>
 
 namespace loki {
 
@@ -24,9 +26,9 @@ struct peer_stats_t {
     // causing this node to give up re-transmitting
     uint64_t pushes_failed = 0;
 
-    std::vector<test_result_t> storage_tests;
+    std::deque<test_result_t> storage_tests;
 
-    std::vector<test_result_t> blockchain_tests;
+    std::deque<test_result_t> blockchain_tests;
 };
 
 class all_stats_t {
