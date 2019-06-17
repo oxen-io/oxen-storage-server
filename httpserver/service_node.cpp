@@ -31,11 +31,11 @@ constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
     std::chrono::seconds(10), std::chrono::seconds(20),
     std::chrono::seconds(40), std::chrono::seconds(80)};
 
-static void make_sn_request(boost::asio::io_context& ioc,
-                            const std::string& sn_address, uint16_t port,
+static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
-    return make_https_request(ioc, sn_address, port, req, std::move(cb));
+    // TODO: Return to using snode address instead of ip
+    return make_https_request(ioc, sn.ip, sn.port, req, std::move(cb));
 }
 
 std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
@@ -103,8 +103,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
         const std::shared_ptr<request_t> req = self->request_;
 
         /// Request will be copied here
-        // TODO: Return to using snode address instead of ip
-        make_sn_request(ioc, sn.ip, sn.port, req,
+        make_sn_request(ioc, sn, req,
                         [self = std::move(self)](sn_response_t&& res) mutable {
                             if (res.error_code != SNodeError::NO_ERROR) {
                                 BOOST_LOG_TRIVIAL(error)
@@ -228,30 +227,25 @@ ServiceNode::~ServiceNode() {
 void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                                   const sn_record_t& sn) const {
 
-    // TODO: Return to using snode address instead of ip
-    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn.ip;
+    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
 
     // Note: often one of the reason for failure here is that the node has just
     // deregistered but our SN hasn't updated its swarm list yet.
-    make_sn_request(
-        ioc_, sn.ip, sn.port, req, [this, sn, req](sn_response_t&& res) {
-            if (res.error_code != SNodeError::NO_ERROR) {
-                snode_report_[sn].relay_fails += 1;
+    make_sn_request(ioc_, sn, req, [this, sn, req](sn_response_t&& res) {
+        if (res.error_code != SNodeError::NO_ERROR) {
+            snode_report_[sn].relay_fails += 1;
 
-                if (res.error_code == SNodeError::NO_REACH) {
-                    BOOST_LOG_TRIVIAL(error)
-                        << "Could not relay data to: " << sn
-                        << " (Unreachable)";
-                } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                    BOOST_LOG_TRIVIAL(error)
-                        << "Could not relay data to: " << sn
-                        << " (Generic error)";
-                }
-
-                std::make_shared<FailedRequestHandler>(ioc_, sn, req)
-                    ->init_timer();
+            if (res.error_code == SNodeError::NO_REACH) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Could not relay data to: " << sn << " (Unreachable)";
+            } else if (res.error_code == SNodeError::ERROR_OTHER) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Could not relay data to: " << sn << " (Generic error)";
             }
-        });
+
+            std::make_shared<FailedRequestHandler>(ioc_, sn, req)->init_timer();
+        }
+    });
 }
 
 void ServiceNode::register_listener(const std::string& pk,
@@ -597,8 +591,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    // TODO: Return to using snode address instead of ip
-    make_sn_request(ioc_, testee.ip, testee.port, req, callback);
+    make_sn_request(ioc_, testee, req, callback);
 }
 
 void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
@@ -619,11 +612,10 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    // TODO: Return to using snode address instead of ip
-    make_https_request(ioc_, testee.ip, testee.port, req,
-                       std::bind(&ServiceNode::process_blockchain_test_response,
-                                 this, std::placeholders::_1, answer, testee,
-                                 this->block_height_));
+    make_sn_request(ioc_, testee, req,
+                    std::bind(&ServiceNode::process_blockchain_test_response,
+                              this, std::placeholders::_1, answer, testee,
+                              this->block_height_));
 }
 
 void ServiceNode::process_blockchain_test_response(
