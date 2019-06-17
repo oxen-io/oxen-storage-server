@@ -147,6 +147,8 @@ class ServiceNode {
     void attach_signature(std::shared_ptr<request_t>& request,
                           const signature& sig) const;
 
+    void attach_pubkey(std::shared_ptr<request_t>& request) const;
+
     /// used on push and on swarm bootstrapping
     void send_sn_request(const std::shared_ptr<request_t>& req,
                          const sn_record_t& address) const;
