@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -155,6 +156,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // The timer for repeating an action within one connection
     boost::asio::steady_timer repeat_timer_;
     int repetition_count_ = 0;
+    std::chrono::time_point<std::chrono::steady_clock> start_timestamp_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;

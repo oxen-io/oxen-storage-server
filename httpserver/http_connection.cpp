@@ -9,7 +9,6 @@
 #include "signature.h"
 #include "utils.hpp"
 
-#include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -24,6 +23,7 @@
 #include <boost/log/trivial.hpp>
 
 using json = nlohmann::json;
+using namespace std::chrono_literals;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
@@ -281,6 +281,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
       notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
 
     BOOST_LOG_TRIVIAL(trace) << "connection_t";
+    start_timestamp_ = std::chrono::steady_clock::now();
 }
 
 connection_t::~connection_t() { BOOST_LOG_TRIVIAL(trace) << "~connection_t"; }
@@ -401,12 +402,21 @@ void connection_t::process_storage_test_req(uint64_t height,
 
     const MessageTestStatus status = service_node_.process_storage_test_req(
         height, tester_addr, msg_hash, answer);
+    const auto elapsed_time =
+        std::chrono::steady_clock::now() - start_timestamp_;
     if (status == MessageTestStatus::SUCCESS) {
+        BOOST_LOG_TRIVIAL(debug)
+            << "Storage test success! Attempts: " << repetition_count_
+            << ". Took "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   elapsed_time)
+                   .count()
+            << "ms";
         delay_response_ = true;
         body_stream_ << answer;
         response_.result(http::status::ok);
         this->write_response();
-    } else if (status == MessageTestStatus::RETRY) {
+    } else if (status == MessageTestStatus::RETRY && elapsed_time < 1min) {
         delay_response_ = true;
         repetition_count_++;
 
@@ -750,7 +760,7 @@ void connection_t::process_store(const json& params) {
 
     const bool valid_pow =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
-                  service_node_.get_curr_pow_difficulty());
+                 service_node_.get_curr_pow_difficulty());
 #ifndef DISABLE_POW
     if (!valid_pow) {
         response_.result(432);
@@ -817,7 +827,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes =
+        service_node_.get_snodes_by_pk(pubKey);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
@@ -856,7 +867,8 @@ void connection_t::process_retrieve_all() {
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
 
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes =
+        service_node_.get_snodes_by_pk(pubKey);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::misdirected_request);
