@@ -103,7 +103,8 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
         const std::shared_ptr<request_t> req = self->request_;
 
         /// Request will be copied here
-        make_sn_request(ioc, sn.address, sn.port, req,
+        // TODO: Return to using snode address instead of ip
+        make_sn_request(ioc, sn.ip, sn.port, req,
                         [self = std::move(self)](sn_response_t&& res) mutable {
                             if (res.error_code != SNodeError::NO_ERROR) {
                                 BOOST_LOG_TRIVIAL(error)
@@ -227,12 +228,13 @@ ServiceNode::~ServiceNode() {
 void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                                   const sn_record_t& sn) const {
 
-    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn;
+    // TODO: Return to using snode address instead of ip
+    BOOST_LOG_TRIVIAL(debug) << "Relaying data to: " << sn.ip;
 
     // Note: often one of the reason for failure here is that the node has just
     // deregistered but our SN hasn't updated its swarm list yet.
     make_sn_request(
-        ioc_, sn.address, sn.port, req, [this, sn, req](sn_response_t&& res) {
+        ioc_, sn.ip, sn.port, req, [this, sn, req](sn_response_t&& res) {
             if (res.error_code != SNodeError::NO_ERROR) {
                 snode_report_[sn].relay_fails += 1;
 
@@ -595,7 +597,8 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    make_sn_request(ioc_, testee.address, testee.port, req, callback);
+    // TODO: Return to using snode address instead of ip
+    make_sn_request(ioc_, testee.ip, testee.port, req, callback);
 }
 
 void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
@@ -616,10 +619,11 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     attach_signature(req, signature);
 #endif
 
-    make_https_request(ioc_, testee.address, testee.port, req,
-                      std::bind(&ServiceNode::process_blockchain_test_response,
-                                this, std::placeholders::_1, answer, testee,
-                                this->block_height_));
+    // TODO: Return to using snode address instead of ip
+    make_https_request(ioc_, testee.ip, testee.port, req,
+                       std::bind(&ServiceNode::process_blockchain_test_response,
+                                 this, std::placeholders::_1, answer, testee,
+                                 this->block_height_));
 }
 
 void ServiceNode::process_blockchain_test_response(
