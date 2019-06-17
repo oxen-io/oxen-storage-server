@@ -62,7 +62,7 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
         const json history = json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
         new_history.reserve(history.size());
         for (const auto& el : history.items()) {
-            const std::chrono::milliseconds timestamp(std::stoi(el.key()));
+            const std::chrono::milliseconds timestamp(std::stoul(el.key()));
             const int difficulty = el.value().get<int>();
             new_history.push_back(pow_difficulty_t{timestamp, difficulty});
         }
