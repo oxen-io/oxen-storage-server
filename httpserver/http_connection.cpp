@@ -518,15 +518,15 @@ void connection_t::process_request() {
                 return;
             }
 
-            std::string tester_pk;
-#ifndef DISABLE_SNODE_SIGNATURE
-            // Note we know that the header is present because we already
-            // verified the signature (how can we enforce that in code?)
-            tester_pk = header_.at(LOKI_SENDER_SNODE_PUBKEY_HEADER);
-            tester_pk.append(".snode");
-#endif
-
-            this->process_storage_test_req(blk_height, tester_pk, msg_hash);
+            const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+            if (it != header_.end()) {
+                std::string& tester_pk = it->second;
+                tester_pk.append(".snode");
+                this->process_storage_test_req(blk_height, tester_pk, msg_hash);
+            } else {
+                BOOST_LOG_TRIVIAL(warning)
+                    << "Ignoring test request, no pubkey present";
+            }
         } else if (target == "/v1/swarms/blockchain_test") {
             BOOST_LOG_TRIVIAL(debug) << "Got blockchain test request";
 

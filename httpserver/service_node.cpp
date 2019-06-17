@@ -528,9 +528,12 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
     const std::string sig_b64 = boost::beast::detail::base64_encode(raw_sig);
-
     request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
 
+    attach_pubkey(request);
+}
+
+void ServiceNode::attach_pubkey(std::shared_ptr<request_t>& request) const {
     // TODO: store both clean and .snode versions of the address
     std::string stripped = our_address_.address;
     size_t pos = stripped.find(".snode");
@@ -589,6 +592,8 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     const auto hash = hash_data(req->body());
     const auto signature = generate_signature(hash, lokid_key_pair_);
     attach_signature(req, signature);
+#else
+    attach_pubkey(req);
 #endif
 
     make_sn_request(ioc_, testee, req, callback);
@@ -610,6 +615,8 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     const auto hash = hash_data(req->body());
     const auto signature = generate_signature(hash, lokid_key_pair_);
     attach_signature(req, signature);
+#else
+    attach_pubkey(req);
 #endif
 
     make_sn_request(ioc_, testee, req,
