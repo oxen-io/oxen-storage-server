@@ -1,7 +1,7 @@
-#include "http_connection.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
+#include "http_connection.h"
 #include "rate_limiter.h"
 #include "serialization.h"
 #include "server_certificates.h"
@@ -588,13 +588,18 @@ void connection_t::process_request() {
         }
 #endif
         else {
-            BOOST_LOG_TRIVIAL(error) << "unknown target: " << target;
+            BOOST_LOG_TRIVIAL(error) << "unknown target for POST: " << target;
             response_.result(http::status::not_found);
         }
         break;
     case http::verb::get:
-        BOOST_LOG_TRIVIAL(error) << "GET requests not supported";
-        response_.result(http::status::bad_request);
+
+        if (target == "/v1/swarms/get_stats") {
+            this->on_get_stats();
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "unknown target for GET: " << target;
+            response_.result(http::status::not_found);
+        }
         break;
     default:
         BOOST_LOG_TRIVIAL(error) << "bad request";
@@ -750,7 +755,7 @@ void connection_t::process_store(const json& params) {
 
     const bool valid_pow =
         checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
-                  service_node_.get_curr_pow_difficulty());
+                 service_node_.get_curr_pow_difficulty());
 #ifndef DISABLE_POW
     if (!valid_pow) {
         response_.result(432);
@@ -817,7 +822,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes =
+        service_node_.get_snodes_by_pk(pubKey);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
@@ -856,7 +862,8 @@ void connection_t::process_retrieve_all() {
 
 void connection_t::handle_wrong_swarm(const std::string& pubKey) {
 
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pubKey);
+    const std::vector<sn_record_t> nodes =
+        service_node_.get_snodes_by_pk(pubKey);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::misdirected_request);
@@ -951,6 +958,8 @@ void connection_t::poll_db(const std::string& pk,
 }
 
 void connection_t::process_retrieve(const json& params) {
+
+    service_node_.all_stats_.client_retrieve_requests++;
 
     constexpr const char* fields[] = {"pubKey", "lastHash"};
 
@@ -1080,6 +1089,11 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         BOOST_LOG_TRIVIAL(error) << "Could not close ssl stream gracefully";
 
     // At this point the connection is closed gracefully
+}
+
+void connection_t::on_get_stats() {
+    this->body_stream_ << service_node_.get_stats();
+    this->response_.result(http::status::ok);
 }
 
 /// ============

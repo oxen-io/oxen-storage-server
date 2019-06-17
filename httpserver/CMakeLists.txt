@@ -13,6 +13,7 @@ set(HEADER_FILES
     ../external/json.hpp
     https_client.h
     server_certificates.h
+    stats.h
     )
 
 set(SRC_FILES
@@ -23,6 +24,7 @@ set(SRC_FILES
     serialization.cpp
     rate_limiter.cpp
     https_client.cpp
+    stats.cpp
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})

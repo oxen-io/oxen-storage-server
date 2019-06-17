@@ -74,10 +74,12 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
     }
 }
 
-FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
-                                           const sn_record_t& sn,
-                                           std::shared_ptr<request_t> req)
-    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)) {}
+FailedRequestHandler::FailedRequestHandler(
+    boost::asio::io_context& ioc, const sn_record_t& sn,
+    std::shared_ptr<request_t> req,
+    boost::optional<std::function<void()>>&& give_up_cb)
+    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)),
+      give_up_callback_(std::move(give_up_cb)) {}
 
 void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
 
@@ -85,6 +87,8 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
     if (attempt_count_ > RETRY_INTERVALS.size()) {
         BOOST_LOG_TRIVIAL(debug)
             << "Gave up after " << attempt_count_ << " attempts";
+        if (give_up_callback_)
+            (*give_up_callback_)();
         return;
     }
 
@@ -129,6 +133,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 #else
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
+constexpr std::chrono::seconds CLEANUP_TIMER = 60min;
 constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
@@ -193,8 +198,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
-      pow_update_timer_(worker_ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_rpc_port_(lokid_rpc_port) {
+      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
+      lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -211,6 +216,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
     lokid_ping_timer_tick();
+    cleanup_timer_tick();
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -233,7 +239,7 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
     // deregistered but our SN hasn't updated its swarm list yet.
     make_sn_request(ioc_, sn, req, [this, sn, req](sn_response_t&& res) {
         if (res.error_code != SNodeError::NO_ERROR) {
-            snode_report_[sn].relay_fails += 1;
+            all_stats_.record_request_failed(sn);
 
             if (res.error_code == SNodeError::NO_REACH) {
                 BOOST_LOG_TRIVIAL(error)
@@ -243,7 +249,14 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
                     << "Could not relay data to: " << sn << " (Generic error)";
             }
 
-            std::make_shared<FailedRequestHandler>(ioc_, sn, req)->init_timer();
+            std::function<void()> give_up_cb = [this, sn]() {
+                this->all_stats_.record_push_failed(sn);
+            };
+
+            boost::optional<std::function<void()>> cb = give_up_cb;
+
+            std::make_shared<FailedRequestHandler>(ioc_, sn, req, std::move(cb))
+                ->init_timer();
         }
     });
 }
@@ -331,6 +344,8 @@ bool ServiceNode::process_store(const message_t& msg) {
         BOOST_LOG_TRIVIAL(error) << "error: my swarm in not initialized";
         return false;
     }
+
+    all_stats_.client_store_requests++;
 
     /// store to the database
     save_if_new(msg);
@@ -447,6 +462,15 @@ void ServiceNode::swarm_timer_tick() {
         boost::bind(&ServiceNode::swarm_timer_tick, this));
 }
 
+void ServiceNode::cleanup_timer_tick() {
+
+    all_stats_.cleanup();
+
+    stats_cleanup_timer_.expires_after(CLEANUP_TIMER);
+    stats_cleanup_timer_.async_wait(
+        boost::bind(&ServiceNode::cleanup_timer_tick, this));
+}
+
 void ServiceNode::lokid_ping_timer_tick() {
 
     const std::string ip = "127.0.0.1";
@@ -498,8 +522,6 @@ void ServiceNode::perform_blockchain_test(
     request_blockchain_test(
         ioc_, lokid_rpc_port_, lokid_key_pair_, params,
         [cb = std::move(cb)](const std::string& body_str) {
-            using nlohmann::json;
-
             const json body = json::parse(body_str, nullptr, false);
 
             if (body.is_discarded()) {
@@ -550,14 +572,18 @@ void abort_if_integration_test() {
 void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         const Item& item) {
 
-    auto callback = [testee, item,
-                     height = this->block_height_](sn_response_t&& res) {
+    auto callback = [testee, item, height = this->block_height_,
+                     this](sn_response_t&& res) {
+        bool success = false;
+
         if (res.error_code == SNodeError::NO_ERROR && res.body) {
             if (*res.body == item.data) {
                 BOOST_LOG_TRIVIAL(debug)
                     << "Storage test is successful for: " << testee
                     << " at height: " << height;
+                success = true;
             } else {
+
                 BOOST_LOG_TRIVIAL(warning)
                     << "Test answer doesn't match for: " << testee
                     << " at height: " << height;
@@ -576,6 +602,8 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
             /// running yet)
             // abort_if_integration_test();
         }
+
+        this->all_stats_.record_storage_test_result(testee, success);
     };
 
     nlohmann::json json_body;
@@ -626,27 +654,33 @@ void ServiceNode::process_blockchain_test_response(
         << "Processing blockchain test response from: " << testee
         << " at height: " << bc_height;
 
-    if (!res.body) {
-        BOOST_LOG_TRIVIAL(debug) << "Failed: empty response.";
-        return;
-    }
+    bool success = false;
 
-    using nlohmann::json;
+    if (res.error_code == SNodeError::NO_ERROR && res.body) {
 
-    try {
+        try {
 
-        const json body = json::parse(*res.body, nullptr, true);
-        uint64_t their_height = body.at("res_height").get<uint64_t>();
+            const json body = json::parse(*res.body, nullptr, true);
+            uint64_t their_height = body.at("res_height").get<uint64_t>();
 
-        if (our_answer.res_height == their_height) {
-            BOOST_LOG_TRIVIAL(debug) << "Success.";
-        } else {
-            BOOST_LOG_TRIVIAL(debug) << "Failed: incorrect answer.";
+            if (our_answer.res_height == their_height) {
+                success = true;
+                BOOST_LOG_TRIVIAL(debug) << "Success.";
+            } else {
+                BOOST_LOG_TRIVIAL(debug) << "Failed: incorrect answer.";
+            }
+
+        } catch (...) {
+            BOOST_LOG_TRIVIAL(debug)
+                << "Failed: could not find answer in json.";
         }
 
-    } catch (...) {
-        BOOST_LOG_TRIVIAL(debug) << "Failed: could not find answer in json.";
+    } else {
+        BOOST_LOG_TRIVIAL(debug)
+            << "Failed to send a blockchain test request to snode: " << testee;
     }
+
+    this->all_stats_.record_blockchain_test_result(testee, success);
 }
 
 // Deterministically selects two random swarm members; returns true on success

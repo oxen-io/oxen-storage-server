@@ -162,7 +162,7 @@ void generate_cert(const char* cert_path, const char* key_path) {
 
     mkcert(&x509, &pkey, 2048, 1, 10000);
 
-    X509_print_fp(stdout, x509);
+    // X509_print_fp(stdout, x509);
 
     FILE* key_f = fopen(key_path, "wt");
     if (!PEM_write_PrivateKey(key_f, pkey, NULL, NULL, 0, NULL, NULL))
