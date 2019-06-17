@@ -71,8 +71,8 @@ void make_http_request(boost::asio::io_context& ioc,
 #endif
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
-            << "Failed to parse the IP address. Error code = " << ec.value()
-            << ". Message: " << ec.message();
+            << "http: Failed to parse the IP address. Error code = "
+            << ec.value() << ". Message: " << ec.message();
         return;
     }
     while (destination != tcp::resolver::iterator()) {
