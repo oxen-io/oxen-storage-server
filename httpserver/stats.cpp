@@ -24,7 +24,7 @@ std::string all_stats_t::to_json(bool pretty) const {
     nlohmann::json peers;
 
     for (const auto& kv : peer_report_) {
-        const auto& pubkey = kv.first.address;
+        const auto& pubkey = kv.first.pub_key();
 
         peers[pubkey]["requests_failed"] = kv.second.requests_failed;
         peers[pubkey]["pushes_failed"] = kv.second.requests_failed;
