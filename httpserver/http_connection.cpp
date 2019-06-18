@@ -108,11 +108,11 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
             std::string snode_address = util::hex64_to_base32z(pubkey);
-            snode_address.append(".snode");
+
             const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
             const std::string snode_ip =
                 sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, snode_address, snode_ip};
+            const sn_record_t sn{port, std::move(snode_address), std::move(snode_ip)};
 
             swarm_map[swarm_id].push_back(sn);
         }
@@ -670,9 +670,9 @@ json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 
     for (const auto& sn : snodes) {
         json snode;
-        snode["address"] = sn.address;
-        snode["port"] = std::to_string(sn.port);
-        snode["ip"] = sn.ip;
+        snode["address"] = sn.sn_address();
+        snode["port"] = std::to_string(sn.port());
+        snode["ip"] = sn.ip();
         snodes_json.push_back(snode);
     }
 
