@@ -34,6 +34,7 @@ void make_https_request(boost::asio::io_context& ioc,
 
     session->start();
 }
+
 HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results,

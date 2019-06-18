@@ -17,6 +17,7 @@
 #include "lokid_key.h"
 #include "pow.hpp"
 #include "swarm.h"
+#include "stats.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
@@ -50,12 +51,6 @@ class Swarm;
 
 struct signature;
 
-struct snode_stats_t {
-
-    // how many times a single push failed
-    uint64_t relay_fails = 0;
-};
-
 using pow_dns_callback_t =
     std::function<void(const std::vector<pow_difficulty_t>&)>;
 
@@ -72,11 +67,16 @@ class FailedRequestHandler
 
     uint32_t attempt_count_ = 0;
 
+    /// Call this if we give up re-transmitting
+    boost::optional<std::function<void()>> give_up_callback_;
+
     void retry(std::shared_ptr<FailedRequestHandler>&& self);
 
   public:
-    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
-                         std::shared_ptr<request_t> req);
+    FailedRequestHandler(
+        boost::asio::io_context& ioc, const sn_record_t& sn,
+        std::shared_ptr<request_t> req,
+        boost::optional<std::function<void()>>&& give_up_cb = boost::none);
 
     ~FailedRequestHandler();
     /// Initiates the timer for retrying (which cannot be done directly in
@@ -101,11 +101,9 @@ class ServiceNode {
 
     uint64_t block_height_ = 0;
     const uint16_t lokid_rpc_port_;
-    std::string block_hash_ = "";
+    std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
-    // performance report for other snodes
-    mutable std::unordered_map<sn_record_t, snode_stats_t> snode_report_;
 
     sn_record_t our_address_;
 
@@ -118,6 +116,8 @@ class ServiceNode {
     boost::asio::steady_timer swarm_update_timer_;
 
     boost::asio::steady_timer lokid_ping_timer_;
+
+    boost::asio::steady_timer stats_cleanup_timer_;
 
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
@@ -159,6 +159,8 @@ class ServiceNode {
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
 
+    void cleanup_timer_tick();
+
     /// Update PoW difficulty from DNS text record
     void pow_difficulty_timer_tick(const pow_dns_callback_t cb);
 
@@ -196,6 +198,8 @@ class ServiceNode {
                 const std::string& db_location, uint16_t lokid_rpc_port);
 
     ~ServiceNode();
+
+    mutable all_stats_t all_stats_;
 
     // Register a connection as waiting for new data for pk
     void register_listener(const std::string& pk,
@@ -252,6 +256,10 @@ class ServiceNode {
                 curr_pow_difficulty_ = difficulty;
             }
         }
+    }
+
+    std::string get_stats() const {
+        return all_stats_.to_json(true);
     }
 };
 

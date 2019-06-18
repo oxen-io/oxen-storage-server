@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <ostream>
 
 struct sn_record_t {
     uint16_t port;
