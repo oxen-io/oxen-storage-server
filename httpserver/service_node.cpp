@@ -35,7 +35,7 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    return make_https_request(ioc, sn.ip, sn.port, req, std::move(cb));
+    return make_https_request(ioc, sn.ip(), sn.port(), req, std::move(cb));
 }
 
 std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
@@ -199,14 +199,15 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     char buf[64] = {0};
     if (char const* dest =
             util::base32z_encode(lokid_key_pair_.public_key, buf)) {
-        our_address_.address = dest;
-        our_address_.address.append(".snode");
+
+        std::string addr = dest;
+        our_address_.set_address(addr);
     } else {
         throw std::runtime_error("Could not encode our public key");
     }
     // TODO: fail hard if we can't encode our public key
     BOOST_LOG_TRIVIAL(info) << "Read our snode address: " << our_address_;
-    our_address_.port = port;
+    our_address_.set_port(port);
 
     BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
     swarm_timer_tick();
@@ -534,13 +535,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
 }
 
 void ServiceNode::attach_pubkey(std::shared_ptr<request_t>& request) const {
-    // TODO: store both clean and .snode versions of the address
-    std::string stripped = our_address_.address;
-    size_t pos = stripped.find(".snode");
-    if (pos != std::string::npos) {
-        stripped.erase(pos);
-    }
-    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, stripped);
+    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.pub_key());
 }
 
 void abort_if_integration_test() {
@@ -749,9 +744,9 @@ MessageTestStatus ServiceNode::process_storage_test_req(
             return MessageTestStatus::ERROR;
         }
 
-        if (tester.address != tester_addr) {
+        if (tester.sn_address() != tester_addr) {
             BOOST_LOG_TRIVIAL(warning) << "Wrong tester: " << tester_addr
-                                       << ", expected: " << tester.address;
+                                       << ", expected: " << tester.sn_address();
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
@@ -1115,7 +1110,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
                                swarm_info.snodes.begin(),
                                swarm_info.snodes.end(),
                                [&sn_address](const sn_record_t& sn_record) {
-                                   return sn_record.address == sn_address;
+                                   return sn_record.sn_address() == sn_address;
                                });
                        });
 }
