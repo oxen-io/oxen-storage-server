@@ -69,7 +69,7 @@ struct hash<sn_record_t> {
 #ifdef INTEGRATION_TEST
         return hash<uint16_t>{}(k.port());
 #else
-        return hash<std::string>{}(k.address());
+        return hash<std::string>{}(k.sn_address());
 #endif
     }
 };
@@ -80,7 +80,7 @@ inline bool operator<(const sn_record_t& lhs, const sn_record_t& rhs) {
 #ifdef INTEGRATION_TEST
     return lhs.port() < rhs.port();
 #else
-    return lhs.address() < rhs.address();
+    return lhs.sn_address() < rhs.sn_address();
 #endif
 }
 
@@ -88,7 +88,7 @@ static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
     return os << sn.port();
 #else
-    return os << sn.address();
+    return os << sn.sn_address();
 #endif
 }
 
@@ -96,7 +96,7 @@ static bool operator==(const sn_record_t& lhs, const sn_record_t& rhs) {
 #ifdef INTEGRATION_TEST
     return lhs.port() == rhs.port();
 #else
-    return lhs.address() == rhs.address();
+    return lhs.sn_address() == rhs.sn_address();
 #endif
 }
 
