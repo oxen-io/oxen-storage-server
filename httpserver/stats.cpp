@@ -4,6 +4,8 @@
 #include <iostream>
 #include <chrono>
 
+using namespace std::chrono_literals;
+
 namespace loki {
 
 void to_json(nlohmann::json& j, const test_result_t& val) {
@@ -45,15 +47,14 @@ static void cleanup_old(std::deque<test_result_t>& tests, time_t cutoff_time) {
     tests.erase(tests.begin(), it);
 }
 
-static constexpr auto ROLLING_WINDOW_SIZE = std::chrono::minutes(60);
+static constexpr std::chrono::seconds ROLLING_WINDOW_SIZE = 60min;
 
 void all_stats_t::cleanup() {
 
     using std::chrono::duration_cast;
     using std::chrono::seconds;
 
-    const auto cutoff =
-        reset_time - duration_cast<seconds>(ROLLING_WINDOW_SIZE).count();
+    const auto cutoff = time(nullptr) - ROLLING_WINDOW_SIZE.count();
 
     for (auto& kv : peer_report_) {
 
