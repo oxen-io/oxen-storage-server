@@ -248,7 +248,8 @@ accept_connection(boost::asio::io_context& ioc,
 }
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channel_encryption,
+         const boost::filesystem::path& base_path, ServiceNode& sn,
+         ChannelEncryption<std::string>& channel_encryption,
          RateLimiter& rate_limiter) {
 
     BOOST_LOG_TRIVIAL(trace) << "http server run";
@@ -260,7 +261,7 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
     ssl::context ssl_ctx{ssl::context::tlsv12};
 
-    load_server_certificate(ssl_ctx);
+    load_server_certificate(base_path, ssl_ctx);
 
     accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
                       rate_limiter);
