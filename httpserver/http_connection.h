@@ -12,6 +12,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/format.hpp>
+#include <boost/filesystem.hpp>
 
 #include "swarm.h"
 
@@ -252,7 +253,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption,
+         const boost::filesystem::path& base_path, ServiceNode& sn,
+         ChannelEncryption<std::string>& channelEncryption,
          RateLimiter& rate_limiter);
 
 } // namespace http_server

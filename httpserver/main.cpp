@@ -13,6 +13,7 @@
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 #include <sodium.h>
 
 #include <cstdlib>
@@ -38,15 +39,15 @@ static const LogLevelMap logLevelMap{
     {"fatal", logging::trivial::severity_level::fatal},
 };
 
-void usage(char* argv[]) {
-    std::cerr << "Usage: " << argv[0]
-              << " <address> <port> --lokid-key path [--db-location "
-                 "path] [--log-level level] [--output-log path] [--version]\n";
-    std::cerr << "  For IPv4, try:\n";
-    std::cerr << "    receiver 0.0.0.0 80\n";
-    std::cerr << "  For IPv6, try:\n";
-    std::cerr << "    receiver 0::0 80\n";
-    std::cerr << "  Log levels:\n";
+static void print_usage(const po::options_description& desc, char* argv[]) {
+
+    std::cerr << std::endl;
+    std::cerr << "Usage: " << argv[0] << " <address> <port> [...]\n\n";
+
+    desc.print(std::cerr);
+
+    std::cerr << std::endl;
+    std::cerr << "  Log Levels:\n";
     for (const auto& logLevel : logLevelMap) {
         std::cerr << "    " << logLevel.first << "\n";
     }
@@ -65,32 +66,56 @@ bool parseLogLevel(const std::string& input,
     return false;
 }
 
+
+static boost::optional<boost::filesystem::path> get_home_dir() {
+
+    /// TODO: support default dir for Windows
+#ifdef WIN32
+    return boost::none;
+#endif
+
+    char* pszHome = getenv("HOME");
+    if (pszHome == NULL || strlen(pszHome) == 0)
+        return boost::none;
+
+    return boost::filesystem::path(pszHome);
+}
+
 int main(int argc, char* argv[]) {
     try {
         // Check command line arguments.
-        if (argc < 2) {
-            usage(argv);
-            return EXIT_FAILURE;
-        }
-
         std::string lokid_key_path;
-        std::string db_location(".");
+
+        namespace fs = boost::filesystem;
+
+        const auto home_path = get_home_dir();
+        const fs::path storage_path = home_path ? (*home_path / ".loki" / "storage") : ".";
+
+        std::string db_location = storage_path.string();
         std::string log_location;
         std::string log_level_string("info");
         bool print_version = false;
         uint16_t lokid_rpc_port = 22023;
 
         po::options_description desc;
-        desc.add_options()("lokid-key", po::value(&lokid_key_path),
-                           "")("db-location", po::value(&db_location),
-                               "")("output-log", po::value(&log_location), "")(
-            "log-level", po::value(&log_level_string),
-            "")("version,v", po::bool_switch(&print_version),
-                "")("lokid-rpc-port", po::value(&lokid_rpc_port));
+        // clang-format off
+        desc.add_options()
+            ("lokid-key", po::value(&lokid_key_path), "Path to the Service Node key file")
+            ("db-location", po::value(&db_location),"Path to the Storage Server database location")
+            ("output-log", po::value(&log_location), "Path to the log file")
+            ("log-level", po::value(&log_level_string), "Log verbosity level, see Log Levels below for accepted values")
+            ("version,v", po::bool_switch(&print_version), "Print the version of this binary")
+            ("lokid-rpc-port", po::value(&lokid_rpc_port), "RPC port on which the local Loki daemon is listening");
+        // clang-format on
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
+
+        if (argc < 2) {
+            print_usage(desc, argv);
+            return EXIT_FAILURE;
+        }
 
         std::cout << "Loki Storage Server v" << STORAGE_SERVER_VERSION_STRING
                   << std::endl
@@ -103,7 +128,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (argc < 3) {
-            usage(argv);
+            print_usage(desc, argv);
             return EXIT_FAILURE;
         }
 
@@ -145,7 +170,7 @@ int main(int argc, char* argv[]) {
         if (!parseLogLevel(log_level_string, logLevel)) {
             BOOST_LOG_TRIVIAL(error)
                 << "Incorrect log level" << log_level_string;
-            usage(argv);
+            print_usage(desc, argv);
             return EXIT_FAILURE;
         }
 
@@ -162,6 +187,14 @@ int main(int argc, char* argv[]) {
         if (vm.count("db-location")) {
             BOOST_LOG_TRIVIAL(info)
                 << "Setting database location to " << db_location;
+        } else {
+            BOOST_LOG_TRIVIAL(info)
+                << "Using the default database location: " << db_location;
+        }
+
+        if (!boost::filesystem::exists(db_location)) {
+            BOOST_LOG_TRIVIAL(info) << "Directory <" << db_location << "> does not exist, creating it...";
+            fs::create_directories(db_location);
         }
 
         if (vm.count("lokid-rpc-port")) {
@@ -195,8 +228,8 @@ int main(int argc, char* argv[]) {
         RateLimiter rate_limiter;
 
         /// Should run http server
-        loki::http_server::run(ioc, ip, port, service_node, channel_encryption,
-                               rate_limiter);
+        loki::http_server::run(ioc, ip, port, db_location, service_node,
+                               channel_encryption, rate_limiter);
 
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,

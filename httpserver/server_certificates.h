@@ -181,7 +181,7 @@ void generate_cert(const char* cert_path, const char* key_path) {
     BIO_free(bio_err);
 }
 
-inline void load_server_certificate(boost::asio::ssl::context& ctx) {
+inline void load_server_certificate(const boost::filesystem::path& base_path, boost::asio::ssl::context& ctx) {
     /*
         The certificate was generated from CMD.EXE on Windows 10 using:
 
@@ -190,9 +190,14 @@ inline void load_server_certificate(boost::asio::ssl::context& ctx) {
        10000 -out cert.pem -subj "//C=US\ST=CA\L=Los
        Angeles\O=Beast\CN=www.example.com"
     */
-    const auto cert_path = "./cert.pem";
-    const auto key_path = "./key.pem";
-    const auto dh_path = "./dh.pem";
+    const auto cert_path_str = (base_path / "cert.pem").string();
+    const auto key_path_str = (base_path / "key.pem").string();
+    const auto dh_path_str = (base_path / "dh.pem").string();
+
+    const auto cert_path = cert_path_str.c_str();
+    const auto key_path = key_path_str.c_str();
+    const auto dh_path = dh_path_str.c_str();
+
     if (!boost::filesystem::exists(cert_path) ||
         !boost::filesystem::exists(key_path)) {
         generate_cert(cert_path, key_path);
