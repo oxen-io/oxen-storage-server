@@ -71,8 +71,8 @@ void make_http_request(boost::asio::io_context& ioc,
 #endif
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
-            << "Failed to parse the IP address. Error code = " << ec.value()
-            << ". Message: " << ec.message();
+            << "http: Failed to parse the IP address. Error code = "
+            << ec.value() << ". Message: " << ec.message();
         return;
     }
     while (destination != tcp::resolver::iterator()) {
@@ -395,7 +395,7 @@ void connection_t::process_storage_test_req(uint64_t height,
                                             const std::string& tester_addr,
                                             const std::string& msg_hash) {
 
-    BOOST_LOG_TRIVIAL(debug)
+    BOOST_LOG_TRIVIAL(trace)
         << "Performing storage test, attempt: " << repetition_count_;
 
     std::string answer;
@@ -433,6 +433,8 @@ void connection_t::process_storage_test_req(uint64_t height,
         });
 
     } else {
+        BOOST_LOG_TRIVIAL(error)
+            << "Failed storage test, tried " << repetition_count_ << " times";
         response_.result(http::status::bad_request);
         /// TODO: send a helpful error message
     }

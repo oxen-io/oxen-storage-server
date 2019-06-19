@@ -8,7 +8,9 @@
 
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/support/date_time.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
 #include <sodium.h>
@@ -121,7 +123,16 @@ int main(int argc, char* argv[]) {
 
             if (input.is_open()) {
                 input.close();
+                logging::add_common_attributes();
                 auto sink = logging::add_file_log(log_location);
+                sink->set_formatter(
+                    logging::expressions::stream
+                    << logging::expressions::format_date_time<
+                           boost::posix_time::ptime>("TimeStamp",
+                                                     "[%Y-%m-%d %H:%M:%S:%f]")
+                    << " [" << logging::trivial::severity << "]\t"
+                    << logging::expressions::smessage);
+
                 sink->locked_backend()->auto_flush(true);
                 BOOST_LOG_TRIVIAL(info)
                     << "Outputting logs to " << log_location;
@@ -159,7 +170,7 @@ int main(int argc, char* argv[]) {
         }
 
         BOOST_LOG_TRIVIAL(info)
-            << "Listening at address " << ip << " port " << port << std::endl;
+            << "Listening at address " << ip << " port " << port;
 
         boost::asio::io_context ioc{1};
         boost::asio::io_context worker_ioc{1};

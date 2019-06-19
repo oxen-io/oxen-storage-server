@@ -10,6 +10,7 @@
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
+#include <boost/log/trivial.hpp>
 #include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
@@ -256,6 +257,8 @@ class ServiceNode {
                 curr_pow_difficulty_ = difficulty;
             }
         }
+        BOOST_LOG_TRIVIAL(info)
+            << "Read PoW difficulty: " << curr_pow_difficulty_.difficulty;
     }
 
     std::string get_stats() const {

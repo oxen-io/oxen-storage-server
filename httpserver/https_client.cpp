@@ -22,8 +22,8 @@ void make_https_request(boost::asio::io_context& ioc,
 #endif
     if (ec) {
         BOOST_LOG_TRIVIAL(error)
-            << "Failed to parse the IP address. Error code = " << ec.value()
-            << ". Message: " << ec.message();
+            << "https: Failed to parse the IP address. Error code = "
+            << ec.value() << ". Message: " << ec.message();
         return;
     }
 
