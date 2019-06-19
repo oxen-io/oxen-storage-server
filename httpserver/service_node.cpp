@@ -794,7 +794,6 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     // 3. If for a current/past block, try to respond right away
     Item item;
     if (!db_->retrieve_by_hash(msg_hash, item)) {
-        BOOST_LOG_TRIVIAL(error) << "Could not find a message by given hash";
         return MessageTestStatus::RETRY;
     }
 
