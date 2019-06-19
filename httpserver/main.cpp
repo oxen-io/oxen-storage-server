@@ -6,8 +6,9 @@
 #include "swarm.h"
 #include "version.h"
 
-#include <boost/log/core.hpp>
+#include <boost/core/null_deleter.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/sinks/text_ostream_backend.hpp>
 #include <boost/log/support/date_time.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
@@ -66,7 +67,6 @@ bool parseLogLevel(const std::string& input,
     return false;
 }
 
-
 static boost::optional<boost::filesystem::path> get_home_dir() {
 
     /// TODO: support default dir for Windows
@@ -79,6 +79,45 @@ static boost::optional<boost::filesystem::path> get_home_dir() {
         return boost::none;
 
     return boost::filesystem::path(pszHome);
+}
+
+void init_logging(const bool store_logs, const std::string& log_location) {
+    boost::shared_ptr<logging::core> core = logging::core::get();
+    boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
+        boost::make_shared<logging::sinks::text_ostream_backend>();
+
+    // Console output stream
+    backend->add_stream(
+        boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
+
+    if (store_logs) {
+        std::ifstream input(log_location);
+        if (input.is_open()) {
+            input.close();
+            // Log to disk output stream
+            backend->add_stream(
+                boost::shared_ptr<std::ofstream>(new std::ofstream(
+                    log_location, std::ios::out | std::ios::app)));
+            BOOST_LOG_TRIVIAL(info) << "Outputting logs to " << log_location;
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
+        }
+    }
+
+    // Flush after every log
+    backend->auto_flush(true);
+    typedef logging::sinks::synchronous_sink<
+        logging::sinks::text_ostream_backend>
+        sink_t;
+    boost::shared_ptr<sink_t> sink(new sink_t(backend));
+    logging::add_common_attributes(); // Allow accessing of "TimeStamp"
+    sink->set_formatter(
+        logging::expressions::stream
+        << logging::expressions::format_date_time<boost::posix_time::ptime>(
+               "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
+        << " [" << logging::trivial::severity << "]\t"
+        << logging::expressions::smessage);
+    core->add_sink(sink);
 }
 
 int main(int argc, char* argv[]) {
@@ -135,36 +174,7 @@ int main(int argc, char* argv[]) {
         const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
         std::string ip = argv[1];
 
-        if (vm.count("output-log")) {
-
-            // TODO: remove this line once confirmed that no one
-            // is relying on this
-            log_location += ".out";
-
-            // Hacky, but I couldn't find a way to recover from
-            // boost throwing on invalid file and apparently poisoning
-            // the logging mechanism...
-            std::ofstream input(log_location);
-
-            if (input.is_open()) {
-                input.close();
-                logging::add_common_attributes();
-                auto sink = logging::add_file_log(log_location);
-                sink->set_formatter(
-                    logging::expressions::stream
-                    << logging::expressions::format_date_time<
-                           boost::posix_time::ptime>("TimeStamp",
-                                                     "[%Y-%m-%d %H:%M:%S:%f]")
-                    << " [" << logging::trivial::severity << "]\t"
-                    << logging::expressions::smessage);
-
-                sink->locked_backend()->auto_flush(true);
-                BOOST_LOG_TRIVIAL(info)
-                    << "Outputting logs to " << log_location;
-            } else {
-                BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
-            }
-        }
+        init_logging(vm.count("output-log"), log_location);
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(log_level_string, logLevel)) {
