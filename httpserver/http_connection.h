@@ -45,7 +45,7 @@ using str_body_callback_t = std::function<void(const std::string&)>;
 struct message_t;
 struct lokid_key_pair_t;
 
-enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH };
+enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 
 struct sn_response_t {
     SNodeError error_code;
