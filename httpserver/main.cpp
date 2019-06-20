@@ -82,7 +82,7 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
-void init_logging(const fs::path& data_dir) {
+static void init_logging(const fs::path& data_dir) {
     boost::shared_ptr<logging::core> core = logging::core::get();
     boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
         boost::make_shared<logging::sinks::text_ostream_backend>();
@@ -104,9 +104,8 @@ void init_logging(const fs::path& data_dir) {
 
     // Flush after every log
     backend->auto_flush(true);
-    typedef logging::sinks::synchronous_sink<
-        logging::sinks::text_ostream_backend>
-        sink_t;
+    using sink_t =
+        logging::sinks::synchronous_sink<logging::sinks::text_ostream_backend>;
     boost::shared_ptr<sink_t> sink(new sink_t(backend));
     logging::add_common_attributes(); // Allow accessing of "TimeStamp"
     sink->set_formatter(
