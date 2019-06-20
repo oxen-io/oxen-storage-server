@@ -163,11 +163,8 @@ void request_swarm_update(boost::asio::io_context& ioc,
 
     make_http_request(ioc, ip, lokid_rpc_port, req,
                       [cb = std::move(cb)](const sn_response_t&& res) {
-                          if (res.body) {
+                          if (res.error_code == SNodeError::NO_ERROR) {
                               parse_swarm_update(res.body, std::move(cb));
-                          } else {
-                              BOOST_LOG_TRIVIAL(error)
-                                  << "ERROR: Didn't get swarm request body";
                           }
                       });
 }
@@ -1154,38 +1151,25 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
     BOOST_LOG_TRIVIAL(trace)
         << "Successfully received " << bytes_transferred << " bytes";
 
-    std::shared_ptr<std::string> body = nullptr;
-
     if (!ec || (ec == http::error::end_of_stream)) {
 
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
-            body = std::make_shared<std::string>(res_.body());
+            std::shared_ptr<std::string> body = std::make_shared<std::string>(res_.body());
+            trigger_callback(SNodeError::NO_ERROR, std::move(body));
+        } else {
+            BOOST_LOG_TRIVIAL(error)
+                << "Http request failed, error code: " << res_.result_int();
+            trigger_callback(SNodeError::HTTP_ERROR, nullptr);
         }
 
     } else {
-
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
         BOOST_LOG_TRIVIAL(error)
             << "Error on read: " << ec.value() << ". Message: " << ec.message();
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
     }
-
-    // Gracefully close the socket
-    socket_.shutdown(tcp::socket::shutdown_both, ec);
-
-    // not_connected happens sometimes so don't bother reporting it.
-    if (ec && ec != boost::system::errc::not_connected) {
-
-        BOOST_LOG_TRIVIAL(error)
-            << "ec: " << ec.value() << ". Message: " << ec.message();
-        return;
-    }
-
-    trigger_callback(SNodeError::NO_ERROR, std::move(body));
-
-    // If we get here then the connection is closed gracefully
 }
 
 void HttpClientSession::start() {
@@ -1233,6 +1217,18 @@ HttpClientSession::~HttpClientSession() {
         // it must be due to some error
         ioc_.post(std::bind(callback_,
                             sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
+    }
+
+    error_code ec;
+    // Gracefully close the socket
+    socket_.shutdown(tcp::socket::shutdown_both, ec);
+
+    // not_connected happens sometimes so don't bother reporting it.
+    if (ec && ec != boost::system::errc::not_connected) {
+
+        BOOST_LOG_TRIVIAL(error)
+            << "ec: " << ec.value() << ". Message: " << ec.message();
+        return;
     }
 }
 
