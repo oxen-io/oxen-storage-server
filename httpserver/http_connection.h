@@ -232,6 +232,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Syncronously (?) process client store/load requests
     void process_client_req();
 
+    void process_swarm_req(boost::string_view target);
+
     // Check whether we have spent enough time on this connection.
     void register_deadline();
 

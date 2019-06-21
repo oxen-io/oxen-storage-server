@@ -117,7 +117,6 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
                                     << "Could not relay one: " << self->sn_
                                     << " (attempt #" << self->attempt_count_
                                     << ")";
-                                /// TODO: record failure here as well?
                                 self->retry(std::move(self));
                             }
                         });
@@ -340,8 +339,6 @@ void ServiceNode::push_message(const message_t& msg) {
 
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
-
-    /// TODO: accept messages if they are coming from other service nodes
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
