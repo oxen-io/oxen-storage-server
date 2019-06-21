@@ -179,36 +179,30 @@ static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
 
     return std::string(hex);
 }
+// ======================== Lokid Client ========================
+LokidClient::LokidClient(boost::asio::io_context& ioc, uint16_t port)
+    : ioc_(ioc), lokid_rpc_port_(port) {}
 
-/// should probably have a method for talking to our daemon
-void request_blockchain_test(boost::asio::io_context& ioc,
-                             uint16_t lokid_rpc_port,
-                             const lokid_key_pair_t& keypair,
-                             bc_test_params_t params,
-                             str_body_callback_t&& cb) {
+void LokidClient::make_lokid_request(boost::string_view method,
+                                     const nlohmann::json& params,
+                                     str_body_callback_t&& cb) const {
 
-    BOOST_LOG_TRIVIAL(debug)
-        << "Requesting our lokid to perform blockchain test";
+    auto req = std::make_shared<request_t>();
 
-    const std::string ip = "127.0.0.1";
     const std::string target = "/json_rpc";
 
     nlohmann::json req_body;
-
     req_body["jsonrpc"] = "2.0";
     req_body["id"] = "0";
-    req_body["method"] = "perform_blockchain_test";
-    req_body["params"]["max_height"] = params.max_height;
-    req_body["params"]["seed"] = params.seed;
-
-    auto req = std::make_shared<request_t>();
+    req_body["method"] = method;
+    req_body["params"] = params;
 
     req->body() = req_body.dump();
     req->method(http::verb::post);
     req->target(target);
     req->prepare_payload();
 
-    make_http_request(ioc, ip, lokid_rpc_port, req,
+    make_http_request(ioc_, local_ip_, lokid_rpc_port_, req,
                       [cb = std::move(cb)](const sn_response_t&& res) {
                           if (res.body) {
                               cb(*res.body);
@@ -218,6 +212,7 @@ void request_blockchain_test(boost::asio::io_context& ioc,
                           }
                       });
 }
+// =============================================================
 
 namespace http_server {
 

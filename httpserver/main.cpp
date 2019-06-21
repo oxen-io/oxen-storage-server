@@ -226,8 +226,10 @@ int main(int argc, char* argv[]) {
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
 
+        auto lokid_client = loki::LokidClient(ioc, lokid_rpc_port);
+
         loki::ServiceNode service_node(ioc, worker_ioc, port, lokid_key_pair,
-                                       data_dir_str, lokid_rpc_port);
+                                       data_dir_str, lokid_client, lokid_rpc_port);
         RateLimiter rate_limiter;
 
         /// Should run http server

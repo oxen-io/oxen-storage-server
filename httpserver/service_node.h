@@ -40,6 +40,8 @@ struct sn_response_t;
 struct blockchain_test_answer_t;
 struct bc_test_params_t;
 
+class LokidClient;
+
 namespace http_server {
 class connection_t;
 }
@@ -101,6 +103,7 @@ class ServiceNode {
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
     uint64_t block_height_ = 0;
+    const LokidClient& lokid_client_;
     const uint16_t lokid_rpc_port_;
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
@@ -196,7 +199,7 @@ class ServiceNode {
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, uint16_t lokid_rpc_port);
+                const std::string& db_location, LokidClient& lokid_client, uint16_t lokid_rpc_port);
 
     ~ServiceNode();
 

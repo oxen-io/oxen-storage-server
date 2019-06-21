@@ -62,6 +62,19 @@ struct bc_test_params_t {
     uint64_t seed;
 };
 
+class LokidClient {
+
+    const uint16_t lokid_rpc_port_;
+    const char* local_ip_ = "127.0.0.1";
+    boost::asio::io_context& ioc_;
+
+  public:
+    LokidClient(boost::asio::io_context& ioc, uint16_t port);
+    void make_lokid_request(boost::string_view method,
+                            const nlohmann::json& params,
+                            str_body_callback_t&& cb) const;
+};
+
 using http_callback_t = std::function<void(sn_response_t)>;
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
@@ -71,11 +84,6 @@ constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
-
-void request_blockchain_test(boost::asio::io_context& ioc,
-                             uint16_t lokid_rpc_port,
-                             const loki::lokid_key_pair_t& keypair,
-                             bc_test_params_t params, str_body_callback_t&& cb);
 
 void request_swarm_update(boost::asio::io_context& ioc,
                           const swarm_callback_t&& cb, uint16_t lokid_rpc_port);

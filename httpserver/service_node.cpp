@@ -197,12 +197,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
-                         uint16_t lokid_rpc_port)
+                         LokidClient& lokid_client, uint16_t lokid_rpc_port)
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
+      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client), lokid_rpc_port_(lokid_rpc_port) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -519,12 +519,17 @@ make_batch_requests(std::vector<std::string>&& data) {
 }
 
 void ServiceNode::perform_blockchain_test(
-    bc_test_params_t params,
+    bc_test_params_t test_params,
     std::function<void(blockchain_test_answer_t)>&& cb) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Delegating blockchain test to lokid";
-    request_blockchain_test(
-        ioc_, lokid_rpc_port_, lokid_key_pair_, params,
+
+    nlohmann::json params;
+
+    params["max_height"] = test_params.max_height;
+    params["seed"] = test_params.seed;
+
+    auto on_resp =
         [cb = std::move(cb)](const std::string& body_str) {
             const json body = json::parse(body_str, nullptr, false);
 
@@ -542,7 +547,9 @@ void ServiceNode::perform_blockchain_test(
 
             } catch (...) {
             }
-        });
+        };
+
+    lokid_client_.make_lokid_request("perform_blockchain_test", params, std::move(on_resp));
 }
 
 void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
