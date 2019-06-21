@@ -202,7 +202,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client), lokid_rpc_port_(lokid_rpc_port) {
+      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -457,10 +457,74 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
         boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
 }
 
+static void
+parse_swarm_update(const std::shared_ptr<std::string>& response_body,
+                   const swarm_callback_t&& cb) {
+    const json body = json::parse(*response_body, nullptr, false);
+    if (body.is_discarded()) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+    block_update_t bu;
+
+    try {
+        const json service_node_states =
+            body.at("result").at("service_node_states");
+
+        for (const auto& sn_json : service_node_states) {
+            const std::string pubkey =
+                sn_json.at("service_node_pubkey").get<std::string>();
+
+            const swarm_id_t swarm_id =
+                sn_json.at("swarm_id").get<swarm_id_t>();
+            std::string snode_address = util::hex64_to_base32z(pubkey);
+
+            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
+            const std::string snode_ip =
+                sn_json.at("public_ip").get<std::string>();
+            const sn_record_t sn{port, std::move(snode_address), std::move(snode_ip)};
+
+            swarm_map[swarm_id].push_back(sn);
+        }
+
+        bu.height = body.at("result").at("height").get<uint64_t>();
+        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
+
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+
+    for (auto const& swarm : swarm_map) {
+        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
+    }
+
+    try {
+        cb(bu);
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Exception caught on swarm update: " << e.what();
+    }
+}
+
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
-    request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
+
+    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
+
+    json params;
+    params["service_node_pubkeys"] = json::array();
+
+    lokid_client_.make_lokid_request(
+        "get_service_nodes", params,
+        [cb = std::move(cb)](const sn_response_t&& res) {
+            if (res.error_code == SNodeError::NO_ERROR) {
+                parse_swarm_update(res.body, std::move(cb));
+            }
+        });
+
     swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     swarm_update_timer_.async_wait(
         boost::bind(&ServiceNode::swarm_timer_tick, this));

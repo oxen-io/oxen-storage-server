@@ -104,7 +104,6 @@ class ServiceNode {
 
     uint64_t block_height_ = 0;
     const LokidClient& lokid_client_;
-    const uint16_t lokid_rpc_port_;
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
