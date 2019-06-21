@@ -438,6 +438,106 @@ void connection_t::process_storage_test_req(uint64_t height,
     }
 }
 
+void connection_t::process_swarm_req(boost::string_view target) {
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    if (!validate_snode_request()) {
+        return;
+    }
+#endif
+
+    if (target == "/v1/swarms/push_batch") {
+
+        response_.result(http::status::ok);
+        service_node_.process_push_batch(request_.body());
+    } else if (target == "v1/swarms/storage_test") {
+        BOOST_LOG_TRIVIAL(debug) << "Got storage test request";
+
+        using nlohmann::json;
+
+        const json body = json::parse(request_.body(), nullptr, false);
+
+        if (body == nlohmann::detail::value_t::discarded) {
+            BOOST_LOG_TRIVIAL(error) << "Bad snode test request: invalid json";
+            response_.result(http::status::bad_request);
+            return;
+        }
+
+        uint64_t blk_height;
+        std::string msg_hash;
+
+        try {
+            blk_height = body.at("height").get<uint64_t>();
+            msg_hash = body.at("hash").get<std::string>();
+        } catch (...) {
+            response_.result(http::status::bad_request);
+            BOOST_LOG_TRIVIAL(error)
+                << "Bad snode test request: missing fields in json";
+            return;
+        }
+
+        const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+        if (it != header_.end()) {
+            std::string& tester_pk = it->second;
+            tester_pk.append(".snode");
+            this->process_storage_test_req(blk_height, tester_pk, msg_hash);
+        } else {
+            BOOST_LOG_TRIVIAL(warning)
+                << "Ignoring test request, no pubkey present";
+        }
+    } else if (target == "/v1/swarms/blockchain_test") {
+        BOOST_LOG_TRIVIAL(debug) << "Got blockchain test request";
+
+        using nlohmann::json;
+
+        const json body = json::parse(request_.body(), nullptr, false);
+
+        if (body.is_discarded()) {
+            BOOST_LOG_TRIVIAL(error) << "Bad snode test request: invalid json";
+            response_.result(http::status::bad_request);
+            return;
+        }
+
+        bc_test_params_t params;
+
+        try {
+            params.max_height = body.at("max_height").get<uint64_t>();
+            params.seed = body.at("seed").get<uint64_t>();
+        } catch (...) {
+            response_.result(http::status::bad_request);
+            BOOST_LOG_TRIVIAL(error)
+                << "Bad snode test request: missing fields in json";
+            return;
+        }
+
+        delay_response_ = true;
+
+        auto callback = [this](blockchain_test_answer_t answer) {
+            this->response_.result(http::status::ok);
+
+            nlohmann::json json_res;
+            json_res["res_height"] = answer.res_height;
+
+            this->body_stream_ << json_res.dump();
+            this->write_response();
+        };
+
+        service_node_.perform_blockchain_test(params, callback);
+    } else if (target == "/v1/swarms/push") {
+
+        BOOST_LOG_TRIVIAL(trace) << "swarms/push";
+
+        /// NOTE:: we only expect one message here, but
+        /// for now lets reuse the function we already have
+        std::vector<message_t> messages = deserialize_messages(request_.body());
+        assert(messages.size() == 1);
+
+        service_node_.process_push(messages.front());
+
+        response_.result(http::status::ok);
+    }
+}
+
 // Determine what needs to be done with the request message.
 void connection_t::process_request() {
 
@@ -467,122 +567,21 @@ void connection_t::process_request() {
                     << e.what();
             }
 
+        // TODO: parse target (once) to determine if it is a "swarms" call
         } else if (target == "/v1/swarms/push") {
+            this->process_swarm_req(target);
 
-            BOOST_LOG_TRIVIAL(trace) << "swarms/push";
-
-#ifndef DISABLE_SNODE_SIGNATURE
-            if (!validate_snode_request()) {
-                return;
-            }
-#endif
-
-            /// NOTE:: we only expect one message here, but
-            /// for now lets reuse the function we already have
-            std::vector<message_t> messages =
-                deserialize_messages(request_.body());
-            assert(messages.size() == 1);
-
-            service_node_.process_push(messages.front());
-
-            response_.result(http::status::ok);
         } else if (target == "/v1/swarms/push_batch") {
-#ifndef DISABLE_SNODE_SIGNATURE
-            if (!validate_snode_request()) {
-                return;
-            }
-#endif
-            response_.result(http::status::ok);
-            service_node_.process_push_batch(request_.body());
+
+            this->process_swarm_req(target);
 
         } else if (target == "v1/swarms/storage_test") {
-            BOOST_LOG_TRIVIAL(debug) << "Got storage test request";
 
-#ifndef DISABLE_SNODE_SIGNATURE
-            if (!validate_snode_request()) {
-                return;
-            }
-#endif
+            this->process_swarm_req(target);
 
-            using nlohmann::json;
-
-            const json body = json::parse(request_.body(), nullptr, false);
-
-            if (body == nlohmann::detail::value_t::discarded) {
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad snode test request: invalid json";
-                response_.result(http::status::bad_request);
-                return;
-            }
-
-            uint64_t blk_height;
-            std::string msg_hash;
-
-            try {
-                blk_height = body.at("height").get<uint64_t>();
-                msg_hash = body.at("hash").get<std::string>();
-            } catch (...) {
-                response_.result(http::status::bad_request);
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad snode test request: missing fields in json";
-                return;
-            }
-
-            const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
-            if (it != header_.end()) {
-                std::string& tester_pk = it->second;
-                tester_pk.append(".snode");
-                this->process_storage_test_req(blk_height, tester_pk, msg_hash);
-            } else {
-                BOOST_LOG_TRIVIAL(warning)
-                    << "Ignoring test request, no pubkey present";
-            }
         } else if (target == "/v1/swarms/blockchain_test") {
-            BOOST_LOG_TRIVIAL(debug) << "Got blockchain test request";
 
-#ifndef DISABLE_SNODE_SIGNATURE
-
-            if (!validate_snode_request()) {
-                return;
-            }
-#endif
-
-            using nlohmann::json;
-
-            const json body = json::parse(request_.body(), nullptr, false);
-
-            if (body.is_discarded()) {
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad snode test request: invalid json";
-                response_.result(http::status::bad_request);
-                return;
-            }
-
-            bc_test_params_t params;
-
-            try {
-                params.max_height = body.at("max_height").get<uint64_t>();
-                params.seed = body.at("seed").get<uint64_t>();
-            } catch (...) {
-                response_.result(http::status::bad_request);
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad snode test request: missing fields in json";
-                return;
-            }
-
-            delay_response_ = true;
-
-            auto callback = [this](blockchain_test_answer_t answer) {
-                this->response_.result(http::status::ok);
-
-                nlohmann::json json_res;
-                json_res["res_height"] = answer.res_height;
-
-                this->body_stream_ << json_res.dump();
-                this->write_response();
-            };
-
-            service_node_.perform_blockchain_test(params, callback);
+            this->process_swarm_req(target);
 
         }
 #ifdef INTEGRATION_TEST

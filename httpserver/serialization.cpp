@@ -12,8 +12,6 @@ using service_node::storage::Item;
 
 namespace loki {
 
-/// TODO: use endianness aware serialisation
-// ( boost::native_to_big_inplace? )
 template <typename T>
 static T deserialize_integer(std::string::const_iterator& it) {
 
