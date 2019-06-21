@@ -787,7 +787,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
-            BOOST_LOG_TRIVIAL(debug) << "Tester is valid: " << tester_addr;
+            BOOST_LOG_TRIVIAL(trace) << "Tester is valid: " << tester_addr;
         }
     }
 
