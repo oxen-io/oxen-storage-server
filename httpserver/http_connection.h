@@ -40,7 +40,6 @@ using service_node::storage::Item;
 
 namespace loki {
 using swarm_callback_t = std::function<void(const block_update_t&)>;
-using str_body_callback_t = std::function<void(const std::string&)>;
 
 struct message_t;
 struct lokid_key_pair_t;
@@ -62,6 +61,8 @@ struct bc_test_params_t {
     uint64_t seed;
 };
 
+using http_callback_t = std::function<void(sn_response_t)>;
+
 class LokidClient {
 
     const uint16_t lokid_rpc_port_;
@@ -72,10 +73,9 @@ class LokidClient {
     LokidClient(boost::asio::io_context& ioc, uint16_t port);
     void make_lokid_request(boost::string_view method,
                             const nlohmann::json& params,
-                            str_body_callback_t&& cb) const;
+                            http_callback_t&& cb) const;
 };
 
-using http_callback_t = std::function<void(sn_response_t)>;
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 

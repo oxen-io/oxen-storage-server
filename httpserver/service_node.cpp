@@ -477,29 +477,17 @@ void ServiceNode::cleanup_timer_tick() {
 
 void ServiceNode::lokid_ping_timer_tick() {
 
-    const std::string ip = "127.0.0.1";
-    const std::string target = "/json_rpc";
+    auto cb = [](const sn_response_t&& res) {
+        if (res.error_code == SNodeError::NO_ERROR) {
+            BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
+        }
+    };
 
-    nlohmann::json req_body;
-
-    req_body["jsonrpc"] = "2.0";
-    req_body["method"] = "storage_server_ping";
-
-    auto req = std::make_shared<request_t>();
-
-    req->body() = req_body.dump();
-    req->method(http::verb::post);
-    req->target(target);
-    req->prepare_payload();
-
-    make_http_request(
-        ioc_, ip, lokid_rpc_port_, req, [](const sn_response_t&& res) {
-            if (res.error_code == SNodeError::NO_ERROR) {
-                BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
-            } else {
-                BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
-            }
-        });
+    json params;
+    lokid_client_.make_lokid_request("storage_server_ping", params,
+                                     std::move(cb));
 
     lokid_ping_timer_.expires_after(LOKID_PING_INTERVAL);
     lokid_ping_timer_.async_wait(
@@ -530,8 +518,15 @@ void ServiceNode::perform_blockchain_test(
     params["seed"] = test_params.seed;
 
     auto on_resp =
-        [cb = std::move(cb)](const std::string& body_str) {
-            const json body = json::parse(body_str, nullptr, false);
+        [cb = std::move(cb)](const sn_response_t& resp) {
+
+            if (resp.error_code != SNodeError::NO_ERROR || !resp.body) {
+                BOOST_LOG_TRIVIAL(error)
+                    << "Could not send blockchain request to Lokid";
+                return;
+            }
+
+            const json body = json::parse(*resp.body, nullptr, false);
 
             if (body.is_discarded()) {
                 BOOST_LOG_TRIVIAL(error)

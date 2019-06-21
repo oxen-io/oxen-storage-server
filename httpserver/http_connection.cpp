@@ -185,7 +185,7 @@ LokidClient::LokidClient(boost::asio::io_context& ioc, uint16_t port)
 
 void LokidClient::make_lokid_request(boost::string_view method,
                                      const nlohmann::json& params,
-                                     str_body_callback_t&& cb) const {
+                                     http_callback_t&& cb) const {
 
     auto req = std::make_shared<request_t>();
 
@@ -202,15 +202,7 @@ void LokidClient::make_lokid_request(boost::string_view method,
     req->target(target);
     req->prepare_payload();
 
-    make_http_request(ioc_, local_ip_, lokid_rpc_port_, req,
-                      [cb = std::move(cb)](const sn_response_t&& res) {
-                          if (res.body) {
-                              cb(*res.body);
-                          } else {
-                              BOOST_LOG_TRIVIAL(error)
-                                  << "Didn't get blockchain test request body";
-                          }
-                      });
+    make_http_request(ioc_, local_ip_, lokid_rpc_port_, req, std::move(cb));
 }
 // =============================================================
 
