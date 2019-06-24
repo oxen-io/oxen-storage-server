@@ -17,6 +17,9 @@
 #include <boost/program_options.hpp>
 #include <sodium.h>
 
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -118,6 +121,9 @@ static void init_logging(const fs::path& data_dir) {
 }
 
 int main(int argc, char* argv[]) {
+
+    spdlog::info("Welcome to spdlog!");
+
     try {
         // Check command line arguments.
         std::string lokid_key_path;
