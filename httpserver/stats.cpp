@@ -1,8 +1,8 @@
-#include "../external/json.hpp"
 #include "stats.h"
+#include "../external/json.hpp"
 #include <algorithm>
-#include <iostream>
 #include <chrono>
+#include <iostream>
 
 using namespace std::chrono_literals;
 

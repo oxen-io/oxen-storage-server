@@ -196,12 +196,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
-                         uint16_t lokid_rpc_port)
+                         LokidClient& lokid_client)
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_rpc_port_(lokid_rpc_port) {
+      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -454,10 +454,75 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
         boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
 }
 
+static void
+parse_swarm_update(const std::shared_ptr<std::string>& response_body,
+                   const swarm_callback_t&& cb) {
+    const json body = json::parse(*response_body, nullptr, false);
+    if (body.is_discarded()) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+    block_update_t bu;
+
+    try {
+        const json service_node_states =
+            body.at("result").at("service_node_states");
+
+        for (const auto& sn_json : service_node_states) {
+            const std::string pubkey =
+                sn_json.at("service_node_pubkey").get<std::string>();
+
+            const swarm_id_t swarm_id =
+                sn_json.at("swarm_id").get<swarm_id_t>();
+            std::string snode_address = util::hex64_to_base32z(pubkey);
+
+            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
+            const std::string snode_ip =
+                sn_json.at("public_ip").get<std::string>();
+            const sn_record_t sn{port, std::move(snode_address),
+                                 std::move(snode_ip)};
+
+            swarm_map[swarm_id].push_back(sn);
+        }
+
+        bu.height = body.at("result").at("height").get<uint64_t>();
+        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
+
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+        return;
+    }
+
+    for (auto const& swarm : swarm_map) {
+        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
+    }
+
+    try {
+        cb(bu);
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Exception caught on swarm update: " << e.what();
+    }
+}
+
 void ServiceNode::swarm_timer_tick() {
     const swarm_callback_t cb =
         std::bind(&ServiceNode::on_swarm_update, this, std::placeholders::_1);
-    request_swarm_update(ioc_, std::move(cb), lokid_rpc_port_);
+
+    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
+
+    json params;
+    params["service_node_pubkeys"] = json::array();
+
+    lokid_client_.make_lokid_request(
+        "get_service_nodes", params,
+        [cb = std::move(cb)](const sn_response_t&& res) {
+            if (res.error_code == SNodeError::NO_ERROR) {
+                parse_swarm_update(res.body, std::move(cb));
+            }
+        });
+
     swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
     swarm_update_timer_.async_wait(
         boost::bind(&ServiceNode::swarm_timer_tick, this));
@@ -474,29 +539,17 @@ void ServiceNode::cleanup_timer_tick() {
 
 void ServiceNode::lokid_ping_timer_tick() {
 
-    const std::string ip = "127.0.0.1";
-    const std::string target = "/json_rpc";
+    auto cb = [](const sn_response_t&& res) {
+        if (res.error_code == SNodeError::NO_ERROR) {
+            BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
+        }
+    };
 
-    nlohmann::json req_body;
-
-    req_body["jsonrpc"] = "2.0";
-    req_body["method"] = "storage_server_ping";
-
-    auto req = std::make_shared<request_t>();
-
-    req->body() = req_body.dump();
-    req->method(http::verb::post);
-    req->target(target);
-    req->prepare_payload();
-
-    make_http_request(
-        ioc_, ip, lokid_rpc_port_, req, [](const sn_response_t&& res) {
-            if (res.error_code == SNodeError::NO_ERROR) {
-                BOOST_LOG_TRIVIAL(info) << "Successfully pinged lokid";
-            } else {
-                BOOST_LOG_TRIVIAL(warning) << "Could not ping lokid";
-            }
-        });
+    json params;
+    lokid_client_.make_lokid_request("storage_server_ping", params,
+                                     std::move(cb));
 
     lokid_ping_timer_.expires_after(LOKID_PING_INTERVAL);
     lokid_ping_timer_.async_wait(
@@ -516,30 +569,42 @@ make_batch_requests(std::vector<std::string>&& data) {
 }
 
 void ServiceNode::perform_blockchain_test(
-    bc_test_params_t params,
+    bc_test_params_t test_params,
     std::function<void(blockchain_test_answer_t)>&& cb) const {
 
     BOOST_LOG_TRIVIAL(debug) << "Delegating blockchain test to lokid";
-    request_blockchain_test(
-        ioc_, lokid_rpc_port_, lokid_key_pair_, params,
-        [cb = std::move(cb)](const std::string& body_str) {
-            const json body = json::parse(body_str, nullptr, false);
 
-            if (body.is_discarded()) {
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad lokid rpc response: invalid json";
-                return;
-            }
+    nlohmann::json params;
 
-            try {
-                auto result = body.at("result");
-                uint64_t height = result.at("res_height").get<uint64_t>();
+    params["max_height"] = test_params.max_height;
+    params["seed"] = test_params.seed;
 
-                cb(blockchain_test_answer_t{height});
+    auto on_resp = [cb = std::move(cb)](const sn_response_t& resp) {
+        if (resp.error_code != SNodeError::NO_ERROR || !resp.body) {
+            BOOST_LOG_TRIVIAL(error)
+                << "Could not send blockchain request to Lokid";
+            return;
+        }
 
-            } catch (...) {
-            }
-        });
+        const json body = json::parse(*resp.body, nullptr, false);
+
+        if (body.is_discarded()) {
+            BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
+            return;
+        }
+
+        try {
+            auto result = body.at("result");
+            uint64_t height = result.at("res_height").get<uint64_t>();
+
+            cb(blockchain_test_answer_t{height});
+
+        } catch (...) {
+        }
+    };
+
+    lokid_client_.make_lokid_request("perform_blockchain_test", params,
+                                     std::move(on_resp));
 }
 
 void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,

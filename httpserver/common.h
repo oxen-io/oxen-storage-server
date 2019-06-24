@@ -1,22 +1,24 @@
 #pragma once
 
 #include <cstdint>
+#include <ostream>
 #include <string>
 #include <vector>
-#include <ostream>
 
 struct sn_record_t {
 
-// our 32 byte pub keys should always be 52 bytes long in base32z
-static constexpr size_t BASE_LEN = 52;
+    // our 32 byte pub keys should always be 52 bytes long in base32z
+    static constexpr size_t BASE_LEN = 52;
 
-private:
+  private:
     uint16_t port_;
     std::string sn_address_; // Snode address
     std::string pub_key_;
-    std::string ip_;      // Snode ip
-public:
-    sn_record_t(uint16_t port, const std::string& address, const std::string& ip) : port_(port), ip_(ip) {
+    std::string ip_; // Snode ip
+  public:
+    sn_record_t(uint16_t port, const std::string& address,
+                const std::string& ip)
+        : port_(port), ip_(ip) {
         set_address(address);
     }
 

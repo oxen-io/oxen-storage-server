@@ -1,7 +1,7 @@
+#include "http_connection.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
-#include "http_connection.h"
 #include "rate_limiter.h"
 #include "serialization.h"
 #include "server_certificates.h"
@@ -86,89 +86,6 @@ void make_http_request(boost::asio::io_context& ioc,
     session->start();
 }
 
-static void
-parse_swarm_update(const std::shared_ptr<std::string>& response_body,
-                   const swarm_callback_t&& cb) {
-    const json body = json::parse(*response_body, nullptr, false);
-    if (body.is_discarded()) {
-        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
-        return;
-    }
-    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
-    block_update_t bu;
-
-    try {
-        const json service_node_states =
-            body.at("result").at("service_node_states");
-
-        for (const auto& sn_json : service_node_states) {
-            const std::string pubkey =
-                sn_json.at("service_node_pubkey").get<std::string>();
-
-            const swarm_id_t swarm_id =
-                sn_json.at("swarm_id").get<swarm_id_t>();
-            std::string snode_address = util::hex64_to_base32z(pubkey);
-
-            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
-            const std::string snode_ip =
-                sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, std::move(snode_address), std::move(snode_ip)};
-
-            swarm_map[swarm_id].push_back(sn);
-        }
-
-        bu.height = body.at("result").at("height").get<uint64_t>();
-        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
-
-    } catch (...) {
-        BOOST_LOG_TRIVIAL(error) << "Bad lokid rpc response: invalid json";
-        return;
-    }
-
-    for (auto const& swarm : swarm_map) {
-        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
-    }
-
-    try {
-        cb(bu);
-    } catch (const std::exception& e) {
-        BOOST_LOG_TRIVIAL(error)
-            << "Exception caught on swarm update: " << e.what();
-    }
-}
-
-void request_swarm_update(boost::asio::io_context& ioc,
-                          const swarm_callback_t&& cb,
-                          uint16_t lokid_rpc_port) {
-    BOOST_LOG_TRIVIAL(trace) << "UPDATING SWARMS: begin";
-
-    const std::string ip = "127.0.0.1";
-    const std::string target = "/json_rpc";
-    const std::string req_body =
-        R"#({
-            "jsonrpc":"2.0",
-            "id":"0",
-            "method":"get_service_nodes",
-            "params": {
-                "sevice_node_pubkeys": []
-            }
-        })#";
-
-    auto req = std::make_shared<request_t>();
-
-    req->body() = req_body;
-    req->method(http::verb::post);
-    req->target(target);
-    req->prepare_payload();
-
-    make_http_request(ioc, ip, lokid_rpc_port, req,
-                      [cb = std::move(cb)](const sn_response_t&& res) {
-                          if (res.error_code == SNodeError::NO_ERROR) {
-                              parse_swarm_update(res.body, std::move(cb));
-                          }
-                      });
-}
-
 static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
 
     constexpr size_t res_len = 32 * 2 + 1;
@@ -179,45 +96,32 @@ static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
 
     return std::string(hex);
 }
+// ======================== Lokid Client ========================
+LokidClient::LokidClient(boost::asio::io_context& ioc, uint16_t port)
+    : ioc_(ioc), lokid_rpc_port_(port) {}
 
-/// should probably have a method for talking to our daemon
-void request_blockchain_test(boost::asio::io_context& ioc,
-                             uint16_t lokid_rpc_port,
-                             const lokid_key_pair_t& keypair,
-                             bc_test_params_t params,
-                             str_body_callback_t&& cb) {
+void LokidClient::make_lokid_request(boost::string_view method,
+                                     const nlohmann::json& params,
+                                     http_callback_t&& cb) const {
 
-    BOOST_LOG_TRIVIAL(debug)
-        << "Requesting our lokid to perform blockchain test";
+    auto req = std::make_shared<request_t>();
 
-    const std::string ip = "127.0.0.1";
     const std::string target = "/json_rpc";
 
     nlohmann::json req_body;
-
     req_body["jsonrpc"] = "2.0";
     req_body["id"] = "0";
-    req_body["method"] = "perform_blockchain_test";
-    req_body["params"]["max_height"] = params.max_height;
-    req_body["params"]["seed"] = params.seed;
-
-    auto req = std::make_shared<request_t>();
+    req_body["method"] = method;
+    req_body["params"] = params;
 
     req->body() = req_body.dump();
     req->method(http::verb::post);
     req->target(target);
     req->prepare_payload();
 
-    make_http_request(ioc, ip, lokid_rpc_port, req,
-                      [cb = std::move(cb)](const sn_response_t&& res) {
-                          if (res.body) {
-                              cb(*res.body);
-                          } else {
-                              BOOST_LOG_TRIVIAL(error)
-                                  << "Didn't get blockchain test request body";
-                          }
-                      });
+    make_http_request(ioc_, local_ip_, lokid_rpc_port_, req, std::move(cb));
 }
+// =============================================================
 
 namespace http_server {
 
@@ -1154,7 +1058,8 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
-            std::shared_ptr<std::string> body = std::make_shared<std::string>(res_.body());
+            std::shared_ptr<std::string> body =
+                std::make_shared<std::string>(res_.body());
             trigger_callback(SNodeError::NO_ERROR, std::move(body));
         } else {
             BOOST_LOG_TRIVIAL(error)

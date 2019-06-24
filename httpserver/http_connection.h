@@ -11,8 +11,8 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#include <boost/format.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/format.hpp>
 
 #include "swarm.h"
 
@@ -40,7 +40,6 @@ using service_node::storage::Item;
 
 namespace loki {
 using swarm_callback_t = std::function<void(const block_update_t&)>;
-using str_body_callback_t = std::function<void(const std::string&)>;
 
 struct message_t;
 struct lokid_key_pair_t;
@@ -64,6 +63,19 @@ struct bc_test_params_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
+class LokidClient {
+
+    const uint16_t lokid_rpc_port_;
+    const char* local_ip_ = "127.0.0.1";
+    boost::asio::io_context& ioc_;
+
+  public:
+    LokidClient(boost::asio::io_context& ioc, uint16_t port);
+    void make_lokid_request(boost::string_view method,
+                            const nlohmann::json& params,
+                            http_callback_t&& cb) const;
+};
+
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
 // TODO: the name should indicate that we are actually trying to send data
@@ -71,14 +83,6 @@ constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
-
-void request_blockchain_test(boost::asio::io_context& ioc,
-                             uint16_t lokid_rpc_port,
-                             const loki::lokid_key_pair_t& keypair,
-                             bc_test_params_t params, str_body_callback_t&& cb);
-
-void request_swarm_update(boost::asio::io_context& ioc,
-                          const swarm_callback_t&& cb, uint16_t lokid_rpc_port);
 
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {
