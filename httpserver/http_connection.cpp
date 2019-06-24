@@ -1,7 +1,7 @@
+#include "http_connection.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
-#include "http_connection.h"
 #include "rate_limiter.h"
 #include "serialization.h"
 #include "server_certificates.h"
@@ -1059,7 +1059,8 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
-            std::shared_ptr<std::string> body = std::make_shared<std::string>(res_.body());
+            std::shared_ptr<std::string> body =
+                std::make_shared<std::string>(res_.body());
             trigger_callback(SNodeError::NO_ERROR, std::move(body));
         } else {
             BOOST_LOG_TRIVIAL(error)

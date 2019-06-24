@@ -8,7 +8,7 @@ struct pow_difficulty_t {
 };
 
 int get_valid_difficulty(const std::string& timestamp,
-                   const std::vector<pow_difficulty_t>& history);
+                         const std::vector<pow_difficulty_t>& history);
 
 bool checkPoW(const std::string& nonce, const std::string& timestamp,
               const std::string& ttl, const std::string& recipient,

@@ -11,8 +11,8 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#include <boost/format.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/format.hpp>
 
 #include "swarm.h"
 
@@ -75,7 +75,6 @@ class LokidClient {
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
 };
-
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 

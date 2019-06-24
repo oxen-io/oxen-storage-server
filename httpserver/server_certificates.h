@@ -181,7 +181,8 @@ void generate_cert(const char* cert_path, const char* key_path) {
     BIO_free(bio_err);
 }
 
-inline void load_server_certificate(const boost::filesystem::path& base_path, boost::asio::ssl::context& ctx) {
+inline void load_server_certificate(const boost::filesystem::path& base_path,
+                                    boost::asio::ssl::context& ctx) {
     /*
         The certificate was generated from CMD.EXE on Windows 10 using:
 

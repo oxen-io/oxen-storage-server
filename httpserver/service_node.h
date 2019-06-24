@@ -17,8 +17,8 @@
 #include "common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
-#include "swarm.h"
 #include "stats.h"
+#include "swarm.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
@@ -198,7 +198,7 @@ class ServiceNode {
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, LokidClient& lokid_client, uint16_t lokid_rpc_port);
+                const std::string& db_location, LokidClient& lokid_client);
 
     ~ServiceNode();
 
@@ -263,9 +263,7 @@ class ServiceNode {
             << "Read PoW difficulty: " << curr_pow_difficulty_.difficulty;
     }
 
-    std::string get_stats() const {
-        return all_stats_.to_json(true);
-    }
+    std::string get_stats() const { return all_stats_.to_json(true); }
 };
 
 } // namespace loki
