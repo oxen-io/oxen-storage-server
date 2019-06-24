@@ -259,8 +259,7 @@ class ServiceNode {
                 curr_pow_difficulty_ = difficulty;
             }
         }
-        BOOST_LOG_TRIVIAL(info)
-            << "Read PoW difficulty: " << curr_pow_difficulty_.difficulty;
+        LOG(info) << "Read PoW difficulty: " << curr_pow_difficulty_.difficulty;
     }
 
     std::string get_stats() const { return all_stats_.to_json(true); }

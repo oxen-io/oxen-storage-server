@@ -1,5 +1,5 @@
-#include "channel_encryption.hpp"
 #include "../common/src/common.h"
+#include "channel_encryption.hpp"
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "rate_limiter.h"
@@ -109,7 +109,7 @@ static void init_logging(const fs::path& data_dir) {
     if (input->is_open()) {
         backend->add_stream(input);
     } else {
-        BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
+        LOG(error) << "Could not open " << log_location;
     }
 
     // Flush after every log
@@ -197,8 +197,7 @@ int main(int argc, char* argv[]) {
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(log_level_string, logLevel)) {
-            BOOST_LOG_TRIVIAL(error)
-                << "Incorrect log level" << log_level_string;
+            LOG(error) << "Incorrect log level" << log_level_string;
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -206,29 +205,25 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        BOOST_LOG_TRIVIAL(info) << "Setting log level to " << log_level_string;
+        LOG(info) << "Setting log level to " << log_level_string;
 
-        BOOST_LOG_TRIVIAL(info)
-            << "Setting database location to " << data_dir_str;
+        LOG(info) << "Setting database location to " << data_dir_str;
 
         if (vm.count("lokid-key")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting Lokid key path to " << lokid_key_path;
+            LOG(info) << "Setting Lokid key path to " << lokid_key_path;
         }
 
         if (vm.count("lokid-rpc-port")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting lokid RPC port to " << lokid_rpc_port;
+            LOG(info) << "Setting lokid RPC port to " << lokid_rpc_port;
         }
 
-        BOOST_LOG_TRIVIAL(info)
-            << "Listening at address " << ip << " port " << port;
+        LOG(info) << "Listening at address " << ip << " port " << port;
 
         boost::asio::io_context ioc{1};
         boost::asio::io_context worker_ioc{1};
 
         if (sodium_init() != 0) {
-            BOOST_LOG_TRIVIAL(fatal) << "Could not initialize libsodium";
+            LOG(fatal) << "Could not initialize libsodium";
             return EXIT_FAILURE;
         }
 
@@ -255,10 +250,10 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
+        LOG(fatal) << "Exception caught in main: " << e.what();
         return EXIT_FAILURE;
     } catch (...) {
-        BOOST_LOG_TRIVIAL(fatal) << "Unknown exception caught in main.";
+        LOG(fatal) << "Unknown exception caught in main.";
         return EXIT_FAILURE;
     }
 }

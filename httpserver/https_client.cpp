@@ -21,9 +21,8 @@ void make_https_request(boost::asio::io_context& ioc,
         resolver.resolve(sn_address, std::to_string(port), ec);
 #endif
     if (ec) {
-        BOOST_LOG_TRIVIAL(error)
-            << "https: Failed to parse the IP address. Error code = "
-            << ec.value() << ". Message: " << ec.message();
+        LOG(error) << "https: Failed to parse the IP address. Error code = "
+                   << ec.value() << ". Message: " << ec.message();
         return;
     }
 
@@ -43,7 +42,7 @@ HttpsClientSession::HttpsClientSession(
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req) {}
 
 void HttpsClientSession::on_connect() {
-    BOOST_LOG_TRIVIAL(trace) << "on connect";
+    LOG(trace) << "on connect";
     stream_.async_handshake(ssl::stream_base::client,
                             std::bind(&HttpsClientSession::on_handshake,
                                       shared_from_this(),
@@ -52,10 +51,9 @@ void HttpsClientSession::on_connect() {
 
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
-        BOOST_LOG_TRIVIAL(error) << "handshake failed:" << ec.message();
-        BOOST_LOG_TRIVIAL(error)
-            << stream_.lowest_layer().remote_endpoint().address() << ":"
-            << stream_.lowest_layer().remote_endpoint().port();
+        LOG(error) << "handshake failed:" << ec.message();
+        LOG(error) << stream_.lowest_layer().remote_endpoint().address() << ":"
+                   << stream_.lowest_layer().remote_endpoint().port();
         return;
     }
 
@@ -67,16 +65,15 @@ void HttpsClientSession::on_handshake(boost::system::error_code ec) {
 
 void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
-    BOOST_LOG_TRIVIAL(trace) << "on write";
+    LOG(trace) << "on write";
     if (ec) {
-        BOOST_LOG_TRIVIAL(error) << "Error on write, ec: " << ec.value()
-                                 << ". Message: " << ec.message();
+        LOG(error) << "Error on write, ec: " << ec.value()
+                   << ". Message: " << ec.message();
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
 
-    BOOST_LOG_TRIVIAL(trace)
-        << "Successfully transferred " << bytes_transferred << " bytes";
+    LOG(trace) << "Successfully transferred " << bytes_transferred << " bytes";
 
     // Receive the HTTP response
     http::async_read(stream_, buffer_, res_,
@@ -86,8 +83,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
 void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
-    BOOST_LOG_TRIVIAL(trace)
-        << "Successfully received " << bytes_transferred << " bytes";
+    LOG(trace) << "Successfully received " << bytes_transferred << " bytes";
 
     std::shared_ptr<std::string> body = nullptr;
 
@@ -103,8 +99,8 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
-        BOOST_LOG_TRIVIAL(error)
-            << "Error on read: " << ec.value() << ". Message: " << ec.message();
+        LOG(error) << "Error on read: " << ec.value()
+                   << ". Message: " << ec.message();
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
     }
 
@@ -114,8 +110,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
 
-        BOOST_LOG_TRIVIAL(error)
-            << "ec: " << ec.value() << ". Message: " << ec.message();
+        LOG(error) << "ec: " << ec.value() << ". Message: " << ec.message();
         return;
     }
 
@@ -127,7 +122,7 @@ void HttpsClientSession::start() {
     if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
-        BOOST_LOG_TRIVIAL(error) << ec.message();
+        LOG(error) << ec.message();
         return;
     }
     boost::asio::async_connect(
@@ -137,10 +132,9 @@ void HttpsClientSession::start() {
             /// TODO: I think I should just call again if ec ==
             /// EINTR
             if (ec) {
-                BOOST_LOG_TRIVIAL(error)
-                    << boost::format("Could not connect to %1%, "
-                                     "message: %2% (%3%)") %
-                           endpoint % ec.message() % ec.value();
+                LOG(error) << boost::format("Could not connect to %1%, "
+                                            "message: %2% (%3%)") %
+                                  endpoint % ec.message() % ec.value();
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
             }
@@ -149,18 +143,18 @@ void HttpsClientSession::start() {
         });
 
     deadline_timer_.expires_after(SESSION_TIME_LIMIT);
-    deadline_timer_.async_wait([self =
-                                    shared_from_this()](const error_code& ec) {
-        if (ec) {
-            if (ec != boost::asio::error::operation_aborted) {
-                BOOST_LOG_TRIVIAL(error) << boost::format("Error(%1%): %2%\n") %
-                                                ec.value() % ec.message();
+    deadline_timer_.async_wait(
+        [self = shared_from_this()](const error_code& ec) {
+            if (ec) {
+                if (ec != boost::asio::error::operation_aborted) {
+                    LOG(error) << boost::format("Error(%1%): %2%\n") %
+                                      ec.value() % ec.message();
+                }
+            } else {
+                LOG(error) << "client socket timed out";
+                self->do_close();
             }
-        } else {
-            BOOST_LOG_TRIVIAL(error) << "client socket timed out";
-            self->do_close();
-        }
-    });
+        });
 }
 
 void HttpsClientSession::trigger_callback(SNodeError error,
@@ -184,8 +178,7 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     }
     if (ec) {
-        BOOST_LOG_TRIVIAL(error)
-            << "could not shutdown stream gracefully: " << ec.message();
+        LOG(error) << "could not shutdown stream gracefully: " << ec.message();
     }
 
     // If we get here then the connection is closed gracefully

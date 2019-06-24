@@ -21,23 +21,22 @@ void generate_dh_pem(const char* dh_path) {
     const int generator = DH_GENERATOR_2;
     DH* dh = DH_new();
     if (dh == NULL) {
-        BOOST_LOG_TRIVIAL(error) << "Alloc for dh failed";
+        LOG(error) << "Alloc for dh failed";
         ERR_print_errors_fp(stderr);
         abort();
     }
-    BOOST_LOG_TRIVIAL(info)
-        << "Generating DH parameter, this might take a while...";
+    LOG(info) << "Generating DH parameter, this might take a while...";
 
     const int res =
         DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
-        BOOST_LOG_TRIVIAL(error) << "Alloc for dh failed";
+        LOG(error) << "Alloc for dh failed";
         ERR_print_errors_fp(stderr);
         abort();
     }
 
-    BOOST_LOG_TRIVIAL(info) << "DH parameter done!";
+    LOG(info) << "DH parameter done!";
     FILE* pFile = NULL;
     pFile = fopen(dh_path, "wt");
     PEM_write_DHparams(pFile, dh);

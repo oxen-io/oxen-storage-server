@@ -45,7 +45,7 @@ void serialize_message(std::string& res, const T& msg) {
     serialize_integer(res, msg.timestamp);
     serialize(res, msg.nonce);
 
-    BOOST_LOG_TRIVIAL(trace) << "serialized message: " << msg.data;
+    LOG(trace) << "serialized message: " << msg.data;
 }
 
 template void serialize_message(std::string& res, const message_t& msg);
@@ -130,7 +130,7 @@ static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
 std::vector<message_t> deserialize_messages(const std::string& blob) {
 
-    BOOST_LOG_TRIVIAL(trace) << "=== Deserializing ===";
+    LOG(trace) << "=== Deserializing ===";
 
     constexpr size_t PK_SIZE = 66; // characters in hex;
 
@@ -143,54 +143,53 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         /// Deserialize PK
         auto pk = deserialize_string(slice, PK_SIZE);
         if (!pk) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize pk";
+            LOG(error) << "could not deserialize pk";
             return {};
         }
 
         /// Deserialize Hash
         auto hash = deserialize_string(slice);
         if (!hash) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize hash";
+            LOG(error) << "could not deserialize hash";
             return {};
         }
 
         /// Deserialize Data
         auto data = deserialize_string(slice);
         if (!data) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize data";
+            LOG(error) << "could not deserialize data";
             return {};
         }
 
         /// Deserialize TTL
         auto ttl = deserialize_uint64(slice);
         if (!ttl) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize ttl";
+            LOG(error) << "could not deserialize ttl";
             return {};
         }
 
         /// Deserialize Timestamp
         auto timestamp = deserialize_uint64(slice);
         if (!timestamp) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize timestamp";
+            LOG(error) << "could not deserialize timestamp";
             return {};
         }
 
         /// Deserialize Nonce
         auto nonce = deserialize_string(slice);
         if (!nonce) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize nonce";
+            LOG(error) << "could not deserialize nonce";
             return {};
         }
 
-        BOOST_LOG_TRIVIAL(trace) << "deserialized data: " << *data;
+        LOG(trace) << "deserialized data: " << *data;
 
-        BOOST_LOG_TRIVIAL(trace)
-            << boost::format("pk: %1%, msg: %2%") % *pk % *data;
+        LOG(trace) << boost::format("pk: %1%, msg: %2%") % *pk % *data;
 
         result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 
-    BOOST_LOG_TRIVIAL(trace) << "=== END ===";
+    LOG(trace) << "=== END ===";
 
     return result;
 }
