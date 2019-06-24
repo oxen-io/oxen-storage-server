@@ -208,7 +208,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void do_close();
     void on_shutdown(boost::system::error_code ec);
 
-    /// process GET /v1/swarms/get_stats
+    /// process GET /get_stats/v1
     void on_get_stats();
 
     /// Check the database for new data, reschedule if empty

@@ -143,11 +143,11 @@ static std::shared_ptr<request_t> make_post_request(const char* target,
 }
 
 static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
-    return make_post_request("/v1/swarms/push_batch", std::move(data));
+    return make_post_request("/swarms/push_batch/v1", std::move(data));
 }
 
 static std::shared_ptr<request_t> make_push_request(std::string&& data) {
-    return make_post_request("/v1/swarms/push", std::move(data));
+    return make_post_request("/swarms/push/v1", std::move(data));
 }
 
 static bool verify_message(const message_t& msg,
@@ -658,7 +658,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     json_body["height"] = block_height_;
     json_body["hash"] = item.hash;
 
-    auto req = make_post_request("v1/swarms/storage_test", json_body.dump());
+    auto req = make_post_request("/swarms/storage_test/v1", json_body.dump());
 
 #ifndef DISABLE_SNODE_SIGNATURE
     const auto hash = hash_data(req->body());
@@ -681,7 +681,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     json_body["seed"] = params.seed;
 
     auto req =
-        make_post_request("/v1/swarms/blockchain_test", json_body.dump());
+        make_post_request("/swarms/blockchain_test/v1", json_body.dump());
 
 #ifndef DISABLE_SNODE_SIGNATURE
     const auto hash = hash_data(req->body());

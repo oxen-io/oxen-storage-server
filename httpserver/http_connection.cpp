@@ -344,11 +344,12 @@ void connection_t::process_swarm_req(boost::string_view target) {
     }
 #endif
 
-    if (target == "/v1/swarms/push_batch") {
+    if (target == "/swarms/push_batch/v1") {
 
         response_.result(http::status::ok);
         service_node_.process_push_batch(request_.body());
-    } else if (target == "v1/swarms/storage_test") {
+
+    } else if (target == "/swarms/storage_test/v1") {
         LOKI_LOG(debug, "Got storage test request");
 
         using nlohmann::json;
@@ -381,7 +382,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
         } else {
             LOKI_LOG(warn, "Ignoring test request, no pubkey present");
         }
-    } else if (target == "/v1/swarms/blockchain_test") {
+    } else if (target == "/swarms/blockchain_test/v1") {
         LOKI_LOG(debug, "Got blockchain test request");
 
         using nlohmann::json;
@@ -418,7 +419,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
         };
 
         service_node_.perform_blockchain_test(params, callback);
-    } else if (target == "/v1/swarms/push") {
+    } else if (target == "/swarms/push/v1") {
 
         LOKI_LOG(trace, "swarms/push");
 
@@ -449,9 +450,9 @@ void connection_t::process_request() {
     const auto target = request_.target();
     switch (request_.method()) {
     case http::verb::post:
-        if (target == "/v1/storage_rpc") {
+        if (target == "/storage_rpc/v1") {
             /// Store/load from clients
-            LOKI_LOG(trace, "got /v1/storage_rpc");
+            LOKI_LOG(trace, "got /storage_rpc/v1");
 
             try {
                 process_client_req();
@@ -463,18 +464,15 @@ void connection_t::process_request() {
             }
 
             // TODO: parse target (once) to determine if it is a "swarms" call
-        } else if (target == "/v1/swarms/push") {
+        } else if (target == "/swarms/push/v1") {
             this->process_swarm_req(target);
-
-        } else if (target == "/v1/swarms/push_batch") {
-
+        } else if (target == "/swarms/push_batch/v1") {
             this->process_swarm_req(target);
-
-        } else if (target == "v1/swarms/storage_test") {
+        } else if (target == "/swarms/storage_test/v1") {
 
             this->process_swarm_req(target);
 
-        } else if (target == "/v1/swarms/blockchain_test") {
+        } else if (target == "/swarms/blockchain_test/v1") {
 
             this->process_swarm_req(target);
 
@@ -498,7 +496,7 @@ void connection_t::process_request() {
         break;
     case http::verb::get:
 
-        if (target == "/v1/swarms/get_stats") {
+        if (target == "/get_stats/v1") {
             this->on_get_stats();
         } else {
             LOKI_LOG(error, "unknown target for GET: {}", target.to_string());
