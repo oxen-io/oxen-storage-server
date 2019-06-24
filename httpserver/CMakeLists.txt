@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.0)
 
 add_definitions(-DDISABLE_ENCRYPTION)
+add_definitions(-DSPDLOG_COMPILED_LIB)
 
 project(httpserver)
 
@@ -49,6 +50,7 @@ target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
 target_link_libraries(httpserver PRIVATE resolv)
 target_link_libraries(httpserver PRIVATE crypto)
+target_link_libraries(httpserver PRIVATE spdlog::spdlog)
 
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
 

@@ -44,6 +44,8 @@ loki_add_subdirectory(crypto)
 loki_add_subdirectory(pow)
 loki_add_subdirectory(storage)
 loki_add_subdirectory(httpserver)
+loki_add_subdirectory(vendors/spdlog)
+
 
 if (BUILD_TESTS)
     loki_add_subdirectory(unit_test)

@@ -38,3 +38,5 @@ deps
 # Vscode settings
 .vscode
 
+# Submodules
+vendors/spdlog
