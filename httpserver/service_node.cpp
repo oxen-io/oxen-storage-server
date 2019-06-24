@@ -20,7 +20,7 @@
 #include <boost/log/trivial.hpp>
 
 using json = nlohmann::json;
-using service_node::storage::Item;
+using loki::storage::Item;
 using namespace std::chrono_literals;
 
 namespace loki {
@@ -1030,7 +1030,7 @@ void ServiceNode::bootstrap_swarms(
 }
 
 void ServiceNode::relay_messages(
-    const std::vector<service_node::storage::Item>& messages,
+    const std::vector<storage::Item>& messages,
     const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> data = serialize_messages(messages);
 

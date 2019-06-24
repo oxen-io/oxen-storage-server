@@ -30,19 +30,18 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-namespace service_node {
-namespace storage {
-struct Item;
-}
-} // namespace service_node
-
-using service_node::storage::Item;
 
 namespace loki {
 using swarm_callback_t = std::function<void(const block_update_t&)>;
 
 struct message_t;
 struct lokid_key_pair_t;
+
+namespace storage {
+struct Item;
+}
+
+using storage::Item;
 
 enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 

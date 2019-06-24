@@ -30,7 +30,6 @@
 #include <utility> // for std::pair
 #include <vector>
 
-using namespace service_node;
 namespace fs = boost::filesystem;
 namespace po = boost::program_options;
 namespace logging = boost::log;

@@ -27,13 +27,12 @@ using namespace std::chrono_literals;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
-using namespace service_node;
 
 /// +===========================================
 
 static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
 
-using service_node::storage::Item;
+using loki::storage::Item;
 
 using error_code = boost::system::error_code;
 

@@ -12,6 +12,8 @@
 #include <boost/test/unit_test.hpp>
 #include <boost/thread/thread.hpp>
 
+using loki::storage::Item;
+
 struct StorageRAIIFixture {
     StorageRAIIFixture() {
         if (boost::filesystem::remove("storage.db")) {
@@ -55,7 +57,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
         boost::asio::io_context ioc;
         Database storage(ioc, ".");
 
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
 
         BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
@@ -120,7 +122,7 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
                               util::get_time_ms(), "nonce"));
 
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), 1);
@@ -128,7 +130,7 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
     }
 
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("otherpubkey", items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), 1);
@@ -150,7 +152,7 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     }
 
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "hash0";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), num_entries - 1);
@@ -158,7 +160,7 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     }
 
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash =
             std::string("hash") + std::to_string(num_entries / 2 - 1);
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
@@ -187,7 +189,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0,
                               util::get_time_ms(), "nonce"));
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), 2);
@@ -198,7 +200,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     boost::this_thread::sleep_for(boost::chrono::milliseconds(10000 + 100));
 
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), 1);
@@ -225,7 +227,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
 
     // bulk store
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         for (int i = 0; i < num_items; ++i) {
             items.push_back({std::to_string(i), pubkey, timestamp, ttl,
                              timestamp + ttl, nonce, bytes});
@@ -236,7 +238,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
 
     // retrieve
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
 
         BOOST_CHECK(storage.retrieve(pubkey, items, ""));
         BOOST_CHECK_EQUAL(items.size(), num_items);
@@ -262,7 +264,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 
     // bulk store
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         for (int i = 0; i < num_items; ++i) {
             items.push_back({std::to_string(i), pubkey, timestamp, ttl,
                              timestamp + ttl, nonce, bytes});
@@ -273,7 +275,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 
     // retrieve
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
 
         BOOST_CHECK(storage.retrieve(pubkey, items, ""));
         BOOST_CHECK_EQUAL(items.size(), num_items);
@@ -289,7 +291,7 @@ BOOST_AUTO_TEST_CASE(bulk_performance_check) {
 
     const size_t num_items = 10000;
 
-    std::vector<service_node::storage::Item> items;
+    std::vector<Item> items;
     for (int i = 0; i < num_items; ++i) {
         items.push_back({std::to_string(i), pubkey, timestamp, ttl,
                          timestamp + ttl, nonce, bytes});
@@ -342,7 +344,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
 
     // should return all items
     {
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), num_entries);
@@ -351,7 +353,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
     // should return 10 items
     {
         const int num_results = 10;
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
         BOOST_CHECK_EQUAL(items.size(), num_results);
@@ -360,7 +362,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
     // should return 88 items
     {
         const int num_results = 88;
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
         BOOST_CHECK_EQUAL(items.size(), num_results);
@@ -369,7 +371,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
     // should return num_entries items
     {
         const int num_results = 2 * num_entries;
-        std::vector<service_node::storage::Item> items;
+        std::vector<Item> items;
         const auto lastHash = "";
         BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
         BOOST_CHECK_EQUAL(items.size(), num_entries);

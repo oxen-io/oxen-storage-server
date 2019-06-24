@@ -5,7 +5,9 @@
 #include <boost/log/trivial.hpp>
 #include <exception>
 
-using namespace service_node::storage;
+
+namespace loki {
+using namespace storage;
 
 constexpr auto CLEANUP_PERIOD = std::chrono::seconds(10);
 
@@ -315,7 +317,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
 }
 
 bool Database::bulk_store(
-    const std::vector<service_node::storage::Item>& items) {
+    const std::vector<Item>& items) {
     char* errmsg = 0;
     if (sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &errmsg) !=
         SQLITE_OK) {
@@ -378,4 +380,6 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
         success = false;
     }
     return success;
+}
+
 }

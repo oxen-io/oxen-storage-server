@@ -25,16 +25,14 @@ static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 
 class Database;
 
-namespace service_node {
-namespace storage {
-struct Item;
-} // namespace storage
-} // namespace service_node
-
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
 
 namespace loki {
+
+namespace storage {
+struct Item;
+} // namespace storage
 
 struct sn_response_t;
 struct blockchain_test_answer_t;
@@ -132,7 +130,7 @@ class ServiceNode {
     void save_if_new(const message_t& msg);
 
     // Save items to the database, notifying listeners as necessary
-    void save_bulk(const std::vector<service_node::storage::Item>& items);
+    void save_bulk(const std::vector<storage::Item>& items);
 
     /// request swarm info from the blockchain
     void update_swarms();
@@ -156,7 +154,7 @@ class ServiceNode {
     void send_sn_request(const std::shared_ptr<request_t>& req,
                          const sn_record_t& address) const;
     void
-    relay_messages(const std::vector<service_node::storage::Item>& messages,
+    relay_messages(const std::vector<storage::Item>& messages,
                    const std::vector<sn_record_t>& snodes) const;
 
     /// Request swarm structure from the deamon and reset the timer
@@ -176,7 +174,7 @@ class ServiceNode {
 
     /// Send a request to a SN under test
     void send_storage_test_req(const sn_record_t& testee,
-                               const service_node::storage::Item& item);
+                               const storage::Item& item);
 
     void send_blockchain_test_req(const sn_record_t& testee,
                                   bc_test_params_t params,
@@ -192,7 +190,7 @@ class ServiceNode {
     void initiate_peer_test();
 
     // Select a random message from our database, return false on error
-    bool select_random_message(service_node::storage::Item& item);
+    bool select_random_message(storage::Item& item);
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
@@ -243,13 +241,13 @@ class ServiceNode {
 
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(
-        std::vector<service_node::storage::Item>& all_entries) const;
+        std::vector<storage::Item>& all_entries) const;
 
     // Return the current PoW difficulty
     int get_curr_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
-                  std::vector<service_node::storage::Item>& items);
+                  std::vector<storage::Item>& items);
 
     void
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history) {
