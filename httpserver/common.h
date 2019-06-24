@@ -5,6 +5,34 @@
 #include <string>
 #include <vector>
 
+#include <boost/log/attributes/mutable_constant.hpp>
+#include <boost/log/trivial.hpp>
+
+namespace logging = boost::log;
+
+// clang-format off
+#define LOG(lvl)\
+    BOOST_LOG_STREAM_WITH_PARAMS(logging::trivial::logger::get(),\
+        (set_get_attrib("File", get_filename(__FILE__))) \
+        (set_get_attrib("Line", __LINE__)) \
+        (set_get_attrib("Func", std::string(__FUNCTION__))) \
+        (logging::keywords::severity = logging::trivial::lvl))
+// clang-format on
+
+// Set attribute and return the new value
+template <typename ValueType>
+ValueType set_get_attrib(const char* name, ValueType value) {
+    auto attr = logging::attribute_cast<
+        logging::attributes::mutable_constant<ValueType>>(
+        logging::core::get()->get_thread_attributes()[name]);
+    attr.set(value);
+    return attr.get();
+}
+
+static std::string get_filename(std::string path) {
+    return path.substr(path.find_last_of("/\\") + 1);
+}
+
 struct sn_record_t {
 
     // our 32 byte pub keys should always be 52 bytes long in base32z

@@ -1,5 +1,6 @@
 #include "service_node.h"
 
+#include "common.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "http_connection.h"
@@ -216,7 +217,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     BOOST_LOG_TRIVIAL(info) << "Read our snode address: " << our_address_;
     our_address_.set_port(port);
 
-    BOOST_LOG_TRIVIAL(info) << "Requesting initial swarm state";
+    LOG(info) << "Requesting initial swarm state";
     swarm_timer_tick();
     lokid_ping_timer_tick();
     cleanup_timer_tick();

@@ -1,4 +1,5 @@
 #include "channel_encryption.hpp"
+#include "common.h"
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "rate_limiter.h"
@@ -90,6 +91,13 @@ static void init_logging(const fs::path& data_dir) {
     boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
         boost::make_shared<logging::sinks::text_ostream_backend>();
 
+    logging::core::get()->add_thread_attribute(
+        "File", logging::attributes::mutable_constant<std::string>(""));
+    logging::core::get()->add_thread_attribute(
+        "Func", logging::attributes::mutable_constant<std::string>(""));
+    logging::core::get()->add_thread_attribute(
+        "Line", logging::attributes::mutable_constant<int>(0));
+
     // Console output stream
     backend->add_stream(
         boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
@@ -100,7 +108,6 @@ static void init_logging(const fs::path& data_dir) {
         new std::ofstream(log_location, std::ios::out | std::ios::app));
     if (input->is_open()) {
         backend->add_stream(input);
-        BOOST_LOG_TRIVIAL(info) << "Outputting logs to " << log_location;
     } else {
         BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
     }
@@ -115,9 +122,17 @@ static void init_logging(const fs::path& data_dir) {
         logging::expressions::stream
         << logging::expressions::format_date_time<boost::posix_time::ptime>(
                "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
-        << " [" << logging::trivial::severity << "]\t"
+        << " [" << logging::trivial::severity << "]\t" << '['
+        << logging::expressions::attr<std::string>("File") << ":"
+        << logging::expressions::attr<int>("Line") << ":("
+        << logging::expressions::attr<std::string>("Func") << ")]\t"
         << logging::expressions::smessage);
     core->add_sink(sink);
+    LOG(info)
+        << std::endl
+        << "**************************************************************"
+        << std::endl
+        << "Outputting logs to " << log_location;
 }
 
 int main(int argc, char* argv[]) {
@@ -191,11 +206,6 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        BOOST_LOG_TRIVIAL(info)
-            << std::endl
-            << std::endl
-            << "**************************************************************"
-            << std::endl;
         BOOST_LOG_TRIVIAL(info) << "Setting log level to " << log_level_string;
 
         BOOST_LOG_TRIVIAL(info)
