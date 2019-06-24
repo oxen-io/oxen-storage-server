@@ -1,5 +1,5 @@
 #include "channel_encryption.hpp"
-#include "common.h"
+#include "../common/src/common.h"
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "rate_limiter.h"

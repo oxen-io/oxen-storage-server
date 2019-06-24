@@ -14,7 +14,7 @@
 #include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
-#include "common.h"
+#include "../common/src/common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
 #include "stats.h"

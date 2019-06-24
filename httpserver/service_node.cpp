@@ -1,6 +1,5 @@
 #include "service_node.h"
 
-#include "common.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "http_connection.h"
