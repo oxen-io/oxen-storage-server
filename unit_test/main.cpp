@@ -6,8 +6,6 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 
-BOOST_AUTO_TEST_CASE(test1) { BOOST_TEST(false); }
-
 bool init_unit_test() {
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_st>();
     auto logger = std::make_shared<spdlog::logger>("loki_logger", console_sink);

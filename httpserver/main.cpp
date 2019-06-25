@@ -115,6 +115,8 @@ static void init_logging(const fs::path& data_dir, spdlog::level::level_enum log
     spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(1));
 
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+
     LOKI_LOG(info,
              "\n**************************************************************"
              "\nOutputting logs to {}",
