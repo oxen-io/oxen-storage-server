@@ -7,9 +7,9 @@
 #include "swarm.h"
 #include "version.h"
 
-#include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/sinks/rotating_file_sink.h"
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
@@ -35,15 +35,14 @@ namespace fs = boost::filesystem;
 namespace po = boost::program_options;
 namespace logging = boost::log;
 
-using LogLevelPair = std::pair<std::string, logging::trivial::severity_level>;
+using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;
 static const LogLevelMap logLevelMap{
-    {"trace", logging::trivial::severity_level::trace},
-    {"debug", logging::trivial::severity_level::debug},
-    {"info", logging::trivial::severity_level::info},
-    {"warning", logging::trivial::severity_level::warning},
-    {"error", logging::trivial::severity_level::error},
-    {"fatal", logging::trivial::severity_level::fatal},
+    {"trace", spdlog::level::trace},
+    {"debug", spdlog::level::debug},
+    {"info", spdlog::level::info},
+    {"warning", spdlog::level::warn},
+    {"error", spdlog::level::err},
 };
 
 static void print_usage(const po::options_description& desc, char* argv[]) {
@@ -60,8 +59,7 @@ static void print_usage(const po::options_description& desc, char* argv[]) {
     }
 }
 
-bool parseLogLevel(const std::string& input,
-                   logging::trivial::severity_level& logLevel) {
+static bool parse_log_level(const std::string& input, spdlog::level::level_enum & logLevel) {
 
     const auto it = std::find_if(
         logLevelMap.begin(), logLevelMap.end(),
@@ -87,7 +85,7 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
-static void init_logging(const fs::path& data_dir) {
+static void init_logging(const fs::path& data_dir, spdlog::level::level_enum log_level) {
 
     const std::string log_location = (data_dir / "storage.logs").string();
     // Log to disk output stream
@@ -104,8 +102,11 @@ static void init_logging(const fs::path& data_dir) {
     constexpr size_t EXTRA_FILES = 1;
 
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_level(log_level);
+
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES);
+    file_sink->set_level(log_level);
 
     std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
 
@@ -176,18 +177,15 @@ int main(int argc, char* argv[]) {
             fs::create_directories(data_dir_str);
         }
 
-        init_logging(data_dir_str);
-
-        logging::trivial::severity_level logLevel;
-        if (!parseLogLevel(log_level_string, logLevel)) {
+        spdlog::level::level_enum log_level;
+        if (!parse_log_level(log_level_string, log_level)) {
             LOKI_LOG(error, "Incorrect log level {}", log_level_string);
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
 
-        // TODO: consider adding auto-flushing for logging
-        logging::core::get()->set_filter(logging::trivial::severity >=
-                                         logLevel);
+        init_logging(data_dir_str, log_level);
+
         LOKI_LOG(info, "Setting log level to {}", log_level_string);
 
         LOKI_LOG(info, "Setting database location to {}", data_dir_str);
