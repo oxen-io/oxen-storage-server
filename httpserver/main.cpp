@@ -123,7 +123,7 @@ static void init_logging(const fs::path& data_dir) {
 
     std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
 
-    auto logger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
+    auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(), sinks.end());
     spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(1));
 

@@ -24,7 +24,7 @@ namespace fs = boost::filesystem;
 // clang-format on
 
 #define LOKI_LOG(LVL, ...)\
-    spdlog::get("multi_sink")->LVL(__VA_ARGS__)
+    spdlog::get("loki_logger")->LVL(__VA_ARGS__)
 
 // Set attribute and return the new value
 template <typename ValueType>
