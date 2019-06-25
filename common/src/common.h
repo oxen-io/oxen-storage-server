@@ -30,8 +30,7 @@ ValueType set_get_attrib(const char* name, ValueType value) {
     return attr.get();
 }
 
-static std::string get_filename(const char* path_str) {
-    const boost::filesystem::path path(path_str);
+static std::string get_filename(const boost::filesystem::path path) {
     return path.filename().string();
 }
 

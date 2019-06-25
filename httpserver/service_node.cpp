@@ -47,14 +47,11 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
     int pow_difficulty;
     ns_msg nsMsg;
     if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
-        LOKI_LOG(error) << "Failed to retrieve PoW difficulty. DNS parse init";
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
     ns_rr rr;
     if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
-        LOKI_LOG(error)
-            << "Failed to retrieve PoW difficulty. DNS parse resolve";
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
@@ -69,7 +66,6 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
         }
         return new_history;
     } catch (...) {
-        LOKI_LOG(error) << "Failed to retrieve PoW difficulty. JSON parse";
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
