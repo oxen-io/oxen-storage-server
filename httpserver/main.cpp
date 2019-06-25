@@ -7,6 +7,10 @@
 #include "swarm.h"
 #include "version.h"
 
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/log/expressions.hpp>
@@ -87,57 +91,62 @@ static boost::optional<fs::path> get_home_dir() {
 }
 
 static void init_logging(const fs::path& data_dir) {
-    boost::shared_ptr<logging::core> core = logging::core::get();
-    boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
-        boost::make_shared<logging::sinks::text_ostream_backend>();
 
-    logging::core::get()->add_thread_attribute(
-        "File", logging::attributes::mutable_constant<std::string>(""));
-    logging::core::get()->add_thread_attribute(
-        "Func", logging::attributes::mutable_constant<std::string>(""));
-    logging::core::get()->add_thread_attribute(
-        "Line", logging::attributes::mutable_constant<int>(0));
+    // boost::shared_ptr<logging::core> core = logging::core::get();
+    // boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
+    //     boost::make_shared<logging::sinks::text_ostream_backend>();
+
+    // logging::core::get()->add_thread_attribute(
+    //     "File", logging::attributes::mutable_constant<std::string>(""));
+    // logging::core::get()->add_thread_attribute(
+    //     "Func", logging::attributes::mutable_constant<std::string>(""));
+    // logging::core::get()->add_thread_attribute(
+    //     "Line", logging::attributes::mutable_constant<int>(0));
 
     // Console output stream
-    backend->add_stream(
-        boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
+    // backend->add_stream(
+    //     boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
 
     const std::string log_location = (data_dir / "storage.logs").string();
     // Log to disk output stream
     auto input = boost::shared_ptr<std::ofstream>(
         new std::ofstream(log_location, std::ios::out | std::ios::app));
     if (input->is_open()) {
-        backend->add_stream(input);
+        input->close();
     } else {
-        LOKI_LOG(error) << "Could not open " << log_location;
+        std::cerr << "Could not open " << log_location << std::endl;
+        return;
     }
 
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(log_location, 1024 * 1024 * 50, 1);
+
+    std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
+
+    auto logger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
+    spdlog::register_logger(logger);
+    spdlog::flush_every(std::chrono::seconds(1));
+
     // Flush after every log
-    backend->auto_flush(true);
-    using sink_t =
-        logging::sinks::synchronous_sink<logging::sinks::text_ostream_backend>;
-    boost::shared_ptr<sink_t> sink(new sink_t(backend));
-    logging::add_common_attributes(); // Allow accessing of "TimeStamp"
-    sink->set_formatter(
-        logging::expressions::stream
-        << logging::expressions::format_date_time<boost::posix_time::ptime>(
-               "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
-        << " [" << logging::trivial::severity << "]\t" << '['
-        << logging::expressions::attr<std::string>("File") << ":"
-        << logging::expressions::attr<int>("Line") << ":("
-        << logging::expressions::attr<std::string>("Func") << ")]\t"
-        << logging::expressions::smessage);
-    core->add_sink(sink);
-    LOKI_LOG(info)
-        << std::endl
-        << "**************************************************************"
-        << std::endl
-        << "Outputting logs to " << log_location;
+    // backend->auto_flush(true);
+    // using sink_t =
+    //     logging::sinks::synchronous_sink<logging::sinks::text_ostream_backend>;
+    // boost::shared_ptr<sink_t> sink(new sink_t(backend));
+    // logging::add_common_attributes(); // Allow accessing of "TimeStamp"
+    // sink->set_formatter(
+    //     logging::expressions::stream
+    //     << logging::expressions::format_date_time<boost::posix_time::ptime>(
+    //            "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
+    //     << " [" << logging::trivial::severity << "]\t" << '['
+    //     << logging::expressions::attr<std::string>("File") << ":"
+    //     << logging::expressions::attr<int>("Line") << ":("
+    //     << logging::expressions::attr<std::string>("Func") << ")]\t"
+    //     << logging::expressions::smessage);
+    // core->add_sink(sink);
+    LOKI_LOG(info, "\n**************************************************************\nOutputting logs to {}", log_location);
 }
 
 int main(int argc, char* argv[]) {
-
-    spdlog::info("Welcome to spdlog!");
 
     try {
         // Check command line arguments.
@@ -197,7 +206,7 @@ int main(int argc, char* argv[]) {
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(log_level_string, logLevel)) {
-            LOKI_LOG(error) << "Incorrect log level" << log_level_string;
+            LOKI_LOG(error, "Incorrect log level {}", log_level_string);
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -205,25 +214,25 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        LOKI_LOG(info) << "Setting log level to " << log_level_string;
+        LOKI_LOG(info, "Setting log level to {}", log_level_string);
 
-        LOKI_LOG(info) << "Setting database location to " << data_dir_str;
+        LOKI_LOG(info, "Setting database location to {}", data_dir_str);
 
         if (vm.count("lokid-key")) {
-            LOKI_LOG(info) << "Setting Lokid key path to " << lokid_key_path;
+            LOKI_LOG(info, "Setting Lokid key path to {}", lokid_key_path);
         }
 
         if (vm.count("lokid-rpc-port")) {
-            LOKI_LOG(info) << "Setting lokid RPC port to " << lokid_rpc_port;
+            LOKI_LOG(info, "Setting lokid RPC port to {}", lokid_rpc_port);
         }
 
-        LOKI_LOG(info) << "Listening at address " << ip << " port " << port;
+        LOKI_LOG(info, "Listening at address {} port {}", ip, port);
 
         boost::asio::io_context ioc{1};
         boost::asio::io_context worker_ioc{1};
 
         if (sodium_init() != 0) {
-            LOKI_LOG(fatal) << "Could not initialize libsodium";
+            LOKI_LOG(error, "Could not initialize libsodium");
             return EXIT_FAILURE;
         }
 
@@ -250,10 +259,10 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        LOKI_LOG(fatal) << "Exception caught in main: " << e.what();
+        LOKI_LOG(error, "Exception caught in main: {}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        LOKI_LOG(fatal) << "Unknown exception caught in main.";
+        LOKI_LOG(error, "Unknown exception caught in main.");
         return EXIT_FAILURE;
     }
 }

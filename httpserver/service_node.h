@@ -259,8 +259,7 @@ class ServiceNode {
                 curr_pow_difficulty_ = difficulty;
             }
         }
-        LOKI_LOG(info) << "Read PoW difficulty: "
-                       << curr_pow_difficulty_.difficulty;
+        LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
     }
 
     std::string get_stats() const { return all_stats_.to_json(true); }

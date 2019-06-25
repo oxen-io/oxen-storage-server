@@ -9,17 +9,22 @@
 #include <boost/log/attributes/mutable_constant.hpp>
 #include <boost/log/trivial.hpp>
 
+#include "spdlog/spdlog.h"
+
 namespace logging = boost::log;
 namespace fs = boost::filesystem;
 
 // clang-format off
-#define LOKI_LOG(lvl)\
-    BOOST_LOG_STREAM_WITH_PARAMS(logging::trivial::logger::get(),\
-        (set_get_attrib("File", fs::path(__FILE__).filename().string())) \
-        (set_get_attrib("Line", __LINE__)) \
-        (set_get_attrib("Func", std::string(__FUNCTION__))) \
-        (logging::keywords::severity = logging::trivial::lvl))
+// #define LOKI_LOG(lvl)\
+//     BOOST_LOG_STREAM_WITH_PARAMS(logging::trivial::logger::get(),\
+//         (set_get_attrib("File", fs::path(__FILE__).filename().string())) \
+//         (set_get_attrib("Line", __LINE__)) \
+//         (set_get_attrib("Func", std::string(__FUNCTION__))) \
+//         (logging::keywords::severity = logging::trivial::lvl))
 // clang-format on
+
+#define LOKI_LOG(LVL, ...)\
+    spdlog::get("multi_sink")->LVL(__VA_ARGS__)
 
 // Set attribute and return the new value
 template <typename ValueType>
@@ -68,6 +73,26 @@ struct sn_record_t {
     const std::string& pub_key() const { return pub_key_; }
     const std::string& ip() const { return ip_; }
 };
+
+namespace fmt {
+
+template<>
+struct formatter<sn_record_t> {
+
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
+
+    template<typename FormatContext>
+    auto format(const sn_record_t &d, FormatContext &ctx) {
+#ifdef INTEGRATION_TEST
+        return format_to(ctx.out(), "{}", d.port());
+#else
+        return format_to(ctx.out(), "{}", d.sn_address());
+#endif
+    }
+};
+
+}
 
 namespace loki {
 
