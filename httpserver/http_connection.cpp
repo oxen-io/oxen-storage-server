@@ -1,7 +1,7 @@
+#include "http_connection.h"
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
-#include "http_connection.h"
 #include "rate_limiter.h"
 #include "serialization.h"
 #include "server_certificates.h"

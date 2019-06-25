@@ -89,26 +89,29 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
     }
 
     retry_timer_.expires_after(RETRY_INTERVALS[attempt_count_ - 1]);
-    LOKI_LOG(debug, "Will retry in {} secs", RETRY_INTERVALS[attempt_count_ - 1].count());
+    LOKI_LOG(debug, "Will retry in {} secs",
+             RETRY_INTERVALS[attempt_count_ - 1].count());
 
-    retry_timer_.async_wait([self = std::move(self)](
-                                const boost::system::error_code& ec) mutable {
-        /// Save some references before possibly moved out of `self`
-        const auto& sn = self->sn_;
-        auto& ioc = self->ioc_;
-        /// TODO: investigate whether we can get rid of the extra ptr copy
-        /// here?
-        const std::shared_ptr<request_t> req = self->request_;
+    retry_timer_.async_wait(
+        [self = std::move(self)](const boost::system::error_code& ec) mutable {
+            /// Save some references before possibly moved out of `self`
+            const auto& sn = self->sn_;
+            auto& ioc = self->ioc_;
+            /// TODO: investigate whether we can get rid of the extra ptr copy
+            /// here?
+            const std::shared_ptr<request_t> req = self->request_;
 
-        /// Request will be copied here
-        make_sn_request(ioc, sn, req,
-                        [self = std::move(self)](sn_response_t&& res) mutable {
-                            if (res.error_code != SNodeError::NO_ERROR) {
-                                LOKI_LOG(error, "Could not relay one: {} (attempt #{})", self->sn_, self->attempt_count_);
-                                self->retry(std::move(self));
-                            }
-                        });
-    });
+            /// Request will be copied here
+            make_sn_request(
+                ioc, sn, req,
+                [self = std::move(self)](sn_response_t&& res) mutable {
+                    if (res.error_code != SNodeError::NO_ERROR) {
+                        LOKI_LOG(error, "Could not relay one: {} (attempt #{})",
+                                 self->sn_, self->attempt_count_);
+                        self->retry(std::move(self));
+                    }
+                });
+        });
 }
 
 FailedRequestHandler::~FailedRequestHandler() {
@@ -233,9 +236,11 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
             all_stats_.record_request_failed(sn);
 
             if (res.error_code == SNodeError::NO_REACH) {
-                LOKI_LOG(error, "Could not relay data to: {} (Unreachable)", sn);
+                LOKI_LOG(error, "Could not relay data to: {} (Unreachable)",
+                         sn);
             } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                LOKI_LOG(error, "Could not relay data to: {} (Generic error)", sn);
+                LOKI_LOG(error, "Could not relay data to: {} (Generic error)",
+                         sn);
             }
 
             std::function<void()> give_up_cb = [this, sn]() {
@@ -253,7 +258,8 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
 void ServiceNode::register_listener(const std::string& pk,
                                     const std::shared_ptr<connection_t>& c) {
     pk_to_listeners[pk].push_back(c);
-    LOKI_LOG(debug, "register pubkey: {}, total pubkeys: {}", pk, pk_to_listeners.size());
+    LOKI_LOG(debug, "register pubkey: {}, total pubkeys: {}", pk,
+             pk_to_listeners.size());
 }
 
 void ServiceNode::notify_listeners(const std::string& pk,
@@ -382,15 +388,18 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     if (bu.block_hash != block_hash_) {
 
-        LOKI_LOG(debug, "new block, height: {}, hash: {}", bu.height, bu.block_hash);
+        LOKI_LOG(debug, "new block, height: {}, hash: {}", bu.height,
+                 bu.block_hash);
 
         if (bu.height > block_height_ + 1) {
-            LOKI_LOG(warn, "Skipped some block(s), old: {} new: {}", block_height_, bu.height);
+            LOKI_LOG(warn, "Skipped some block(s), old: {} new: {}",
+                     block_height_, bu.height);
             /// TODO: if we skipped a block, should we try to run peer tests for
             /// them as well?
         } else if (bu.height <= block_height_) {
             // TODO: investigate how testing will be affected under reorg
-            LOKI_LOG(warn, "new block height is not higher than the current height");
+            LOKI_LOG(warn,
+                     "new block height is not higher than the current height");
         }
 
         block_height_ = bu.height;
@@ -617,11 +626,14 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
         if (res.error_code == SNodeError::NO_ERROR && res.body) {
             if (*res.body == item.data) {
-                LOKI_LOG(debug, "Storage test is successful for: {} at height: {}", testee, height);
+                LOKI_LOG(debug,
+                         "Storage test is successful for: {} at height: {}",
+                         testee, height);
                 success = true;
             } else {
 
-                LOKI_LOG(warn, "Test answer doesn't match for: {} at height {}", testee, height);
+                LOKI_LOG(warn, "Test answer doesn't match for: {} at height {}",
+                         testee, height);
 
 #ifdef INTEGRATION_TEST
                 LOKI_LOG(warn, "got: {} expected: {}", *res.body, item.data);
@@ -629,7 +641,9 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                 abort_if_integration_test();
             }
         } else {
-            LOKI_LOG(error, "Failed to send a storage test request to snode: {}", testee);
+            LOKI_LOG(error,
+                     "Failed to send a storage test request to snode: {}",
+                     testee);
 
             /// TODO: retry here, otherwise tests sometimes fail (when SN not
             /// running yet)
@@ -687,7 +701,9 @@ void ServiceNode::process_blockchain_test_response(
     sn_response_t&& res, blockchain_test_answer_t our_answer,
     sn_record_t testee, uint64_t bc_height) {
 
-    LOKI_LOG(debug, "Processing blockchain test response from: {} at height: {}", testee, bc_height);
+    LOKI_LOG(debug,
+             "Processing blockchain test response from: {} at height: {}",
+             testee, bc_height);
 
     bool success = false;
 
@@ -710,7 +726,8 @@ void ServiceNode::process_blockchain_test_response(
         }
 
     } else {
-        LOKI_LOG(debug, "Failed to send a blockchain test request to snode: {}", testee);
+        LOKI_LOG(debug, "Failed to send a blockchain test request to snode: {}",
+                 testee);
     }
 
     this->all_stats_.record_blockchain_test_result(testee, success);
@@ -786,7 +803,8 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     std::string block_hash;
 
     if (blk_height > block_height_) {
-        LOKI_LOG(warn, "Our blockchain is behind, height: {}, requested: {}", block_height_, blk_height);
+        LOKI_LOG(warn, "Our blockchain is behind, height: {}, requested: {}",
+                 block_height_, blk_height);
         return MessageTestStatus::RETRY;
     }
 
@@ -802,7 +820,8 @@ MessageTestStatus ServiceNode::process_storage_test_req(
         }
 
         if (tester.sn_address() != tester_addr) {
-            LOKI_LOG(warn, "Wrong tester: {}, expected: {}", tester_addr, tester.sn_address());
+            LOKI_LOG(warn, "Wrong tester: {}, expected: {}", tester_addr,
+                     tester.sn_address());
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
@@ -858,7 +877,8 @@ void ServiceNode::initiate_peer_test() {
         return;
     }
 
-    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", block_height_, tester, testee);
+    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", block_height_,
+             tester, testee);
 
     if (tester != our_address_) {
         /// Not our turn to initiate a test
@@ -872,7 +892,8 @@ void ServiceNode::initiate_peer_test() {
         if (!this->select_random_message(item)) {
             LOKI_LOG(error, "Could not select a message for testing");
         } else {
-            LOKI_LOG(trace, "Selected random message: {}, {}", item.hash, item.data);
+            LOKI_LOG(trace, "Selected random message: {}, {}", item.hash,
+                     item.data);
 
             // 2.2. Initiate testing request
             send_storage_test_req(testee, item);
@@ -893,7 +914,8 @@ void ServiceNode::initiate_peer_test() {
         constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 2;
 
         if (block_height_ <= SAFETY_BUFFER_BLOCKS) {
-            LOKI_LOG(debug, "Blockchain too short, skipping blockchain testing.");
+            LOKI_LOG(debug,
+                     "Blockchain too short, skipping blockchain testing.");
             return;
         }
 
@@ -1073,7 +1095,8 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
     LOKI_LOG(trace, "Saving all: begin");
 
-    LOKI_LOG(debug, "Got {} messages from peers, size: {}", messages.size(), blob.size());
+    LOKI_LOG(debug, "Got {} messages from peers, size: {}", messages.size(),
+             blob.size());
 
 #ifndef DISABLE_POW
     const auto it = std::remove_if(
@@ -1082,7 +1105,9 @@ void ServiceNode::process_push_batch(const std::string& blob) {
         });
     messages.erase(it, messages.end());
     if (it != messages.end()) {
-        LOKI_LOG(warn, "Some of the batch messages were removed due to incorrect PoW");
+        LOKI_LOG(
+            warn,
+            "Some of the batch messages were removed due to incorrect PoW");
     }
 #endif
 

@@ -220,7 +220,8 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
             success = true;
             break;
         } else {
-            LOKI_LOG(error, "Could not execute `retrieve by index` db statement");
+            LOKI_LOG(error,
+                     "Could not execute `retrieve by index` db statement");
             break;
         }
     }
@@ -251,7 +252,10 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
             success = true;
             break;
         } else {
-            LOKI_LOG(error, "Could not execute `retrieve by hash` db statement, ec: {}", rc);
+            LOKI_LOG(
+                error,
+                "Could not execute `retrieve by hash` db statement, ec: {}",
+                rc);
             break;
         }
     }
@@ -297,7 +301,8 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             result = true;
             break;
         } else {
-            LOKI_LOG(error, "Could not execute `store` db statement, ec: {}", rc);
+            LOKI_LOG(error, "Could not execute `store` db statement, ec: {}",
+                     rc);
             break;
         }
     }
@@ -361,7 +366,8 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
             auto item = extract_item(stmt);
             items.push_back(std::move(item));
         } else {
-            LOKI_LOG(error, "Could not execute `retrieve` db statement, ec: {}", rc);
+            LOKI_LOG(error, "Could not execute `retrieve` db statement, ec: {}",
+                     rc);
             break;
         }
     }

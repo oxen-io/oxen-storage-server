@@ -22,8 +22,9 @@ void make_https_request(boost::asio::io_context& ioc,
 #endif
     if (ec) {
         LOKI_LOG(error,
-            "https: Failed to parse the IP address. Error code = {}. Message: {}",
-            ec.value(), ec.message());
+                 "https: Failed to parse the IP address. Error code = {}. "
+                 "Message: {}",
+                 ec.value(), ec.message());
         return;
     }
 
@@ -69,7 +70,8 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(), ec.message());
+        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(),
+                 ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
@@ -100,7 +102,8 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
-        LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(), ec.message());
+        LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+                 ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
     }
 
@@ -134,7 +137,8 @@ void HttpsClientSession::start() {
             if (ec) {
                 std::ostringstream os;
                 os << endpoint;
-                LOKI_LOG(error, "Could not connect to {}, message: {} ({})", os.str(), ec.message(), ec.value());
+                LOKI_LOG(error, "Could not connect to {}, message: {} ({})",
+                         os.str(), ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
             }
@@ -177,7 +181,8 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     }
     if (ec) {
-        LOKI_LOG(error, "could not shutdown stream gracefully: {}", ec.message());
+        LOKI_LOG(error, "could not shutdown stream gracefully: {}",
+                 ec.message());
     }
 
     // If we get here then the connection is closed gracefully

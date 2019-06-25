@@ -51,7 +51,8 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
         /// Are we in a new swarm?
         if (cur_swarm_id_ != our_swarm_id) {
 
-            LOKI_LOG(info, "EVENT: got moved into a new swarm: {}", our_swarm_id);
+            LOKI_LOG(info, "EVENT: got moved into a new swarm: {}",
+                     our_swarm_id);
 
             /// Check that our old swarm still exists
             if (!swarm_exists(swarms, cur_swarm_id_)) {
@@ -87,7 +88,8 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                     });
 
                 if (!found) {
-                    LOKI_LOG(info, "EVENT: detected a new swarm: {}", swarm_info.swarm_id);
+                    LOKI_LOG(info, "EVENT: detected a new swarm: {}",
+                             swarm_info.swarm_id);
                     events.new_swarms.push_back(swarm_info.swarm_id);
                 }
             }

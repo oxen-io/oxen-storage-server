@@ -7,9 +7,9 @@
 #include "swarm.h"
 #include "version.h"
 
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
@@ -21,9 +21,6 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
 #include <sodium.h>
-
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include <cstdlib>
 #include <iomanip>
@@ -92,21 +89,6 @@ static boost::optional<fs::path> get_home_dir() {
 
 static void init_logging(const fs::path& data_dir) {
 
-    // boost::shared_ptr<logging::core> core = logging::core::get();
-    // boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
-    //     boost::make_shared<logging::sinks::text_ostream_backend>();
-
-    // logging::core::get()->add_thread_attribute(
-    //     "File", logging::attributes::mutable_constant<std::string>(""));
-    // logging::core::get()->add_thread_attribute(
-    //     "Func", logging::attributes::mutable_constant<std::string>(""));
-    // logging::core::get()->add_thread_attribute(
-    //     "Line", logging::attributes::mutable_constant<int>(0));
-
-    // Console output stream
-    // backend->add_stream(
-    //     boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
-
     const std::string log_location = (data_dir / "storage.logs").string();
     // Log to disk output stream
     auto input = boost::shared_ptr<std::ofstream>(
@@ -118,32 +100,24 @@ static void init_logging(const fs::path& data_dir) {
         return;
     }
 
+    constexpr size_t LOG_FILE_SIZE_LIMIT = 1024 * 1024 * 50; // 50Mb
+    constexpr size_t EXTRA_FILES = 1;
+
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(log_location, 1024 * 1024 * 50, 1);
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES);
 
     std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
 
-    auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(), sinks.end());
+    auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(),
+                                                   sinks.end());
     spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(1));
 
-    // Flush after every log
-    // backend->auto_flush(true);
-    // using sink_t =
-    //     logging::sinks::synchronous_sink<logging::sinks::text_ostream_backend>;
-    // boost::shared_ptr<sink_t> sink(new sink_t(backend));
-    // logging::add_common_attributes(); // Allow accessing of "TimeStamp"
-    // sink->set_formatter(
-    //     logging::expressions::stream
-    //     << logging::expressions::format_date_time<boost::posix_time::ptime>(
-    //            "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
-    //     << " [" << logging::trivial::severity << "]\t" << '['
-    //     << logging::expressions::attr<std::string>("File") << ":"
-    //     << logging::expressions::attr<int>("Line") << ":("
-    //     << logging::expressions::attr<std::string>("Func") << ")]\t"
-    //     << logging::expressions::smessage);
-    // core->add_sink(sink);
-    LOKI_LOG(info, "\n**************************************************************\nOutputting logs to {}", log_location);
+    LOKI_LOG(info,
+             "\n**************************************************************"
+             "\nOutputting logs to {}",
+             log_location);
 }
 
 int main(int argc, char* argv[]) {
