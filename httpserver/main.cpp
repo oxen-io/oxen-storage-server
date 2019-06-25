@@ -1,3 +1,4 @@
+#include "../common/src/common.h"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
 #include "lokid_key.h"
@@ -90,6 +91,13 @@ static void init_logging(const fs::path& data_dir) {
     boost::shared_ptr<logging::sinks::text_ostream_backend> backend =
         boost::make_shared<logging::sinks::text_ostream_backend>();
 
+    logging::core::get()->add_thread_attribute(
+        "File", logging::attributes::mutable_constant<std::string>(""));
+    logging::core::get()->add_thread_attribute(
+        "Func", logging::attributes::mutable_constant<std::string>(""));
+    logging::core::get()->add_thread_attribute(
+        "Line", logging::attributes::mutable_constant<int>(0));
+
     // Console output stream
     backend->add_stream(
         boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
@@ -100,9 +108,8 @@ static void init_logging(const fs::path& data_dir) {
         new std::ofstream(log_location, std::ios::out | std::ios::app));
     if (input->is_open()) {
         backend->add_stream(input);
-        BOOST_LOG_TRIVIAL(info) << "Outputting logs to " << log_location;
     } else {
-        BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
+        LOKI_LOG(error) << "Could not open " << log_location;
     }
 
     // Flush after every log
@@ -115,9 +122,17 @@ static void init_logging(const fs::path& data_dir) {
         logging::expressions::stream
         << logging::expressions::format_date_time<boost::posix_time::ptime>(
                "TimeStamp", "[%Y-%m-%d %H:%M:%S:%f]")
-        << " [" << logging::trivial::severity << "]\t"
+        << " [" << logging::trivial::severity << "]\t" << '['
+        << logging::expressions::attr<std::string>("File") << ":"
+        << logging::expressions::attr<int>("Line") << ":("
+        << logging::expressions::attr<std::string>("Func") << ")]\t"
         << logging::expressions::smessage);
     core->add_sink(sink);
+    LOKI_LOG(info)
+        << std::endl
+        << "**************************************************************"
+        << std::endl
+        << "Outputting logs to " << log_location;
 }
 
 int main(int argc, char* argv[]) {
@@ -182,8 +197,7 @@ int main(int argc, char* argv[]) {
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(log_level_string, logLevel)) {
-            BOOST_LOG_TRIVIAL(error)
-                << "Incorrect log level" << log_level_string;
+            LOKI_LOG(error) << "Incorrect log level" << log_level_string;
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -191,34 +205,25 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        BOOST_LOG_TRIVIAL(info)
-            << std::endl
-            << std::endl
-            << "**************************************************************"
-            << std::endl;
-        BOOST_LOG_TRIVIAL(info) << "Setting log level to " << log_level_string;
+        LOKI_LOG(info) << "Setting log level to " << log_level_string;
 
-        BOOST_LOG_TRIVIAL(info)
-            << "Setting database location to " << data_dir_str;
+        LOKI_LOG(info) << "Setting database location to " << data_dir_str;
 
         if (vm.count("lokid-key")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting Lokid key path to " << lokid_key_path;
+            LOKI_LOG(info) << "Setting Lokid key path to " << lokid_key_path;
         }
 
         if (vm.count("lokid-rpc-port")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting lokid RPC port to " << lokid_rpc_port;
+            LOKI_LOG(info) << "Setting lokid RPC port to " << lokid_rpc_port;
         }
 
-        BOOST_LOG_TRIVIAL(info)
-            << "Listening at address " << ip << " port " << port;
+        LOKI_LOG(info) << "Listening at address " << ip << " port " << port;
 
         boost::asio::io_context ioc{1};
         boost::asio::io_context worker_ioc{1};
 
         if (sodium_init() != 0) {
-            BOOST_LOG_TRIVIAL(fatal) << "Could not initialize libsodium";
+            LOKI_LOG(fatal) << "Could not initialize libsodium";
             return EXIT_FAILURE;
         }
 
@@ -245,10 +250,10 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
+        LOKI_LOG(fatal) << "Exception caught in main: " << e.what();
         return EXIT_FAILURE;
     } catch (...) {
-        BOOST_LOG_TRIVIAL(fatal) << "Unknown exception caught in main.";
+        LOKI_LOG(fatal) << "Unknown exception caught in main.";
         return EXIT_FAILURE;
     }
 }

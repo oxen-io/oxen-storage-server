@@ -35,7 +35,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
         });
 
     if (our_swarm_it == swarms.end()) {
-        BOOST_LOG_TRIVIAL(error) << "ERROR: WE ARE NOT IN ANY SWARM";
+        LOKI_LOG(error) << "ERROR: WE ARE NOT IN ANY SWARM";
         return events;
     }
 
@@ -44,22 +44,20 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
 
     if (cur_swarm_id_ == UINT64_MAX) {
 
-        BOOST_LOG_TRIVIAL(info)
-            << "EVENT: started SN in swarm: " << our_swarm_id;
+        LOKI_LOG(info) << "EVENT: started SN in swarm: " << our_swarm_id;
 
     } else {
 
         /// Are we in a new swarm?
         if (cur_swarm_id_ != our_swarm_id) {
 
-            BOOST_LOG_TRIVIAL(info)
-                << "EVENT: got moved into a new swarm: " << our_swarm_id;
+            LOKI_LOG(info) << "EVENT: got moved into a new swarm: "
+                           << our_swarm_id;
 
             /// Check that our old swarm still exists
             if (!swarm_exists(swarms, cur_swarm_id_)) {
 
-                BOOST_LOG_TRIVIAL(info)
-                    << "EVENT: our old swarm got DISSOLVED!";
+                LOKI_LOG(info) << "EVENT: our old swarm got DISSOLVED!";
                 events.decommissioned = true;
             }
         }
@@ -74,7 +72,7 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                     std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
                 if (it == swarm_peers_.end() && sn != our_address_) {
-                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected new SN: " << sn;
+                    LOKI_LOG(info) << "EVENT: detected new SN: " << sn;
                     events.new_snodes.push_back(sn);
                 }
             }
@@ -90,8 +88,8 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
                     });
 
                 if (!found) {
-                    BOOST_LOG_TRIVIAL(info) << "EVENT: detected a new swarm: "
-                                            << swarm_info.swarm_id;
+                    LOKI_LOG(info) << "EVENT: detected a new swarm: "
+                                   << swarm_info.swarm_id;
                     events.new_swarms.push_back(swarm_info.swarm_id);
                 }
             }

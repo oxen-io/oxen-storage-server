@@ -14,7 +14,7 @@
 #include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
-#include "common.h"
+#include "../common/src/common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
 #include "stats.h"
@@ -259,8 +259,8 @@ class ServiceNode {
                 curr_pow_difficulty_ = difficulty;
             }
         }
-        BOOST_LOG_TRIVIAL(info)
-            << "Read PoW difficulty: " << curr_pow_difficulty_.difficulty;
+        LOKI_LOG(info) << "Read PoW difficulty: "
+                       << curr_pow_difficulty_.difficulty;
     }
 
     std::string get_stats() const { return all_stats_.to_json(true); }
