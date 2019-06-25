@@ -9,7 +9,7 @@ using namespace std::chrono_literals;
 namespace loki {
 
 void to_json(nlohmann::json& j, const test_result_t& val) {
-    j["timestamp"] = time(nullptr);
+    j["timestamp"] = val.timestamp;
     j["success"] = val.success;
 }
 
