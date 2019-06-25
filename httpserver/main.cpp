@@ -109,7 +109,7 @@ static void init_logging(const fs::path& data_dir) {
     if (input->is_open()) {
         backend->add_stream(input);
     } else {
-        LOG(error) << "Could not open " << log_location;
+        LOKI_LOG(error) << "Could not open " << log_location;
     }
 
     // Flush after every log
@@ -128,7 +128,7 @@ static void init_logging(const fs::path& data_dir) {
         << logging::expressions::attr<std::string>("Func") << ")]\t"
         << logging::expressions::smessage);
     core->add_sink(sink);
-    LOG(info)
+    LOKI_LOG(info)
         << std::endl
         << "**************************************************************"
         << std::endl
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
 
         logging::trivial::severity_level logLevel;
         if (!parseLogLevel(log_level_string, logLevel)) {
-            LOG(error) << "Incorrect log level" << log_level_string;
+            LOKI_LOG(error) << "Incorrect log level" << log_level_string;
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -205,25 +205,25 @@ int main(int argc, char* argv[]) {
         // TODO: consider adding auto-flushing for logging
         logging::core::get()->set_filter(logging::trivial::severity >=
                                          logLevel);
-        LOG(info) << "Setting log level to " << log_level_string;
+        LOKI_LOG(info) << "Setting log level to " << log_level_string;
 
-        LOG(info) << "Setting database location to " << data_dir_str;
+        LOKI_LOG(info) << "Setting database location to " << data_dir_str;
 
         if (vm.count("lokid-key")) {
-            LOG(info) << "Setting Lokid key path to " << lokid_key_path;
+            LOKI_LOG(info) << "Setting Lokid key path to " << lokid_key_path;
         }
 
         if (vm.count("lokid-rpc-port")) {
-            LOG(info) << "Setting lokid RPC port to " << lokid_rpc_port;
+            LOKI_LOG(info) << "Setting lokid RPC port to " << lokid_rpc_port;
         }
 
-        LOG(info) << "Listening at address " << ip << " port " << port;
+        LOKI_LOG(info) << "Listening at address " << ip << " port " << port;
 
         boost::asio::io_context ioc{1};
         boost::asio::io_context worker_ioc{1};
 
         if (sodium_init() != 0) {
-            LOG(fatal) << "Could not initialize libsodium";
+            LOKI_LOG(fatal) << "Could not initialize libsodium";
             return EXIT_FAILURE;
         }
 
@@ -250,10 +250,10 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        LOG(fatal) << "Exception caught in main: " << e.what();
+        LOKI_LOG(fatal) << "Exception caught in main: " << e.what();
         return EXIT_FAILURE;
     } catch (...) {
-        LOG(fatal) << "Unknown exception caught in main.";
+        LOKI_LOG(fatal) << "Unknown exception caught in main.";
         return EXIT_FAILURE;
     }
 }

@@ -169,14 +169,14 @@ bool Database::get_message_count(uint64_t& count) {
             count = sqlite3_column_int64(get_row_count_stmt, 0);
             success = true;
         } else {
-            LOG(error) << "Could not execute `count` db statement";
+            LOKI_LOG(error) << "Could not execute `count` db statement";
             break;
         }
     }
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOG(error) << "sqlite reset error: " << rc;
+        LOKI_LOG(error) << "sqlite reset error: " << rc;
         success = false;
     }
 
@@ -220,14 +220,15 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
             success = true;
             break;
         } else {
-            LOG(error) << "Could not execute `retrieve by index` db statement";
+            LOKI_LOG(error)
+                << "Could not execute `retrieve by index` db statement";
             break;
         }
     }
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOG(error) << "sqlite reset error: " << rc;
+        LOKI_LOG(error) << "sqlite reset error: " << rc;
         success = false;
     }
 
@@ -251,7 +252,7 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
             success = true;
             break;
         } else {
-            LOG(error)
+            LOKI_LOG(error)
                 << "Could not execute `retrieve by hash` db statement, ec: "
                 << rc;
             break;
@@ -260,7 +261,7 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
 
     rc = sqlite3_reset(get_by_hash_stmt);
     if (rc != SQLITE_OK) {
-        LOG(error) << "sqlite reset error: " << rc;
+        LOKI_LOG(error) << "sqlite reset error: " << rc;
         success = false;
     }
 
@@ -299,14 +300,15 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             result = true;
             break;
         } else {
-            LOG(error) << "Could not execute `store` db statement, ec: " << rc;
+            LOKI_LOG(error)
+                << "Could not execute `store` db statement, ec: " << rc;
             break;
         }
     }
 
     rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        LOG(error) << "sqlite reset error: " << rc;
+        LOKI_LOG(error) << "sqlite reset error: " << rc;
     }
     return result;
 }
@@ -363,15 +365,15 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
             auto item = extract_item(stmt);
             items.push_back(std::move(item));
         } else {
-            LOG(error) << "Could not execute `retrieve` db statement, ec: "
-                       << rc;
+            LOKI_LOG(error)
+                << "Could not execute `retrieve` db statement, ec: " << rc;
             break;
         }
     }
 
     int rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        LOG(error) << "sqlite reset error: " << rc;
+        LOKI_LOG(error) << "sqlite reset error: " << rc;
         success = false;
     }
     return success;

@@ -5,13 +5,14 @@
 #include <string>
 #include <vector>
 
+#include <boost/filesystem/path.hpp>
 #include <boost/log/attributes/mutable_constant.hpp>
 #include <boost/log/trivial.hpp>
 
 namespace logging = boost::log;
 
 // clang-format off
-#define LOG(lvl)\
+#define LOKI_LOG(lvl)\
     BOOST_LOG_STREAM_WITH_PARAMS(logging::trivial::logger::get(),\
         (set_get_attrib("File", get_filename(__FILE__))) \
         (set_get_attrib("Line", __LINE__)) \
@@ -29,8 +30,9 @@ ValueType set_get_attrib(const char* name, ValueType value) {
     return attr.get();
 }
 
-static std::string get_filename(std::string path) {
-    return path.substr(path.find_last_of("/\\") + 1);
+static std::string get_filename(const char* path_str) {
+    const boost::filesystem::path path(path_str);
+    return path.filename().string();
 }
 
 struct sn_record_t {
