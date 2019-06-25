@@ -10,11 +10,12 @@
 #include <boost/log/trivial.hpp>
 
 namespace logging = boost::log;
+namespace fs = boost::filesystem;
 
 // clang-format off
 #define LOKI_LOG(lvl)\
     BOOST_LOG_STREAM_WITH_PARAMS(logging::trivial::logger::get(),\
-        (set_get_attrib("File", get_filename(__FILE__))) \
+        (set_get_attrib("File", fs::path(__FILE__).filename().string())) \
         (set_get_attrib("Line", __LINE__)) \
         (set_get_attrib("Func", std::string(__FUNCTION__))) \
         (logging::keywords::severity = logging::trivial::lvl))
@@ -28,10 +29,6 @@ ValueType set_get_attrib(const char* name, ValueType value) {
         logging::core::get()->get_thread_attributes()[name]);
     attr.set(value);
     return attr.get();
-}
-
-static std::string get_filename(const boost::filesystem::path path) {
-    return path.filename().string();
 }
 
 struct sn_record_t {
