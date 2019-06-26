@@ -26,10 +26,11 @@ using namespace std::chrono_literals;
 namespace loki {
 using http_server::connection_t;
 
-constexpr std::array<std::chrono::seconds, 6> RETRY_INTERVALS = {
-    std::chrono::seconds(1),  std::chrono::seconds(5),
-    std::chrono::seconds(10), std::chrono::seconds(20),
-    std::chrono::seconds(40), std::chrono::seconds(80)};
+constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
+    std::chrono::seconds(1),   std::chrono::seconds(5),
+    std::chrono::seconds(10),  std::chrono::seconds(20),
+    std::chrono::seconds(40),  std::chrono::seconds(80),
+    std::chrono::seconds(160), std::chrono::seconds(320)};
 
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t sn,
                             const std::shared_ptr<request_t>& req,
