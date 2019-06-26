@@ -2,6 +2,7 @@
 #include "signature.h"
 
 #include <boost/log/trivial.hpp>
+#include <openssl/x509.h>
 
 #include <regex>
 
@@ -63,7 +64,7 @@ HttpsClientSession::HttpsClientSession(
       server_pub_key_b32z(sn_pubkey_b32z) {}
 
 void HttpsClientSession::on_connect() {
-    LOKI_LOG(trace) << "on connect";
+    LOKI_LOG(trace, "on connect");
     stream_.set_verify_mode(ssl::verify_none);
     stream_.set_verify_callback(
         [this](bool preverified, ssl::verify_context& ctx) -> bool {
