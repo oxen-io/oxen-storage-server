@@ -21,22 +21,22 @@ void generate_dh_pem(const char* dh_path) {
     const int generator = DH_GENERATOR_2;
     DH* dh = DH_new();
     if (dh == NULL) {
-        LOKI_LOG(error) << "Alloc for dh failed";
+        LOKI_LOG(error, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
-    LOKI_LOG(info) << "Generating DH parameter, this might take a while...";
+    LOKI_LOG(info, "Generating DH parameter, this might take a while...");
 
     const int res =
         DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
-        LOKI_LOG(error) << "Alloc for dh failed";
+        LOKI_LOG(error, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
 
-    LOKI_LOG(info) << "DH parameter done!";
+    LOKI_LOG(info, "DH parameter done!");
     FILE* pFile = NULL;
     pFile = fopen(dh_path, "wt");
     PEM_write_DHparams(pFile, dh);

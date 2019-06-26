@@ -21,9 +21,10 @@ void make_https_request(boost::asio::io_context& ioc,
         resolver.resolve(sn_address, std::to_string(port), ec);
 #endif
     if (ec) {
-        LOKI_LOG(error)
-            << "https: Failed to parse the IP address. Error code = "
-            << ec.value() << ". Message: " << ec.message();
+        LOKI_LOG(error,
+                 "https: Failed to parse the IP address. Error code = {}. "
+                 "Message: {}",
+                 ec.value(), ec.message());
         return;
     }
 
@@ -43,7 +44,7 @@ HttpsClientSession::HttpsClientSession(
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req) {}
 
 void HttpsClientSession::on_connect() {
-    LOKI_LOG(trace) << "on connect";
+    LOKI_LOG(trace, "on connect");
     stream_.async_handshake(ssl::stream_base::client,
                             std::bind(&HttpsClientSession::on_handshake,
                                       shared_from_this(),
@@ -52,10 +53,10 @@ void HttpsClientSession::on_connect() {
 
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
-        LOKI_LOG(error) << "handshake failed:" << ec.message();
-        LOKI_LOG(error) << stream_.lowest_layer().remote_endpoint().address()
-                        << ":"
-                        << stream_.lowest_layer().remote_endpoint().port();
+        LOKI_LOG(error, "handshake failed: {}", ec.message());
+        LOKI_LOG(error, "{}:{}",
+                 stream_.lowest_layer().remote_endpoint().address().to_string(),
+                 stream_.lowest_layer().remote_endpoint().port());
         return;
     }
 
@@ -67,16 +68,15 @@ void HttpsClientSession::on_handshake(boost::system::error_code ec) {
 
 void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
-    LOKI_LOG(trace) << "on write";
+    LOKI_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error) << "Error on write, ec: " << ec.value()
-                        << ". Message: " << ec.message();
+        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(),
+                 ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
 
-    LOKI_LOG(trace) << "Successfully transferred " << bytes_transferred
-                    << " bytes";
+    LOKI_LOG(trace, "Successfully transferred {} bytes.", bytes_transferred);
 
     // Receive the HTTP response
     http::async_read(stream_, buffer_, res_,
@@ -86,8 +86,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
 void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
-    LOKI_LOG(trace) << "Successfully received " << bytes_transferred
-                    << " bytes";
+    LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
     std::shared_ptr<std::string> body = nullptr;
 
@@ -103,8 +102,8 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
-        LOKI_LOG(error) << "Error on read: " << ec.value()
-                        << ". Message: " << ec.message();
+        LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+                 ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
     }
 
@@ -114,8 +113,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
 
-        LOKI_LOG(error) << "ec: " << ec.value()
-                        << ". Message: " << ec.message();
+        LOKI_LOG(error, "ec: {}. Message: {}", ec.value(), ec.message());
         return;
     }
 
@@ -127,7 +125,7 @@ void HttpsClientSession::start() {
     if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
-        LOKI_LOG(error) << ec.message();
+        LOKI_LOG(error, "{}", ec.message());
         return;
     }
     boost::asio::async_connect(
@@ -137,9 +135,10 @@ void HttpsClientSession::start() {
             /// TODO: I think I should just call again if ec ==
             /// EINTR
             if (ec) {
-                LOKI_LOG(error) << boost::format("Could not connect to %1%, "
-                                                 "message: %2% (%3%)") %
-                                       endpoint % ec.message() % ec.value();
+                std::ostringstream os;
+                os << endpoint;
+                LOKI_LOG(error, "Could not connect to {}, message: {} ({})",
+                         os.str(), ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
             }
@@ -152,11 +151,10 @@ void HttpsClientSession::start() {
         [self = shared_from_this()](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(error) << boost::format("Error(%1%): %2%\n") %
-                                           ec.value() % ec.message();
+                    LOKI_LOG(error, "Error({}): {}", ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(error) << "client socket timed out";
+                LOKI_LOG(error, "client socket timed out");
                 self->do_close();
             }
         });
@@ -183,8 +181,8 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     }
     if (ec) {
-        LOKI_LOG(error) << "could not shutdown stream gracefully: "
-                        << ec.message();
+        LOKI_LOG(error, "could not shutdown stream gracefully: {}",
+                 ec.message());
     }
 
     // If we get here then the connection is closed gracefully

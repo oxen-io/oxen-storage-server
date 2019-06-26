@@ -9,7 +9,7 @@ set(SOURCES
 
 add_library(utils STATIC ${SOURCES})
 
-set_property(TARGET utils PROPERTY CXX_STANDARD 11)
+set_property(TARGET utils PROPERTY CXX_STANDARD 14)
 
 target_include_directories(utils
     PUBLIC
