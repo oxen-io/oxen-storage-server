@@ -30,7 +30,6 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-
 namespace loki {
 using swarm_callback_t = std::function<void(const block_update_t&)>;
 

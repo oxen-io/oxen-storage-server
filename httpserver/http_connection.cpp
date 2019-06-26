@@ -889,7 +889,8 @@ void connection_t::process_retrieve(const json& params) {
 
 void connection_t::process_client_req() {
     std::string plain_text = request_.body();
-    const std::string client_ip = socket_.remote_endpoint().address().to_string();
+    const std::string client_ip =
+        socket_.remote_endpoint().address().to_string();
     if (rate_limiter_.should_rate_limit_client(client_ip)) {
         response_.result(http::status::too_many_requests);
         BOOST_LOG_TRIVIAL(error) << "Rate limiting client request.";

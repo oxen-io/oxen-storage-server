@@ -5,7 +5,6 @@
 #include <boost/log/trivial.hpp>
 #include <exception>
 
-
 namespace loki {
 using namespace storage;
 
@@ -316,8 +315,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
     return result;
 }
 
-bool Database::bulk_store(
-    const std::vector<Item>& items) {
+bool Database::bulk_store(const std::vector<Item>& items) {
     char* errmsg = 0;
     if (sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &errmsg) !=
         SQLITE_OK) {
@@ -382,4 +380,4 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     return success;
 }
 
-}
+} // namespace loki

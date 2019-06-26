@@ -31,8 +31,7 @@ class Database {
 
     bool bulk_store(const std::vector<storage::Item>& items);
 
-    bool retrieve(const std::string& key,
-                  std::vector<storage::Item>& items,
+    bool retrieve(const std::string& key, std::vector<storage::Item>& items,
                   const std::string& lastHash, int num_results = -1);
 
     // Return the total number of messages stored
@@ -43,8 +42,7 @@ class Database {
     bool retrieve_by_index(uint64_t index, storage::Item& item);
 
     // Get message by `msg_hash`, return true if found
-    bool retrieve_by_hash(const std::string& msg_hash,
-                          storage::Item& item);
+    bool retrieve_by_hash(const std::string& msg_hash, storage::Item& item);
 
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
@@ -66,4 +64,4 @@ class Database {
     boost::asio::steady_timer cleanup_timer_;
 };
 
-}
+} // namespace loki

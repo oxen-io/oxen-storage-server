@@ -153,9 +153,8 @@ class ServiceNode {
     /// used on push and on swarm bootstrapping
     void send_sn_request(const std::shared_ptr<request_t>& req,
                          const sn_record_t& address) const;
-    void
-    relay_messages(const std::vector<storage::Item>& messages,
-                   const std::vector<sn_record_t>& snodes) const;
+    void relay_messages(const std::vector<storage::Item>& messages,
+                        const std::vector<sn_record_t>& snodes) const;
 
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
@@ -240,8 +239,7 @@ class ServiceNode {
     bool is_snode_address_known(const std::string&);
 
     /// return all messages for a particular PK (in JSON)
-    bool get_all_messages(
-        std::vector<storage::Item>& all_entries) const;
+    bool get_all_messages(std::vector<storage::Item>& all_entries) const;
 
     // Return the current PoW difficulty
     int get_curr_pow_difficulty() const;
