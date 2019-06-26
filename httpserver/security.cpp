@@ -7,7 +7,7 @@
 #include <boost/beast/core/detail/base64.hpp>
 
 namespace loki {
-Security::Security(const lokid_key_pair_t& key_pair) : key_pair_(key_pair) {}
+Security::Security(const lokid_key_pair_t& key_pair, const boost::filesystem::path& base_path) : key_pair_(key_pair), base_path_(base_path) {}
 
 std::string Security::base64_sign(const std::string& body) {
     const auto hash = hash_data(body);
@@ -20,7 +20,10 @@ std::string Security::base64_sign(const std::string& body) {
 }
 
 void Security::generate_cert_signature() {
-    std::ifstream file("./cert.pem");
+    std::ifstream file((base_path_ / "cert.pem").string());
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not find cert.pem");
+    }
     std::string cert_pem((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
     const auto hash = hash_data(cert_pem);

@@ -232,7 +232,7 @@ int main(int argc, char* argv[]) {
                                        data_dir_str, lokid_client);
         RateLimiter rate_limiter;
 
-        loki::Security security(lokid_key_pair);
+        loki::Security security(lokid_key_pair, data_dir_str);
 
         /// Should run http server
         loki::http_server::run(ioc, ip, port, data_dir_str, service_node,

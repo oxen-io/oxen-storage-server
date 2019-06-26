@@ -15,6 +15,7 @@ set(HEADER_FILES
     https_client.h
     server_certificates.h
     stats.h
+    security.h
     )
 
 set(SRC_FILES

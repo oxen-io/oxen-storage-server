@@ -42,11 +42,20 @@ void make_https_request(boost::asio::io_context& ioc,
 
 static std::string x509_to_string(X509* x509) {
     BIO* bio_out = BIO_new(BIO_s_mem());
-    PEM_write_bio_X509(bio_out, x509);
+    if (!bio_out) {
+        LOKI_LOG(error, "Could not allocate openssl BIO");
+        return "";
+    }
+    if (!PEM_write_bio_X509(bio_out, x509)) {
+        LOKI_LOG(error, "Could not write x509 cert to openssl BIO");
+        return "";
+    }
     BUF_MEM* bio_buf;
     BIO_get_mem_ptr(bio_out, &bio_buf);
     std::string pem = std::string(bio_buf->data, bio_buf->length);
-    BIO_free(bio_out);
+    if (!BIO_free(bio_out)) {
+        LOKI_LOG(error, "Could not free openssl BIO");
+    }
     return pem;
 }
 
@@ -113,8 +122,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 bool HttpsClientSession::verify_signature() {
     const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
     if (it == res_.end()) {
-        BOOST_LOG_TRIVIAL(warning)
-            << "no signature found in header from " << server_pub_key_b32z;
+        LOKI_LOG(warn, "no signature found in header from {}", server_pub_key_b32z);
         return false;
     }
     // signature is expected to be base64 enoded
@@ -135,8 +143,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
             http::status_class::successful) {
 
             if (!verify_signature()) {
-                BOOST_LOG_TRIVIAL(error)
-                    << "Bad signature from " << server_pub_key_b32z;
+                LOKI_LOG(error, "Bad signature from {}", server_pub_key_b32z);
                 trigger_callback(SNodeError::ERROR_OTHER, nullptr);
                 return;
             }
