@@ -1,6 +1,8 @@
 #include "rate_limiter.h"
 
+#include <boost/chrono.hpp>
 #include <boost/test/unit_test.hpp>
+#include <boost/thread/thread.hpp>
 
 #include <chrono>
 
@@ -63,16 +65,17 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
-        BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier, now),
-                          false);
+        BOOST_CHECK_EQUAL(
+            rate_limiter.should_rate_limit_client(identifier, now), false);
     }
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier, now), true);
+    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier, now),
+                      true);
 
     // wait just enough to allow one more request
     const auto delta =
         std::chrono::milliseconds(1000 / RateLimiter::TOKEN_RATE);
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier, now + delta),
-                      false);
+    BOOST_CHECK_EQUAL(
+        rate_limiter.should_rate_limit_client(identifier, now + delta), false);
 }
 
 BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
@@ -84,7 +87,8 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
         const auto delta =
             std::chrono::milliseconds(i * 1000 / RateLimiter::TOKEN_RATE);
         BOOST_CHECK_EQUAL(
-            rate_limiter.should_rate_limit_client(identifier, now + delta), false);
+            rate_limiter.should_rate_limit_client(identifier, now + delta),
+            false);
     }
 }
 
@@ -94,14 +98,15 @@ BOOST_AUTO_TEST_CASE(it_handles_multiple_identifiers) {
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
-        BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier1, now),
-                          false);
+        BOOST_CHECK_EQUAL(
+            rate_limiter.should_rate_limit_client(identifier1, now), false);
     }
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier1, now), true);
+    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier1, now),
+                      true);
 
     // other id
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client("otheripaddress", now),
-                      false);
+    BOOST_CHECK_EQUAL(
+        rate_limiter.should_rate_limit_client("otheripaddress", now), false);
 }
 
 BOOST_AUTO_TEST_CASE(it_limits_too_many_unique_clients) {
@@ -109,12 +114,17 @@ BOOST_AUTO_TEST_CASE(it_limits_too_many_unique_clients) {
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::MAX_CLIENTS; ++i) {
-        BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(std::to_string(i), now),
-                          false);
+        rate_limiter.should_rate_limit_client(std::to_string(i), now);
     }
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(std::to_string(RateLimiter::MAX_CLIENTS + 1), now), true);
-    // Cleanup done
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(std::to_string(RateLimiter::MAX_CLIENTS + 1), now), false);
+    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(
+                          std::to_string(RateLimiter::MAX_CLIENTS + 1), now),
+                      true);
+    // Wait for buckets to be filled
+    boost::this_thread::sleep_for(
+        boost::chrono::milliseconds(1000 / RateLimiter::TOKEN_RATE));
+    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(
+                          std::to_string(RateLimiter::MAX_CLIENTS + 1), now),
+                      false);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

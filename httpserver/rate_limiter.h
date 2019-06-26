@@ -7,7 +7,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility> // for std::pair
-#include <vector>
 
 /// https://en.wikipedia.org/wiki/Token_bucket
 
@@ -33,8 +32,6 @@ class RateLimiter {
     using buffer_pair_t = std::pair<std::string, TokenBucket>;
 
     boost::circular_buffer<buffer_pair_t> buckets_{128};
-
-    std::vector<std::string> client_ips_{};
 
     std::unordered_map<std::string, TokenBucket> client_buckets_;
 

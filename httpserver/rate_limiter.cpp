@@ -58,7 +58,8 @@ bool RateLimiter::should_rate_limit(const std::string& identifier,
 }
 
 bool RateLimiter::should_rate_limit_client(const std::string& identifier) {
-    return should_rate_limit_client(identifier, std::chrono::steady_clock::now());
+    return should_rate_limit_client(identifier,
+                                    std::chrono::steady_clock::now());
 }
 
 bool RateLimiter::should_rate_limit_client(
@@ -77,16 +78,14 @@ bool RateLimiter::should_rate_limit_client(
         bucket.num_tokens--;
         bucket.last_time_point = now;
     } else {
-        if (client_ips_.size() >= MAX_CLIENTS) {
+        if (client_buckets_.size() >= MAX_CLIENTS) {
             clean_client_buckets();
         }
-        if (client_ips_.size() >= MAX_CLIENTS) {
+        if (client_buckets_.size() >= MAX_CLIENTS) {
             return true;
         }
         const TokenBucket bucket{BUCKET_SIZE - 1, now};
-        if (client_buckets_.insert({identifier, bucket}).second) {
-            client_ips_.push_back(identifier);
-        } else {
+        if (!client_buckets_.insert({identifier, bucket}).second) {
             BOOST_LOG_TRIVIAL(error)
                 << "Failed to insert new client rate limit bucket";
         }
@@ -98,24 +97,15 @@ bool RateLimiter::should_rate_limit_client(
 void RateLimiter::clean_client_buckets() {
 
     const auto now = std::chrono::steady_clock::now();
-    auto remove_it = std::partition(
-        client_ips_.begin(), client_ips_.end(), [this, now](const std::string& ip) {
-            const auto it = client_buckets_.find(ip);
-            if (it == client_buckets_.end()) {
-                assert("Client IP missing from rate limit map" == 0);
-                return false;
-            }
-            auto& bucket = it->second;
-            fill_bucket(bucket, now);
-            return bucket.num_tokens != BUCKET_SIZE;
-        });
+    auto it = client_buckets_.begin();
 
-    const auto remove_it_2 = remove_it;
-
-    while (remove_it != client_ips_.end()) {
-        client_buckets_.erase(*remove_it);
-        remove_it++;
+    while (it != client_buckets_.end()) {
+        auto& bucket = it->second;
+        fill_bucket(bucket, now);
+        if (bucket.num_tokens == BUCKET_SIZE) {
+            it = client_buckets_.erase(it);
+        } else {
+            ++it;
+        }
     }
-
-    client_ips_.erase(remove_it_2, client_ips_.end());
 }
