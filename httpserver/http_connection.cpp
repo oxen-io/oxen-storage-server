@@ -348,6 +348,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
         return;
     }
 #endif
+    
+    response_.set(LOKI_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
     if (target == "/swarms/push_batch/v1") {
 
