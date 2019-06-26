@@ -7,7 +7,8 @@ namespace loki {
 using http_callback_t = std::function<void(sn_response_t)>;
 
 void make_https_request(boost::asio::io_context& ioc, const std::string& ip,
-                        uint16_t port, const std::shared_ptr<request_t>& req,
+                        uint16_t port, const std::string& sn_pubkey_b32z,
+                        const std::shared_ptr<request_t>& req,
                         http_callback_t&& cb);
 
 class HttpsClientSession

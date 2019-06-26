@@ -4,14 +4,13 @@
 #include <boost/log/trivial.hpp>
 #include <openssl/x509.h>
 
-#include <regex>
-
 namespace loki {
 
 using error_code = boost::system::error_code;
 
 void make_https_request(boost::asio::io_context& ioc,
                         const std::string& sn_address, uint16_t port,
+                        const std::string& sn_pubkey_b32z,
                         const std::shared_ptr<request_t>& req,
                         http_callback_t&& cb) {
 
@@ -31,9 +30,6 @@ void make_https_request(boost::asio::io_context& ioc,
                  ec.value(), ec.message());
         return;
     }
-
-    const std::string sn_pubkey_b32z =
-        std::regex_replace(sn_address, std::regex("\\.snode"), "");
 
     static ssl::context ctx{ssl::context::tlsv12_client};
 
