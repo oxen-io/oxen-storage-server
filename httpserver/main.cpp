@@ -38,11 +38,16 @@ namespace logging = boost::log;
 
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;
+
+// clang-format off
 static const LogLevelMap logLevelMap{
-    {"trace", spdlog::level::trace}, {"debug", spdlog::level::debug},
-    {"info", spdlog::level::info},   {"warning", spdlog::level::warn},
+    {"trace", spdlog::level::trace},
+    {"debug", spdlog::level::debug},
+    {"info", spdlog::level::info},
+    {"warning", spdlog::level::warn},
     {"error", spdlog::level::err},
 };
+// clang-format on
 
 static void print_usage(const po::options_description& desc, char* argv[]) {
 
