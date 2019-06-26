@@ -1,6 +1,10 @@
 #include "rate_limiter.h"
 
 #include <algorithm>
+#include <assert.h>
+#include <random>
+
+#include <boost/log/trivial.hpp>
 
 constexpr uint32_t RateLimiter::BUCKET_SIZE;
 constexpr uint32_t RateLimiter::TOKEN_RATE;
@@ -51,4 +55,57 @@ bool RateLimiter::should_rate_limit(const std::string& identifier,
     }
 
     return false;
+}
+
+bool RateLimiter::should_rate_limit_client(const std::string& identifier) {
+    return should_rate_limit_client(identifier,
+                                    std::chrono::steady_clock::now());
+}
+
+bool RateLimiter::should_rate_limit_client(
+    const std::string& identifier, std::chrono::steady_clock::time_point now) {
+
+    const auto it = client_buckets_.find(identifier);
+    if (it != client_buckets_.end()) {
+        auto& bucket = it->second;
+
+        fill_bucket(bucket, now);
+
+        if (bucket.num_tokens == 0) {
+            return true;
+        }
+
+        bucket.num_tokens--;
+        bucket.last_time_point = now;
+    } else {
+        if (client_buckets_.size() >= MAX_CLIENTS) {
+            clean_client_buckets();
+        }
+        if (client_buckets_.size() >= MAX_CLIENTS) {
+            return true;
+        }
+        const TokenBucket bucket{BUCKET_SIZE - 1, now};
+        if (!client_buckets_.insert({identifier, bucket}).second) {
+            BOOST_LOG_TRIVIAL(error)
+                << "Failed to insert new client rate limit bucket";
+        }
+    }
+
+    return false;
+}
+
+void RateLimiter::clean_client_buckets() {
+
+    const auto now = std::chrono::steady_clock::now();
+    auto it = client_buckets_.begin();
+
+    while (it != client_buckets_.end()) {
+        auto& bucket = it->second;
+        fill_bucket(bucket, now);
+        if (bucket.num_tokens == BUCKET_SIZE) {
+            it = client_buckets_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
