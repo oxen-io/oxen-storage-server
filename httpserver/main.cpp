@@ -7,9 +7,10 @@
 #include "swarm.h"
 #include "version.h"
 
-#include "spdlog/sinks/rotating_file_sink.h"
+// clang-format off
 #include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/spdlog.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+// clang-format on
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
