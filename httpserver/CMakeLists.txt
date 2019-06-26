@@ -26,6 +26,7 @@ set(SRC_FILES
     rate_limiter.cpp
     https_client.cpp
     stats.cpp
+    security.cpp
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})

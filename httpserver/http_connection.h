@@ -34,7 +34,7 @@ namespace loki {
 using swarm_callback_t = std::function<void(const block_update_t&)>;
 
 struct message_t;
-struct lokid_key_pair_t;
+struct Security;
 
 namespace storage {
 struct Item;
@@ -139,6 +139,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // The buffer for performing reads.
     boost::beast::flat_buffer buffer_{8192};
     ssl::stream<tcp::socket&> stream_;
+    const Security& security_;
 
     // The request message.
     request_t request_;
@@ -186,7 +187,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                  tcp::socket socket, ServiceNode& sn,
                  ChannelEncryption<std::string>& channel_encryption,
-                 RateLimiter& rate_limiter);
+                 RateLimiter& rate_limiter, const Security& security);
 
     ~connection_t();
 
@@ -259,7 +260,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
          const boost::filesystem::path& base_path, ServiceNode& sn,
          ChannelEncryption<std::string>& channelEncryption,
-         RateLimiter& rate_limiter);
+         RateLimiter& rate_limiter, Security&);
 
 } // namespace http_server
 

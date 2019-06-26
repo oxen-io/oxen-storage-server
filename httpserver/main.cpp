@@ -3,6 +3,7 @@
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "rate_limiter.h"
+#include "security.h"
 #include "service_node.h"
 #include "swarm.h"
 #include "version.h"
@@ -226,9 +227,11 @@ int main(int argc, char* argv[]) {
                                        data_dir_str, lokid_client);
         RateLimiter rate_limiter;
 
+        loki::Security security(lokid_key_pair);
+
         /// Should run http server
         loki::http_server::run(ioc, ip, port, data_dir_str, service_node,
-                               channel_encryption, rate_limiter);
+                               channel_encryption, rate_limiter, security);
 
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,

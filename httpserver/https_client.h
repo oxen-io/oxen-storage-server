@@ -21,6 +21,9 @@ class HttpsClientSession
     http_callback_t callback_;
     boost::asio::steady_timer deadline_timer_;
 
+    // keep the cert in memory for post-handshake verification
+    std::string server_cert_;
+
     ssl::stream<tcp::socket> stream_;
     boost::beast::flat_buffer buffer_;
     /// NOTE: this needs to be a shared pointer since
@@ -28,6 +31,7 @@ class HttpsClientSession
     /// sent to multiple snodes
     std::shared_ptr<request_t> req_;
     response_t res_;
+    std::string server_pub_key_b32z;
 
     bool used_callback_ = false;
 
@@ -41,6 +45,7 @@ class HttpsClientSession
                           std::shared_ptr<std::string>&& body);
 
     void on_handshake(boost::system::error_code ec);
+    bool verify_signature();
 
     void do_close();
     void on_shutdown(boost::system::error_code ec);
@@ -50,7 +55,7 @@ class HttpsClientSession
     HttpsClientSession(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                        tcp::resolver::results_type resolve_results,
                        const std::shared_ptr<request_t>& req,
-                       http_callback_t&& cb);
+                       http_callback_t&& cb, const std::string& sn_pubkey_b32z);
 
     // initiate the client connection
     void start();
