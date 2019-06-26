@@ -13,8 +13,8 @@
 class RateLimiter {
   public:
     // TODO: make those two constants command line parameters?
-    constexpr static uint32_t BUCKET_SIZE = 50;
-    constexpr static uint32_t TOKEN_RATE = 50;
+    constexpr static uint32_t BUCKET_SIZE = 600;
+    constexpr static uint32_t TOKEN_RATE = 300;
     constexpr static uint32_t MAX_CLIENTS = 10000;
 
     bool should_rate_limit(const std::string& identifier,
