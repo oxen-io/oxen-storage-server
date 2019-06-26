@@ -14,6 +14,8 @@
 
 using loki::storage::Item;
 
+using namespace loki;
+
 struct StorageRAIIFixture {
     StorageRAIIFixture() {
         if (boost::filesystem::remove("storage.db")) {
