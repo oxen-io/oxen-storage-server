@@ -15,6 +15,8 @@ struct sqlite3;
 struct sqlite3_stmt;
 class Timer;
 
+namespace loki {
+
 class Database {
   public:
     Database(boost::asio::io_context& ioc, const std::string& db_path);
@@ -27,10 +29,9 @@ class Database {
                const std::string& nonce,
                DuplicateHandling behaviour = DuplicateHandling::FAIL);
 
-    bool bulk_store(const std::vector<service_node::storage::Item>& items);
+    bool bulk_store(const std::vector<storage::Item>& items);
 
-    bool retrieve(const std::string& key,
-                  std::vector<service_node::storage::Item>& items,
+    bool retrieve(const std::string& key, std::vector<storage::Item>& items,
                   const std::string& lastHash, int num_results = -1);
 
     // Return the total number of messages stored
@@ -38,11 +39,10 @@ class Database {
 
     // Get message by `index` (must be smaller than the result of
     // `get_message_count`).
-    bool retrieve_by_index(uint64_t index, service_node::storage::Item& item);
+    bool retrieve_by_index(uint64_t index, storage::Item& item);
 
     // Get message by `msg_hash`, return true if found
-    bool retrieve_by_hash(const std::string& msg_hash,
-                          service_node::storage::Item& item);
+    bool retrieve_by_hash(const std::string& msg_hash, storage::Item& item);
 
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
@@ -63,3 +63,5 @@ class Database {
 
     boost::asio::steady_timer cleanup_timer_;
 };
+
+} // namespace loki

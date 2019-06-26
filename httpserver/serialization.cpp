@@ -8,7 +8,7 @@
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 
-using service_node::storage::Item;
+using loki::storage::Item;
 
 namespace loki {
 

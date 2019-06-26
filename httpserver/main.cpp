@@ -7,9 +7,9 @@
 #include "swarm.h"
 #include "version.h"
 
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
@@ -30,7 +30,6 @@
 #include <utility> // for std::pair
 #include <vector>
 
-using namespace service_node;
 namespace fs = boost::filesystem;
 namespace po = boost::program_options;
 namespace logging = boost::log;
@@ -38,10 +37,8 @@ namespace logging = boost::log;
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;
 static const LogLevelMap logLevelMap{
-    {"trace", spdlog::level::trace},
-    {"debug", spdlog::level::debug},
-    {"info", spdlog::level::info},
-    {"warning", spdlog::level::warn},
+    {"trace", spdlog::level::trace}, {"debug", spdlog::level::debug},
+    {"info", spdlog::level::info},   {"warning", spdlog::level::warn},
     {"error", spdlog::level::err},
 };
 
@@ -59,7 +56,8 @@ static void print_usage(const po::options_description& desc, char* argv[]) {
     }
 }
 
-static bool parse_log_level(const std::string& input, spdlog::level::level_enum & logLevel) {
+static bool parse_log_level(const std::string& input,
+                            spdlog::level::level_enum& logLevel) {
 
     const auto it = std::find_if(
         logLevelMap.begin(), logLevelMap.end(),
@@ -85,7 +83,8 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
-static void init_logging(const fs::path& data_dir, spdlog::level::level_enum log_level) {
+static void init_logging(const fs::path& data_dir,
+                         spdlog::level::level_enum log_level) {
 
     const std::string log_location = (data_dir / "storage.logs").string();
     // Log to disk output stream
