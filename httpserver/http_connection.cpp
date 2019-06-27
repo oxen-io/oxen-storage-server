@@ -457,6 +457,10 @@ void connection_t::process_request() {
     const auto target = request_.target();
     switch (request_.method()) {
     case http::verb::post:
+        if (!service_node_.snode_ready()) {
+            LOKI_LOG(error, "Ignoring post request: snode not ready");
+            break;
+        }
         if (target == "/storage_rpc/v1") {
             /// Store/load from clients
             LOKI_LOG(trace, "got /storage_rpc/v1");
