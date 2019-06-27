@@ -6,7 +6,6 @@
 
 #include <boost/endian/conversion.hpp>
 #include <boost/format.hpp>
-#include <boost/log/trivial.hpp>
 
 using loki::storage::Item;
 

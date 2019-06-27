@@ -3,7 +3,6 @@
 
 #include "service_node.h"
 
-#include <boost/log/trivial.hpp>
 #include <stdlib.h>
 
 namespace loki {

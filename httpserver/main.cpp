@@ -15,12 +15,6 @@
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/sinks/text_ostream_backend.hpp>
-#include <boost/log/support/date_time.hpp>
-#include <boost/log/trivial.hpp>
-#include <boost/log/utility/setup/common_attributes.hpp>
-#include <boost/log/utility/setup/file.hpp>
 #include <boost/program_options.hpp>
 #include <sodium.h>
 
@@ -34,7 +28,6 @@
 
 namespace fs = boost::filesystem;
 namespace po = boost::program_options;
-namespace logging = boost::log;
 
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;

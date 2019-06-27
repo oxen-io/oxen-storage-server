@@ -1,7 +1,6 @@
 #include "https_client.h"
 #include "signature.h"
 
-#include <boost/log/trivial.hpp>
 #include <openssl/x509.h>
 
 namespace loki {

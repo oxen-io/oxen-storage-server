@@ -6,26 +6,13 @@
 #include <vector>
 
 #include <boost/filesystem/path.hpp>
-#include <boost/log/attributes/mutable_constant.hpp>
-#include <boost/log/trivial.hpp>
 
 #include "spdlog/spdlog.h"
 
-namespace logging = boost::log;
 namespace fs = boost::filesystem;
 
 #define LOKI_LOG(LVL, ...)\
     spdlog::get("loki_logger")->LVL(__VA_ARGS__)
-
-// Set attribute and return the new value
-template <typename ValueType>
-ValueType set_get_attrib(const char* name, ValueType value) {
-    auto attr = logging::attribute_cast<
-        logging::attributes::mutable_constant<ValueType>>(
-        logging::core::get()->get_thread_attributes()[name]);
-    attr.set(value);
-    return attr.get();
-}
 
 struct sn_record_t {
 
