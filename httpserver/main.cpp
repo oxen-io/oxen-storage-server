@@ -136,6 +136,7 @@ int main(int argc, char* argv[]) {
         std::string data_dir_str = data_dir.string();
         std::string log_level_string("info");
         bool print_version = false;
+        bool force_start = false;
         uint16_t lokid_rpc_port = 22023;
 
         po::options_description desc;
@@ -146,6 +147,7 @@ int main(int argc, char* argv[]) {
             ("log-level", po::value(&log_level_string), "Log verbosity level, see Log Levels below for accepted values")
             ("version,v", po::bool_switch(&print_version), "Print the version of this binary")
             ("lokid-rpc-port", po::value(&lokid_rpc_port), "RPC port on which the local Loki daemon is listening");
+            ("force-start", po::bool_switch(&force_start), "Ignore the initialisation ready check");
         // clang-format on
 
         po::variables_map vm;

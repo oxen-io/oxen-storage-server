@@ -219,6 +219,13 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     });
 }
 
+bool ServiceNode::snode_ready() {
+    bool ready = true;
+    ready = ready && hardfork_ >= STORAGE_SERVER_HARDFORK;
+    ready = ready && swarm_;
+    return ready;
+}
+
 ServiceNode::~ServiceNode() {
     worker_ioc_.stop();
     worker_thread_.join();
@@ -386,6 +393,8 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         swarm_ = std::make_unique<Swarm>(our_address_);
     }
 
+    hardfork_ = bu.hardfork;
+
     if (bu.block_hash != block_hash_) {
 
         LOKI_LOG(debug, "new block, height: {}, hash: {}", bu.height,
@@ -475,6 +484,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
 
         bu.height = body.at("result").at("height").get<uint64_t>();
         bu.block_hash = body.at("result").at("block_hash").get<std::string>();
+        bu.hardfork = body.at("result").at("hardfork").get<int>();
 
     } catch (...) {
         LOKI_LOG(error, "Bad lokid rpc response: invalid json");
@@ -499,10 +509,20 @@ void ServiceNode::swarm_timer_tick() {
     LOKI_LOG(trace, "UPDATING SWARMS: begin");
 
     json params;
-    params["service_node_pubkeys"] = json::array();
+    json fields;
+
+    fields["service_node_pubkey"] = true;
+    fields["swarm_id"] = true;
+    fields["storage_port"] = true;
+    fields["public_ip"] = true;
+    fields["height"] = true;
+    fields["block_hash"] = true;
+    fields["hardfork"] = true;
+
+    params["fields"] = fields;
 
     lokid_client_.make_lokid_request(
-        "get_service_nodes", params,
+        "get_n_service_nodes", params,
         [cb = std::move(cb)](const sn_response_t&& res) {
             if (res.error_code == SNodeError::NO_ERROR) {
                 parse_swarm_update(res.body, std::move(cb));

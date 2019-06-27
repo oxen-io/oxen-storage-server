@@ -27,6 +27,7 @@ struct block_update_t {
     all_swarms_t swarms;
     uint64_t height;
     std::string block_hash;
+    int hardfork;
 };
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,

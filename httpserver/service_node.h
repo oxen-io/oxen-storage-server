@@ -22,6 +22,7 @@
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
+static constexpr int STORAGE_SERVER_HARDFORK = 12;
 
 class Database;
 
@@ -100,6 +101,7 @@ class ServiceNode {
     pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
+    int hardfork_ = 0;
     uint64_t block_height_ = 0;
     const LokidClient& lokid_client_;
     std::string block_hash_;
@@ -200,6 +202,9 @@ class ServiceNode {
     ~ServiceNode();
 
     mutable all_stats_t all_stats_;
+
+    // Return true if the service node is ready to start running
+    bool snode_ready();
 
     // Register a connection as waiting for new data for pk
     void register_listener(const std::string& pk,
