@@ -458,8 +458,14 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
 static void
 parse_swarm_update(const std::shared_ptr<std::string>& response_body,
                    const swarm_callback_t&& cb) {
+
+    if (!response_body) {
+        LOKI_LOG(error, "Bad lokid rpc response: no response body");
+        return;
+    }
     const json body = json::parse(*response_body, nullptr, false);
     if (body.is_discarded()) {
+        LOKI_LOG(trace, "Response body: {}", *response_body);
         LOKI_LOG(error, "Bad lokid rpc response: invalid json");
         return;
     }
@@ -492,7 +498,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
         bu.hardfork = body.at("result").at("hardfork").get<int>();
 
     } catch (...) {
-        LOKI_LOG(error, "Bad lokid rpc response: invalid json");
+        LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
+        LOKI_LOG(error, "Bad lokid rpc response: invalid json fields");
         return;
     }
 
