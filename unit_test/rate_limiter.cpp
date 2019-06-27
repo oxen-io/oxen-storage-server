@@ -21,7 +21,7 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 
     // wait just enough to allow one more request
     const auto delta =
-        std::chrono::milliseconds(1000 / RateLimiter::TOKEN_RATE);
+        std::chrono::microseconds(1'000'000ul / RateLimiter::TOKEN_RATE);
     BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit(identifier, now + delta),
                       false);
 }
@@ -33,7 +33,7 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
     // make requests at the same rate as the bucket is filling up
     for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
         const auto delta =
-            std::chrono::milliseconds(i * 1000 / RateLimiter::TOKEN_RATE);
+            std::chrono::microseconds(i * 1'000'000ul / RateLimiter::TOKEN_RATE);
         BOOST_CHECK_EQUAL(
             rate_limiter.should_rate_limit(identifier, now + delta), false);
     }
@@ -73,7 +73,7 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 
     // wait just enough to allow one more request
     const auto delta =
-        std::chrono::milliseconds(1000 / RateLimiter::TOKEN_RATE);
+        std::chrono::microseconds(1'000'000ul / RateLimiter::TOKEN_RATE);
     BOOST_CHECK_EQUAL(
         rate_limiter.should_rate_limit_client(identifier, now + delta), false);
 }
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
     // make requests at the same rate as the bucket is filling up
     for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
         const auto delta =
-            std::chrono::milliseconds(i * 1000 / RateLimiter::TOKEN_RATE);
+            std::chrono::microseconds(i * 1'000'000ul / RateLimiter::TOKEN_RATE);
         BOOST_CHECK_EQUAL(
             rate_limiter.should_rate_limit_client(identifier, now + delta),
             false);
@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(it_limits_too_many_unique_clients) {
                       true);
     // Wait for buckets to be filled
     boost::this_thread::sleep_for(
-        boost::chrono::milliseconds(1000 / RateLimiter::TOKEN_RATE));
+        boost::chrono::microseconds(1'000'000ul / RateLimiter::TOKEN_RATE));
     BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(
                           std::to_string(RateLimiter::MAX_CLIENTS + 1), now),
                       false);
