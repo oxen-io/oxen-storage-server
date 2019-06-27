@@ -187,12 +187,13 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          const loki::lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
-                         LokidClient& lokid_client)
+                         LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client) {
+      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -223,7 +224,7 @@ bool ServiceNode::snode_ready() {
     bool ready = true;
     ready = ready && hardfork_ >= STORAGE_SERVER_HARDFORK;
     ready = ready && swarm_;
-    return ready;
+    return ready || force_start_;
 }
 
 ServiceNode::~ServiceNode() {
@@ -423,6 +424,9 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     const SwarmEvents events = swarm_->update_swarms(bu.swarms);
 
+    if (!snode_ready()) {
+        return;
+    }
     if (!events.new_snodes.empty()) {
         bootstrap_peers(events.new_snodes);
     }

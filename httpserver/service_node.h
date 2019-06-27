@@ -101,6 +101,7 @@ class ServiceNode {
     pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
+    bool force_start_ = false;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
     const LokidClient& lokid_client_;
@@ -197,7 +198,8 @@ class ServiceNode {
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, LokidClient& lokid_client);
+                const std::string& db_location, LokidClient& lokid_client,
+                const bool force_start);
 
     ~ServiceNode();
 
