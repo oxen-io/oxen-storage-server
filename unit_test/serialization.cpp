@@ -1,9 +1,6 @@
 #include "serialization.h"
 #include "service_node.h"
 
-#include <boost/log/core.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/trivial.hpp>
 #include <boost/test/unit_test.hpp>
 
 #include <string>
@@ -13,9 +10,6 @@ using namespace loki;
 BOOST_AUTO_TEST_SUITE(serialization)
 
 BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
-    boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >=
-        boost::log::trivial::severity_level::info);
 
     const auto pub_key =
         "054368520005786b249bcd461d28f75e560ea794014eeb17fcf6003f37d876783e";

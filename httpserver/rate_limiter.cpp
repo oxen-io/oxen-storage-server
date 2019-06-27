@@ -1,12 +1,10 @@
 #include "rate_limiter.h"
 
+#include "../common/src/common.h"
+
 #include <algorithm>
 #include <assert.h>
 #include <random>
-
-#include "../common/src/common.h"
-
-#include <boost/log/trivial.hpp>
 
 constexpr uint32_t RateLimiter::BUCKET_SIZE;
 constexpr uint32_t RateLimiter::TOKEN_RATE;

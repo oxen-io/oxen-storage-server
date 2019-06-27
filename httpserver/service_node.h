@@ -10,7 +10,6 @@
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
-#include <boost/log/trivial.hpp>
 #include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 

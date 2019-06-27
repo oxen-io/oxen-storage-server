@@ -17,7 +17,6 @@
 
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
-#include <boost/log/trivial.hpp>
 
 using json = nlohmann::json;
 using loki::storage::Item;

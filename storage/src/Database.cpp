@@ -2,7 +2,6 @@
 #include "utils.hpp"
 
 #include "sqlite3.h"
-#include <boost/log/trivial.hpp>
 #include <exception>
 
 namespace loki {
