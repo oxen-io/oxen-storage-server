@@ -904,7 +904,7 @@ void connection_t::process_client_req() {
         socket_.remote_endpoint().address().to_string();
     if (rate_limiter_.should_rate_limit_client(client_ip)) {
         response_.result(http::status::too_many_requests);
-        BOOST_LOG_TRIVIAL(error) << "Rate limiting client request.";
+        LOKI_LOG(error, "Rate limiting client request.");
         return;
     }
 

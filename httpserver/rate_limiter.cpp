@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <random>
 
+#include "../common/src/common.h"
+
 #include <boost/log/trivial.hpp>
 
 constexpr uint32_t RateLimiter::BUCKET_SIZE;
@@ -86,8 +88,7 @@ bool RateLimiter::should_rate_limit_client(
         }
         const TokenBucket bucket{BUCKET_SIZE - 1, now};
         if (!client_buckets_.insert({identifier, bucket}).second) {
-            BOOST_LOG_TRIVIAL(error)
-                << "Failed to insert new client rate limit bucket";
+            LOKI_LOG(error, "Failed to insert new client rate limit bucket");
         }
     }
 

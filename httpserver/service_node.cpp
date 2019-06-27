@@ -553,7 +553,24 @@ void ServiceNode::lokid_ping_timer_tick() {
 
     auto cb = [](const sn_response_t&& res) {
         if (res.error_code == SNodeError::NO_ERROR) {
-            LOKI_LOG(info, "Successfully pinged lokid");
+
+            if (!res.body) {
+                LOKI_LOG(error, "Empty body on Lokid ping");
+                return;
+            }
+
+            try {
+                json res_json = json::parse(*res.body);
+
+                if (res_json.at("result").at("status").get<std::string>() == "OK") {
+                    LOKI_LOG(info, "Successfully pinged lokid");
+                } else {
+                    LOKI_LOG(info, "PING status is NOT OK");
+                }
+            } catch(...) {
+                LOKI_LOG(error, "Bad json");
+            }
+
         } else {
             LOKI_LOG(warn, "Could not ping lokid");
         }
