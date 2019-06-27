@@ -34,7 +34,6 @@ filesystem
 chrono
 thread
 unit_test_framework
-log
 )
 
 set_property(TARGET Test PROPERTY CXX_STANDARD 14)
