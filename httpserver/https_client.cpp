@@ -1,6 +1,8 @@
 #include "https_client.h"
+#include "signature.h"
 
 #include <boost/log/trivial.hpp>
+#include <openssl/x509.h>
 
 namespace loki {
 
@@ -8,6 +10,7 @@ using error_code = boost::system::error_code;
 
 void make_https_request(boost::asio::io_context& ioc,
                         const std::string& sn_address, uint16_t port,
+                        const std::string& sn_pubkey_b32z,
                         const std::shared_ptr<request_t>& req,
                         http_callback_t&& cb) {
 
@@ -31,20 +34,52 @@ void make_https_request(boost::asio::io_context& ioc,
     static ssl::context ctx{ssl::context::tlsv12_client};
 
     auto session = std::make_shared<HttpsClientSession>(
-        ioc, ctx, std::move(resolve_results), req, std::move(cb));
+        ioc, ctx, std::move(resolve_results), req, std::move(cb),
+        sn_pubkey_b32z);
 
     session->start();
+}
+
+static std::string x509_to_string(X509* x509) {
+    BIO* bio_out = BIO_new(BIO_s_mem());
+    if (!bio_out) {
+        LOKI_LOG(error, "Could not allocate openssl BIO");
+        return "";
+    }
+    if (!PEM_write_bio_X509(bio_out, x509)) {
+        LOKI_LOG(error, "Could not write x509 cert to openssl BIO");
+        return "";
+    }
+    BUF_MEM* bio_buf;
+    BIO_get_mem_ptr(bio_out, &bio_buf);
+    std::string pem = std::string(bio_buf->data, bio_buf->length);
+    if (!BIO_free(bio_out)) {
+        LOKI_LOG(error, "Could not free openssl BIO");
+    }
+    return pem;
 }
 
 HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results,
-    const std::shared_ptr<request_t>& req, http_callback_t&& cb)
+    const std::shared_ptr<request_t>& req, http_callback_t&& cb,
+    const std::string& sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
-      callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req) {}
+      callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
+      server_pub_key_b32z(sn_pubkey_b32z) {}
 
 void HttpsClientSession::on_connect() {
     LOKI_LOG(trace, "on connect");
+    stream_.set_verify_mode(ssl::verify_none);
+    stream_.set_verify_callback(
+        [this](bool preverified, ssl::verify_context& ctx) -> bool {
+            if (!preverified) {
+                X509_STORE_CTX* handle = ctx.native_handle();
+                X509* x509 = X509_STORE_CTX_get0_cert(handle);
+                server_cert_ = x509_to_string(x509);
+            }
+            return true;
+        });
     stream_.async_handshake(ssl::stream_base::client,
                             std::bind(&HttpsClientSession::on_handshake,
                                       shared_from_this(),
@@ -84,6 +119,18 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
                                std::placeholders::_1, std::placeholders::_2));
 }
 
+bool HttpsClientSession::verify_signature() {
+    const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
+    if (it == res_.end()) {
+        LOKI_LOG(warn, "no signature found in header from {}", server_pub_key_b32z);
+        return false;
+    }
+    // signature is expected to be base64 enoded
+    const auto signature = it->value().to_string();
+    const auto hash = hash_data(server_cert_);
+    return check_signature(signature, hash, server_pub_key_b32z);
+}
+
 void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
@@ -94,8 +141,17 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         if (http::to_status_class(res_.result_int()) ==
             http::status_class::successful) {
+
+            if (!verify_signature()) {
+                LOKI_LOG(error, "Bad signature from {}", server_pub_key_b32z);
+                trigger_callback(SNodeError::ERROR_OTHER, nullptr);
+                return;
+            }
+
             body = std::make_shared<std::string>(res_.body());
             trigger_callback(SNodeError::NO_ERROR, std::move(body));
+        } else {
+            trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         }
 
     } else {

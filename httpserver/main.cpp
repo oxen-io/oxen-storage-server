@@ -3,6 +3,7 @@
 #include "http_connection.h"
 #include "lokid_key.h"
 #include "rate_limiter.h"
+#include "security.h"
 #include "service_node.h"
 #include "swarm.h"
 #include "version.h"
@@ -37,11 +38,16 @@ namespace logging = boost::log;
 
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;
+
+// clang-format off
 static const LogLevelMap logLevelMap{
-    {"trace", spdlog::level::trace}, {"debug", spdlog::level::debug},
-    {"info", spdlog::level::info},   {"warning", spdlog::level::warn},
+    {"trace", spdlog::level::trace},
+    {"debug", spdlog::level::debug},
+    {"info", spdlog::level::info},
+    {"warning", spdlog::level::warn},
     {"error", spdlog::level::err},
 };
+// clang-format on
 
 static void print_usage(const po::options_description& desc, char* argv[]) {
 
@@ -226,9 +232,11 @@ int main(int argc, char* argv[]) {
                                        data_dir_str, lokid_client);
         RateLimiter rate_limiter;
 
+        loki::Security security(lokid_key_pair, data_dir_str);
+
         /// Should run http server
         loki::http_server::run(ioc, ip, port, data_dir_str, service_node,
-                               channel_encryption, rate_limiter);
+                               channel_encryption, rate_limiter, security);
 
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,

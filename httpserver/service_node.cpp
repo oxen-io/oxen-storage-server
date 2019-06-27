@@ -32,11 +32,12 @@ constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     std::chrono::seconds(40),  std::chrono::seconds(80),
     std::chrono::seconds(160), std::chrono::seconds(320)};
 
-static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t sn,
+static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    return make_https_request(ioc, sn.ip(), sn.port(), req, std::move(cb));
+    return make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key(), req,
+                              std::move(cb));
 }
 
 std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {

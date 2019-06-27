@@ -3,6 +3,7 @@
 #include "Item.hpp"
 #include "channel_encryption.hpp"
 #include "rate_limiter.h"
+#include "security.h"
 #include "serialization.h"
 #include "server_certificates.h"
 #include "service_node.h"
@@ -130,27 +131,28 @@ accept_connection(boost::asio::io_context& ioc,
                   boost::asio::ssl::context& ssl_ctx, tcp::acceptor& acceptor,
                   ServiceNode& sn,
                   ChannelEncryption<std::string>& channel_encryption,
-                  RateLimiter& rate_limiter) {
+                  RateLimiter& rate_limiter, const Security& security) {
 
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         LOKI_LOG(trace, "connection accepted");
         if (!ec)
             std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
-                                           channel_encryption, rate_limiter)
+                                           channel_encryption, rate_limiter,
+                                           security)
                 ->start();
 
         if (ec)
             log_error(ec);
 
         accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                          rate_limiter);
+                          rate_limiter, security);
     });
 }
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
          const boost::filesystem::path& base_path, ServiceNode& sn,
          ChannelEncryption<std::string>& channel_encryption,
-         RateLimiter& rate_limiter) {
+         RateLimiter& rate_limiter, Security& security) {
 
     LOKI_LOG(trace, "http server run");
 
@@ -163,8 +165,10 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 
     load_server_certificate(base_path, ssl_ctx);
 
+    security.generate_cert_signature();
+
     accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                      rate_limiter);
+                      rate_limiter, security);
 
     ioc.run();
 }
@@ -174,12 +178,13 @@ void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
 connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                            tcp::socket socket, ServiceNode& sn,
                            ChannelEncryption<std::string>& channel_encryption,
-                           RateLimiter& rate_limiter)
+                           RateLimiter& rate_limiter, const Security& security)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
       stream_(socket_, ssl_ctx_), service_node_(sn),
       channel_cipher_(channel_encryption), rate_limiter_(rate_limiter),
       repeat_timer_(ioc), deadline_(ioc, SESSION_TIME_LIMIT),
-      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}) {
+      notification_ctx_({boost::asio::steady_timer{ioc}, boost::none}),
+      security_(security) {
 
     LOKI_LOG(trace, "connection_t");
     start_timestamp_ = std::chrono::steady_clock::now();
@@ -343,6 +348,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
         return;
     }
 #endif
+
+    response_.set(LOKI_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
     if (target == "/swarms/push_batch/v1") {
 
