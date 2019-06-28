@@ -18,7 +18,8 @@ struct signature {
 
 hash hash_data(const std::string& data);
 
-signature generate_signature(const hash& prefix_hash, const lokid_key_pair_t& key_pair);
+signature generate_signature(const hash& prefix_hash,
+                             const lokid_key_pair_t& key_pair);
 
 bool check_signature(const std::string& signature, const hash& hash,
                      const std::string& public_key_t_b32z);

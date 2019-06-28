@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string>
 
-namespace service_node {
+namespace loki {
 namespace storage {
 
 struct Item {
@@ -25,4 +25,4 @@ struct Item {
 
 } // namespace storage
 
-} // namespace service_node
+} // namespace loki

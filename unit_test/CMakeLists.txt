@@ -20,7 +20,11 @@ loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../crypto crypto)
 
 target_link_libraries(Test PRIVATE storage pow utils crypto)
-target_include_directories(Test PRIVATE ../httpserver)
+target_include_directories(Test
+    PRIVATE
+    ../httpserver
+    ${CMAKE_CURRENT_LIST_DIR}/../vendors/spdlog/include
+)
 
 # boost
 find_package(Boost
@@ -30,7 +34,6 @@ filesystem
 chrono
 thread
 unit_test_framework
-log
 )
 
 set_property(TARGET Test PROPERTY CXX_STANDARD 14)

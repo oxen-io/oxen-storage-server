@@ -1,14 +1,17 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <memory>
 
 #include "../external/json.hpp"
 #include <boost/asio.hpp>
+#include <boost/asio/ssl/stream.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
 #include "swarm.h"
@@ -22,26 +25,24 @@ class ChannelEncryption;
 class RateLimiter;
 
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
+namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-namespace service_node {
+namespace loki {
+using swarm_callback_t = std::function<void(const block_update_t&)>;
+
+struct message_t;
+struct Security;
+
 namespace storage {
 struct Item;
 }
-} // namespace service_node
 
-using service_node::storage::Item;
+using storage::Item;
 
-namespace loki {
-using swarm_callback_t = std::function<void(const block_update_t&)>;
-using str_body_callback_t = std::function<void(const std::string&)>;
-
-struct message_t;
-struct lokid_key_pair_t;
-
-enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH };
+enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 
 struct sn_response_t {
     SNodeError error_code;
@@ -60,19 +61,26 @@ struct bc_test_params_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
+class LokidClient {
+
+    const uint16_t lokid_rpc_port_;
+    const char* local_ip_ = "127.0.0.1";
+    boost::asio::io_context& ioc_;
+
+  public:
+    LokidClient(boost::asio::io_context& ioc, uint16_t port);
+    void make_lokid_request(boost::string_view method,
+                            const nlohmann::json& params,
+                            http_callback_t&& cb) const;
+};
+
+constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
+
 // TODO: the name should indicate that we are actually trying to send data
 // unlike in `make_post_request`
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
-
-void request_blockchain_test(boost::asio::io_context& ioc,
-                             uint16_t lokid_rpc_port,
-                             const loki::lokid_key_pair_t& keypair,
-                             bc_test_params_t params, str_body_callback_t&& cb);
-
-void request_swarm_update(boost::asio::io_context& ioc,
-                          const swarm_callback_t&& cb, uint16_t lokid_rpc_port);
 
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {
@@ -123,12 +131,15 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
   private:
     boost::asio::io_context& ioc_;
+    ssl::context& ssl_ctx_;
 
     // The socket for the currently connected client.
     tcp::socket socket_;
 
     // The buffer for performing reads.
     boost::beast::flat_buffer buffer_{8192};
+    ssl::stream<tcp::socket&> stream_;
+    const Security& security_;
 
     // The request message.
     request_t request_;
@@ -149,6 +160,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // The timer for repeating an action within one connection
     boost::asio::steady_timer repeat_timer_;
     int repetition_count_ = 0;
+    std::chrono::time_point<std::chrono::steady_clock> start_timestamp_;
 
     // The timer for putting a deadline on connection processing.
     boost::asio::steady_timer deadline_;
@@ -172,10 +184,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     } notification_ctx_;
 
   public:
-    connection_t(boost::asio::io_context& ioc, tcp::socket socket,
-                 ServiceNode& sn,
+    connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
+                 tcp::socket socket, ServiceNode& sn,
                  ChannelEncryption<std::string>& channel_encryption,
-                 RateLimiter& rate_limiter);
+                 RateLimiter& rate_limiter, const Security& security);
 
     ~connection_t();
 
@@ -188,8 +200,16 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void reset();
 
   private:
+    void do_handshake();
+    void on_handshake(boost::system::error_code ec);
     /// Asynchronously receive a complete request message.
     void read_request();
+
+    void do_close();
+    void on_shutdown(boost::system::error_code ec);
+
+    /// process GET /get_stats/v1
+    void on_get_stats();
 
     /// Check the database for new data, reschedule if empty
     void poll_db(const std::string& pk, const std::string& last_hash);
@@ -215,6 +235,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Syncronously (?) process client store/load requests
     void process_client_req();
 
+    void process_swarm_req(boost::string_view target);
+
     // Check whether we have spent enough time on this connection.
     void register_deadline();
 
@@ -236,8 +258,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 };
 
 void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
-         ServiceNode& sn, ChannelEncryption<std::string>& channelEncryption,
-         RateLimiter& rate_limiter);
+         const boost::filesystem::path& base_path, ServiceNode& sn,
+         ChannelEncryption<std::string>& channelEncryption,
+         RateLimiter& rate_limiter, Security&);
 
 } // namespace http_server
 

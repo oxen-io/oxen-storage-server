@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.0)
 
 add_definitions(-DDISABLE_ENCRYPTION)
+add_definitions(-DSPDLOG_COMPILED_LIB)
 
 project(httpserver)
 
@@ -10,7 +11,12 @@ set(HEADER_FILES
     service_node.h
     serialization.h
     rate_limiter.h
-    ../external/json.hpp)
+    ../external/json.hpp
+    https_client.h
+    server_certificates.h
+    stats.h
+    security.h
+    )
 
 set(SRC_FILES
     main.cpp
@@ -19,6 +25,9 @@ set(SRC_FILES
     service_node.cpp
     serialization.cpp
     rate_limiter.cpp
+    https_client.cpp
+    stats.cpp
+    security.cpp
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
@@ -31,17 +40,19 @@ find_package(OpenSSL REQUIRED)
 
 find_package(Boost
     REQUIRED
-    log
+    thread
     system
     filesystem
     program_options
 )
 
-target_link_libraries(httpserver PRIVATE OpenSSL::SSL)
+target_link_libraries(httpserver PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
+target_link_libraries(httpserver PRIVATE resolv)
 target_link_libraries(httpserver PRIVATE crypto)
+target_link_libraries(httpserver PRIVATE spdlog::spdlog)
 
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
 

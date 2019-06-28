@@ -3,13 +3,11 @@
 #include <string>
 #include <vector>
 
-namespace service_node {
+namespace loki {
+
 namespace storage {
 struct Item;
 }
-} // namespace service_node
-
-namespace loki {
 
 struct message_t;
 
