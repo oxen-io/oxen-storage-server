@@ -134,26 +134,37 @@ int main(int argc, char* argv[]) {
 
         std::string data_dir_str = data_dir.string();
         std::string log_level_string("info");
-        bool print_version = false;
         bool force_start = false;
         uint16_t lokid_rpc_port = 22023;
+        std::string ip;
+        uint16_t port;
 
-        po::options_description desc;
+        po::options_description all, desc, hidden;
         // clang-format off
         desc.add_options()
             ("lokid-key", po::value(&lokid_key_path), "Path to the Service Node key file")
             ("data-dir", po::value(&data_dir_str),"Path to persistent data")
             ("log-level", po::value(&log_level_string), "Log verbosity level, see Log Levels below for accepted values")
-            ("version,v", po::bool_switch(&print_version), "Print the version of this binary")
             ("lokid-rpc-port", po::value(&lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
-            ("force-start", po::bool_switch(&force_start), "Ignore the initialisation ready check");
+            ("force-start", po::bool_switch(&force_start), "Ignore the initialisation ready check")
+            ("version,v", "Print the version of this binary")
+            ("help", "Shows this help message");
+        hidden.add_options()
+            ("ip", po::value(&ip), "IP to listen on")
+            ("port", po::value(&port), "Port to listen on");
         // clang-format on
 
-        po::variables_map vm;
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        po::notify(vm);
+        all.add(desc).add(hidden);
+        po::positional_options_description pos_desc;
+        pos_desc.add("ip", 1);
+        pos_desc.add("port", 1);
 
-        if (argc < 2) {
+        po::variables_map vm;
+        try {
+            po::store(po::command_line_parser(argc, argv).options(all).positional(pos_desc).run(), vm);
+            po::notify(vm);
+        } catch (const boost::program_options::error &e) {
+            std::cerr << "Invalid options: " << e.what() << std::endl;
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -164,17 +175,19 @@ int main(int argc, char* argv[]) {
                   << std::endl
                   << " build time: " << STORAGE_SERVER_BUILD_TIME << std::endl;
 
-        if (print_version) {
+        if (vm.count("version")) {
             return EXIT_SUCCESS;
         }
 
-        if (argc < 3) {
+        if (vm.count("help")) {
+            print_usage(desc, argv);
+            return EXIT_SUCCESS;
+        }
+
+        if (!vm.count("ip") || !vm.count("port")) {
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
-
-        const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
-        std::string ip = argv[1];
 
         if (!fs::exists(data_dir_str)) {
             fs::create_directories(data_dir_str);
