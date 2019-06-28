@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
 
         spdlog::level::level_enum log_level;
         if (!parse_log_level(log_level_string, log_level)) {
-            LOKI_LOG(error, "Incorrect log level {}", log_level_string);
+            std::cerr << "Incorrect log level: " << log_level_string << std::endl;
             print_usage(desc, argv);
             return EXIT_FAILURE;
         }
@@ -236,10 +236,10 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        LOKI_LOG(error, "Exception caught in main: {}", e.what());
+        std::cerr << "Exception caught in main: " << e.what() << std::endl;
         return EXIT_FAILURE;
     } catch (...) {
-        LOKI_LOG(error, "Unknown exception caught in main.");
+        std::cerr << "Unknown exception caught in main." << std::endl;
         return EXIT_FAILURE;
     }
 }
