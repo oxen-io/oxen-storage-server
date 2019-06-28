@@ -858,8 +858,6 @@ void connection_t::poll_db(const std::string& pk,
             }
         });
 
-        LOKI_LOG(error, "just registered notification");
-
     } else {
 
         respond_with_messages(items);
