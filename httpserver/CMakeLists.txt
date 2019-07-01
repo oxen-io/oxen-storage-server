@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.0)
+cmake_minimum_required(VERSION 3.1)
 
 add_definitions(-DDISABLE_ENCRYPTION)
 add_definitions(-DSPDLOG_COMPILED_LIB)

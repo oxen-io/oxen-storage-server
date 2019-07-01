@@ -28,12 +28,12 @@ MKDIR := mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR)
 
 all:
 	$(MKDIR) && \
-	$(CMAKE) $(TOP_DIR) \
+	$(CMAKE) \
 		-DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) \
 		-DOPENSSL_USE_STATIC_LIBS=$(BUILD_STATIC) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 		-DBUILD_TESTS=$(BUILD_TESTS) \
-		-DOPENSSL_ROOT_DIR=$(OPENSSL_ROOT_DIR) \
+		$(TOP_DIR) \
 		&& cmake --build .
 
 integration-test:
