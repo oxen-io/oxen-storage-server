@@ -225,6 +225,7 @@ bool ServiceNode::snode_ready() {
     bool ready = true;
     ready = ready && hardfork_ >= STORAGE_SERVER_HARDFORK;
     ready = ready && swarm_;
+    ready = ready && !syncing_;
     return ready || force_start_;
 }
 
@@ -397,6 +398,10 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     hardfork_ = bu.hardfork;
 
+    if (syncing_ && bu.target_height != 0) {
+        syncing_ = bu.height < bu.target_height - 1;
+    }
+
     if (bu.block_hash != block_hash_) {
 
         LOKI_LOG(debug, "new block, height: {}, hash: {}", bu.height,
@@ -494,6 +499,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
         }
 
         bu.height = body.at("result").at("height").get<uint64_t>();
+        bu.target_height = body.at("result").at("target_height").get<uint64_t>();
         bu.block_hash = body.at("result").at("block_hash").get<std::string>();
         bu.hardfork = body.at("result").at("hardfork").get<int>();
 
@@ -528,6 +534,7 @@ void ServiceNode::swarm_timer_tick() {
     fields["storage_port"] = true;
     fields["public_ip"] = true;
     fields["height"] = true;
+    fields["target_height"] = true;
     fields["block_hash"] = true;
     fields["hardfork"] = true;
 
