@@ -101,6 +101,7 @@ class ServiceNode {
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
     bool force_start_ = false;
+    bool syncing_ = true;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
     const LokidClient& lokid_client_;

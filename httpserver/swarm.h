@@ -26,6 +26,7 @@ using all_swarms_t = std::vector<SwarmInfo>;
 struct block_update_t {
     all_swarms_t swarms;
     uint64_t height;
+    uint64_t target_height;
     std::string block_hash;
     int hardfork;
 };
