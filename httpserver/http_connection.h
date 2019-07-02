@@ -257,7 +257,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
                           const std::string& public_key_b32z);
 };
 
-void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
+void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
          const boost::filesystem::path& base_path, ServiceNode& sn,
          ChannelEncryption<std::string>& channelEncryption,
          RateLimiter& rate_limiter, Security&);

@@ -1,5 +1,7 @@
 #include "swarm.h"
+#include "custom_formatters.h"
 #include "http_connection.h"
+#include "loki_logger.h"
 
 #include "service_node.h"
 

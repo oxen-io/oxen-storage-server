@@ -148,7 +148,7 @@ accept_connection(boost::asio::io_context& ioc,
     });
 }
 
-void run(boost::asio::io_context& ioc, std::string& ip, uint16_t port,
+void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
          const boost::filesystem::path& base_path, ServiceNode& sn,
          ChannelEncryption<std::string>& channel_encryption,
          RateLimiter& rate_limiter, Security& security) {

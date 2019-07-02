@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../common/src/common.h"
 #include "Item.hpp"
+#include "loki_common.h"
 
 #include <iostream>
 #include <memory>

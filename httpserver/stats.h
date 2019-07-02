@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/src/common.h"
+#include "loki_common.h"
 #include <ctime>
 #include <deque>
 #include <unordered_map>

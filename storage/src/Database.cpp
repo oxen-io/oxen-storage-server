@@ -1,4 +1,5 @@
 #include "Database.hpp"
+#include "loki_logger.h"
 #include "utils.hpp"
 
 #include "sqlite3.h"

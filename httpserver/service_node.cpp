@@ -2,8 +2,10 @@
 
 #include "Database.hpp"
 #include "Item.hpp"
+#include "custom_formatters.h"
 #include "http_connection.h"
 #include "https_client.h"
+#include "loki_logger.h"
 #include "lokid_key.h"
 #include "serialization.h"
 #include "signature.h"
@@ -499,7 +501,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
         }
 
         bu.height = body.at("result").at("height").get<uint64_t>();
-        bu.target_height = body.at("result").at("target_height").get<uint64_t>();
+        bu.target_height =
+            body.at("result").at("target_height").get<uint64_t>();
         bu.block_hash = body.at("result").at("block_hash").get<std::string>();
         bu.hardfork = body.at("result").at("hardfork").get<int>();
 
@@ -575,12 +578,13 @@ void ServiceNode::lokid_ping_timer_tick() {
             try {
                 json res_json = json::parse(*res.body);
 
-                if (res_json.at("result").at("status").get<std::string>() == "OK") {
+                if (res_json.at("result").at("status").get<std::string>() ==
+                    "OK") {
                     LOKI_LOG(info, "Successfully pinged lokid");
                 } else {
                     LOKI_LOG(info, "PING status is NOT OK");
                 }
-            } catch(...) {
+            } catch (...) {
                 LOKI_LOG(error, "Bad json");
             }
 
@@ -1127,6 +1131,17 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                            std::vector<Item>& items) {
     return db_->retrieve(pubKey, items, last_hash,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
+}
+
+void ServiceNode::set_difficulty_history(
+    const std::vector<pow_difficulty_t>& new_history) {
+    pow_history_ = new_history;
+    for (const auto& difficulty : pow_history_) {
+        if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
+            curr_pow_difficulty_ = difficulty;
+        }
+    }
+    LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {

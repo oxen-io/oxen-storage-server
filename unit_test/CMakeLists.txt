@@ -14,12 +14,13 @@ add_executable (Test
 
 # library under test
 
+loki_add_subdirectory(../common common)
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../crypto crypto)
 
-target_link_libraries(Test PRIVATE storage pow utils crypto)
+target_link_libraries(Test PRIVATE common storage pow utils crypto)
 target_include_directories(Test
     PRIVATE
     ../httpserver

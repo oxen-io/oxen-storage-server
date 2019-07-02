@@ -1,5 +1,6 @@
 #pragma once
 
+#include "loki_logger.h"
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/ssl/context.hpp>
 #include <boost/filesystem.hpp>

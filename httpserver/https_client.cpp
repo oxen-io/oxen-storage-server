@@ -1,4 +1,5 @@
 #include "https_client.h"
+#include "loki_logger.h"
 #include "signature.h"
 
 #include <openssl/x509.h>
