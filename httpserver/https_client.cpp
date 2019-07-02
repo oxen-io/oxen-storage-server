@@ -22,7 +22,8 @@ void make_https_request(boost::asio::io_context& ioc,
 #else
 
     if (sn_address == "0.0.0.0") {
-        LOKI_LOG(error, "Could not initiate request to snode (we don't know their IP yet).");
+        LOKI_LOG(error, "Could not initiate request to snode (we don't know "
+                        "their IP yet).");
         return;
     }
 
@@ -128,7 +129,8 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 bool HttpsClientSession::verify_signature() {
     const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
     if (it == res_.end()) {
-        LOKI_LOG(warn, "no signature found in header from {}", server_pub_key_b32z);
+        LOKI_LOG(warn, "no signature found in header from {}",
+                 server_pub_key_b32z);
         return false;
     }
     // signature is expected to be base64 enoded

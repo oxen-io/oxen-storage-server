@@ -62,7 +62,8 @@ format:
 		storage/**/*.{cpp,hpp} \
 		utils/**/*.{cpp,hpp} \
 		httpserver/*.{cpp,h} \
-		unit_test/*.cpp
+		unit_test/*.cpp \
+		common/**/*.{cpp,h}
 
 
-.PHONY: all clean format
+.PHONY: all clean format rebuild

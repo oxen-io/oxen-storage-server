@@ -48,21 +48,21 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     std::string config_file;
     po::options_description all, desc, hidden;
     // clang-format off
-        desc.add_options()
-            ("lokid-key", po::value(&options_.lokid_key_path), "Path to the Service Node key file")
-            ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.loki/storage)")
-            ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
-            ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
-            ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
-            ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
-            ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
-            ("help", "Shows this help message");
+    desc.add_options()
+        ("lokid-key", po::value(&options_.lokid_key_path), "Path to the Service Node key file")
+        ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.loki/storage)")
+        ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
+        ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
+        ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
+        ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
+        ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
+        ("help", "Shows this help message");
         // Add hidden ip and port options.  You technically can use the `--ip=` and `--port=` with
         // these here, but they are meant to be positional.  More usefully, you can specify `ip=`
         // and `port=` in the config file to specify them.
-        hidden.add_options()
-            ("ip", po::value(&options_.ip), "IP to listen on")
-            ("port", po::value(&options_.port), "Port to listen on");
+    hidden.add_options()
+        ("ip", po::value(&options_.ip), "IP to listen on")
+        ("port", po::value(&options_.port), "Port to listen on");
     // clang-format on
 
     all.add(desc).add(hidden);
@@ -87,14 +87,17 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     }
 
     if (config_file.empty()) {
-        config_file = (fs::path(options_.data_dir) / "storage-server.conf").string();
+        config_file =
+            (fs::path(options_.data_dir) / "storage-server.conf").string();
     }
     if (fs::exists(config_file)) {
         try {
-            po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
+            po::store(po::parse_config_file<char>(config_file.c_str(), all),
+                      vm);
             po::notify(vm);
-        } catch (const boost::program_options::error &e) {
-            std::cerr << "Invalid options in config file: " << e.what() << std::endl;
+        } catch (const boost::program_options::error& e) {
+            std::cerr << "Invalid options in config file: " << e.what()
+                      << std::endl;
             print_usage(desc, binary_name);
             throw;
         }

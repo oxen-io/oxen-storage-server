@@ -7,8 +7,8 @@
 #include <boost/filesystem.hpp>
 
 #include <cstdlib>
-#include <iostream>
 #include <fstream>
+#include <iostream>
 
 namespace loki {
 
