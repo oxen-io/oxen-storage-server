@@ -31,6 +31,7 @@ set(SRC_FILES
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
+install(TARGETS httpserver DESTINATION bin)
 
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../utils utils)
