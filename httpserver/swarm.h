@@ -36,6 +36,8 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
 
 struct SwarmEvents {
 
+    /// our (potentially new) swarm id
+    swarm_id_t our_swarm_id;
     /// whether our swarm got decommissioned and we
     /// need to salvage our stale data
     bool decommissioned = false;
@@ -43,11 +45,13 @@ struct SwarmEvents {
     std::vector<swarm_id_t> new_swarms;
     /// detected new snodes in our swarm
     std::vector<sn_record_t> new_snodes;
+    /// our swarm members 
+    std::vector<sn_record_t> our_swarm_members;
 };
 
 class Swarm {
 
-    swarm_id_t cur_swarm_id_ = UINT64_MAX;
+    swarm_id_t cur_swarm_id_ = INVALID_SWARM_ID;
     std::vector<SwarmInfo> all_cur_swarms_;
     sn_record_t our_address_;
     std::vector<sn_record_t> swarm_peers_;
@@ -57,8 +61,11 @@ class Swarm {
 
     ~Swarm();
 
-    /// Update swarms and work out the changes
-    SwarmEvents update_swarms(const all_swarms_t& swarms);
+    /// Extract relevant information from incoming swarm composition
+    SwarmEvents derive_swarm_events(const all_swarms_t& swarms) const;
+
+    /// Update swarm state according to `events`
+    void update_state(const all_swarms_t& swarms, const SwarmEvents& events);
 
     bool is_pubkey_for_us(const std::string& pk) const;
 
@@ -67,6 +74,10 @@ class Swarm {
     const std::vector<SwarmInfo>& all_swarms() const { return all_cur_swarms_; }
 
     swarm_id_t our_swarm_id() const { return cur_swarm_id_; }
+
+    bool is_valid() const { return cur_swarm_id_ != INVALID_SWARM_ID; }
+
+    void set_swarm_id(swarm_id_t sid);
 };
 
 } // namespace loki

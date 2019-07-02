@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);
     LOKI_LOG(info, "Setting Lokid key path to {}", options.lokid_key_path);
-    LOKI_LOG(info, "Setting lokid RPC port to {}", options.lokid_rpc_port);
+    LOKI_LOG(info, "Setting Lokid RPC port to {}", options.lokid_rpc_port);
     LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
 
     boost::asio::io_context ioc{1};
