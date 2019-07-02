@@ -460,21 +460,21 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
         boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
 }
 
-static bool
-parse_swarm_update(const std::shared_ptr<std::string>& response_body,
-                   block_update_t& bu) {
+static block_update_t
+parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
     if (!response_body) {
         LOKI_LOG(error, "Bad lokid rpc response: no response body");
-        return false;
+        throw std::runtime_error("Failed to parse swarm update");
     }
     const json body = json::parse(*response_body, nullptr, false);
     if (body.is_discarded()) {
         LOKI_LOG(trace, "Response body: {}", *response_body);
         LOKI_LOG(error, "Bad lokid rpc response: invalid json");
-        return false;
+        throw std::runtime_error("Failed to parse swarm update");
     }
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+    block_update_t bu;
 
     try {
         const json service_node_states =
@@ -506,14 +506,14 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body,
     } catch (...) {
         LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
         LOKI_LOG(error, "Bad lokid rpc response: invalid json fields");
-        return false;
+        throw std::runtime_error("Failed to parse swarm update");
     }
 
     for (auto const& swarm : swarm_map) {
         bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
     }
 
-    return true;
+    return bu;
 }
 
 void ServiceNode::swarm_timer_tick() {
@@ -536,12 +536,8 @@ void ServiceNode::swarm_timer_tick() {
     lokid_client_.make_lokid_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
             if (res.error_code == SNodeError::NO_ERROR) {
-                block_update_t bu;
-                const bool success = parse_swarm_update(res.body, bu);
-                if (!success) {
-                    return;
-                }
                 try {
+                    const block_update_t bu = parse_swarm_update(res.body);
                     on_swarm_update(bu);
                 } catch (const std::exception& e) {
                     LOKI_LOG(error, "Exception caught on swarm update: {}",
