@@ -79,7 +79,7 @@ bool RateLimiter::should_rate_limit_client(
         bucket.last_time_point = now;
     } else {
         if (client_buckets_.size() >= MAX_CLIENTS) {
-            clean_client_buckets();
+            clean_client_buckets(now);
         }
         if (client_buckets_.size() >= MAX_CLIENTS) {
             return true;
@@ -93,9 +93,9 @@ bool RateLimiter::should_rate_limit_client(
     return false;
 }
 
-void RateLimiter::clean_client_buckets() {
+void RateLimiter::clean_client_buckets(
+    std::chrono::steady_clock::time_point now) {
 
-    const auto now = std::chrono::steady_clock::now();
     auto it = client_buckets_.begin();
 
     while (it != client_buckets_.end()) {

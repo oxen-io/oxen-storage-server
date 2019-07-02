@@ -35,7 +35,7 @@ class RateLimiter {
 
     std::unordered_map<std::string, TokenBucket> client_buckets_;
 
-    void clean_client_buckets();
+    void clean_client_buckets(std::chrono::steady_clock::time_point now);
 
     void fill_bucket(TokenBucket& bucket,
                      std::chrono::steady_clock::time_point now);
