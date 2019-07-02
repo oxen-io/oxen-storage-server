@@ -24,17 +24,15 @@ target_link_libraries(Test PRIVATE common storage pow utils crypto)
 target_include_directories(Test
     PRIVATE
     ../httpserver
-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/spdlog/include
 )
 
 # boost
-find_package(Boost
-REQUIRED
-system
-filesystem
-chrono
-thread
-unit_test_framework
+find_package(Boost REQUIRED
+    system
+    filesystem
+    chrono
+    thread
+    unit_test_framework
 )
 
 set_property(TARGET Test PROPERTY CXX_STANDARD 14)
