@@ -3,7 +3,7 @@ set -ex
 mkdir -p deps && cd deps
 # openssl
 openssl_install=$PWD/openssl
-if [ ! -d $openssl_install ]; then
+if [ ! -f $openssl_install/include/openssl/ssl.h ]; then
     wget https://www.openssl.org/source/openssl-1.1.1a.tar.gz
     tar -xf openssl-1.1.1a.tar.gz
     mkdir -p $openssl_install
