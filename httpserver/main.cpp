@@ -196,13 +196,15 @@ int main(int argc, char* argv[]) {
         if (config_file.empty()) {
             config_file = (fs::path(data_dir_str) / "storage-server.conf").string();
         }
-        try {
-            po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
-            po::notify(vm);
-        } catch (const boost::program_options::error &e) {
-            std::cerr << "Invalid options in config file: " << e.what() << std::endl;
-            print_usage(desc, argv);
-            return EXIT_FAILURE;
+        if (fs::exists(config_file)) {
+            try {
+                po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
+                po::notify(vm);
+            } catch (const boost::program_options::error &e) {
+                std::cerr << "Invalid options in config file: " << e.what() << std::endl;
+                print_usage(desc, argv);
+                return EXIT_FAILURE;
+            }
         }
 
         if (!vm.count("ip") || !vm.count("port")) {
