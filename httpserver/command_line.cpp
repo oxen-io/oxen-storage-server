@@ -103,7 +103,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         }
     }
 
-    if (vm.count("data-dir")) {
+    if (!vm.count("data-dir")) {
         if (auto home_dir = get_home_dir()) {
             options_.data_dir = (home_dir.get() / ".loki" / "storage").string();
         }
