@@ -111,6 +111,7 @@ static void init_logging(const fs::path& data_dir,
 
     auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(),
                                                    sinks.end());
+    logger->set_level(log_level);
     spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(1));
 
