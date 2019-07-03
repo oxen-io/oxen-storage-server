@@ -1,18 +1,11 @@
 #pragma once
 
+#include "spdlog/fmt/ostr.h" // for operator<< overload
+
 #include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
-
-#include <boost/filesystem/path.hpp>
-
-#include "spdlog/spdlog.h"
-
-namespace fs = boost::filesystem;
-
-#define LOKI_LOG(LVL, ...)\
-    spdlog::get("loki_logger")->LVL(__VA_ARGS__)
 
 struct sn_record_t {
 
@@ -50,27 +43,16 @@ struct sn_record_t {
     const std::string& sn_address() const { return sn_address_; }
     const std::string& pub_key() const { return pub_key_; }
     const std::string& ip() const { return ip_; }
-};
 
-namespace fmt {
-
-template<>
-struct formatter<sn_record_t> {
-
-    template<typename ParseContext>
-    constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
-
-    template<typename FormatContext>
-    auto format(const sn_record_t &d, FormatContext &ctx) {
+    template <typename OStream>
+    friend OStream& operator<<(OStream& os, const sn_record_t& record) {
 #ifdef INTEGRATION_TEST
-        return format_to(ctx.out(), "{}", d.port());
+        os << record.port();
 #else
-        return format_to(ctx.out(), "{}", d.sn_address());
+        os << record.sn_address();
 #endif
     }
 };
-
-}
 
 namespace loki {
 

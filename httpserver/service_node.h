@@ -13,7 +13,7 @@
 #include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
-#include "../common/src/common.h"
+#include "loki_common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
 #include "stats.h"
@@ -255,16 +255,7 @@ class ServiceNode {
                   std::vector<storage::Item>& items);
 
     void
-    set_difficulty_history(const std::vector<pow_difficulty_t>& new_history) {
-        pow_history_ = new_history;
-        for (const auto& difficulty : pow_history_) {
-            if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
-                curr_pow_difficulty_ = difficulty;
-            }
-        }
-        LOKI_LOG(info, "Read PoW difficulty: {}",
-                 curr_pow_difficulty_.difficulty);
-    }
+    set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
     std::string get_stats() const { return all_stats_.to_json(true); }
 };

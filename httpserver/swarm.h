@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "../common/src/common.h"
+#include "loki_common.h"
 
 namespace boost {
 namespace asio {

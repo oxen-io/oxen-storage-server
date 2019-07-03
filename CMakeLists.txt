@@ -39,6 +39,7 @@ if (DISABLE_SNODE_SIGNATURE)
     add_definitions(-DDISABLE_SNODE_SIGNATURE)
 endif()
 
+loki_add_subdirectory(common)
 loki_add_subdirectory(utils)
 loki_add_subdirectory(crypto)
 loki_add_subdirectory(pow)

@@ -4,6 +4,7 @@
 #include "Item.hpp"
 #include "http_connection.h"
 #include "https_client.h"
+#include "loki_logger.h"
 #include "lokid_key.h"
 #include "serialization.h"
 #include "signature.h"
@@ -1126,6 +1127,17 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                            std::vector<Item>& items) {
     return db_->retrieve(pubKey, items, last_hash,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
+}
+
+void ServiceNode::set_difficulty_history(
+    const std::vector<pow_difficulty_t>& new_history) {
+    pow_history_ = new_history;
+    for (const auto& difficulty : pow_history_) {
+        if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
+            curr_pow_difficulty_ = difficulty;
+        }
+    }
+    LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {

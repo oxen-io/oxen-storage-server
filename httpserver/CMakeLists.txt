@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
 add_definitions(-DDISABLE_ENCRYPTION)
-add_definitions(-DSPDLOG_COMPILED_LIB)
 
 project(httpserver)
 
@@ -16,6 +15,7 @@ set(HEADER_FILES
     server_certificates.h
     stats.h
     security.h
+    command_line.h
     )
 
 set(SRC_FILES
@@ -28,11 +28,13 @@ set(SRC_FILES
     https_client.cpp
     stats.cpp
     security.cpp
+    command_line.cpp
     )
 
 add_executable(httpserver ${HEADER_FILES} ${SRC_FILES})
 install(TARGETS httpserver DESTINATION bin)
 
+loki_add_subdirectory(../common common)
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
@@ -47,13 +49,13 @@ find_package(Boost
     program_options
 )
 
+target_link_libraries(httpserver PRIVATE common)
 target_link_libraries(httpserver PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver PRIVATE storage)
 target_link_libraries(httpserver PRIVATE utils)
 target_link_libraries(httpserver PRIVATE pow)
 target_link_libraries(httpserver PRIVATE resolv)
 target_link_libraries(httpserver PRIVATE crypto)
-target_link_libraries(httpserver PRIVATE spdlog::spdlog)
 
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
 

@@ -1,6 +1,7 @@
 #include "rate_limiter.h"
 
-#include "../common/src/common.h"
+#include "loki_common.h"
+#include "loki_logger.h"
 
 #include <algorithm>
 #include <assert.h>
