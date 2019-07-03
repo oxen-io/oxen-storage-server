@@ -1,5 +1,7 @@
 #pragma once
 
+#include "spdlog/fmt/ostr.h" // for operator<< overload
+
 #include <cstdint>
 #include <ostream>
 #include <string>
@@ -41,6 +43,15 @@ struct sn_record_t {
     const std::string& sn_address() const { return sn_address_; }
     const std::string& pub_key() const { return pub_key_; }
     const std::string& ip() const { return ip_; }
+
+    template <typename OStream>
+    friend OStream& operator<<(OStream& os, const sn_record_t& record) {
+#ifdef INTEGRATION_TEST
+        os << record.port();
+#else
+        os << record.sn_address();
+#endif
+    }
 };
 
 namespace loki {

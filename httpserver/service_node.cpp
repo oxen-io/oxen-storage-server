@@ -2,7 +2,6 @@
 
 #include "Database.hpp"
 #include "Item.hpp"
-#include "custom_formatters.h"
 #include "http_connection.h"
 #include "https_client.h"
 #include "loki_logger.h"
