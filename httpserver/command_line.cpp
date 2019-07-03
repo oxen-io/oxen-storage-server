@@ -11,20 +11,6 @@ namespace loki {
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
 
-static boost::optional<fs::path> get_home_dir() {
-
-    /// TODO: support default dir for Windows
-#ifdef WIN32
-    return boost::none;
-#endif
-
-    char* pszHome = getenv("HOME");
-    if (pszHome == NULL || strlen(pszHome) == 0)
-        return boost::none;
-
-    return fs::path(pszHome);
-}
-
 const command_line_options& command_line_parser::get_options() const {
     return options_;
 }
@@ -74,12 +60,9 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     if (fs::exists(config_file)) {
         po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
         po::notify(vm);
-    }
-
-    if (!vm.count("data-dir")) {
-        if (auto home_dir = get_home_dir()) {
-            options_.data_dir = (home_dir.get() / ".loki" / "storage").string();
-        }
+    } else if (vm.count("config-file")) {
+        throw std::runtime_error(
+            "path provided in --config-file does not exist");
     }
 
     if (options_.print_version || options_.print_help) {

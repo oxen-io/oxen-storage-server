@@ -18,6 +18,20 @@
 
 namespace fs = boost::filesystem;
 
+static boost::optional<fs::path> get_home_dir() {
+
+    /// TODO: support default dir for Windows
+#ifdef WIN32
+    return boost::none;
+#endif
+
+    char* pszHome = getenv("HOME");
+    if (pszHome == NULL || strlen(pszHome) == 0)
+        return boost::none;
+
+    return fs::path(pszHome);
+}
+
 int main(int argc, char* argv[]) {
 
     loki::command_line_parser parser;
@@ -30,11 +44,17 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    const auto options = parser.get_options();
+    auto options = parser.get_options();
 
     if (options.print_help) {
         parser.print_usage();
         return EXIT_SUCCESS;
+    }
+
+    if (options.data_dir.empty()) {
+        if (auto home_dir = get_home_dir()) {
+            options.data_dir = (home_dir.get() / ".loki" / "storage").string();
+        }
     }
 
     if (!fs::exists(options.data_dir)) {

@@ -14,7 +14,7 @@ struct command_line_options {
     std::string ip;
     std::string log_level = "info";
     std::string lokid_key_path;
-    std::string data_dir = ".";
+    std::string data_dir;
 };
 
 class command_line_parser {
