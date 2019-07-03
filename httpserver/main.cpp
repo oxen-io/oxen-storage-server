@@ -24,18 +24,16 @@ int main(int argc, char* argv[]) {
 
     try {
         parser.parse_args(argc, argv);
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        parser.print_usage();
         return EXIT_FAILURE;
     }
 
     const auto options = parser.get_options();
 
-    if (options.print_version) {
-        print_version();
-        return EXIT_SUCCESS;
-    }
-
-    if (parser.early_exit()) {
+    if (options.print_help) {
+        parser.print_usage();
         return EXIT_SUCCESS;
     }
 
@@ -51,6 +49,12 @@ int main(int argc, char* argv[]) {
     }
 
     loki::init_logging(options.data_dir, log_level);
+
+    // Always print version for the logs
+    print_version();
+    if (options.print_version) {
+        return EXIT_SUCCESS;
+    }
 
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);

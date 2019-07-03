@@ -1,5 +1,7 @@
 #pragma once
 
+#include "loki_logger.h"
+
 #include <iostream>
 
 #ifndef STORAGE_SERVER_VERSION
@@ -19,9 +21,8 @@
 #endif
 
 static void print_version() {
-    std::cout << "Loki Storage Server v" << STORAGE_SERVER_VERSION_STRING
-              << std::endl
-              << " git commit hash: " << STORAGE_SERVER_GIT_HASH_STRING
-              << std::endl
-              << " build time: " << STORAGE_SERVER_BUILD_TIME << std::endl;
+    LOKI_LOG(info,
+             "Loki Storage Server v{}\n git commit hash: {}\n build time: {}",
+             STORAGE_SERVER_VERSION_STRING, STORAGE_SERVER_GIT_HASH_STRING,
+             STORAGE_SERVER_BUILD_TIME);
 }

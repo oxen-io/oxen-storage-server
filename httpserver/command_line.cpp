@@ -3,7 +3,6 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/optional.hpp>
-#include <boost/program_options.hpp>
 
 #include <iostream>
 
@@ -11,18 +10,6 @@ namespace loki {
 
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
-
-static void print_usage(const po::options_description& desc,
-                        const std::string& binary_name) {
-
-    std::cerr << std::endl;
-    std::cerr << "Usage: " << binary_name << " <address> <port> [...]\n\n";
-
-    desc.print(std::cerr);
-
-    std::cerr << std::endl;
-    print_log_levels();
-}
 
 static boost::optional<fs::path> get_home_dir() {
 
@@ -38,17 +25,15 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
-bool command_line_parser::early_exit() const { return early_exit_; }
-
 const command_line_options& command_line_parser::get_options() const {
     return options_;
 }
 
 void command_line_parser::parse_args(int argc, char* argv[]) {
     std::string config_file;
-    po::options_description all, desc, hidden;
+    po::options_description all, hidden;
     // clang-format off
-    desc.add_options()
+    desc_.add_options()
         ("lokid-key", po::value(&options_.lokid_key_path), "Path to the Service Node key file")
         ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.loki/storage)")
         ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
@@ -56,7 +41,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
         ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
-        ("help", "Shows this help message");
+        ("help", po::bool_switch(&options_.print_help),"Shows this help message");
         // Add hidden ip and port options.  You technically can use the `--ip=` and `--port=` with
         // these here, but they are meant to be positional.  More usefully, you can specify `ip=`
         // and `port=` in the config file to specify them.
@@ -65,42 +50,30 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("port", po::value(&options_.port), "Port to listen on");
     // clang-format on
 
-    all.add(desc).add(hidden);
+    all.add(desc_).add(hidden);
     po::positional_options_description pos_desc;
     pos_desc.add("ip", 1);
     pos_desc.add("port", 1);
 
-    std::string binary_name = fs::basename(argv[0]);
+    binary_name_ = fs::basename(argv[0]);
 
     po::variables_map vm;
-    try {
-        po::store(po::command_line_parser(argc, argv)
-                      .options(all)
-                      .positional(pos_desc)
-                      .run(),
-                  vm);
-        po::notify(vm);
-    } catch (const boost::program_options::error& e) {
-        std::cerr << "Invalid options: " << e.what() << std::endl;
-        print_usage(desc, binary_name);
-        throw;
-    }
+
+    po::store(po::command_line_parser(argc, argv)
+                  .options(all)
+                  .positional(pos_desc)
+                  .run(),
+              vm);
+    po::notify(vm);
 
     if (config_file.empty()) {
         config_file =
             (fs::path(options_.data_dir) / "storage-server.conf").string();
     }
+
     if (fs::exists(config_file)) {
-        try {
-            po::store(po::parse_config_file<char>(config_file.c_str(), all),
-                      vm);
-            po::notify(vm);
-        } catch (const boost::program_options::error& e) {
-            std::cerr << "Invalid options in config file: " << e.what()
-                      << std::endl;
-            print_usage(desc, binary_name);
-            throw;
-        }
+        po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
+        po::notify(vm);
     }
 
     if (!vm.count("data-dir")) {
@@ -109,20 +82,23 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         }
     }
 
-    if (options_.print_version) {
-        early_exit_ = true;
-        return;
-    }
-
-    if (vm.count("help")) {
-        print_usage(desc, binary_name);
-        early_exit_ = true;
+    if (options_.print_version || options_.print_help) {
         return;
     }
 
     if (!vm.count("ip") || !vm.count("port")) {
-        print_usage(desc, binary_name);
-        throw std::exception();
+        throw std::runtime_error(
+            "Invalid option: address and/or port missing.");
     }
+}
+
+void command_line_parser::print_usage() const {
+    std::cerr << "Usage: " << binary_name_ << " <address> <port> [...]\n\n";
+
+    desc_.print(std::cerr);
+
+    std::cerr << std::endl;
+
+    print_log_levels();
 }
 } // namespace loki
