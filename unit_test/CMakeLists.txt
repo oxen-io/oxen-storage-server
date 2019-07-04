@@ -7,9 +7,7 @@ add_executable (Test
     serialization.cpp
     signature.cpp
     rate_limiter.cpp
-    # TODO: remove once httpserver provides a static lib to link against
-    ../httpserver/serialization.cpp
-    ../httpserver/rate_limiter.cpp
+    command_line.cpp
 )
 
 # library under test
@@ -19,12 +17,9 @@ loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../crypto crypto)
+loki_add_subdirectory(../httpserver httpserver)
 
-target_link_libraries(Test PRIVATE common storage pow utils crypto)
-target_include_directories(Test
-    PRIVATE
-    ../httpserver
-)
+target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)
 
 # boost
 find_package(Boost REQUIRED
