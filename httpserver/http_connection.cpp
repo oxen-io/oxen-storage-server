@@ -118,6 +118,8 @@ void LokidClient::make_lokid_request(boost::string_view method,
     req->target(target);
     req->prepare_payload();
 
+    LOKI_LOG(trace, "Making lokid request, method: {}", method.to_string());
+
     make_http_request(ioc_, local_ip_, lokid_rpc_port_, req, std::move(cb));
 }
 // =============================================================
@@ -186,10 +188,20 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
       security_(security) {
 
     LOKI_LOG(trace, "connection_t");
+
     start_timestamp_ = std::chrono::steady_clock::now();
 }
 
-connection_t::~connection_t() { LOKI_LOG(trace, "~connection_t"); }
+connection_t::~connection_t() {
+
+    // Safety net
+    if (stream_.lowest_layer().is_open()) {
+        LOKI_LOG(warn, "Client socket should be closed by this point, but wasn't. Closing now.");
+        stream_.lowest_layer().close();
+    }
+
+    LOKI_LOG(trace, "~connection_t");
+}
 
 void connection_t::start() {
     register_deadline();
@@ -973,15 +985,14 @@ void connection_t::register_deadline() {
         if (ec) {
 
             if (ec != boost::asio::error::operation_aborted) {
-                log_error(ec);
+                LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(), ec.message());
             }
 
         } else {
-
-            LOKI_LOG(error, "socket timed out");
-            // Close socket to cancel any outstanding operation.
-            self->do_close();
+            LOKI_LOG(error, "[connection_t] socket timed out");
         }
+        // Close socket to cancel any outstanding operation.
+        self->do_close();
     });
 }
 
@@ -999,6 +1010,8 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
     }
     if (ec)
         LOKI_LOG(error, "Could not close ssl stream gracefully");
+
+    stream_.lowest_layer().close();
 
     // At this point the connection is closed gracefully
 }
@@ -1078,7 +1091,7 @@ void HttpClientSession::start() {
         endpoint_, [this, self = shared_from_this()](const error_code& ec) {
             /// TODO: I think I should just call again if ec == EINTR
             if (ec) {
-                LOKI_LOG(error, "Could not connect to {}:{}, message: {} ({})",
+                LOKI_LOG(error, "[http client]: could not connect to {}:{}, message: {} ({})",
                          endpoint_.address().to_string(), endpoint_.port(),
                          ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
@@ -1104,6 +1117,7 @@ void HttpClientSession::start() {
 
 void HttpClientSession::trigger_callback(SNodeError error,
                                          std::shared_ptr<std::string>&& body) {
+    LOKI_LOG(trace, "trigger callback");
     ioc_.post(std::bind(callback_, sn_response_t{error, body}));
     used_callback_ = true;
     deadline_timer_.cancel();

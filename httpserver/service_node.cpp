@@ -531,7 +531,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 }
 
 void ServiceNode::swarm_timer_tick() {
-    LOKI_LOG(trace, "UPDATING SWARMS: begin");
+    LOKI_LOG(trace, "swarm timer tick");
 
     json params;
     json fields;

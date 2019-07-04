@@ -201,7 +201,7 @@ void HttpsClientSession::start() {
             if (ec) {
                 std::ostringstream os;
                 os << endpoint;
-                LOKI_LOG(error, "Could not connect to {}, message: {} ({})",
+                LOKI_LOG(error, "[https client]: could not connect to {}, message: {} ({})",
                          os.str(), ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
@@ -248,6 +248,8 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         LOKI_LOG(error, "could not shutdown stream gracefully: {}",
                  ec.message());
     }
+
+    stream_.lowest_layer().close();
 
     // If we get here then the connection is closed gracefully
 }
