@@ -19,7 +19,7 @@
 #include "stats.h"
 #include "swarm.h"
 
-static constexpr size_t BLOCK_HASH_CACHE_SIZE = 10;
+static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
 

@@ -119,3 +119,5 @@ static bool operator!=(const sn_record_t& lhs, const sn_record_t& rhs) {
 }
 
 using swarm_id_t = uint64_t;
+
+constexpr swarm_id_t INVALID_SWARM_ID = UINT64_MAX;

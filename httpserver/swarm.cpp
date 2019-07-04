@@ -20,13 +20,10 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
 
 Swarm::~Swarm() = default;
 
-SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
-
-    /// TODO: need a fast check that the swarms are the same and exit early
+SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     SwarmEvents events = {};
 
-    /// Find us:
     const auto our_swarm_it = std::find_if(
         swarms.begin(), swarms.end(), [this](const SwarmInfo& swarm_info) {
             const auto& snodes = swarm_info.snodes;
@@ -35,80 +32,111 @@ SwarmEvents Swarm::update_swarms(const all_swarms_t& swarms) {
         });
 
     if (our_swarm_it == swarms.end()) {
-        LOKI_LOG(error, "ERROR: WE ARE NOT IN ANY SWARM");
+        // We are not in any swarm, nothing to do
+        events.our_swarm_id = INVALID_SWARM_ID;
         return events;
     }
 
-    const auto& our_swarm_snodes = our_swarm_it->snodes;
-    const auto our_swarm_id = our_swarm_it->swarm_id;
+    const auto& new_swarm_snodes = our_swarm_it->snodes;
+    const auto new_swarm_id = our_swarm_it->swarm_id;
 
-    if (cur_swarm_id_ == UINT64_MAX) {
+    events.our_swarm_id = new_swarm_id;
+    events.our_swarm_members = new_swarm_snodes;
 
-        LOKI_LOG(info, "EVENT: started SN in swarm: {}", our_swarm_id);
+    if (cur_swarm_id_ == INVALID_SWARM_ID) {
+        // Only started in a swarm, nothing to do at this stage
+        return events;
+    }
 
-    } else {
-
-        /// Are we in a new swarm?
-        if (cur_swarm_id_ != our_swarm_id) {
-
-            LOKI_LOG(info, "EVENT: got moved into a new swarm: {}",
-                     our_swarm_id);
-
-            /// Check that our old swarm still exists
-            if (!swarm_exists(swarms, cur_swarm_id_)) {
-
-                LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
-                events.decommissioned = true;
-            }
+    if (cur_swarm_id_ != new_swarm_id) {
+        // Got moved to a new swarm
+        if (!swarm_exists(swarms, cur_swarm_id_)) {
+            // Dissolved, new to push all our data to new swarms
+            events.decommissioned = true;
         }
 
-        /// don't bother checking the rest
-        if (!events.decommissioned) {
+        // If our old swarm is still alive, there is nothing for us to do
+        return events;
+    }
 
-            /// See if anyone joined our swarm
-            for (const auto& sn : our_swarm_snodes) {
+    /// --- WE are still in the same swarm if we reach here ---
 
-                const auto it =
-                    std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
+    /// See if anyone joined our swarm
+    for (const auto& sn : new_swarm_snodes) {
 
-                if (it == swarm_peers_.end() && sn != our_address_) {
-                    LOKI_LOG(info, "EVENT: detected new SN: {}", sn);
-                    events.new_snodes.push_back(sn);
-                }
-            }
+        const auto it =
+            std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
-            /// See if there are any new swarms
+        if (it == swarm_peers_.end() && sn != our_address_) {
+            events.new_snodes.push_back(sn);
+        }
+    }
 
-            for (const auto& swarm_info : swarms) {
+    /// See if there are any new swarms
 
-                const bool found = std::any_of(
-                    all_cur_swarms_.begin(), all_cur_swarms_.end(),
-                    [&swarm_info](const SwarmInfo& cur_swarm_info) {
-                        return cur_swarm_info.swarm_id == swarm_info.swarm_id;
-                    });
+    for (const auto& swarm_info : swarms) {
 
-                if (!found) {
-                    LOKI_LOG(info, "EVENT: detected a new swarm: {}",
-                             swarm_info.swarm_id);
-                    events.new_swarms.push_back(swarm_info.swarm_id);
-                }
-            }
+        const bool found = std::any_of(
+            all_cur_swarms_.begin(), all_cur_swarms_.end(),
+            [&swarm_info](const SwarmInfo& cur_swarm_info) {
+                return cur_swarm_info.swarm_id == swarm_info.swarm_id;
+            });
+
+        if (!found) {
+            events.new_swarms.push_back(swarm_info.swarm_id);
         }
     }
 
     /// NOTE: need to be careful and make sure we don't miss any
     /// swarm update (e.g. if we don't update frequently enough)
 
-    cur_swarm_id_ = our_swarm_id;
+    return events;
+}
+
+void Swarm::set_swarm_id(swarm_id_t sid) {
+
+    if (sid == INVALID_SWARM_ID) {
+        LOKI_LOG(warn, "We are not currently an active Service Node");
+    } else {
+
+        if (cur_swarm_id_ == INVALID_SWARM_ID) {
+            LOKI_LOG(info, "EVENT: started SN in swarm: {}", sid);
+        } else if (cur_swarm_id_ != sid) {
+            LOKI_LOG(info, "EVENT: got moved into a new swarm: {}", sid);
+        }
+    }
+
+    cur_swarm_id_ = sid;
+}
+
+void Swarm::update_state(const all_swarms_t& swarms, const SwarmEvents& events) {
+
+    if (events.decommissioned) {
+        LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
+    }
+
+    for (const sn_record_t& sn : events.new_snodes) {
+        LOKI_LOG(info, "EVENT: detected new SN: {}", sn);
+    }
+
+    for (swarm_id_t swarm : events.new_swarms) {
+        LOKI_LOG(info, "EVENT: detected a new swarm: {}", swarm);
+    }
+
     all_cur_swarms_ = swarms;
 
-    swarm_peers_.clear();
-    std::copy_if(
-        our_swarm_snodes.begin(), our_swarm_snodes.end(),
-        std::back_inserter(swarm_peers_),
-        [this](const sn_record_t& record) { return record != our_address_; });
+    const auto& members = events.our_swarm_members;
 
-    return events;
+    /// sanity check
+    if (members.empty())
+        return;
+
+    swarm_peers_.clear();
+    swarm_peers_.reserve(members.size() - 1);
+
+    std::copy_if(
+        members.begin(), members.end(), std::back_inserter(swarm_peers_),
+        [this](const sn_record_t& record) { return record != our_address_; });
 }
 
 static uint64_t hex_to_u64(const std::string& pk) {
