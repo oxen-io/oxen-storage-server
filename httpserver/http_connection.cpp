@@ -981,18 +981,20 @@ void connection_t::register_deadline() {
 
     auto self = shared_from_this();
 
+
     deadline_.async_wait([self](error_code ec) {
-        if (ec) {
 
-            if (ec != boost::asio::error::operation_aborted) {
-                LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(), ec.message());
-            }
+        bool cancelled = (ec && ec == boost::asio::error::operation_aborted);
 
+        if (ec && !cancelled) {
+            LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(), ec.message());
         } else {
             LOKI_LOG(error, "[connection_t] socket timed out");
         }
         // Close socket to cancel any outstanding operation.
-        self->do_close();
+        if (!cancelled) {
+            self->do_close();
+        }
     });
 }
 
@@ -1117,7 +1119,7 @@ void HttpClientSession::start() {
 
 void HttpClientSession::trigger_callback(SNodeError error,
                                          std::shared_ptr<std::string>&& body) {
-    LOKI_LOG(trace, "trigger callback");
+    LOKI_LOG(trace, "Trigger callback");
     ioc_.post(std::bind(callback_, sn_response_t{error, body}));
     used_callback_ = true;
     deadline_timer_.cancel();
