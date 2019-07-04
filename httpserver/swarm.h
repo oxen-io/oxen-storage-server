@@ -67,6 +67,10 @@ class Swarm {
     /// Update swarm state according to `events`
     void update_state(const all_swarms_t& swarms, const SwarmEvents& events);
 
+    void bootstrap_state(const all_swarms_t& bootstrap_swarms);
+
+    void apply_swarm_changes(const all_swarms_t& new_swarms);
+
     bool is_pubkey_for_us(const std::string& pk) const;
 
     const std::vector<sn_record_t>& other_nodes() const;

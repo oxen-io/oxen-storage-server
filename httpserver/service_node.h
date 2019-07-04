@@ -138,9 +138,13 @@ class ServiceNode {
     /// request swarm info from the blockchain
     void update_swarms();
 
+    void on_sync_complete();
+
+    void on_bootstrap_update(const block_update_t& bu);
+
     void on_swarm_update(const block_update_t& bu);
 
-    void bootstrap_ips();
+    void bootstrap_data();
 
     void bootstrap_peers(const std::vector<sn_record_t>& peers) const;
 

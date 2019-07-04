@@ -5,6 +5,7 @@
 #include "service_node.h"
 
 #include <stdlib.h>
+#include <unordered_map>
 
 namespace loki {
 
@@ -64,8 +65,7 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
     /// See if anyone joined our swarm
     for (const auto& sn : new_swarm_snodes) {
 
-        const auto it =
-            std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
+        const auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
 
         if (it == swarm_peers_.end() && sn != our_address_) {
             events.new_snodes.push_back(sn);
@@ -109,7 +109,51 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     cur_swarm_id_ = sid;
 }
 
-void Swarm::update_state(const all_swarms_t& swarms, const SwarmEvents& events) {
+static std::unordered_map<std::string, sn_record_t>
+get_snode_map_from_swarms(const all_swarms_t& swarms) {
+
+    std::unordered_map<std::string, sn_record_t> snode_map{};
+    for (const auto& swarm : swarms) {
+        for (const auto& snode : swarm.snodes) {
+            snode_map.insert({snode.sn_address(), snode});
+        }
+    }
+    return snode_map;
+}
+
+static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
+                       const all_swarms_t& other_swarms) {
+
+    all_swarms_t result_swarms = swarms_to_keep;
+    const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
+    for (auto& swarm : result_swarms) {
+        for (auto& snode : swarm.snodes) {
+            const auto other_snode_it =
+                other_snode_map.find(snode.sn_address());
+            if (other_snode_it != other_snode_map.end()) {
+                const auto other_snode = other_snode_it->second;
+                // Keep all swarms_to_keep except don't overwrite with default IPs
+                if (snode.ip() == "0.0.0.0") {
+                    snode.set_ip(other_snode.ip());
+                }
+            }
+        }
+    }
+    return result_swarms;
+}
+
+void Swarm::bootstrap_state(const all_swarms_t& bootstrap_swarms) {
+
+    all_cur_swarms_ = apply_ips(all_cur_swarms_, bootstrap_swarms);
+}
+
+void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
+
+    all_cur_swarms_ = apply_ips(new_swarms, all_cur_swarms_);
+}
+
+void Swarm::update_state(const all_swarms_t& swarms,
+                         const SwarmEvents& events) {
 
     if (events.decommissioned) {
         LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
@@ -123,7 +167,7 @@ void Swarm::update_state(const all_swarms_t& swarms, const SwarmEvents& events) 
         LOKI_LOG(info, "EVENT: detected a new swarm: {}", swarm);
     }
 
-    all_cur_swarms_ = swarms;
+    apply_swarm_changes(swarms);
 
     const auto& members = events.our_swarm_members;
 

@@ -210,8 +210,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
     our_address_.set_port(port);
 
-    bootstrap_ips();
-
     LOKI_LOG(info, "Requesting initial swarm state");
     swarm_timer_tick();
     lokid_ping_timer_tick();
@@ -280,7 +278,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     return bu;
 }
 
-void ServiceNode::bootstrap_ips() {
+void ServiceNode::bootstrap_data() {
     LOKI_LOG(trace, "Bootstrapping peer ips");
 
     json params;
@@ -300,20 +298,21 @@ void ServiceNode::bootstrap_ips() {
     std::vector<std::pair<std::string, uint16_t>> seed_nodes{
         std::pair<std::string, uint16_t>{"3.104.19.14", 22023},
         std::pair<std::string, uint16_t>{"13.238.53.205", 38157},
-        std::pair<std::string, uint16_t>{"149.56.148.124", 38157}
-    };
+        std::pair<std::string, uint16_t>{"149.56.148.124", 38157}};
 
     for (auto seed_node : seed_nodes) {
         lokid_client_.make_lokid_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
-            [this](const sn_response_t&& res) {
+            [this, seed_node](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
-                        on_swarm_update(bu);
+                        on_bootstrap_update(bu);
                     } catch (const std::exception& e) {
-                        LOKI_LOG(error, "Exception caught on swarm update: {}",
-                                e.what());
+                        LOKI_LOG(
+                            error,
+                            "Exception caught while bootstrapping from {}: {}",
+                            seed_node.first, e.what());
                     }
                 }
             });
@@ -489,12 +488,25 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     reset_listeners();
 }
 
+void ServiceNode::on_sync_complete() {
+
+    bootstrap_data();
+}
+
+void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
+
+    swarm_->bootstrap_state(bu.swarms);
+}
+
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     hardfork_ = bu.hardfork;
 
+    bool sync_complete = false;
+
     if (syncing_ && bu.target_height != 0) {
         syncing_ = bu.height < bu.target_height - 1;
+        sync_complete = !syncing_;
     }
 
     /// We don't have anything to do until we have synced
@@ -544,6 +556,10 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     }
 
     swarm_->update_state(bu.swarms, events);
+
+    if (sync_complete) {
+        on_sync_complete();
+    }
 
     if (!events.new_snodes.empty()) {
         bootstrap_peers(events.new_snodes);
