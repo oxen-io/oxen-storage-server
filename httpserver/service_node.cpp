@@ -210,6 +210,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
     our_address_.set_port(port);
 
+    bootstrap_ips();
+
     LOKI_LOG(info, "Requesting initial swarm state");
     swarm_timer_tick();
     lokid_ping_timer_tick();
@@ -220,6 +222,102 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
         pow_difficulty_timer_tick(std::bind(
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
     });
+}
+
+static block_update_t
+parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
+
+    if (!response_body) {
+        LOKI_LOG(error, "Bad lokid rpc response: no response body");
+        throw std::runtime_error("Failed to parse swarm update");
+    }
+    const json body = json::parse(*response_body, nullptr, false);
+    if (body.is_discarded()) {
+        LOKI_LOG(trace, "Response body: {}", *response_body);
+        LOKI_LOG(error, "Bad lokid rpc response: invalid json");
+        throw std::runtime_error("Failed to parse swarm update");
+    }
+    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
+    block_update_t bu;
+
+    try {
+        const json service_node_states =
+            body.at("result").at("service_node_states");
+
+        for (const auto& sn_json : service_node_states) {
+            const std::string pubkey =
+                sn_json.at("service_node_pubkey").get<std::string>();
+
+            const swarm_id_t swarm_id =
+                sn_json.at("swarm_id").get<swarm_id_t>();
+            std::string snode_address = util::hex64_to_base32z(pubkey);
+
+            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
+            const std::string snode_ip =
+                sn_json.at("public_ip").get<std::string>();
+            const sn_record_t sn{port, std::move(snode_address),
+                                 std::move(snode_ip)};
+
+            swarm_map[swarm_id].push_back(sn);
+        }
+
+        bu.height = body.at("result").at("height").get<uint64_t>();
+        bu.target_height =
+            body.at("result").at("target_height").get<uint64_t>();
+        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
+        bu.hardfork = body.at("result").at("hardfork").get<int>();
+
+    } catch (...) {
+        LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
+        LOKI_LOG(error, "Bad lokid rpc response: invalid json fields");
+        throw std::runtime_error("Failed to parse swarm update");
+    }
+
+    for (auto const& swarm : swarm_map) {
+        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
+    }
+
+    return bu;
+}
+
+void ServiceNode::bootstrap_ips() {
+    LOKI_LOG(trace, "Bootstrapping peer ips");
+
+    json params;
+    json fields;
+
+    fields["service_node_pubkey"] = true;
+    fields["swarm_id"] = true;
+    fields["storage_port"] = true;
+    fields["public_ip"] = true;
+    fields["height"] = true;
+    fields["target_height"] = true;
+    fields["block_hash"] = true;
+    fields["hardfork"] = true;
+
+    params["fields"] = fields;
+
+    std::vector<std::pair<std::string, uint16_t>> seed_nodes{
+        std::pair<std::string, uint16_t>{"3.104.19.14", 22023},
+        std::pair<std::string, uint16_t>{"13.238.53.205", 38157},
+        std::pair<std::string, uint16_t>{"149.56.148.124", 38157}
+    };
+
+    for (auto seed_node : seed_nodes) {
+        lokid_client_.make_lokid_request(
+            seed_node.first, seed_node.second, "get_n_service_nodes", params,
+            [this](const sn_response_t&& res) {
+                if (res.error_code == SNodeError::NO_ERROR) {
+                    try {
+                        const block_update_t bu = parse_swarm_update(res.body);
+                        on_swarm_update(bu);
+                    } catch (const std::exception& e) {
+                        LOKI_LOG(error, "Exception caught on swarm update: {}",
+                                e.what());
+                    }
+                }
+            });
+    }
 }
 
 bool ServiceNode::snode_ready() {
@@ -472,62 +570,6 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
     pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
     pow_update_timer_.async_wait(
         boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
-}
-
-static block_update_t
-parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
-
-    if (!response_body) {
-        LOKI_LOG(error, "Bad Lokid rpc response: no response body");
-        throw std::runtime_error("Failed to parse swarm update");
-    }
-    const json body = json::parse(*response_body, nullptr, false);
-    if (body.is_discarded()) {
-        LOKI_LOG(trace, "Response body: {}", *response_body);
-        LOKI_LOG(error, "Bad Lokid rpc response: invalid json");
-        throw std::runtime_error("Failed to parse swarm update");
-    }
-    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
-    block_update_t bu;
-
-    try {
-        const json service_node_states =
-            body.at("result").at("service_node_states");
-
-        for (const auto& sn_json : service_node_states) {
-            const std::string pubkey =
-                sn_json.at("service_node_pubkey").get<std::string>();
-
-            const swarm_id_t swarm_id =
-                sn_json.at("swarm_id").get<swarm_id_t>();
-            std::string snode_address = util::hex64_to_base32z(pubkey);
-
-            const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
-            const std::string snode_ip =
-                sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, std::move(snode_address),
-                                 std::move(snode_ip)};
-
-            swarm_map[swarm_id].push_back(sn);
-        }
-
-        bu.height = body.at("result").at("height").get<uint64_t>();
-        bu.target_height =
-            body.at("result").at("target_height").get<uint64_t>();
-        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
-        bu.hardfork = body.at("result").at("hardfork").get<int>();
-
-    } catch (...) {
-        LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
-        LOKI_LOG(error, "Bad Lokid rpc response: invalid json fields");
-        throw std::runtime_error("Failed to parse swarm update");
-    }
-
-    for (auto const& swarm : swarm_map) {
-        bu.swarms.emplace_back(SwarmInfo{swarm.first, swarm.second});
-    }
-
-    return bu;
 }
 
 void ServiceNode::swarm_timer_tick() {

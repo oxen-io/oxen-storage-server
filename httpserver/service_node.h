@@ -140,6 +140,8 @@ class ServiceNode {
 
     void on_swarm_update(const block_update_t& bu);
 
+    void bootstrap_ips();
+
     void bootstrap_peers(const std::vector<sn_record_t>& peers) const;
 
     void bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const;
