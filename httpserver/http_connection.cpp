@@ -980,7 +980,7 @@ void connection_t::register_deadline() {
 
             LOKI_LOG(error, "socket timed out");
             // Close socket to cancel any outstanding operation.
-            self->socket_.close(ec);
+            self->do_close();
         }
     });
 }
