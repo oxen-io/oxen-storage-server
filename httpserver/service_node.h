@@ -212,6 +212,9 @@ class ServiceNode {
     void register_listener(const std::string& pk,
                            const connection_ptr& connection);
 
+    void remove_listener(const std::string& pk,
+                         const http_server::connection_t* const connection);
+
     // Notify listeners of a new message for pk
     void notify_listeners(const std::string& pk, const message_t& msg);
 

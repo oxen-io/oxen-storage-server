@@ -268,9 +268,46 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
 
 void ServiceNode::register_listener(const std::string& pk,
                                     const std::shared_ptr<connection_t>& c) {
+
+    // NOTE: it is the responsibility of connection_t to deregister itself!
     pk_to_listeners[pk].push_back(c);
-    LOKI_LOG(debug, "register pubkey: {}, total pubkeys: {}", pk,
+    LOKI_LOG(debug, "Register pubkey: {}, total pubkeys: {}", pk,
              pk_to_listeners.size());
+
+    LOKI_LOG(debug, "Number of connections listening for {}: {}", pk,
+             pk_to_listeners[pk].size());
+}
+
+void ServiceNode::remove_listener(const std::string& pk,
+                                  const connection_t* const c) {
+
+    const auto it = pk_to_listeners.find(pk);
+    if (it == pk_to_listeners.end()) {
+        /// This will sometimes happen because we reset all listeners on
+        /// push_all
+        LOKI_LOG(debug, "Trying to remove an unknown pk from the notification "
+                        "map. Operation ignored.");
+    } else {
+        LOKI_LOG(trace,
+                 "Deregistering notification for connection {} for pk {}",
+                 c->conn_idx, pk);
+        auto& cs = it->second;
+        const auto new_end = std::remove_if(
+            cs.begin(), cs.end(), [c](const std::shared_ptr<connection_t>& e) {
+                return e.get() == c;
+            });
+        const auto count = std::distance(new_end, cs.end());
+        cs.erase(new_end, cs.end());
+
+        if (count == 0) {
+            LOKI_LOG(debug, "Connection {} in not registered for pk {}",
+                     c->conn_idx, pk);
+        } else if (count > 1) {
+            LOKI_LOG(debug,
+                     "Multiple registrations ({}) for connection {} for pk {}",
+                     count, c->conn_idx, pk);
+        }
+    }
 }
 
 void ServiceNode::notify_listeners(const std::string& pk,
@@ -300,7 +337,8 @@ void ServiceNode::reset_listeners() {
     /// simplicity
     for (auto& entry : pk_to_listeners) {
         for (auto& c : entry.second) {
-            c->reset();
+            /// notify with no messages
+            c->notify(boost::none);
         }
     }
 
@@ -810,7 +848,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        LOKI_LOG(error, "Could not initiate peer test: swarm too small");
+        LOKI_LOG(warn, "Could not initiate peer test: swarm too small");
         return false;
     }
 

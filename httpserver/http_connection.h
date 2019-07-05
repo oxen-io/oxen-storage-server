@@ -179,7 +179,11 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
         // the message is stored here momentarily; needed because
         // we can't pass it using current notification mechanism
         boost::optional<message_t> message;
-    } notification_ctx_;
+        // Messenger public key that this connection is registered for
+        std::string pubkey;
+    };
+
+    boost::optional<notification_context_t> notification_ctx_;
 
   public:
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
@@ -189,13 +193,13 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     ~connection_t();
 
+    // Connection index, mainly used for debugging
+    uint64_t conn_idx;
+
     /// Initiate the asynchronous operations associated with the connection.
     void start();
 
-    void notify(const message_t& msg);
-
-    /// "Reset" the connection by sending an empty message list
-    void reset();
+    void notify(boost::optional<const message_t&> msg);
 
   private:
     void do_handshake();
