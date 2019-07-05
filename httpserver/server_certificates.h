@@ -71,6 +71,8 @@ int mkcert(X509** x509p, EVP_PKEY** pkeyp, int bits, int serial, int days) {
     EVP_PKEY* pk;
     RSA* rsa;
     X509_NAME* name = NULL;
+    BIGNUM* bne = NULL;
+    int res = 0;
 
     if ((pkeyp == NULL) || (*pkeyp == NULL)) {
         if ((pk = EVP_PKEY_new()) == NULL) {
@@ -86,12 +88,22 @@ int mkcert(X509** x509p, EVP_PKEY** pkeyp, int bits, int serial, int days) {
     } else
         x = *x509p;
 
-    rsa = RSA_generate_key(bits, RSA_F4, NULL, NULL);
-    if (!EVP_PKEY_assign_RSA(pk, rsa)) {
-        abort();
+    bne = BN_new();
+    rsa = RSA_new();
+
+    if (BN_set_word(bne, RSA_F4) != 1) {
         goto err;
     }
-    rsa = NULL;
+
+    if (!RSA_generate_key_ex(rsa, bits, bne, NULL)) {
+        goto err;
+    }
+
+    // https://www.openssl.org/docs/man1.0.2/man3/EVP_PKEY_assign_RSA.html
+    // "[rsa] will be freed when the parent pkey is freed."
+    if (!EVP_PKEY_assign_RSA(pk, rsa)) {
+        goto err;
+    }
 
     X509_set_version(x, 2);
     ASN1_INTEGER_set(X509_get_serialNumber(x), serial);
@@ -143,15 +155,19 @@ int mkcert(X509** x509p, EVP_PKEY** pkeyp, int bits, int serial, int days) {
 
     *x509p = x;
     *pkeyp = pk;
-    return (1);
+    res = 1;
 err:
-    return (0);
+    BN_free(bne);
+    // rsa will be freed automatically when pk is freed by the caller
+    return (res);
 }
 
 void generate_cert(const char* cert_path, const char* key_path) {
     BIO* bio_err;
     X509* x509 = NULL;
     EVP_PKEY* pkey = NULL;
+    FILE* key_f = NULL;
+    FILE* cert_f = NULL;
 
     OpenSSL_add_all_digests();
 
@@ -159,18 +175,19 @@ void generate_cert(const char* cert_path, const char* key_path) {
 
     bio_err = BIO_new_fp(stderr, BIO_NOCLOSE);
 
-    mkcert(&x509, &pkey, 2048, 1, 10000);
-
+    if (!mkcert(&x509, &pkey, 2048, 1, 10000))
+        goto err;
     // X509_print_fp(stdout, x509);
 
-    FILE* key_f = fopen(key_path, "wt");
+    key_f = fopen(key_path, "wt");
     if (!PEM_write_PrivateKey(key_f, pkey, NULL, NULL, 0, NULL, NULL))
-        abort();
-    fclose(key_f);
-    FILE* cert_f = fopen(cert_path, "wt");
+        goto err;
+    cert_f = fopen(cert_path, "wt");
     PEM_write_X509(cert_f, x509);
-    fclose(cert_f);
 
+err:
+    fclose(cert_f);
+    fclose(key_f);
     X509_free(x509);
     EVP_PKEY_free(pkey);
 
