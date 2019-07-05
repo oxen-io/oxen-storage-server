@@ -71,6 +71,7 @@ int mkcert(X509** x509p, EVP_PKEY** pkeyp, int bits, int serial, int days) {
     EVP_PKEY* pk;
     RSA* rsa;
     X509_NAME* name = NULL;
+    BIGNUM* bne = NULL;
 
     if ((pkeyp == NULL) || (*pkeyp == NULL)) {
         if ((pk = EVP_PKEY_new()) == NULL) {
@@ -86,9 +87,18 @@ int mkcert(X509** x509p, EVP_PKEY** pkeyp, int bits, int serial, int days) {
     } else
         x = *x509p;
 
-    rsa = RSA_generate_key(bits, RSA_F4, NULL, NULL);
+    bne = BN_new();
+    rsa = RSA_new();
+
+    if (BN_set_word(bne, RSA_F4) != 1) {
+        goto err;
+    }
+
+    if (!RSA_generate_key_ex(rsa, bits, bne, NULL)) {
+        goto err;
+    }
+
     if (!EVP_PKEY_assign_RSA(pk, rsa)) {
-        abort();
         goto err;
     }
     rsa = NULL;
