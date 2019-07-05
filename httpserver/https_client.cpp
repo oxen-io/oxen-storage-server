@@ -22,8 +22,8 @@ void make_https_request(boost::asio::io_context& ioc,
 #else
 
     if (sn_address == "0.0.0.0") {
-        LOKI_LOG(error, "Could not initiate request to snode (we don't know "
-                        "their IP yet).");
+        LOKI_LOG(warn, "Could not initiate request to snode (we don't know "
+                       "their IP yet).");
         return;
     }
 
@@ -201,8 +201,10 @@ void HttpsClientSession::start() {
             if (ec) {
                 std::ostringstream os;
                 os << endpoint;
-                LOKI_LOG(error, "[https client]: could not connect to {}, message: {} ({})",
-                         os.str(), ec.message(), ec.value());
+                LOKI_LOG(
+                    error,
+                    "[https client]: could not connect to {}, message: {} ({})",
+                    os.str(), ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
             }
