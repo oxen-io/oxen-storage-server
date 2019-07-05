@@ -112,7 +112,7 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
 static std::unordered_map<std::string, sn_record_t>
 get_snode_map_from_swarms(const all_swarms_t& swarms) {
 
-    std::unordered_map<std::string, sn_record_t> snode_map{};
+    std::unordered_map<std::string, sn_record_t> snode_map;
     for (const auto& swarm : swarms) {
         for (const auto& snode : swarm.snodes) {
             snode_map.insert({snode.sn_address(), snode});
@@ -122,7 +122,7 @@ get_snode_map_from_swarms(const all_swarms_t& swarms) {
 }
 
 static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
-                       const all_swarms_t& other_swarms) {
+                              const all_swarms_t& other_swarms) {
 
     all_swarms_t result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
@@ -131,8 +131,8 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
             const auto other_snode_it =
                 other_snode_map.find(snode.sn_address());
             if (other_snode_it != other_snode_map.end()) {
-                const auto other_snode = other_snode_it->second;
-                // Keep all swarms_to_keep except don't overwrite with default IPs
+                const auto& other_snode = other_snode_it->second;
+                // Keep swarms_to_keep but don't overwrite with default IPs
                 if (snode.ip() == "0.0.0.0") {
                     snode.set_ip(other_snode.ip());
                 }

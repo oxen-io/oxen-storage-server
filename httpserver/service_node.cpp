@@ -296,9 +296,9 @@ void ServiceNode::bootstrap_data() {
     params["fields"] = fields;
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes{
-        std::pair<std::string, uint16_t>{"3.104.19.14", 22023},
-        std::pair<std::string, uint16_t>{"13.238.53.205", 38157},
-        std::pair<std::string, uint16_t>{"149.56.148.124", 38157}};
+        {{"3.104.19.14", 22023},
+         {"13.238.53.205", 38157},
+         {"149.56.148.124", 38157}}};
 
     for (auto seed_node : seed_nodes) {
         lokid_client_.make_lokid_request(
@@ -314,6 +314,9 @@ void ServiceNode::bootstrap_data() {
                             "Exception caught while bootstrapping from {}: {}",
                             seed_node.first, e.what());
                     }
+                } else {
+                    LOKI_LOG(error, "Failed to contact bootstrap node {}",
+                             seed_node.first);
                 }
             });
     }
@@ -488,10 +491,7 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     reset_listeners();
 }
 
-void ServiceNode::on_sync_complete() {
-
-    bootstrap_data();
-}
+void ServiceNode::on_sync_complete() { bootstrap_data(); }
 
 void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 
