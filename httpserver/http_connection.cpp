@@ -103,6 +103,16 @@ void LokidClient::make_lokid_request(boost::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
+    make_lokid_request(local_ip_, lokid_rpc_port_, method, params,
+                       std::move(cb));
+}
+
+void LokidClient::make_lokid_request(const std::string& daemon_ip,
+                                     const uint16_t daemon_port,
+                                     boost::string_view method,
+                                     const nlohmann::json& params,
+                                     http_callback_t&& cb) const {
+
     auto req = std::make_shared<request_t>();
 
     const std::string target = "/json_rpc";
@@ -120,7 +130,7 @@ void LokidClient::make_lokid_request(boost::string_view method,
 
     LOKI_LOG(trace, "Making lokid request, method: {}", method.to_string());
 
-    make_http_request(ioc_, local_ip_, lokid_rpc_port_, req, std::move(cb));
+    make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
 // =============================================================
 
@@ -196,7 +206,8 @@ connection_t::~connection_t() {
 
     // Safety net
     if (stream_.lowest_layer().is_open()) {
-        LOKI_LOG(warn, "Client socket should be closed by this point, but wasn't. Closing now.");
+        LOKI_LOG(warn, "Client socket should be closed by this point, but "
+                       "wasn't. Closing now.");
         stream_.lowest_layer().close();
     }
 
@@ -981,13 +992,12 @@ void connection_t::register_deadline() {
 
     auto self = shared_from_this();
 
-
     deadline_.async_wait([self](error_code ec) {
-
         bool cancelled = (ec && ec == boost::asio::error::operation_aborted);
 
         if (ec && !cancelled) {
-            LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(), ec.message());
+            LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(),
+                     ec.message());
         } else {
             LOKI_LOG(error, "[connection_t] socket timed out");
         }
@@ -1089,19 +1099,21 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
 }
 
 void HttpClientSession::start() {
-    socket_.async_connect(
-        endpoint_, [this, self = shared_from_this()](const error_code& ec) {
-            /// TODO: I think I should just call again if ec == EINTR
-            if (ec) {
-                LOKI_LOG(error, "[http client]: could not connect to {}:{}, message: {} ({})",
-                         endpoint_.address().to_string(), endpoint_.port(),
-                         ec.message(), ec.value());
-                trigger_callback(SNodeError::NO_REACH, nullptr);
-                return;
-            }
+    socket_.async_connect(endpoint_, [this, self = shared_from_this()](
+                                         const error_code& ec) {
+        /// TODO: I think I should just call again if ec == EINTR
+        if (ec) {
+            LOKI_LOG(
+                error,
+                "[http client]: could not connect to {}:{}, message: {} ({})",
+                endpoint_.address().to_string(), endpoint_.port(), ec.message(),
+                ec.value());
+            trigger_callback(SNodeError::NO_REACH, nullptr);
+            return;
+        }
 
-            self->on_connect();
-        });
+        self->on_connect();
+    });
 
     deadline_timer_.expires_after(SESSION_TIME_LIMIT);
     deadline_timer_.async_wait(
