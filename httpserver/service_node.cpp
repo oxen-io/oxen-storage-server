@@ -529,7 +529,12 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     reset_listeners();
 }
 
-void ServiceNode::on_sync_complete() { bootstrap_data(); }
+void ServiceNode::on_sync_complete() {
+
+#ifndef INTEGRATION_TEST
+    bootstrap_data();
+#endif
+}
 
 void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 
