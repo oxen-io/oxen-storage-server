@@ -26,6 +26,7 @@ struct sn_record_t {
 
     sn_record_t() = default;
 
+    void set_ip(const std::string& ip) { ip_ = ip; }
     void set_port(uint16_t port) { port_ = port; }
 
     /// Set service node's public key in base32z (without .snode part)
