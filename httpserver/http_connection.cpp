@@ -234,6 +234,7 @@ void connection_t::do_handshake() {
 void connection_t::on_handshake(boost::system::error_code ec) {
     if (ec) {
         LOKI_LOG(warn, "ssl handshake failed: {}", ec.message());
+        deadline_.cancel();
         return;
     }
 
@@ -260,9 +261,7 @@ void connection_t::notify(boost::optional<const message_t&> msg) {
 // Asynchronously receive a complete request message.
 void connection_t::read_request() {
 
-    auto self = shared_from_this();
-
-    auto on_data = [self](error_code ec, size_t bytes_transferred) {
+    auto on_data = [self = shared_from_this()](error_code ec, size_t bytes_transferred) {
         LOKI_LOG(trace, "on data: {} bytes", bytes_transferred);
 
         if (ec) {
@@ -270,6 +269,7 @@ void connection_t::read_request() {
                 error,
                 "Failed to read from a socket [{}: {}], connection idx: {}",
                 ec.value(), ec.message(), self->conn_idx);
+            self->deadline_.cancel();
             return;
         }
 
@@ -569,6 +569,7 @@ void connection_t::write_response() {
 
 #ifndef DISABLE_ENCRYPTION
     const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
+    // TODO: do we need to separately handle the case where we can't find the key?
     if (it != header_.end()) {
         const std::string& ephemKey = it->second;
         try {
@@ -592,12 +593,16 @@ void connection_t::write_response() {
 
     response_.set(http::field::content_length, response_.body().size());
 
-    auto self = shared_from_this();
-
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much
-    http::async_write(stream_, response_, [self](error_code ec, size_t) {
+    http::async_write(stream_, response_, [self = shared_from_this()](error_code ec, size_t) {
+
+        if (ec && ec != boost::asio::error::operation_aborted) {
+            LOKI_LOG(error, "Failed to write to a socket: {}", ec.message());
+        }
+
         self->do_close();
+        /// Is it too early to cancel the deadline here?
         self->deadline_.cancel();
     });
 }
@@ -930,7 +935,7 @@ void connection_t::process_retrieve(const json& params) {
         return;
     }
 
-    // we are going send the response anynchronously
+    // we are going to send the response anynchronously
     // once we have new data
     delay_response_ = true;
 
@@ -1011,23 +1016,30 @@ void connection_t::register_deadline() {
 
     auto self = shared_from_this();
 
+    // Note: deadline callback captures a shared pointer to this, so
+    // the connection will not be destroyed until the timer goes off.
+    // If we want to destroy it earlier, we need to manually cancel the timer.
     deadline_.async_wait([self = std::move(self)](error_code ec) {
-        bool cancelled = (ec && ec == boost::asio::error::operation_aborted);
+        const bool cancelled = (ec && ec == boost::asio::error::operation_aborted);
 
-        if (ec && !cancelled) {
+        if (cancelled)
+            return;
+
+        // Note: cancelled timer does absolutely nothing, so we need to make sure
+        // we close the socket (and unsubscribe from notifications) elsewhere if
+        // we cancel it.
+        if (ec) {
             LOKI_LOG(error, "Deadline timer error [{}]: {}", ec.value(),
                      ec.message());
         }
 
-        if (!cancelled) {
-
-            if (self->notification_ctx_) {
-                self->service_node_.remove_listener(
-                    self->notification_ctx_->pubkey, self.get());
-            }
-            LOKI_LOG(debug, "Closing [connection_t] socket due to timeout");
-            self->do_close();
+        // TODO: move this to do_close?
+        if (self->notification_ctx_) {
+            self->service_node_.remove_listener(
+                self->notification_ctx_->pubkey, self.get());
         }
+        LOKI_LOG(debug, "Closing [connection_t] socket due to timeout");
+        self->do_close();
     });
 }
 
