@@ -75,6 +75,49 @@ HttpsClientSession::HttpsClientSession(
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
       server_pub_key_b32z(sn_pubkey_b32z) {}
 
+void HttpsClientSession::start() {
+    // Set SNI Hostname (many hosts need this to handshake successfully)
+    if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
+        boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
+                                    boost::asio::error::get_ssl_category()};
+        LOKI_LOG(error, "{}", ec.message());
+        return;
+    }
+    boost::asio::async_connect(
+        stream_.next_layer(), resolve_results_,
+        [this, self = shared_from_this()](boost::system::error_code ec,
+                                          const tcp::endpoint& endpoint) {
+            /// TODO: I think I should just call again if ec ==
+            /// EINTR
+            if (ec) {
+                std::ostringstream os;
+                os << endpoint;
+                
+                LOKI_LOG(
+                    error,
+                    "[https client]: could not connect to {}, message: {} ({})",
+                    os.str(), ec.message(), ec.value());
+                trigger_callback(SNodeError::NO_REACH, nullptr);
+                return;
+            }
+
+            self->on_connect();
+        });
+
+    deadline_timer_.expires_after(SESSION_TIME_LIMIT);
+    deadline_timer_.async_wait(
+        [self = shared_from_this()](const error_code& ec) {
+            if (ec) {
+                if (ec != boost::asio::error::operation_aborted) {
+                    LOKI_LOG(error, "Error({}): {}", ec.value(), ec.message());
+                }
+            } else {
+                LOKI_LOG(error, "client socket timed out");
+                self->do_close();
+            }
+        });
+}
+
 void HttpsClientSession::on_connect() {
     LOKI_LOG(trace, "on connect");
     stream_.set_verify_mode(ssl::verify_none);
@@ -95,10 +138,9 @@ void HttpsClientSession::on_connect() {
 
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
-        LOKI_LOG(error, "handshake failed: {}", ec.message());
-        LOKI_LOG(error, "{}:{}",
-                 stream_.lowest_layer().remote_endpoint().address().to_string(),
-                 stream_.lowest_layer().remote_endpoint().port());
+        LOKI_LOG(error, "Failed to perform a handshake with {}: {}",
+                 server_pub_key_b32z, ec.message());
+
         return;
     }
 
@@ -182,48 +224,6 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     }
 
     // If we get here then the connection is closed gracefully
-}
-
-void HttpsClientSession::start() {
-    // Set SNI Hostname (many hosts need this to handshake successfully)
-    if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
-        boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
-                                    boost::asio::error::get_ssl_category()};
-        LOKI_LOG(error, "{}", ec.message());
-        return;
-    }
-    boost::asio::async_connect(
-        stream_.next_layer(), resolve_results_,
-        [this, self = shared_from_this()](boost::system::error_code ec,
-                                          const tcp::endpoint& endpoint) {
-            /// TODO: I think I should just call again if ec ==
-            /// EINTR
-            if (ec) {
-                std::ostringstream os;
-                os << endpoint;
-                LOKI_LOG(
-                    error,
-                    "[https client]: could not connect to {}, message: {} ({})",
-                    os.str(), ec.message(), ec.value());
-                trigger_callback(SNodeError::NO_REACH, nullptr);
-                return;
-            }
-
-            self->on_connect();
-        });
-
-    deadline_timer_.expires_after(SESSION_TIME_LIMIT);
-    deadline_timer_.async_wait(
-        [self = shared_from_this()](const error_code& ec) {
-            if (ec) {
-                if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(error, "Error({}): {}", ec.value(), ec.message());
-                }
-            } else {
-                LOKI_LOG(error, "client socket timed out");
-                self->do_close();
-            }
-        });
 }
 
 void HttpsClientSession::trigger_callback(SNodeError error,
