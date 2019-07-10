@@ -540,8 +540,6 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     hardfork_ = bu.hardfork;
 
-    bool sync_complete = false;
-
     if (syncing_ && target_height_ != 0) {
         syncing_ = bu.height < target_height_ - 1;
     }
