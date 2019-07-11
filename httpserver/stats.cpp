@@ -10,7 +10,7 @@ namespace loki {
 
 void to_json(nlohmann::json& j, const test_result_t& val) {
     j["timestamp"] = val.timestamp;
-    j["success"] = val.success;
+    j["result"] = to_str(val.result);
 }
 
 std::string all_stats_t::to_json(bool pretty) const {
@@ -47,7 +47,7 @@ static void cleanup_old(std::deque<test_result_t>& tests, time_t cutoff_time) {
     tests.erase(tests.begin(), it);
 }
 
-static constexpr std::chrono::seconds ROLLING_WINDOW_SIZE = 60min;
+static constexpr std::chrono::seconds ROLLING_WINDOW_SIZE = 120min;
 
 void all_stats_t::cleanup() {
 

@@ -11,11 +11,30 @@ struct time_entry_t {
     time_t timestamp;
 };
 
+enum class ResultType {
+    OK,
+    MISMATCH,
+    OTHER
+};
+
 struct test_result_t {
+
     // seconds since Epoch when entry was recorded
     time_t timestamp;
-    bool success;
+    ResultType result;
 };
+
+inline const char* to_str(ResultType result) {
+    switch (result) {
+    case ResultType::OK:
+        return "OK";
+    case ResultType::MISMATCH:
+        return "MISMATCH";
+    case ResultType::OTHER:
+    default:
+        return "OTHER";
+    }
+}
 
 // Stats per peer
 struct peer_stats_t {
@@ -53,13 +72,13 @@ class all_stats_t {
         peer_report_[sn].pushes_failed++;
     }
 
-    void record_storage_test_result(const sn_record_t& sn, bool success) {
-        test_result_t res = {std::time(nullptr), success};
+    void record_storage_test_result(const sn_record_t& sn, ResultType result) {
+        test_result_t res = {std::time(nullptr), result};
         peer_report_[sn].storage_tests.push_back(res);
     }
 
-    void record_blockchain_test_result(const sn_record_t& sn, bool success) {
-        test_result_t t = {std::time(nullptr), success};
+    void record_blockchain_test_result(const sn_record_t& sn, ResultType result) {
+        test_result_t t = {std::time(nullptr), result};
         peer_report_[sn].blockchain_tests.push_back(t);
     }
 
