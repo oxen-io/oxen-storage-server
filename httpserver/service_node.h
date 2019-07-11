@@ -104,6 +104,7 @@ class ServiceNode {
     bool syncing_ = true;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
+    uint64_t target_height_ = 0;
     const LokidClient& lokid_client_;
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
@@ -137,8 +138,6 @@ class ServiceNode {
 
     /// request swarm info from the blockchain
     void update_swarms();
-
-    void on_sync_complete();
 
     void on_bootstrap_update(const block_update_t& bu);
 

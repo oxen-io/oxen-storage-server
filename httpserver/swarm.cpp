@@ -142,11 +142,6 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
     return result_swarms;
 }
 
-void Swarm::bootstrap_state(const all_swarms_t& bootstrap_swarms) {
-
-    all_cur_swarms_ = apply_ips(all_cur_swarms_, bootstrap_swarms);
-}
-
 void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
 
     all_cur_swarms_ = apply_ips(new_swarms, all_cur_swarms_);

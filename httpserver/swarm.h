@@ -26,7 +26,6 @@ using all_swarms_t = std::vector<SwarmInfo>;
 struct block_update_t {
     all_swarms_t swarms;
     uint64_t height;
-    uint64_t target_height;
     std::string block_hash;
     int hardfork;
 };
@@ -66,8 +65,6 @@ class Swarm {
 
     /// Update swarm state according to `events`
     void update_state(const all_swarms_t& swarms, const SwarmEvents& events);
-
-    void bootstrap_state(const all_swarms_t& bootstrap_swarms);
 
     void apply_swarm_changes(const all_swarms_t& new_swarms);
 
