@@ -774,18 +774,19 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
     auto callback = [testee, item, height = this->block_height_,
                      this](sn_response_t&& res) {
-        bool success = false;
+        ResultType result = ResultType::OTHER;
 
         if (res.error_code == SNodeError::NO_ERROR && res.body) {
             if (*res.body == item.data) {
                 LOKI_LOG(debug,
                          "Storage test is successful for: {} at height: {}",
                          testee, height);
-                success = true;
+                result = ResultType::OK;
             } else {
 
                 LOKI_LOG(warn, "Test answer doesn't match for: {} at height {}",
                          testee, height);
+                result = ResultType::MISMATCH;
 
 #ifdef INTEGRATION_TEST
                 LOKI_LOG(warn, "got: {} expected: {}", *res.body, item.data);
@@ -802,7 +803,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
             // abort_if_integration_test();
         }
 
-        this->all_stats_.record_storage_test_result(testee, success);
+        this->all_stats_.record_storage_test_result(testee, result);
     };
 
     nlohmann::json json_body;
@@ -857,7 +858,7 @@ void ServiceNode::process_blockchain_test_response(
              "Processing blockchain test response from: {} at height: {}",
              testee, bc_height);
 
-    bool success = false;
+    ResultType result = ResultType::OTHER;
 
     if (res.error_code == SNodeError::NO_ERROR && res.body) {
 
@@ -867,9 +868,10 @@ void ServiceNode::process_blockchain_test_response(
             uint64_t their_height = body.at("res_height").get<uint64_t>();
 
             if (our_answer.res_height == their_height) {
-                success = true;
+                result = ResultType::OK;
                 LOKI_LOG(debug, "Success.");
             } else {
+                result = ResultType::MISMATCH;
                 LOKI_LOG(debug, "Failed: incorrect answer.");
             }
 
@@ -882,7 +884,7 @@ void ServiceNode::process_blockchain_test_response(
                  testee);
     }
 
-    this->all_stats_.record_blockchain_test_result(testee, success);
+    this->all_stats_.record_blockchain_test_result(testee, result);
 }
 
 // Deterministically selects two random swarm members; returns true on success
