@@ -177,7 +177,7 @@ bool Database::get_message_count(uint64_t& count) {
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(error, "sqlite reset error: {}", rc);
+        LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
         success = false;
     }
 
@@ -229,7 +229,7 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(error, "sqlite reset error: {}", rc);
+        LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
         success = false;
     }
 
@@ -263,7 +263,7 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
 
     rc = sqlite3_reset(get_by_hash_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(error, "sqlite reset error: {}", rc);
+        LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
         success = false;
     }
 
@@ -310,7 +310,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
 
     rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(error, "sqlite reset error: {}", rc);
+        LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
     }
     return result;
 }
@@ -374,7 +374,7 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
 
     int rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(error, "sqlite reset error: {}", rc);
+        LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
         success = false;
     }
     return success;

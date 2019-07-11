@@ -198,7 +198,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     static uint64_t instance_counter = 0;
     conn_idx = instance_counter++;
 
-    LOKI_LOG(debug, "connection_t [{}]", conn_idx);
+    LOKI_LOG(trace, "connection_t [{}]", conn_idx);
 
     start_timestamp_ = std::chrono::steady_clock::now();
 }
@@ -215,7 +215,7 @@ connection_t::~connection_t() {
         stream_.lowest_layer().close();
     }
 
-    LOKI_LOG(debug, "~connection_t [{}]", conn_idx);
+    LOKI_LOG(trace, "~connection_t [{}]", conn_idx);
 }
 
 void connection_t::start() {
@@ -741,6 +741,7 @@ void connection_t::process_store(const json& params) {
     if (!success) {
         response_.result(http::status::service_unavailable);
         response_.set(http::field::content_type, "text/plain");
+        /// This is not the only reason for faliure
         body_stream_ << "Service node is initializing\n";
         LOKI_LOG(warn, "Service node is initializing");
         return;
@@ -1056,11 +1057,9 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     }
     if (ec)
-        LOKI_LOG(error, "Could not close ssl stream gracefully");
+        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {}", ec.message());
 
     stream_.lowest_layer().close();
-
-    // At this point the connection is closed gracefully
 }
 
 void connection_t::on_get_stats() {
