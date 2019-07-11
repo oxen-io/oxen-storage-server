@@ -90,13 +90,11 @@ void HttpsClientSession::start() {
             /// TODO: I think I should just call again if ec ==
             /// EINTR
             if (ec) {
-                std::ostringstream os;
-                os << endpoint;
-                
-                LOKI_LOG(
-                    error,
-                    "[https client]: could not connect to {}, message: {} ({})",
-                    os.str(), ec.message(), ec.value());
+                LOKI_LOG(error,
+                         "[https client]: could not connect to {}:{}, message: "
+                         "{} ({})",
+                         endpoint.address().to_string(), endpoint.port(),
+                         ec.message(), ec.value());
                 trigger_callback(SNodeError::NO_REACH, nullptr);
                 return;
             }
