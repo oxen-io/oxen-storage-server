@@ -488,13 +488,14 @@ void connection_t::process_request() {
 
     /// TODO: make sure that we always send a response!
 
-    response_.result(http::status::bad_request);
+    response_.result(http::status::internal_server_error);
 
     const auto target = request_.target();
     switch (request_.method()) {
     case http::verb::post:
         if (!service_node_.snode_ready()) {
             LOKI_LOG(debug, "Ignoring post request: snode not ready");
+            response_.result(http::status::service_unavailable);
             break;
         }
         if (target == "/storage_rpc/v1") {
