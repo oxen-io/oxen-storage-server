@@ -4,7 +4,7 @@ Storage server for Loki Service Nodes
 Requirements:
 * Boost >= 1.66 (for boost.beast)
 * OpenSSL >= 1.1.1a (for X25519 curves)
-* sodium (for ed25119 to curve25519 conversion)
+* sodium >= 1.0.16 (for ed25119 to curve25519 conversion)
 
 ```
 make
