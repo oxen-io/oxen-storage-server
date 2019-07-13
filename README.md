@@ -8,7 +8,9 @@ Requirements:
 
 ```
 git submodule update --init
-make
+mkdir build && cd build
+cmake -DDISABLE_SNODE_SIGNATURE=OFF -DCMAKE_BUILD_TYPE=Release ..
+cmake --build .
 ./httpserver 0.0.0.0 8080
 ```
 
