@@ -4,11 +4,14 @@ Storage server for Loki Service Nodes
 Requirements:
 * Boost >= 1.66 (for boost.beast)
 * OpenSSL >= 1.1.1a (for X25519 curves)
-* sodium (for ed25119 to curve25519 conversion)
+* sodium >= 1.0.16 (for ed25119 to curve25519 conversion)
 
 ```
-make
-./httpserver 127.0.0.1 8080
+git submodule update --init
+mkdir build && cd build
+cmake -DDISABLE_SNODE_SIGNATURE=OFF -DCMAKE_BUILD_TYPE=Release ..
+cmake --build .
+./httpserver 0.0.0.0 8080
 ```
 
 The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
