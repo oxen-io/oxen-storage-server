@@ -7,8 +7,9 @@ Requirements:
 * sodium >= 1.0.16 (for ed25119 to curve25519 conversion)
 
 ```
+git submodule update --init
 make
-./httpserver 127.0.0.1 8080
+./httpserver 0.0.0.0 8080
 ```
 
 The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
