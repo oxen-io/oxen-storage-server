@@ -309,7 +309,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
     }
 
     rc = sqlite3_reset(stmt);
-    if (rc != SQLITE_OK) {
+    if (rc != SQLITE_OK && rc != SQLITE_CONSTRAINT) {
         LOKI_LOG(error, "sqlite reset error: [{}], {}", rc, sqlite3_errmsg(db));
     }
     return result;
