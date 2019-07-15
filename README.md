@@ -11,7 +11,7 @@ git submodule update --init
 mkdir build && cd build
 cmake -DDISABLE_SNODE_SIGNATURE=OFF -DCMAKE_BUILD_TYPE=Release ..
 cmake --build .
-./httpserver 0.0.0.0 8080
+./loki-storage 0.0.0.0 8080
 ```
 
 The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
