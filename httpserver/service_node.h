@@ -211,7 +211,7 @@ class ServiceNode {
     mutable all_stats_t all_stats_;
 
     // Return true if the service node is ready to start running
-    bool snode_ready();
+    bool snode_ready(boost::optional<std::string&> reason);
 
     // Register a connection as waiting for new data for pk
     void register_listener(const std::string& pk,

@@ -212,9 +212,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     LOKI_LOG(info, "Requesting initial swarm state");
-    #ifndef INTEGRATION_TEST
-        bootstrap_data();
-    #endif
+    bootstrap_data();
     swarm_timer_tick();
     lokid_ping_timer_tick();
     cleanup_timer_tick();
@@ -301,10 +299,12 @@ void ServiceNode::bootstrap_data() {
          {"13.238.53.205", 38157},
          {"149.56.148.124", 38157}}};
 
+    auto req_counter = std::make_shared<int>(0);
+
     for (auto seed_node : seed_nodes) {
         lokid_client_.make_lokid_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
-            [this, seed_node](const sn_response_t&& res) {
+            [this, seed_node, req_counter, node_count = seed_nodes.size()](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
@@ -319,15 +319,45 @@ void ServiceNode::bootstrap_data() {
                     LOKI_LOG(error, "Failed to contact bootstrap node {}",
                              seed_node.first);
                 }
+
+                (*req_counter)++;
+
+                if (*req_counter == node_count && this->target_height_ == 0) {
+                    // If target height is still 0 after having contacted
+                    // (successfully or not) all seed nodes, just assume we have
+                    // finished syncing. (Otherwise we will never get a chance
+                    // to update syncing status.)
+                    LOKI_LOG(
+                        warn,
+                        "Could not contact any of the seed nodes to get target "
+                        "height. Going to assume our height is correct.");
+                    this->syncing_ = false;
+                }
+
             });
     }
 }
 
-bool ServiceNode::snode_ready() {
+bool ServiceNode::snode_ready(boost::optional<std::string&> reason) {
     bool ready = true;
-    ready = ready && hardfork_ >= STORAGE_SERVER_HARDFORK;
-    ready = ready && swarm_ && swarm_->is_valid();
-    ready = ready && !syncing_;
+    std::string buf;
+    if (hardfork_ < STORAGE_SERVER_HARDFORK) {
+        buf += "not yet on hardfork 12; ";
+        ready = false;
+    }
+    if (!swarm_ || !swarm_->is_valid()) {
+        buf += "not in any swarm; ";
+        ready = false;
+    }
+    if (syncing_) {
+        buf += "not done syncing; ";
+        ready = false;
+    }
+
+    if (reason) {
+        *reason = std::move(buf);
+    }
+
     return ready || force_start_;
 }
 
@@ -348,14 +378,19 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
             all_stats_.record_request_failed(sn);
 
             if (res.error_code == SNodeError::NO_REACH) {
-                LOKI_LOG(error, "Could not relay data to: {} (Unreachable)",
+                LOKI_LOG(debug,
+                         "Could not relay data to {} at first attempt: "
+                         "(Unreachable)",
                          sn);
             } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                LOKI_LOG(error, "Could not relay data to: {} (Generic error)",
+                LOKI_LOG(debug,
+                         "Could not relay data to {} at first attempt: "
+                         "(Generic error)",
                          sn);
             }
 
             std::function<void()> give_up_cb = [this, sn]() {
+                LOKI_LOG(error, "Failed to send a request to: {}", sn);
                 this->all_stats_.record_push_failed(sn);
             };
 
@@ -580,9 +615,16 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
     swarm_->set_swarm_id(events.our_swarm_id);
 
-    if (!snode_ready()) {
-        LOKI_LOG(warn, "Service Node is still not ready");
+    std::string reason;
+    if (!snode_ready(boost::optional<std::string&>(reason))) {
+        LOKI_LOG(warn, "Storage server is still not ready: {}", reason);
         return;
+    } else {
+        static bool active = false;
+        if (!active) {
+            LOKI_LOG(info, "Storage server is now active!");
+            active = true;
+        }
     }
 
     swarm_->update_state(bu.swarms, events);
