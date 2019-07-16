@@ -1,0 +1,181 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 16 Jul 2019 16:08:10 -0300
+Subject: Devendor loki-storage-server
+
+---
+ CMakeLists.txt            |  1 -
+ common/CMakeLists.txt     |  2 +-
+ crypto/CMakeLists.txt     | 21 ++++++++-------------
+ crypto/src/lokid_key.cpp  | 15 ++++++++-------
+ crypto/src/signature.cpp  |  4 ++--
+ httpserver/CMakeLists.txt |  9 +--------
+ storage/CMakeLists.txt    |  4 ++--
+ 7 files changed, 22 insertions(+), 34 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0c62c49..906616f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,7 +30,6 @@ loki_add_subdirectory(crypto)
+ loki_add_subdirectory(pow)
+ loki_add_subdirectory(storage)
+ loki_add_subdirectory(httpserver)
+-loki_add_subdirectory(vendors/spdlog)
+ 
+ 
+ if (BUILD_TESTS)
+diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
+index 9123362..066463e 100644
+--- a/common/CMakeLists.txt
++++ b/common/CMakeLists.txt
+@@ -13,7 +13,7 @@ find_package(Boost
+ 
+ set_property(TARGET common PROPERTY CXX_STANDARD 14)
+ 
+-loki_add_subdirectory(../vendors/spdlog spdlog)
++find_package(spdlog)
+ 
+ target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
+ target_include_directories(common PUBLIC
+diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
+index c9ad6f8..bc8d4e2 100644
+--- a/crypto/CMakeLists.txt
++++ b/crypto/CMakeLists.txt
+@@ -12,14 +12,6 @@ set(SOURCES
+     src/channel_encryption.cpp
+     src/signature.cpp
+     include/signature.h
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops-data.c
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.h
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.h
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.c
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/int-util.h
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.h
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.c
+ )
+ 
+ add_library(crypto STATIC ${SOURCES})
+@@ -34,13 +26,18 @@ target_include_directories(crypto
+     ${CMAKE_CURRENT_LIST_DIR}/include
+     PRIVATE
+     ${CMAKE_CURRENT_LIST_DIR}/src
+-    ${CMAKE_CURRENT_LIST_DIR}/../vendors
++    /usr/include/loki-core
+ )
+ 
+ loki_add_subdirectory(../utils utils)
+ 
+ target_link_libraries(crypto PUBLIC utils)
+ 
++find_library(LOKI_CNCRYPTO cncrypto PATHS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/loki-core)
++find_library(LOKI_EPEE epee PATHS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/loki-core)
++target_link_libraries(crypto INTERFACE ${LOKI_CNCRYPTO})
++target_link_libraries(crypto INTERFACE ${LOKI_EPEE})
++
+ if (NOT Boost_FOUND)
+     find_package(Boost REQUIRED system filesystem)
+ endif()
+@@ -52,10 +49,8 @@ add_executable(crypto_test src/test_main.cpp)
+ target_link_libraries(crypto_test PRIVATE crypto)
+ 
+ # sodium
+-list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../contrib")
+-set(sodium_USE_STATIC_LIBS ON)
+-find_package(sodium REQUIRED)
+-target_link_libraries(crypto PUBLIC sodium)
++find_library(SODIUM_LIBRARY sodium)
++target_link_libraries(crypto INTERFACE sodium)
+ 
+ if (UNIX AND NOT APPLE)
+     target_link_libraries(crypto PUBLIC pthread dl)
+diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
+index 7ca1afb..e069eac 100644
+--- a/crypto/src/lokid_key.cpp
++++ b/crypto/src/lokid_key.cpp
+@@ -1,7 +1,6 @@
+ #include "lokid_key.h"
+-extern "C" {
+-#include "sodium/private/ed25519_ref10.h"
+-}
++
++#include "crypto/crypto.h"
+ 
+ #include <boost/filesystem.hpp>
+ #include <boost/format.hpp>
+@@ -9,6 +8,7 @@ extern "C" {
+ #include <exception>
+ #include <fstream>
+ #include <iterator>
++#include <cstring>
+ 
+ namespace fs = boost::filesystem;
+ 
+@@ -53,11 +53,12 @@ private_key_t parseLokidKey(const std::string& path) {
+ }
+ 
+ public_key_t calcPublicKey(const private_key_t& private_key) {
+-    ge25519_p3 A;
+-    ge25519_scalarmult_base(&A, private_key.data());
++    crypto::secret_key sec_key;
++    std::memcpy(sec_key.data, private_key.data(), KEY_LENGTH);
++    crypto::public_key pub_key;
++    crypto::secret_key_to_public_key(sec_key, pub_key);
+     public_key_t publicKey;
+-    ge25519_p3_tobytes(publicKey.data(), &A);
+-
++    std::memcpy(publicKey.data(), pub_key.data, KEY_LENGTH);
+     return publicKey;
+ }
+ 
+diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
+index a8b50f3..b5a8ca6 100644
+--- a/crypto/src/signature.cpp
++++ b/crypto/src/signature.cpp
+@@ -2,8 +2,8 @@
+ #include "utils.hpp"
+ 
+ extern "C" {
+-#include "loki/crypto-ops/crypto-ops.h"
+-#include "loki/crypto-ops/hash-ops.h"
++#include "loki-core/crypto/crypto-ops.h"
++#include "loki-core/crypto/hash-ops.h"
+ }
+ 
+ #include <boost/beast/core/detail/base64.hpp>
+diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
+index 02bcebd..7737414 100644
+--- a/httpserver/CMakeLists.txt
++++ b/httpserver/CMakeLists.txt
+@@ -69,15 +69,8 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+ target_link_libraries(httpserver PRIVATE httpserver_lib)
+ install(TARGETS httpserver DESTINATION bin)
+ # Build Info
+-execute_process(
+-    COMMAND
+-        git rev-parse --short HEAD
+-    OUTPUT_VARIABLE
+-        SHORT_HASH
+-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+ string(TIMESTAMP BUILD_TIME UTC)
+-message(STATUS "using git commit hash ${SHORT_HASH}")
+ message(STATUS "using UTC build time ${BUILD_TIME}")
+-target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="${SHORT_HASH}")
++target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="deb-${LOKISS_VERSION_TAG}")
+ target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
+ #
+diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
+index 8ddd6fe..ee7c7a1 100644
+--- a/storage/CMakeLists.txt
++++ b/storage/CMakeLists.txt
+@@ -21,8 +21,8 @@ loki_add_subdirectory(../common common)
+ target_link_libraries(storage PRIVATE common)
+ loki_add_subdirectory(../utils utils)
+ target_link_libraries(storage PRIVATE utils)
+-loki_add_subdirectory(../vendors/sqlite sqlite)
+-target_link_libraries(storage PRIVATE sqlite)
++find_library(SQLITE3_LIBRARY sqlite3)
++target_link_libraries(storage PRIVATE ${SQLITE3_LIBRARY})
+ 
+ 
+ if(NOT Boost_FOUND)
