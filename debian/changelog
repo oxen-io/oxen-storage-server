@@ -1,3 +1,9 @@
+loki-storage-server (1.0.2-2) unstable; urgency=medium
+
+  * Downgrade loki-service-node to Suggests
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Thu, 18 Jul 2019 17:21:08 -0300
+
 loki-storage-server (1.0.2-1) unstable; urgency=medium
 
   * Initial Release.
