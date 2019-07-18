@@ -1,42 +1,15 @@
 From: Jason Rhinelander <jason@imaginary.ca>
 Date: Tue, 16 Jul 2019 16:08:10 -0300
-Subject: Devendor loki-storage-server
+Subject: Partially devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  1 -
- common/CMakeLists.txt     |  2 +-
  crypto/CMakeLists.txt     | 21 ++++++++-------------
  crypto/src/lokid_key.cpp  | 15 ++++++++-------
  crypto/src/signature.cpp  |  4 ++--
  httpserver/CMakeLists.txt |  9 +--------
  storage/CMakeLists.txt    |  4 ++--
- 7 files changed, 22 insertions(+), 34 deletions(-)
+ 5 files changed, 21 insertions(+), 32 deletions(-)
 
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 0c62c49..906616f 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -30,7 +30,6 @@ loki_add_subdirectory(crypto)
- loki_add_subdirectory(pow)
- loki_add_subdirectory(storage)
- loki_add_subdirectory(httpserver)
--loki_add_subdirectory(vendors/spdlog)
- 
- 
- if (BUILD_TESTS)
-diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 9123362..066463e 100644
---- a/common/CMakeLists.txt
-+++ b/common/CMakeLists.txt
-@@ -13,7 +13,7 @@ find_package(Boost
- 
- set_property(TARGET common PROPERTY CXX_STANDARD 14)
- 
--loki_add_subdirectory(../vendors/spdlog spdlog)
-+find_package(spdlog)
- 
- target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
- target_include_directories(common PUBLIC
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
 index c9ad6f8..bc8d4e2 100644
 --- a/crypto/CMakeLists.txt

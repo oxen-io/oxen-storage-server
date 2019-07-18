@@ -10,6 +10,7 @@ include /usr/share/dpkg/pkg-info.mk
 	dh $@ --buildsystem=cmake --with-systemd
 
 override_dh_auto_configure:
+	./debian/setup_boost.sh
 	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_CXX_FLAGS="-march=westmere -mtune=haswell" -DCMAKE_C_FLAGS="-march=westmere -mtune=haswell" \
 		-DCMAKE_INSTALL_RPATH=/usr/lib/$(DEB_HOST_MULTIARCH)/loki-core \

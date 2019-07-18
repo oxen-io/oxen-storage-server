@@ -2,8 +2,7 @@ Source: loki-storage-server
 Section: net
 Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
-Build-Depends: debhelper (>= 11), cmake, g++, libloki-core-dev (>= 4), libboost-dev (>= 1.58), libboost-filesystem-dev,
-    libboost-thread-dev, libboost-chrono-dev, libboost-program-options-dev, libsodium-dev, libssl-dev, libsqlite3-dev, libspdlog-dev
+Build-Depends: debhelper (>= 11), cmake, g++, libloki-core-dev (>= 4), libsodium-dev, libssl-dev, libsqlite3-dev, curl, ca-certificates
 Standards-Version: 4.1.3
 Homepage: https://loki.network
 
