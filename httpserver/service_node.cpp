@@ -41,6 +41,7 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
 }
 
 std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
+    LOKI_LOG(debug, "Querying PoW difficulty...");
     std::vector<pow_difficulty_t> new_history;
     int response;
     unsigned char query_buffer[1024] = {};
@@ -49,25 +50,38 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
     int pow_difficulty;
     ns_msg nsMsg;
     if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
-    ns_rr rr;
-    if (ns_parserr(&nsMsg, ns_s_an, 0, &rr) == -1) {
+        LOKI_LOG(warn, "ns_initparse failed while retrieving PoW");
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
 
+    // We get back a sequence of N...[N...] values where N is a byte indicating the length of the
+    // immediately following ... data.
+    auto count = ns_msg_count(nsMsg, ns_s_an);
+    std::string data;
+    data.reserve(255*count);
+    for (int i = 0; i < count; i++) {
+        ns_rr rr;
+        if (ns_parserr(&nsMsg, ns_s_an, i, &rr) == -1) {
+            LOKI_LOG(warn, "ns_parserr failed while parsing PoW data");
+            ec = std::make_error_code(std::errc::bad_message);
+            return new_history;
+        }
+        auto *rdata = ns_rr_rdata(rr);
+        data.append(reinterpret_cast<const char *>(rdata + 1), rdata[0]);
+    }
+
+    new_history.reserve(new_history.size());
     try {
-        const json history = json::parse(ns_rr_rdata(rr) + 1, nullptr, true);
-        new_history.reserve(history.size());
+        const json history = json::parse(data, nullptr, true);
         for (const auto& el : history.items()) {
             const std::chrono::milliseconds timestamp(std::stoul(el.key()));
             const int difficulty = el.value().get<int>();
             new_history.push_back(pow_difficulty_t{timestamp, difficulty});
         }
         return new_history;
-    } catch (...) {
+    } catch (const std::exception &e) {
+        LOKI_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
