@@ -43,6 +43,8 @@ RUN set -ex \
     && make check \
     && make install
 
+ADD https://api.github.com/repos/loki-project/loki-storage-server/git/refs/heads/master version.json
+
 RUN git clone https://github.com/loki-project/loki-storage-server.git --depth=1
 RUN cd loki-storage-server && git submodule update --init
 
@@ -51,5 +53,7 @@ ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
 RUN cd loki-storage-server \
     && mkdir -p build \
     && cd build \
-    && sodium_LIBRARY_RELEASE="deps/sodium/lib" cmake .. -DBOOST_ROOT=$BOOST_ROOT \
+    && cmake .. -DBOOST_ROOT=$BOOST_ROOT \
     && cmake --build .
+
+RUN loki-storage-server/build/httpserver/loki-storage --version 
