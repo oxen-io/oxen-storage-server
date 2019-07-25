@@ -237,7 +237,8 @@ bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk) {
 
-    const uint64_t res = hex_to_u64(pk);
+    uint64_t res;
+    res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = std::numeric_limits<uint64_t>::max() - 1;

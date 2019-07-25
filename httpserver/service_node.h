@@ -232,6 +232,9 @@ class ServiceNode {
     // Notify listeners of a new message for pk
     void notify_listeners(const std::string& pk, const message_t& msg);
 
+    // Get valid pubkey length
+    int valid_pubkey_length() const;
+
     // Send "empty" responses to all listeners effectively resetting their
     // connections
     void reset_listeners();
