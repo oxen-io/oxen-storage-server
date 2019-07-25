@@ -18,12 +18,13 @@ BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
     const uint64_t timestamp = 12345678;
     const uint64_t ttl = 3456000;
     const auto nonce = "nonce";
+    const size_t pk_size = 66;
     message_t msg{pub_key, data, hash, ttl, timestamp, nonce};
     const std::vector<message_t> inputs{msg, msg};
     const std::vector<std::string> batches = serialize_messages(inputs);
     BOOST_CHECK_EQUAL(batches.size(), 1);
 
-    const auto messages = deserialize_messages(batches[0]);
+    const auto messages = deserialize_messages(batches[0], pk_size);
     BOOST_CHECK_EQUAL(messages.size(), 2);
     for (int i = 0; i < messages.size(); ++i) {
         BOOST_CHECK_EQUAL(messages[i].pub_key, pub_key);

@@ -4,6 +4,7 @@
 #include "Item.hpp"
 #include "http_connection.h"
 #include "https_client.h"
+#include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
 #include "net_stats.h"
@@ -269,6 +270,14 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     return bu;
 }
 
+int ServiceNode::valid_pubkey_length() const {
+    if (loki::is_mainnet) {
+        return 66;
+    } else {
+        return 64;
+    }
+}
+
 void ServiceNode::bootstrap_data() {
     LOKI_LOG(trace, "Bootstrapping peer data");
 
@@ -286,10 +295,14 @@ void ServiceNode::bootstrap_data() {
 
     params["fields"] = fields;
 
-    std::vector<std::pair<std::string, uint16_t>> seed_nodes{
-        {{"storage.seed1.loki.network", 22023},
-         {"storage.seed2.loki.network", 38157},
-         {"imaginary.stream", 38157}}};
+    std::vector<std::pair<std::string, uint16_t>> seed_nodes;
+    if (loki::is_mainnet) {
+        seed_nodes = {{{"storage.seed1.loki.network", 22023},
+                       {"storage.seed2.loki.network", 38157},
+                       {"imaginary.stream", 38157}}};
+    } else {
+        seed_nodes = {{{"storage.testnetseed1.loki.network", 38157}}};
+    }
 
     auto req_counter = std::make_shared<int>(0);
 
@@ -1564,7 +1577,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    std::vector<message_t> messages = deserialize_messages(blob);
+    std::vector<message_t> messages = deserialize_messages(blob, valid_pubkey_length());
 
     LOKI_LOG(trace, "Saving all: begin");
 

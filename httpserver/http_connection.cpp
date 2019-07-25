@@ -518,7 +518,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         /// NOTE:: we only expect one message here, but
         /// for now lets reuse the function we already have
-        std::vector<message_t> messages = deserialize_messages(request_.body());
+        std::vector<message_t> messages = deserialize_messages(request_.body(), service_node_.valid_pubkey_length());
         assert(messages.size() == 1);
 
         service_node_.process_push(messages.front());

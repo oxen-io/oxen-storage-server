@@ -100,6 +100,8 @@ class user_pubkey_t {
 
 namespace loki {
 
+extern bool is_mainnet;
+
 /// message as received by client
 struct message_t {
 
