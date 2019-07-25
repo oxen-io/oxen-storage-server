@@ -76,6 +76,11 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    if (options.ip == "127.0.0.1") {
+        LOKI_LOG(error, "Tried to bind loki-storage to localhost, please bind to outward facing address");
+        return EXIT_FAILURE;
+    }
+
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);
     LOKI_LOG(info, "Setting Lokid key path to {}", options.lokid_key_path);
