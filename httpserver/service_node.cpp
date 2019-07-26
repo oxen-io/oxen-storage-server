@@ -309,9 +309,9 @@ void ServiceNode::bootstrap_data() {
     params["fields"] = fields;
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes{
-        {{"3.104.19.14", 22023},
-         {"13.238.53.205", 38157},
-         {"149.56.148.124", 38157}}};
+        {{"storage.seed1.loki.network", 22023},
+         {"storage.seed2.loki.network", 38157},
+         {"imaginary.stream", 38157}}};
 
     auto req_counter = std::make_shared<int>(0);
 
