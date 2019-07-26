@@ -1,4 +1,5 @@
 #include "stats.h"
+#include "version.h"
 #include "../external/json.hpp"
 #include <algorithm>
 #include <chrono>
@@ -20,6 +21,7 @@ std::string all_stats_t::to_json(bool pretty) const {
     json["client_store_requests"] = client_store_requests;
     json["client_retrieve_requests"] = client_retrieve_requests;
     json["reset_time"] = reset_time;
+    json["version"] = STORAGE_SERVER_VERSION_STRING;
 
     nlohmann::json peers;
 

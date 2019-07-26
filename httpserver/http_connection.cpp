@@ -71,7 +71,11 @@ void make_http_request(boost::asio::io_context& ioc,
         return;
     }
     while (destination != tcp::resolver::iterator()) {
-        endpoint = *destination++;
+        const tcp::endpoint thisEndpoint = (destination++)->endpoint();
+        if (!thisEndpoint.address().is_v4()) {
+            continue;
+        }
+        endpoint = thisEndpoint;
     }
     endpoint.port(port);
 

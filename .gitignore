@@ -40,3 +40,6 @@ deps
 
 # Submodules
 vendors/spdlog
+
+# Swapfiles
+**/*.swp
