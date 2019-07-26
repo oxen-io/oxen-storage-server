@@ -685,6 +685,7 @@ void ServiceNode::swarm_timer_tick() {
     fields["hardfork"] = true;
 
     params["fields"] = fields;
+    params["active_only"] = true;
 
     lokid_client_.make_lokid_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
