@@ -1,3 +1,32 @@
+loki-storage-server (1.0.4-1~deb10) buster; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * Update Dockerfile
+
+  [ Jason Rhinelander ]
+  * Fix PoW TXT parsing, add some failure debugging
+
+  [ Maxim Shishmarev ]
+  * bump version number
+  * fetch version.js
+  * send version on get_stats
+
+  [ Beaudan ]
+  * Ignore swapfiles and reject localhost binding
+  * Only receive active nodes from get_n_service_nodes
+
+  [ Maxim Shishmarev ]
+  * add function name to every log message
+
+  [ Beaudan ]
+  * Only use ipv4 results for http and use url for seed nodes
+
+  [ Maxim Shishmarev ]
+  * Detect if invalid port is used
+  * Bump version to 1.0.4
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 26 Jul 2019 10:19:45 -0300
+
 loki-storage-server (1.0.2-2~deb10) buster; urgency=medium
 
   * Downgrade loki-service-node to Suggests
