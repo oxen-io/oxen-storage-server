@@ -32,6 +32,8 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
+constexpr int EXIT_INVALID_PORT = 2;
+
 int main(int argc, char* argv[]) {
 
     loki::command_line_parser parser;
@@ -74,6 +76,16 @@ int main(int argc, char* argv[]) {
     print_version();
     if (options.print_version) {
         return EXIT_SUCCESS;
+    }
+
+    if (options.ip == "127.0.0.1") {
+        LOKI_LOG(error, "Tried to bind loki-storage to localhost, please bind to outward facing address");
+        return EXIT_FAILURE;
+    }
+
+    if (options.port == options.lokid_rpc_port) {
+        LOKI_LOG(error, "Storage server port must be different from that of Lokid! Terminating.");
+        exit(EXIT_INVALID_PORT);
     }
 
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
