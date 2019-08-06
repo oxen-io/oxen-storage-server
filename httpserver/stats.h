@@ -52,10 +52,10 @@ struct peer_stats_t {
 
 class all_stats_t {
 
+  public:
     // stats per every peer in our swarm (including former peers)
     std::unordered_map<sn_record_t, peer_stats_t> peer_report_;
 
-  public:
     // ===== This node's stats =====
     uint64_t client_store_requests = 0;
     uint64_t client_retrieve_requests = 0;
@@ -84,9 +84,6 @@ class all_stats_t {
 
     // remove old test entries and reset counters, update reset time
     void cleanup();
-
-    // Convert to a string, add indentations if pretty
-    std::string to_json(bool pretty) const;
 };
 
 } // namespace loki

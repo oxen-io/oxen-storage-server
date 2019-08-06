@@ -9,6 +9,7 @@
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
+#include "version.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1293,6 +1294,49 @@ void ServiceNode::set_difficulty_history(
         }
     }
     LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
+}
+
+static void to_json(nlohmann::json& j, const test_result_t& val) {
+    j["timestamp"] = val.timestamp;
+    j["result"] = to_str(val.result);
+}
+
+
+static nlohmann::json to_json(const all_stats_t &stats) {
+
+    nlohmann::json json;
+
+    json["client_store_requests"] = stats.client_store_requests;
+    json["client_retrieve_requests"] = stats.client_retrieve_requests;
+    json["reset_time"] = stats.reset_time;
+
+    nlohmann::json peers;
+
+    for (const auto& kv : stats.peer_report_) {
+        const auto& pubkey = kv.first.pub_key();
+
+        peers[pubkey]["requests_failed"] = kv.second.requests_failed;
+        peers[pubkey]["pushes_failed"] = kv.second.requests_failed;
+        peers[pubkey]["storage_tests"] = kv.second.storage_tests;
+        peers[pubkey]["blockchain_tests"] = kv.second.blockchain_tests;
+    }
+
+    json["peers"] = peers;
+    return json;
+}
+
+std::string ServiceNode::get_stats() const {
+
+    auto val = to_json(all_stats_);
+
+    val["version"] = STORAGE_SERVER_VERSION_STRING;
+    val["height"] = block_height_;
+    val["target_height"] = target_height_;
+
+    /// we want pretty (indented) json, but might change that in the future
+    constexpr bool PRETTY = true;
+    constexpr int indent = PRETTY ? 4 : 0;
+    return val.dump(indent);
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {
