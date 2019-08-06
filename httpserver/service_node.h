@@ -265,7 +265,7 @@ class ServiceNode {
     void
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
-    std::string get_stats() const { return all_stats_.to_json(true); }
+    std::string get_stats() const;
 };
 
 } // namespace loki
