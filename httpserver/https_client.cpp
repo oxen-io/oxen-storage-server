@@ -51,18 +51,18 @@ void make_https_request(boost::asio::io_context& ioc,
 static std::string x509_to_string(X509* x509) {
     BIO* bio_out = BIO_new(BIO_s_mem());
     if (!bio_out) {
-        LOKI_LOG(error, "Could not allocate openssl BIO");
+        LOKI_LOG(critical, "Could not allocate openssl BIO");
         return "";
     }
     if (!PEM_write_bio_X509(bio_out, x509)) {
-        LOKI_LOG(error, "Could not write x509 cert to openssl BIO");
+        LOKI_LOG(critical, "Could not write x509 cert to openssl BIO");
         return "";
     }
     BUF_MEM* bio_buf;
     BIO_get_mem_ptr(bio_out, &bio_buf);
     std::string pem = std::string(bio_buf->data, bio_buf->length);
     if (!BIO_free(bio_out)) {
-        LOKI_LOG(error, "Could not free openssl BIO");
+        LOKI_LOG(critical, "Could not free openssl BIO");
     }
     return pem;
 }
@@ -84,7 +84,7 @@ void HttpsClientSession::start() {
     if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
-        LOKI_LOG(error, "{}", ec.message());
+        LOKI_LOG(critical, "{}", ec.message());
         return;
     }
     boost::asio::async_connect(
@@ -94,7 +94,9 @@ void HttpsClientSession::start() {
             /// TODO: I think I should just call again if ec ==
             /// EINTR
             if (ec) {
-                LOKI_LOG(error,
+                /// Don't forget to print the error from where we call this!
+                /// (similar to http)
+                LOKI_LOG(debug,
                          "[https client]: could not connect to {}:{}, message: "
                          "{} ({})",
                          endpoint.address().to_string(), endpoint.port(),
@@ -111,10 +113,13 @@ void HttpsClientSession::start() {
         [self = shared_from_this()](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(error, "Error({}): {}", ec.value(), ec.message());
+                    LOKI_LOG(error,
+                             "Deadline timer failed in https client session "
+                             "[{}: {}]",
+                             ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(error, "client socket timed out");
+                LOKI_LOG(warn, "client socket timed out");
                 self->do_close();
             }
         });
@@ -195,7 +200,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
             http::status_class::successful) {
 
             if (!verify_signature()) {
-                LOKI_LOG(error, "Bad signature from {}", server_pub_key_b32z);
+                LOKI_LOG(debug, "Bad signature from {}", server_pub_key_b32z);
                 trigger_callback(SNodeError::ERROR_OTHER, nullptr);
                 return;
             }
