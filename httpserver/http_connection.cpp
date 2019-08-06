@@ -497,10 +497,14 @@ void connection_t::process_request() {
     const auto target = request_.target();
     switch (request_.method()) {
     case http::verb::post:
-        if (!service_node_.snode_ready(boost::none)) {
-            LOKI_LOG(debug, "Ignoring post request: storage server not ready");
-            response_.result(http::status::service_unavailable);
-            break;
+        {
+            std::string reason;
+            if (!service_node_.snode_ready(reason)) {
+                LOKI_LOG(debug, "Ignoring post request; storage server not ready: {}", reason);
+                response_.result(http::status::service_unavailable);
+                body_stream_ << fmt::format("Service node is not ready: {}\n", reason);
+                break;
+            }
         }
         if (target == "/storage_rpc/v1") {
             /// Store/load from clients
