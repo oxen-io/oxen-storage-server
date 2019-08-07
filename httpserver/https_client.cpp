@@ -1,6 +1,7 @@
 #include "https_client.h"
 #include "loki_logger.h"
 #include "signature.h"
+#include "net_stats.h"
 
 #include <openssl/x509.h>
 
@@ -73,7 +74,10 @@ HttpsClientSession::HttpsClientSession(
     const std::string& sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
-      server_pub_key_b32z(sn_pubkey_b32z) {}
+      server_pub_key_b32z(sn_pubkey_b32z) {
+
+          get_net_stats().https_connections_out++;
+      }
 
 void HttpsClientSession::start() {
     // Set SNI Hostname (many hosts need this to handshake successfully)
@@ -263,5 +267,7 @@ HttpsClientSession::~HttpsClientSession() {
         ioc_.post(std::bind(callback_,
                             sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
     }
+
+    get_net_stats().https_connections_out--;
 }
 } // namespace loki

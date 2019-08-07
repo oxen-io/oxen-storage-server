@@ -9,6 +9,7 @@
 #include "service_node.h"
 #include "signature.h"
 #include "utils.hpp"
+#include "net_stats.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -202,6 +203,8 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     static uint64_t instance_counter = 0;
     conn_idx = instance_counter++;
 
+    get_net_stats().connections_in++;
+
     LOKI_LOG(trace, "connection_t [{}]", conn_idx);
 
     start_timestamp_ = std::chrono::steady_clock::now();
@@ -218,6 +221,8 @@ connection_t::~connection_t() {
                        "wasn't. Closing now.");
         stream_.lowest_layer().close();
     }
+
+    get_net_stats().connections_in--;
 
     LOKI_LOG(trace, "~connection_t [{}]", conn_idx);
 }
@@ -1086,7 +1091,9 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      const std::shared_ptr<request_t>& req,
                                      http_callback_t&& cb)
     : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
-      deadline_timer_(ioc), req_(req) {}
+      deadline_timer_(ioc), req_(req) {
+          get_net_stats().http_connections_out++;
+      }
 
 void HttpClientSession::on_connect() {
 
@@ -1216,6 +1223,8 @@ HttpClientSession::~HttpClientSession() {
     if (ec) {
         LOKI_LOG(error, "On close socket [{}: {}]", ec.value(), ec.message());
     }
+
+    get_net_stats().http_connections_out--;
 }
 
 } // namespace loki

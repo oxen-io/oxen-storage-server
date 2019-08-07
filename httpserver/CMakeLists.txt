@@ -16,6 +16,7 @@ set(HEADER_FILES
     stats.h
     security.h
     command_line.h
+    net_stats.h
     )
 
 set(SRC_FILES
