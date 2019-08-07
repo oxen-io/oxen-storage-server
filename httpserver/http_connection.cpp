@@ -328,6 +328,7 @@ bool connection_t::validate_snode_request() {
         return false;
     }
     if (rate_limiter_.should_rate_limit(public_key_b32z)) {
+        this->body_stream_ << "Too many requests\n";
         response_.result(http::status::too_many_requests);
         return false;
     }
@@ -423,6 +424,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
             blk_height = body.at("height").get<uint64_t>();
             msg_hash = body.at("hash").get<std::string>();
         } catch (...) {
+            this->body_stream_ << "Bad snode test request: missing fields in json";
             response_.result(http::status::bad_request);
             LOKI_LOG(debug, "Bad snode test request: missing fields in json");
             return;
@@ -521,10 +523,9 @@ void connection_t::process_request() {
             try {
                 process_client_req();
             } catch (std::exception& e) {
+                this->body_stream_ << fmt::format("exception caught while processing client request: {}", e.what());
                 response_.result(http::status::internal_server_error);
-                LOKI_LOG(critical,
-                         "exception caught while processing client request: {}",
-                         e.what());
+                LOKI_LOG(critical, "exception caught while processing client request: {}", e.what());
             }
 
             // TODO: parse target (once) to determine if it is a "swarms" call
@@ -555,6 +556,7 @@ void connection_t::process_request() {
 #endif
         else {
             LOKI_LOG(debug, "unknown target for POST: {}", target.to_string());
+            this->body_stream_ << fmt::format("unknown target for POST: {}", target.to_string());
             response_.result(http::status::not_found);
         }
         break;
@@ -566,6 +568,7 @@ void connection_t::process_request() {
         } else if (target == "/get_logs/v1") {
             this->on_get_logs();
         } else {
+            this->body_stream_ << fmt::format("unknown target for GET: {}", target.to_string());
             LOKI_LOG(debug, "unknown target for GET: {}", target.to_string());
             response_.result(http::status::not_found);
         }
@@ -670,8 +673,7 @@ void connection_t::process_store(const json& params) {
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            body_stream_ << boost::format("invalid json: no `%1%` field\n") %
-                                field;
+            body_stream_ << fmt::format("invalid json: no `{}` field\n", field);
             LOKI_LOG(debug, "Bad client request: no `{}` field", field);
             return;
         }
@@ -732,7 +734,7 @@ void connection_t::process_store(const json& params) {
                  service_node_.get_curr_pow_difficulty());
 #ifndef DISABLE_POW
     if (!valid_pow) {
-        response_.result(432);
+        response_.result(432); // unassigned http code
         response_.set(http::field::content_type, "application/json");
 
         json res_body;
@@ -815,6 +817,7 @@ void connection_t::process_retrieve_all() {
     bool res = service_node_.get_all_messages(all_entries);
 
     if (!res) {
+        this->body_stream_ << "could not retrieve all entries\n";
         response_.result(http::status::internal_server_error);
         return;
     }
@@ -944,8 +947,7 @@ void connection_t::process_retrieve(const json& params) {
     for (const auto& field : fields) {
         if (!params.contains(field)) {
             response_.result(http::status::bad_request);
-            body_stream_ << boost::format("invalid json: no `%1%` field\n") %
-                                field;
+            body_stream_ << fmt::format("invalid json: no `{}` field\n", field);
             LOKI_LOG(debug, "Bad client request: no `{}` field", field);
             return;
         }
@@ -971,6 +973,7 @@ void connection_t::process_client_req() {
     const std::string client_ip =
         socket_.remote_endpoint().address().to_string();
     if (rate_limiter_.should_rate_limit_client(client_ip)) {
+        this->body_stream_ << "too many requests\n";
         response_.result(http::status::too_many_requests);
         LOKI_LOG(debug, "Rate limiting client request.");
         return;
