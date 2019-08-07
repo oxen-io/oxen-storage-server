@@ -10,6 +10,7 @@
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
+#include "net_stats.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1332,6 +1333,15 @@ std::string ServiceNode::get_stats() const {
     val["version"] = STORAGE_SERVER_VERSION_STRING;
     val["height"] = block_height_;
     val["target_height"] = target_height_;
+
+    uint64_t total_stored;
+    if (db_->get_message_count(total_stored)) {
+        val["total_stored"] = total_stored;
+    }
+
+    val["connections_in"] = get_net_stats().connections_in;
+    val["http_connections_out"] = get_net_stats().http_connections_out;
+    val["https_connections_out"] = get_net_stats().https_connections_out;
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;
