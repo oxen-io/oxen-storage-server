@@ -2,6 +2,7 @@
 #include "Database.hpp"
 #include "Item.hpp"
 #include "channel_encryption.hpp"
+#include "dev_sink.h"
 #include "rate_limiter.h"
 #include "security.h"
 #include "serialization.h"
@@ -562,6 +563,8 @@ void connection_t::process_request() {
 
         if (target == "/get_stats/v1") {
             this->on_get_stats();
+        } else if (target == "/get_logs/v1") {
+            this->on_get_logs();
         } else {
             LOKI_LOG(debug, "unknown target for GET: {}", target.to_string());
             response_.result(http::status::not_found);
@@ -1086,6 +1089,38 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
 
 void connection_t::on_get_stats() {
     this->body_stream_ << service_node_.get_stats();
+    this->response_.result(http::status::ok);
+}
+
+void connection_t::on_get_logs() {
+
+    /// Limit this call to 1 request per second
+    static time_t last_req_time = 0;
+    const time_t now = time(nullptr);
+    constexpr time_t PERIOD = 1;
+
+    if (now - last_req_time < PERIOD) {
+        this->body_stream_ << "Too many request, try again later.";
+        this->response_.result(http::status::too_many_requests);
+        return;
+    }
+
+    last_req_time = now;
+
+    auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
+        spdlog::get("loki_logger")->sinks()[2].get());
+
+    if (dev_sink == nullptr) {
+        LOKI_LOG(critical, "Sink #3 should be dev sink");
+        assert(false);
+        this->body_stream_ << "Developer error: sink #3 is not a dev sink.";
+        this->response_.result(http::status::not_implemented);
+        return;
+    }
+
+    nlohmann::json val;
+    val["entries"] = dev_sink->peek();
+    this->body_stream_ << val.dump(4);
     this->response_.result(http::status::ok);
 }
 
