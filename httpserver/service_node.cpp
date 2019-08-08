@@ -536,7 +536,7 @@ bool ServiceNode::process_store(const message_t& msg) {
         return false;
     }
 
-    all_stats_.client_store_requests++;
+    all_stats_.bump_store_requests();
 
     /// store to the database
     save_if_new(msg);
@@ -1307,9 +1307,15 @@ static nlohmann::json to_json(const all_stats_t &stats) {
 
     nlohmann::json json;
 
-    json["client_store_requests"] = stats.client_store_requests;
-    json["client_retrieve_requests"] = stats.client_retrieve_requests;
-    json["reset_time"] = stats.reset_time;
+    json["total_store_requests"] = stats.get_total_store_requests();
+    json["recent_store_requests"] = stats.get_recent_store_requests();
+    json["previous_period_store_requests"] = stats.get_previous_period_store_requests();
+
+    json["total_retrieve_requests"] = stats.get_total_retrieve_requests();
+    json["recent_store_requests"] = stats.get_recent_store_requests();
+    json["previous_period_retrieve_requests"] = stats.get_previous_period_retrieve_requests();
+
+    json["reset_time"] = stats.get_reset_time();
 
     nlohmann::json peers;
 

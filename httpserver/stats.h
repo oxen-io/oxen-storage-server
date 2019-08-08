@@ -52,17 +52,34 @@ struct peer_stats_t {
 
 class all_stats_t {
 
+    // ===== This node's stats =====
+    uint64_t total_client_store_requests = 0;
+    // Number of requests in the latest x min interval
+    uint64_t previous_period_store_requests = 0;
+    // Number of requests after the latest x min interval
+    uint64_t recent_store_requests = 0;
+
+    uint64_t total_client_retrieve_requests = 0;
+    // Number of requests in the latest x min interval
+    uint64_t previous_period_retrieve_requests = 0;
+    // Number of requests after the latest x min interval
+    uint64_t recent_retrieve_requests = 0;
+
+    time_t reset_time_ = time(nullptr);
+    // =============================
+
+    /// update period moving recent request counters to
+    /// the `previous period`
+    void next_period() {
+        previous_period_store_requests = recent_store_requests;
+        previous_period_retrieve_requests = recent_retrieve_requests;
+        recent_store_requests = 0;
+        recent_retrieve_requests = 0;
+    }
+
   public:
     // stats per every peer in our swarm (including former peers)
     std::unordered_map<sn_record_t, peer_stats_t> peer_report_;
-
-    // ===== This node's stats =====
-    uint64_t client_store_requests = 0;
-    uint64_t client_retrieve_requests = 0;
-
-    time_t reset_time = time(nullptr);
-
-    // =============================
 
     void record_request_failed(const sn_record_t& sn) {
         peer_report_[sn].requests_failed++;
@@ -84,6 +101,43 @@ class all_stats_t {
 
     // remove old test entries and reset counters, update reset time
     void cleanup();
+
+    void bump_store_requests() {
+        total_client_store_requests++;
+        recent_store_requests++;
+    }
+
+    void bump_retrieve_requests() {
+        total_client_retrieve_requests++;
+        recent_retrieve_requests++;
+    }
+
+    uint64_t get_total_store_requests() const {
+        return total_client_store_requests;
+    }
+
+    uint64_t get_recent_store_requests() const {
+        return recent_store_requests;
+    }
+
+    uint64_t get_previous_period_store_requests() const {
+        return previous_period_store_requests;
+    }
+
+    uint64_t get_total_retrieve_requests() const {
+        return total_client_retrieve_requests;
+    }
+
+    uint64_t get_recent_retrieve_requests() const {
+        return recent_retrieve_requests;
+    }
+
+    uint64_t get_previous_period_retrieve_requests() const {
+        return previous_period_retrieve_requests;
+    }
+
+
+    time_t get_reset_time() const { return reset_time_; }
 };
 
 } // namespace loki
