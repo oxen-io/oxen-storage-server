@@ -62,7 +62,7 @@ void init_logging(const std::string& data_dir,
 
     auto developer_sink = std::make_shared<loki::dev_sink_mt>();
 
-    /// IMPORTANT: get_logs endpoint makes assumes that sink #3 is a dev sink
+    /// IMPORTANT: get_logs endpoint assumes that sink #3 is a dev sink
     std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink,
                                            developer_sink};
 

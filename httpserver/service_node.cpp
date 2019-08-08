@@ -328,7 +328,7 @@ void ServiceNode::bootstrap_data() {
                         on_bootstrap_update(bu);
                     } catch (const std::exception& e) {
                         LOKI_LOG(
-                            critical,
+                            error,
                             "Exception caught while bootstrapping from {}: {}",
                             seed_node.first, e.what());
                     }
@@ -697,7 +697,7 @@ void ServiceNode::swarm_timer_tick() {
                     const block_update_t bu = parse_swarm_update(res.body);
                     on_swarm_update(bu);
                 } catch (const std::exception& e) {
-                    LOKI_LOG(critical, "Exception caught on swarm update: {}",
+                    LOKI_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
                 }
             } else {

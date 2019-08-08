@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.ip == "127.0.0.1") {
-        LOKI_LOG(error, "Tried to bind loki-storage to localhost, please bind "
+        LOKI_LOG(critical, "Tried to bind loki-storage to localhost, please bind "
                         "to outward facing address");
         return EXIT_FAILURE;
     }

@@ -304,7 +304,7 @@ void connection_t::read_request() {
 bool connection_t::validate_snode_request() {
     if (!parse_header(LOKI_SENDER_SNODE_PUBKEY_HEADER,
                       LOKI_SNODE_SIGNATURE_HEADER)) {
-        LOKI_LOG(debug, "Missing signature headers");
+        LOKI_LOG(debug, "Missing signature headers for a Service Node request");
         return false;
     }
     const auto& signature = header_[LOKI_SNODE_SIGNATURE_HEADER];
@@ -345,7 +345,7 @@ void connection_t::process_storage_test_req(uint64_t height,
                                             const std::string& tester_addr,
                                             const std::string& msg_hash) {
 
-    LOKI_LOG(debug, "Performing storage test, attempt: {}", repetition_count_);
+    LOKI_LOG(trace, "Performing storage test, attempt: {}", repetition_count_);
 
     std::string answer;
 
@@ -413,6 +413,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         if (body == nlohmann::detail::value_t::discarded) {
             LOKI_LOG(debug, "Bad snode test request: invalid json");
+            body_stream_ << "invalid json\n";
             response_.result(http::status::bad_request);
             return;
         }
@@ -523,9 +524,9 @@ void connection_t::process_request() {
             try {
                 process_client_req();
             } catch (std::exception& e) {
-                this->body_stream_ << fmt::format("exception caught while processing client request: {}", e.what());
+                this->body_stream_ << fmt::format("Exception caught while processing client request: {}", e.what());
                 response_.result(http::status::internal_server_error);
-                LOKI_LOG(critical, "exception caught while processing client request: {}", e.what());
+                LOKI_LOG(critical, "Exception caught while processing client request: {}", e.what());
             }
 
             // TODO: parse target (once) to determine if it is a "swarms" call
@@ -981,7 +982,7 @@ void connection_t::process_client_req() {
 
 #ifndef DISABLE_ENCRYPTION
     if (!parse_header(LOKI_EPHEMKEY_HEADER)) {
-        LOKI_LOG(debug, "Could not parse headers");
+        LOKI_LOG(debug, "Bad client request: could not parse headers");
         return;
     }
 
@@ -995,7 +996,7 @@ void connection_t::process_client_req() {
         response_.set(http::field::content_type, "text/plain");
         body_stream_ << "Could not decode/decrypt body: ";
         body_stream_ << e.what() << "\n";
-        LOKI_LOG(debug, "Bad Request. Could not decrypt body");
+        LOKI_LOG(debug, "Bad client request: could not decrypt body");
         return;
     }
 #endif
@@ -1035,7 +1036,7 @@ void connection_t::process_client_req() {
     } else {
         response_.result(http::status::bad_request);
         body_stream_ << "no method" << method_name << "\n";
-        LOKI_LOG(debug, "Bad Request. Unknown method '{}'", method_name);
+        LOKI_LOG(debug, "Bad client request: unknown method '{}'", method_name);
     }
 }
 
