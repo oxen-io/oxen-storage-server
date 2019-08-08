@@ -20,7 +20,6 @@
 #include "swarm.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
-static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
 
 class Database;
@@ -54,8 +53,6 @@ struct signature;
 
 using pow_dns_callback_t =
     std::function<void(const std::vector<pow_difficulty_t>&)>;
-
-std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec);
 
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
@@ -118,6 +115,8 @@ class ServiceNode {
 
     boost::asio::steady_timer pow_update_timer_;
 
+    boost::asio::steady_timer check_version_timer_;
+
     boost::asio::steady_timer swarm_update_timer_;
 
     boost::asio::steady_timer lokid_ping_timer_;
@@ -169,6 +168,8 @@ class ServiceNode {
 
     void cleanup_timer_tick();
 
+    /// Check the latest version from DNS text record
+    void check_version_timer_tick();
     /// Update PoW difficulty from DNS text record
     void pow_difficulty_timer_tick(const pow_dns_callback_t cb);
 

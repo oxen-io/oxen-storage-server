@@ -12,11 +12,11 @@
 #include "version.h"
 #include "net_stats.h"
 
+#include "dns_text_records.h"
+
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <iomanip>
-#include <resolv.h>
 
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
@@ -40,53 +40,6 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
     // TODO: Return to using snode address instead of ip
     return make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key(), req,
                               std::move(cb));
-}
-
-std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
-    LOKI_LOG(debug, "Querying PoW difficulty...");
-    std::vector<pow_difficulty_t> new_history;
-    int response;
-    unsigned char query_buffer[1024] = {};
-    response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
-                         sizeof(query_buffer));
-    int pow_difficulty;
-    ns_msg nsMsg;
-    if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
-        LOKI_LOG(warn, "ns_initparse failed while retrieving PoW");
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
-
-    // We get back a sequence of N...[N...] values where N is a byte indicating
-    // the length of the immediately following ... data.
-    auto count = ns_msg_count(nsMsg, ns_s_an);
-    std::string data;
-    data.reserve(255 * count);
-    for (int i = 0; i < count; i++) {
-        ns_rr rr;
-        if (ns_parserr(&nsMsg, ns_s_an, i, &rr) == -1) {
-            LOKI_LOG(warn, "ns_parserr failed while parsing PoW data");
-            ec = std::make_error_code(std::errc::bad_message);
-            return new_history;
-        }
-        auto* rdata = ns_rr_rdata(rr);
-        data.append(reinterpret_cast<const char*>(rdata + 1), rdata[0]);
-    }
-
-    new_history.reserve(new_history.size());
-    try {
-        const json history = json::parse(data, nullptr, true);
-        for (const auto& el : history.items()) {
-            const std::chrono::milliseconds timestamp(std::stoul(el.key()));
-            const int difficulty = el.value().get<int>();
-            new_history.push_back(pow_difficulty_t{timestamp, difficulty});
-        }
-        return new_history;
-    } catch (const std::exception& e) {
-        LOKI_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
 }
 
 FailedRequestHandler::FailedRequestHandler(
@@ -147,6 +100,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 constexpr std::chrono::seconds CLEANUP_TIMER = 60min;
 constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
+constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
@@ -209,7 +163,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
+      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc), check_version_timer_(worker_ioc),
       lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
       force_start_(force_start) {
 
@@ -237,6 +191,10 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     boost::asio::post(worker_ioc_, [this]() {
         pow_difficulty_timer_tick(std::bind(
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
+    });
+
+    boost::asio::post(worker_ioc_, [this]() {
+        this->check_version_timer_tick();
     });
 }
 
@@ -662,9 +620,17 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     initiate_peer_test();
 }
 
+void ServiceNode::check_version_timer_tick() {
+
+    check_version_timer_.expires_after(VERSION_CHECK_INTERVAL);
+    check_version_timer_.async_wait(std::bind(&ServiceNode::check_version_timer_tick, this));
+
+    dns::check_latest_version();
+}
+
 void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
     std::error_code ec;
-    std::vector<pow_difficulty_t> new_history = query_pow_difficulty(ec);
+    std::vector<pow_difficulty_t> new_history = dns::query_pow_difficulty(ec);
     if (!ec) {
         boost::asio::post(ioc_, std::bind(cb, new_history));
     }
