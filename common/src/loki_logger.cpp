@@ -3,6 +3,7 @@
 // clang-format off
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+#include "dev_sink.h"
 // clang-format on
 #include <boost/filesystem.hpp>
 
@@ -59,11 +60,18 @@ void init_logging(const std::string& data_dir,
         log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES);
     file_sink->set_level(log_level);
 
-    std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink};
+    auto developer_sink = std::make_shared<loki::dev_sink_mt>();
+
+    /// IMPORTANT: get_logs endpoint assumes that sink #3 is a dev sink
+    std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink,
+                                           developer_sink};
 
     auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(),
                                                    sinks.end());
     logger->set_level(log_level);
+    logger->flush_on(spdlog::level::err);
+
+    developer_sink->set_level(spdlog::level::warn);
     spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(1));
 

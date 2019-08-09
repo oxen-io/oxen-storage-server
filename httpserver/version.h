@@ -4,10 +4,6 @@
 
 #include <iostream>
 
-#ifndef STORAGE_SERVER_VERSION
-#define STORAGE_SERVER_VERSION 0010
-#endif
-
 #ifndef STORAGE_SERVER_VERSION_STRING
 #define STORAGE_SERVER_VERSION_STRING "1.0.4"
 #endif

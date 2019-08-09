@@ -11,11 +11,7 @@ struct time_entry_t {
     time_t timestamp;
 };
 
-enum class ResultType {
-    OK,
-    MISMATCH,
-    OTHER
-};
+enum class ResultType { OK, MISMATCH, OTHER };
 
 struct test_result_t {
 
@@ -77,7 +73,8 @@ class all_stats_t {
         peer_report_[sn].storage_tests.push_back(res);
     }
 
-    void record_blockchain_test_result(const sn_record_t& sn, ResultType result) {
+    void record_blockchain_test_result(const sn_record_t& sn,
+                                       ResultType result) {
         test_result_t t = {std::time(nullptr), result};
         peer_report_[sn].blockchain_tests.push_back(t);
     }
