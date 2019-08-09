@@ -941,7 +941,7 @@ void connection_t::poll_db(const std::string& pk,
 
 void connection_t::process_retrieve(const json& params) {
 
-    service_node_.all_stats_.client_retrieve_requests++;
+    service_node_.all_stats_.bump_retrieve_requests();
 
     constexpr const char* fields[] = {"pubKey", "lastHash"};
 

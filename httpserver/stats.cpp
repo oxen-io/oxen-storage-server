@@ -34,6 +34,9 @@ void all_stats_t::cleanup() {
         cleanup_old(peer_report_[sn].storage_tests, cutoff);
         cleanup_old(peer_report_[sn].blockchain_tests, cutoff);
     }
+
+    /// updated stats for "previous period"
+    this->next_period();
 }
 
 } // namespace loki
