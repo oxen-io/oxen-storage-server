@@ -218,8 +218,8 @@ connection_t::~connection_t() {
 
     // Safety net
     if (stream_.lowest_layer().is_open()) {
-        LOKI_LOG(warn, "Client socket should be closed by this point, but "
-                       "wasn't. Closing now.");
+        LOKI_LOG(debug, "Client socket should be closed by this point, but "
+                        "wasn't. Closing now.");
         stream_.lowest_layer().close();
     }
 
