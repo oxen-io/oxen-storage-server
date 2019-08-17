@@ -218,6 +218,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// process GET /get_stats/v1
     void on_get_stats();
 
+    /// process GET /get_logs/v1; only returns errors atm
+    void on_get_logs();
+
     /// Check the database for new data, reschedule if empty
     void poll_db(const std::string& pk, const std::string& last_hash);
 

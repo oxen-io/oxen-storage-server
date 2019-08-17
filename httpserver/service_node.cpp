@@ -9,12 +9,14 @@
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
+#include "version.h"
+#include "net_stats.h"
+
+#include "dns_text_records.h"
 
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <iomanip>
-#include <resolv.h>
 
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
@@ -38,53 +40,6 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
     // TODO: Return to using snode address instead of ip
     return make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key(), req,
                               std::move(cb));
-}
-
-std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
-    LOKI_LOG(debug, "Querying PoW difficulty...");
-    std::vector<pow_difficulty_t> new_history;
-    int response;
-    unsigned char query_buffer[1024] = {};
-    response = res_query(POW_DIFFICULTY_URL, ns_c_in, ns_t_txt, query_buffer,
-                         sizeof(query_buffer));
-    int pow_difficulty;
-    ns_msg nsMsg;
-    if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
-        LOKI_LOG(warn, "ns_initparse failed while retrieving PoW");
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
-
-    // We get back a sequence of N...[N...] values where N is a byte indicating the length of the
-    // immediately following ... data.
-    auto count = ns_msg_count(nsMsg, ns_s_an);
-    std::string data;
-    data.reserve(255*count);
-    for (int i = 0; i < count; i++) {
-        ns_rr rr;
-        if (ns_parserr(&nsMsg, ns_s_an, i, &rr) == -1) {
-            LOKI_LOG(warn, "ns_parserr failed while parsing PoW data");
-            ec = std::make_error_code(std::errc::bad_message);
-            return new_history;
-        }
-        auto *rdata = ns_rr_rdata(rr);
-        data.append(reinterpret_cast<const char *>(rdata + 1), rdata[0]);
-    }
-
-    new_history.reserve(new_history.size());
-    try {
-        const json history = json::parse(data, nullptr, true);
-        for (const auto& el : history.items()) {
-            const std::chrono::milliseconds timestamp(std::stoul(el.key()));
-            const int difficulty = el.value().get<int>();
-            new_history.push_back(pow_difficulty_t{timestamp, difficulty});
-        }
-        return new_history;
-    } catch (const std::exception &e) {
-        LOKI_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
 }
 
 FailedRequestHandler::FailedRequestHandler(
@@ -122,7 +77,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
                 ioc, sn, req,
                 [self = std::move(self)](sn_response_t&& res) mutable {
                     if (res.error_code != SNodeError::NO_ERROR) {
-                        LOKI_LOG(error, "Could not relay one: {} (attempt #{})",
+                        LOKI_LOG(debug, "Could not relay one: {} (attempt #{})",
                                  self->sn_, self->attempt_count_);
                         self->retry(std::move(self));
                     }
@@ -145,6 +100,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 constexpr std::chrono::seconds CLEANUP_TIMER = 60min;
 constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
+constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
 static std::shared_ptr<request_t> make_post_request(const char* target,
@@ -207,7 +163,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
+      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc), check_version_timer_(worker_ioc),
       lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
       force_start_(force_start) {
 
@@ -236,19 +192,23 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
         pow_difficulty_timer_tick(std::bind(
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
     });
+
+    boost::asio::post(worker_ioc_, [this]() {
+        this->check_version_timer_tick();
+    });
 }
 
 static block_update_t
 parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
     if (!response_body) {
-        LOKI_LOG(error, "Bad lokid rpc response: no response body");
+        LOKI_LOG(critical, "Bad lokid rpc response: no response body");
         throw std::runtime_error("Failed to parse swarm update");
     }
     const json body = json::parse(*response_body, nullptr, false);
     if (body.is_discarded()) {
         LOKI_LOG(trace, "Response body: {}", *response_body);
-        LOKI_LOG(error, "Bad lokid rpc response: invalid json");
+        LOKI_LOG(critical, "Bad lokid rpc response: invalid json");
         throw std::runtime_error("Failed to parse swarm update");
     }
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
@@ -281,7 +241,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
     } catch (...) {
         LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
-        LOKI_LOG(error, "Bad lokid rpc response: invalid json fields");
+        LOKI_LOG(critical, "Bad lokid rpc response: invalid json fields");
         throw std::runtime_error("Failed to parse swarm update");
     }
 
@@ -318,7 +278,8 @@ void ServiceNode::bootstrap_data() {
     for (auto seed_node : seed_nodes) {
         lokid_client_.make_lokid_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
-            [this, seed_node, req_counter, node_count = seed_nodes.size()](const sn_response_t&& res) {
+            [this, seed_node, req_counter,
+             node_count = seed_nodes.size()](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
@@ -347,7 +308,6 @@ void ServiceNode::bootstrap_data() {
                         "height. Going to assume our height is correct.");
                     this->syncing_ = false;
                 }
-
             });
     }
 }
@@ -404,7 +364,7 @@ void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
             }
 
             std::function<void()> give_up_cb = [this, sn]() {
-                LOKI_LOG(error, "Failed to send a request to: {}", sn);
+                LOKI_LOG(debug, "Failed to send a request to: {}", sn);
                 this->all_stats_.record_push_failed(sn);
             };
 
@@ -530,11 +490,12 @@ bool ServiceNode::process_store(const message_t& msg) {
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
+        // This should never be printed now that we have "snode_ready"
         LOKI_LOG(error, "error: my swarm in not initialized");
         return false;
     }
 
-    all_stats_.client_store_requests++;
+    all_stats_.bump_store_requests();
 
     /// store to the database
     save_if_new(msg);
@@ -659,9 +620,17 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     initiate_peer_test();
 }
 
+void ServiceNode::check_version_timer_tick() {
+
+    check_version_timer_.expires_after(VERSION_CHECK_INTERVAL);
+    check_version_timer_.async_wait(std::bind(&ServiceNode::check_version_timer_tick, this));
+
+    dns::check_latest_version();
+}
+
 void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
     std::error_code ec;
-    std::vector<pow_difficulty_t> new_history = query_pow_difficulty(ec);
+    std::vector<pow_difficulty_t> new_history = dns::query_pow_difficulty(ec);
     if (!ec) {
         boost::asio::post(ioc_, std::bind(cb, new_history));
     }
@@ -697,6 +666,8 @@ void ServiceNode::swarm_timer_tick() {
                     LOKI_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
                 }
+            } else {
+                LOKI_LOG(critical, "Failed to contact local Lokid");
             }
         });
 
@@ -720,7 +691,7 @@ void ServiceNode::lokid_ping_timer_tick() {
         if (res.error_code == SNodeError::NO_ERROR) {
 
             if (!res.body) {
-                LOKI_LOG(error, "Empty body on Lokid ping");
+                LOKI_LOG(critical, "Empty body on Lokid ping");
                 return;
             }
 
@@ -731,14 +702,16 @@ void ServiceNode::lokid_ping_timer_tick() {
                     "OK") {
                     LOKI_LOG(info, "Successfully pinged Lokid");
                 } else {
-                    LOKI_LOG(error, "Could not ping Lokid: status is NOT OK");
+                    LOKI_LOG(critical,
+                             "Could not ping Lokid: status is NOT OK");
                 }
             } catch (...) {
-                LOKI_LOG(error, "Could not ping Lokid: bad json in response");
+                LOKI_LOG(critical,
+                         "Could not ping Lokid: bad json in response");
             }
 
         } else {
-            LOKI_LOG(warn, "Could not ping Lokid");
+            LOKI_LOG(critical, "Could not ping Lokid");
         }
     };
 
@@ -776,14 +749,14 @@ void ServiceNode::perform_blockchain_test(
 
     auto on_resp = [cb = std::move(cb)](const sn_response_t& resp) {
         if (resp.error_code != SNodeError::NO_ERROR || !resp.body) {
-            LOKI_LOG(error, "Could not send blockchain request to Lokid");
+            LOKI_LOG(critical, "Could not send blockchain request to Lokid");
             return;
         }
 
         const json body = json::parse(*resp.body, nullptr, false);
 
         if (body.is_discarded()) {
-            LOKI_LOG(error, "Bad Lokid rpc response: invalid json");
+            LOKI_LOG(critical, "Bad Lokid rpc response: invalid json");
             return;
         }
 
@@ -841,7 +814,8 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                 result = ResultType::OK;
             } else {
 
-                LOKI_LOG(warn, "Test answer doesn't match for: {} at height {}",
+                LOKI_LOG(debug,
+                         "Test answer doesn't match for: {} at height {}",
                          testee, height);
                 result = ResultType::MISMATCH;
 
@@ -851,7 +825,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                 abort_if_integration_test();
             }
         } else {
-            LOKI_LOG(error,
+            LOKI_LOG(debug,
                      "Failed to send a storage test request to snode: {}",
                      testee);
 
@@ -952,7 +926,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        LOKI_LOG(warn, "Could not initiate peer test: swarm too small");
+        LOKI_LOG(debug, "Could not initiate peer test: swarm too small");
         return false;
     }
 
@@ -980,7 +954,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         }
     } else {
         assert(false);
-        LOKI_LOG(error, "Could not find hash: block height is in the future");
+        LOKI_LOG(warn, "Could not find hash: block height is in the future");
         return false;
     }
 
@@ -1014,8 +988,8 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     std::string block_hash;
 
     if (blk_height > block_height_) {
-        LOKI_LOG(warn, "Our blockchain is behind, height: {}, requested: {}",
-                 block_height_, blk_height);
+        LOKI_LOG(debug, "Our blockchain is behind, height: {}, requested: {}",
+                block_height_, blk_height);
         return MessageTestStatus::RETRY;
     }
 
@@ -1026,13 +1000,13 @@ MessageTestStatus ServiceNode::process_storage_test_req(
         derive_tester_testee(blk_height, tester, testee);
 
         if (testee != our_address_) {
-            LOKI_LOG(warn, "We are NOT the testee for height: {}", blk_height);
+            LOKI_LOG(debug, "We are NOT the testee for height: {}", blk_height);
             return MessageTestStatus::ERROR;
         }
 
         if (tester.sn_address() != tester_addr) {
-            LOKI_LOG(warn, "Wrong tester: {}, expected: {}", tester_addr,
-                     tester.sn_address());
+            LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_addr,
+                    tester.sn_address());
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
@@ -1061,7 +1035,7 @@ bool ServiceNode::select_random_message(Item& item) {
     LOKI_LOG(debug, "total messages: {}", message_count);
 
     if (message_count == 0) {
-        LOKI_LOG(warn, "No messages in the database to initiate a peer test");
+        LOKI_LOG(debug, "No messages in the database to initiate a peer test");
         return false;
     }
 
@@ -1101,7 +1075,7 @@ void ServiceNode::initiate_peer_test() {
         // 2.1. Select a message
         Item item;
         if (!this->select_random_message(item)) {
-            LOKI_LOG(warn, "Could not select a message for testing");
+            LOKI_LOG(debug, "Could not select a message for testing");
         } else {
             LOKI_LOG(trace, "Selected random message: {}, {}", item.hash,
                      item.data);
@@ -1295,6 +1269,63 @@ void ServiceNode::set_difficulty_history(
     LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
 }
 
+static void to_json(nlohmann::json& j, const test_result_t& val) {
+    j["timestamp"] = val.timestamp;
+    j["result"] = to_str(val.result);
+}
+
+static nlohmann::json to_json(const all_stats_t& stats) {
+
+    nlohmann::json json;
+
+    json["total_store_requests"] = stats.get_total_store_requests();
+    json["recent_store_requests"] = stats.get_recent_store_requests();
+    json["previous_period_store_requests"] = stats.get_previous_period_store_requests();
+
+    json["total_retrieve_requests"] = stats.get_total_retrieve_requests();
+    json["recent_store_requests"] = stats.get_recent_store_requests();
+    json["previous_period_retrieve_requests"] = stats.get_previous_period_retrieve_requests();
+
+    json["reset_time"] = stats.get_reset_time();
+
+    nlohmann::json peers;
+
+    for (const auto& kv : stats.peer_report_) {
+        const auto& pubkey = kv.first.pub_key();
+
+        peers[pubkey]["requests_failed"] = kv.second.requests_failed;
+        peers[pubkey]["pushes_failed"] = kv.second.requests_failed;
+        peers[pubkey]["storage_tests"] = kv.second.storage_tests;
+        peers[pubkey]["blockchain_tests"] = kv.second.blockchain_tests;
+    }
+
+    json["peers"] = peers;
+    return json;
+}
+
+std::string ServiceNode::get_stats() const {
+
+    auto val = to_json(all_stats_);
+
+    val["version"] = STORAGE_SERVER_VERSION_STRING;
+    val["height"] = block_height_;
+    val["target_height"] = target_height_;
+
+    uint64_t total_stored;
+    if (db_->get_message_count(total_stored)) {
+        val["total_stored"] = total_stored;
+    }
+
+    val["connections_in"] = get_net_stats().connections_in;
+    val["http_connections_out"] = get_net_stats().http_connections_out;
+    val["https_connections_out"] = get_net_stats().https_connections_out;
+
+    /// we want pretty (indented) json, but might change that in the future
+    constexpr bool PRETTY = true;
+    constexpr int indent = PRETTY ? 4 : 0;
+    return val.dump(indent);
+}
+
 int ServiceNode::get_curr_pow_difficulty() const {
     return curr_pow_difficulty_.difficulty;
 }
@@ -1376,7 +1407,7 @@ std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
             return si.snodes;
     }
 
-    LOKI_LOG(error, "Something went wrong in get_snodes_by_pk");
+    LOKI_LOG(critical, "Something went wrong in get_snodes_by_pk");
 
     return {};
 }
