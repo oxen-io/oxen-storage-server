@@ -29,9 +29,9 @@ diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
 index 9123362..71d9c1b 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -6,10 +6,7 @@ add_library(common STATIC
-     src/loki_logger.cpp
- )
+@@ -14,10 +14,7 @@ add_library(common STATIC
+ 
+ add_library(common STATIC ${HEADER_FILES} ${SRC_FILES})
  
 -find_package(Boost
 -    REQUIRED
@@ -60,7 +60,7 @@ diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
 index 7737414..ab8b7b0 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -40,13 +40,7 @@ loki_add_subdirectory(../pow pow)
+@@ -43,13 +43,7 @@ loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
  find_package(OpenSSL REQUIRED)
  
