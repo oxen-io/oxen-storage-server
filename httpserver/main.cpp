@@ -79,12 +79,14 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.ip == "127.0.0.1") {
-        LOKI_LOG(error, "Tried to bind loki-storage to localhost, please bind to outward facing address");
+        LOKI_LOG(critical, "Tried to bind loki-storage to localhost, please bind "
+                        "to outward facing address");
         return EXIT_FAILURE;
     }
 
     if (options.port == options.lokid_rpc_port) {
-        LOKI_LOG(error, "Storage server port must be different from that of Lokid! Terminating.");
+        LOKI_LOG(error, "Storage server port must be different from that of "
+                        "Lokid! Terminating.");
         exit(EXIT_INVALID_PORT);
     }
 

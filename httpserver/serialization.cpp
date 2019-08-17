@@ -143,42 +143,42 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         /// Deserialize PK
         auto pk = deserialize_string(slice, PK_SIZE);
         if (!pk) {
-            LOKI_LOG(error, "Could not deserialize pk");
+            LOKI_LOG(debug, "Could not deserialize pk");
             return {};
         }
 
         /// Deserialize Hash
         auto hash = deserialize_string(slice);
         if (!hash) {
-            LOKI_LOG(error, "Could not deserialize hash");
+            LOKI_LOG(debug, "Could not deserialize hash");
             return {};
         }
 
         /// Deserialize Data
         auto data = deserialize_string(slice);
         if (!data) {
-            LOKI_LOG(error, "Could not deserialize data");
+            LOKI_LOG(debug, "Could not deserialize data");
             return {};
         }
 
         /// Deserialize TTL
         auto ttl = deserialize_uint64(slice);
         if (!ttl) {
-            LOKI_LOG(error, "Could not deserialize ttl");
+            LOKI_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
         auto timestamp = deserialize_uint64(slice);
         if (!timestamp) {
-            LOKI_LOG(error, "Could not deserialize timestamp");
+            LOKI_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
 
         /// Deserialize Nonce
         auto nonce = deserialize_string(slice);
         if (!nonce) {
-            LOKI_LOG(error, "Could not deserialize nonce");
+            LOKI_LOG(debug, "Could not deserialize nonce");
             return {};
         }
 
