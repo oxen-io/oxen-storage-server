@@ -10,7 +10,8 @@ struct lokid_key_pair_t;
 
 class Security {
   public:
-    Security(const lokid_key_pair_t& key_pair, const boost::filesystem::path& base_path);
+    Security(const lokid_key_pair_t& key_pair,
+             const boost::filesystem::path& base_path);
 
     std::string base64_sign(const std::string& body);
     void generate_cert_signature();
