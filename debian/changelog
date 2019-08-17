@@ -1,3 +1,20 @@
+loki-storage-server (1.0.5-1) unstable; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * send the reason a node is not ready in response body
+  * Send height and target height in get stats
+  * Add the number of active connections of each type in get_stats
+  * Clean-up log messages
+  * Expose error logs via get_logs endpoint
+  * Always provide error body together with http error code
+  * Add the number of recent store/retrieve requests to stats
+  * Bump version to 1.0.5
+  * address review suggestions
+  * Warn the operator if the version of the storage server is out of date
+  * Reduce warn to debug for a socket-related log message
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 17 Aug 2019 03:58:33 -0300
+
 loki-storage-server (1.0.4-1) unstable; urgency=medium
 
   [ Maxim Shishmarev ]
