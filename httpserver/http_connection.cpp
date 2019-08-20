@@ -1250,6 +1250,8 @@ HttpClientSession::~HttpClientSession() {
                             sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
     }
 
+    get_net_stats().http_connections_out--;
+
     if (!socket_.is_open()) {
         LOKI_LOG(debug, "Socket is already closed");
         return;
@@ -1273,7 +1275,6 @@ HttpClientSession::~HttpClientSession() {
         LOKI_LOG(error, "On close socket [{}: {}]", ec.value(), ec.message());
     }
 
-    get_net_stats().http_connections_out--;
 }
 
 } // namespace loki
