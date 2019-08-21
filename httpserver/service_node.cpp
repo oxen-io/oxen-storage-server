@@ -718,7 +718,9 @@ void ServiceNode::lokid_ping_timer_tick() {
     };
 
     json params;
-    params["version"] = STORAGE_SERVER_VERSION_STRING;
+    params["version_major"] = VERSION_MAJOR_STR;
+    params["version_minor"] = VERSION_MINOR_STR;
+    params["version_patch"] = VERSION_PATCH_STR;
     lokid_client_.make_lokid_request("storage_server_ping", params,
                                      std::move(cb));
 

@@ -104,29 +104,29 @@ struct version_t {
     int patch;
 };
 
-static bool is_old_version(version_t ours, version_t latest) {
+static bool is_old_version(version_t latest) {
 
-    if (ours.major > latest.major) {
+    if (VERSION_MAJOR > latest.major) {
         return false;
     }
 
-    if (ours.major < latest.major) {
+    if (VERSION_MAJOR < latest.major) {
         return true;
     }
 
     // === the same major version ===
 
-    if (ours.minor > latest.minor) {
+    if (VERSION_MINOR > latest.minor) {
         return false;
     }
 
-    if (ours.minor < latest.minor) {
+    if (VERSION_MINOR < latest.minor) {
         return true;
     }
 
     // === the same minor version ===
 
-    if (ours.patch >= latest.patch) {
+    if (VERSION_PATCH >= latest.patch) {
         return false;
     } else {
         return true;
@@ -173,16 +173,7 @@ void check_latest_version() {
         return;
     }
 
-    // Note: we shouldn't have to parse our version every time, but we don't
-    // care about performance here
-    version_t our_version;
-    if (!parse_version(STORAGE_SERVER_VERSION_STRING, our_version)) {
-        LOKI_LOG(warn, "Could not parse our version: {}",
-                 STORAGE_SERVER_VERSION_STRING);
-        return;
-    }
-
-    if (is_old_version(our_version, latest_version)) {
+    if (is_old_version(latest_version)) {
         LOKI_LOG(warn,
                  "You are using an outdated version of the storage server "
                  "({}), please update to {}!",
