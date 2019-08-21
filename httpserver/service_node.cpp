@@ -698,12 +698,14 @@ void ServiceNode::lokid_ping_timer_tick() {
             try {
                 json res_json = json::parse(*res.body);
 
-                if (res_json.at("result").at("status").get<std::string>() ==
-                    "OK") {
+                const auto status =
+                    res_json.at("result").at("status").get<std::string>();
+
+                if (status == "OK") {
                     LOKI_LOG(info, "Successfully pinged Lokid");
                 } else {
-                    LOKI_LOG(critical,
-                             "Could not ping Lokid: status is NOT OK");
+                    LOKI_LOG(critical, "Could not ping Lokid. Status: {}",
+                             status);
                 }
             } catch (...) {
                 LOKI_LOG(critical,
@@ -716,6 +718,7 @@ void ServiceNode::lokid_ping_timer_tick() {
     };
 
     json params;
+    params["version"] = STORAGE_SERVER_VERSION_STRING;
     lokid_client_.make_lokid_request("storage_server_ping", params,
                                      std::move(cb));
 
