@@ -203,6 +203,8 @@ static uint64_t hex_to_u64(const std::string& pk) {
 }
 
 bool Swarm::is_pubkey_for_us(const std::string& pk) const {
+
+    /// TODO: Make sure no exceptions bubble up from here!
     return cur_swarm_id_ == get_swarm_by_pk(all_cur_swarms_, pk);
 }
 
