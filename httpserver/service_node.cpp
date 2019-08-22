@@ -6,11 +6,11 @@
 #include "https_client.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
+#include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
-#include "net_stats.h"
 
 #include "dns_text_records.h"
 
@@ -163,9 +163,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc), check_version_timer_(worker_ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
-      force_start_(force_start) {
+      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
+      check_version_timer_(worker_ioc), lokid_key_pair_(lokid_key_pair),
+      lokid_client_(lokid_client), force_start_(force_start) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -193,9 +193,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
     });
 
-    boost::asio::post(worker_ioc_, [this]() {
-        this->check_version_timer_tick();
-    });
+    boost::asio::post(worker_ioc_,
+                      [this]() { this->check_version_timer_tick(); });
 }
 
 static block_update_t
@@ -623,7 +622,8 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
 void ServiceNode::check_version_timer_tick() {
 
     check_version_timer_.expires_after(VERSION_CHECK_INTERVAL);
-    check_version_timer_.async_wait(std::bind(&ServiceNode::check_version_timer_tick, this));
+    check_version_timer_.async_wait(
+        std::bind(&ServiceNode::check_version_timer_tick, this));
 
     dns::check_latest_version();
 }
@@ -698,12 +698,14 @@ void ServiceNode::lokid_ping_timer_tick() {
             try {
                 json res_json = json::parse(*res.body);
 
-                if (res_json.at("result").at("status").get<std::string>() ==
-                    "OK") {
+                const auto status =
+                    res_json.at("result").at("status").get<std::string>();
+
+                if (status == "OK") {
                     LOKI_LOG(info, "Successfully pinged Lokid");
                 } else {
-                    LOKI_LOG(critical,
-                             "Could not ping Lokid: status is NOT OK");
+                    LOKI_LOG(critical, "Could not ping Lokid. Status: {}",
+                             status);
                 }
             } catch (...) {
                 LOKI_LOG(critical,
@@ -716,6 +718,9 @@ void ServiceNode::lokid_ping_timer_tick() {
     };
 
     json params;
+    params["version_major"] = VERSION_MAJOR_STR;
+    params["version_minor"] = VERSION_MINOR_STR;
+    params["version_patch"] = VERSION_PATCH_STR;
     lokid_client_.make_lokid_request("storage_server_ping", params,
                                      std::move(cb));
 
@@ -989,7 +994,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
 
     if (blk_height > block_height_) {
         LOKI_LOG(debug, "Our blockchain is behind, height: {}, requested: {}",
-                block_height_, blk_height);
+                 block_height_, blk_height);
         return MessageTestStatus::RETRY;
     }
 
@@ -1006,7 +1011,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
 
         if (tester.sn_address() != tester_addr) {
             LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_addr,
-                    tester.sn_address());
+                     tester.sn_address());
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
@@ -1280,11 +1285,13 @@ static nlohmann::json to_json(const all_stats_t& stats) {
 
     json["total_store_requests"] = stats.get_total_store_requests();
     json["recent_store_requests"] = stats.get_recent_store_requests();
-    json["previous_period_store_requests"] = stats.get_previous_period_store_requests();
+    json["previous_period_store_requests"] =
+        stats.get_previous_period_store_requests();
 
     json["total_retrieve_requests"] = stats.get_total_retrieve_requests();
     json["recent_store_requests"] = stats.get_recent_store_requests();
-    json["previous_period_retrieve_requests"] = stats.get_previous_period_retrieve_requests();
+    json["previous_period_retrieve_requests"] =
+        stats.get_previous_period_retrieve_requests();
 
     json["reset_time"] = stats.get_reset_time();
 

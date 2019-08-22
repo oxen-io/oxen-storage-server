@@ -1,7 +1,7 @@
-#include "../external/json.hpp"
 #include "dns_text_records.h"
-#include "version.h"
+#include "../external/json.hpp"
 #include "pow.hpp"
+#include "version.h"
 #include <resolv.h>
 
 #include <boost/algorithm/string.hpp>
@@ -25,7 +25,7 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
 
     int response =
         res_query(url, ns_c_in, ns_t_txt, query_buffer, sizeof(query_buffer));
-    
+
     if (response == -1) {
         LOKI_LOG(warn, "res_query failed while retrieving dns entry");
         ec = std::make_error_code(std::errc::bad_message);
@@ -96,7 +96,6 @@ static std::string query_latest_version() {
     }
 
     return version_str;
-
 }
 
 struct version_t {
@@ -105,34 +104,33 @@ struct version_t {
     int patch;
 };
 
-static bool is_old_version(version_t ours, version_t latest) {
+static bool is_old_version(version_t latest) {
 
-    if (ours.major > latest.major) {
+    if (VERSION_MAJOR > latest.major) {
         return false;
     }
 
-    if (ours.major < latest.major) {
+    if (VERSION_MAJOR < latest.major) {
         return true;
     }
 
     // === the same major version ===
 
-    if (ours.minor > latest.minor) {
+    if (VERSION_MINOR > latest.minor) {
         return false;
     }
 
-    if (ours.minor < latest.minor) {
+    if (VERSION_MINOR < latest.minor) {
         return true;
     }
 
     // === the same minor version ===
 
-    if (ours.patch >= latest.patch) {
+    if (VERSION_PATCH >= latest.patch) {
         return false;
     } else {
         return true;
     }
-
 }
 
 static bool parse_version(const std::string& str, version_t& version_out) {
@@ -149,48 +147,42 @@ static bool parse_version(const std::string& str, version_t& version_out) {
         version_out.minor = std::stoi(strs[1]);
         version_out.patch = std::stoi(strs[2]);
     } catch (const std::exception& e) {
-        LOKI_LOG(warn, "Invalid format for the Storage Server version! Error: {}", e.what());
+        LOKI_LOG(warn,
+                 "Invalid format for the Storage Server version! Error: {}",
+                 e.what());
         return false;
     }
 
     return true;
 }
 
-
 void check_latest_version() {
 
     const auto latest_version_str = query_latest_version();
 
     if (latest_version_str.empty()) {
-        LOKI_LOG(warn, "Failed to retrieve or parse the latest version number from DNS record");
+        LOKI_LOG(warn, "Failed to retrieve or parse the latest version number "
+                       "from DNS record");
         return;
     }
 
     version_t latest_version;
     if (!parse_version(latest_version_str, latest_version)) {
-        LOKI_LOG(warn, "Could not parse the latest version: {}", latest_version_str);
+        LOKI_LOG(warn, "Could not parse the latest version: {}",
+                 latest_version_str);
         return;
     }
 
-    // Note: we shouldn't have to parse our version every time, but we don't care about performance here
-    version_t our_version;
-    if (!parse_version(STORAGE_SERVER_VERSION_STRING, our_version)) {
-        LOKI_LOG(warn, "Could not parse our version: {}", STORAGE_SERVER_VERSION_STRING);
-        return;
-    }
-
-    if (is_old_version(our_version, latest_version)) {
+    if (is_old_version(latest_version)) {
         LOKI_LOG(warn,
                  "You are using an outdated version of the storage server "
                  "({}), please update to {}!",
                  STORAGE_SERVER_VERSION_STRING, latest_version_str);
     } else {
-        LOKI_LOG(
-            debug,
-            "You are using the latest version of the storage server ({})",
-            latest_version_str);
+        LOKI_LOG(debug,
+                 "You are using the latest version of the storage server ({})",
+                 latest_version_str);
     }
-
 }
 
 } // namespace dns

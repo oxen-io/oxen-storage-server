@@ -1,7 +1,7 @@
 #include "https_client.h"
 #include "loki_logger.h"
-#include "signature.h"
 #include "net_stats.h"
+#include "signature.h"
 
 #include <openssl/x509.h>
 
@@ -76,8 +76,8 @@ HttpsClientSession::HttpsClientSession(
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
       server_pub_key_b32z(sn_pubkey_b32z) {
 
-          get_net_stats().https_connections_out++;
-      }
+    get_net_stats().https_connections_out++;
+}
 
 void HttpsClientSession::start() {
     // Set SNI Hostname (many hosts need this to handshake successfully)

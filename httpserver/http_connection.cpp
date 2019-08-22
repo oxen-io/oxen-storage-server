@@ -3,6 +3,7 @@
 #include "Item.hpp"
 #include "channel_encryption.hpp"
 #include "dev_sink.h"
+#include "net_stats.h"
 #include "rate_limiter.h"
 #include "security.h"
 #include "serialization.h"
@@ -10,7 +11,6 @@
 #include "service_node.h"
 #include "signature.h"
 #include "utils.hpp"
-#include "net_stats.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -425,7 +425,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
             blk_height = body.at("height").get<uint64_t>();
             msg_hash = body.at("hash").get<std::string>();
         } catch (...) {
-            this->body_stream_ << "Bad snode test request: missing fields in json";
+            this->body_stream_
+                << "Bad snode test request: missing fields in json";
             response_.result(http::status::bad_request);
             LOKI_LOG(debug, "Bad snode test request: missing fields in json");
             return;
@@ -524,9 +525,13 @@ void connection_t::process_request() {
             try {
                 process_client_req();
             } catch (std::exception& e) {
-                this->body_stream_ << fmt::format("Exception caught while processing client request: {}", e.what());
+                this->body_stream_ << fmt::format(
+                    "Exception caught while processing client request: {}",
+                    e.what());
                 response_.result(http::status::internal_server_error);
-                LOKI_LOG(critical, "Exception caught while processing client request: {}", e.what());
+                LOKI_LOG(critical,
+                         "Exception caught while processing client request: {}",
+                         e.what());
             }
 
             // TODO: parse target (once) to determine if it is a "swarms" call
@@ -557,7 +562,8 @@ void connection_t::process_request() {
 #endif
         else {
             LOKI_LOG(debug, "unknown target for POST: {}", target.to_string());
-            this->body_stream_ << fmt::format("unknown target for POST: {}", target.to_string());
+            this->body_stream_ << fmt::format("unknown target for POST: {}",
+                                              target.to_string());
             response_.result(http::status::not_found);
         }
         break;
@@ -569,7 +575,8 @@ void connection_t::process_request() {
         } else if (target == "/get_logs/v1") {
             this->on_get_logs();
         } else {
-            this->body_stream_ << fmt::format("unknown target for GET: {}", target.to_string());
+            this->body_stream_ << fmt::format("unknown target for GET: {}",
+                                              target.to_string());
             LOKI_LOG(debug, "unknown target for GET: {}", target.to_string());
             response_.result(http::status::not_found);
         }
@@ -1139,8 +1146,8 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
                                      http_callback_t&& cb)
     : ioc_(ioc), socket_(ioc), endpoint_(ep), callback_(cb),
       deadline_timer_(ioc), req_(req) {
-          get_net_stats().http_connections_out++;
-      }
+    get_net_stats().http_connections_out++;
+}
 
 void HttpClientSession::on_connect() {
 

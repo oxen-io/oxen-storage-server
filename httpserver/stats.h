@@ -113,9 +113,7 @@ class all_stats_t {
         return total_client_store_requests;
     }
 
-    uint64_t get_recent_store_requests() const {
-        return recent_store_requests;
-    }
+    uint64_t get_recent_store_requests() const { return recent_store_requests; }
 
     uint64_t get_previous_period_store_requests() const {
         return previous_period_store_requests;
@@ -132,7 +130,6 @@ class all_stats_t {
     uint64_t get_previous_period_retrieve_requests() const {
         return previous_period_retrieve_requests;
     }
-
 
     time_t get_reset_time() const { return reset_time_; }
 };
