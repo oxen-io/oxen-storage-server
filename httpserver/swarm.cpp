@@ -21,6 +21,14 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
 
 Swarm::~Swarm() = default;
 
+bool Swarm::is_existing_swarm(swarm_id_t sid) const {
+
+    return std::any_of(all_cur_swarms_.begin(), all_cur_swarms_.end(),
+                       [sid](const SwarmInfo& cur_swarm_info) {
+                           return cur_swarm_info.swarm_id == sid;
+                       });
+}
+
 SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     SwarmEvents events = {};
@@ -76,11 +84,7 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     for (const auto& swarm_info : swarms) {
 
-        const bool found = std::any_of(
-            all_cur_swarms_.begin(), all_cur_swarms_.end(),
-            [&swarm_info](const SwarmInfo& cur_swarm_info) {
-                return cur_swarm_info.swarm_id == swarm_info.swarm_id;
-            });
+        const bool found = this->is_existing_swarm(swarm_info.swarm_id);
 
         if (!found) {
             events.new_swarms.push_back(swarm_info.swarm_id);
@@ -178,11 +182,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
         [this](const sn_record_t& record) { return record != our_address_; });
 }
 
-static uint64_t hex_to_u64(const std::string& pk) {
-
-    if (pk.size() != 66) {
-        throw std::invalid_argument("invalid pub key size");
-    }
+static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 
     /// Create a buffer for 16 characters null terminated
     char buf[17] = {};
@@ -194,7 +194,7 @@ static uint64_t hex_to_u64(const std::string& pk) {
     /// get a value in res (possibly 0 or UINT64_MAX), which
     /// we are not handling at the moment
     uint64_t res = 0;
-    for (auto it = pk.begin() + 2; it < pk.end(); it += 16) {
+    for (auto it = pk.str().begin() + 2; it < pk.str().end(); it += 16) {
         memcpy(buf, &(*it), 16);
         res ^= strtoull(buf, nullptr, 16);
     }
@@ -202,14 +202,14 @@ static uint64_t hex_to_u64(const std::string& pk) {
     return res;
 }
 
-bool Swarm::is_pubkey_for_us(const std::string& pk) const {
+bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
     /// TODO: Make sure no exceptions bubble up from here!
     return cur_swarm_id_ == get_swarm_by_pk(all_cur_swarms_, pk);
 }
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const std::string& pk) {
+                           const user_pubkey_t& pk) {
 
     const uint64_t res = hex_to_u64(pk);
 

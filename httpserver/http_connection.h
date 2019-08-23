@@ -260,7 +260,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     template <typename... Args>
     bool parse_header(const char* first, Args... args);
 
-    void handle_wrong_swarm(const std::string& pubKey);
+    void handle_wrong_swarm(const user_pubkey_t& pubKey);
 
     bool validate_snode_request();
     bool verify_signature(const std::string& signature,

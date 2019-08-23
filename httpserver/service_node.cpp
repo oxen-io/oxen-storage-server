@@ -1188,7 +1188,17 @@ void ServiceNode::bootstrap_swarms(
         swarm_id_t swarm_id;
         const auto it = cache.find(entry.pub_key);
         if (it == cache.end()) {
-            swarm_id = get_swarm_by_pk(all_swarms, entry.pub_key);
+
+            bool success;
+            auto pk = user_pubkey_t::create(entry.pub_key, success);
+
+            if (!success) {
+                LOKI_LOG(error, "Invalid pubkey in a message while "
+                                "bootstrapping other nodes");
+                continue;
+            }
+
+            swarm_id = get_swarm_by_pk(all_swarms, pk);
             cache.insert({entry.pub_key, swarm_id});
         } else {
             swarm_id = it->second;
@@ -1387,7 +1397,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     LOKI_LOG(trace, "Saving all: end");
 }
 
-bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
+bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
         return false;
@@ -1395,7 +1405,7 @@ bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
+std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");

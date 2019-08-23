@@ -31,7 +31,7 @@ struct block_update_t {
 };
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const std::string& pk);
+                           const user_pubkey_t& pk);
 
 struct SwarmEvents {
 
@@ -55,6 +55,8 @@ class Swarm {
     sn_record_t our_address_;
     std::vector<sn_record_t> swarm_peers_;
 
+    bool is_existing_swarm(swarm_id_t sid) const;
+
   public:
     Swarm(sn_record_t address) : our_address_(address) {}
 
@@ -68,7 +70,7 @@ class Swarm {
 
     void apply_swarm_changes(const all_swarms_t& new_swarms);
 
-    bool is_pubkey_for_us(const std::string& pk) const;
+    bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
     const std::vector<sn_record_t>& other_nodes() const;
 

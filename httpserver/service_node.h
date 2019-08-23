@@ -248,9 +248,9 @@ class ServiceNode {
                                                const std::string& msg_hash,
                                                std::string& answer);
 
-    bool is_pubkey_for_us(const std::string& pk) const;
+    bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
+    std::vector<sn_record_t> get_snodes_by_pk(const user_pubkey_t& pk);
 
     bool is_snode_address_known(const std::string&);
 
