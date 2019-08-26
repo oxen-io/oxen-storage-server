@@ -477,6 +477,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
         };
 
         service_node_.perform_blockchain_test(params, callback);
+    } else if (target == "/swarms/ping_test/v1") {
+        response_.result(http::status::ok);
     } else if (target == "/swarms/push/v1") {
 
         LOKI_LOG(trace, "swarms/push");
@@ -547,6 +549,8 @@ void connection_t::process_request() {
 
             this->process_swarm_req(target);
 
+        } else if (target == "/swarms/ping_test/v1") {
+            this->process_swarm_req(target);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {

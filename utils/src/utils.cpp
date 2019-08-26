@@ -96,7 +96,12 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
     return true;
 }
 
-/// Returns a random number from [0, n); (copied from lokid)
+uint64_t uniform_distribution_portable(uint64_t n) {
+
+    static thread_local std::mt19937_64 generator;
+    return uniform_distribution_portable(generator, n);
+}
+
 uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
                                        uint64_t n) {
     const uint64_t secure_max =

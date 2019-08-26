@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <unordered_map>
 
+#include "utils.hpp"
+
 namespace loki {
 
 static bool swarm_exists(const all_swarms_t& all_swarms,
@@ -180,6 +182,30 @@ void Swarm::update_state(const all_swarms_t& swarms,
     std::copy_if(
         members.begin(), members.end(), std::back_inserter(swarm_peers_),
         [this](const sn_record_t& record) { return record != our_address_; });
+
+    // Store a copy of every node in a separate data structure
+    all_other_nodes_.clear();
+
+    for (const auto& si : swarms) {
+        for (const auto& sn : si.snodes) {
+            if (sn != our_address_)
+                all_other_nodes_.push_back(sn);
+        }
+    }
+}
+
+
+boost::optional<sn_record_t> Swarm::choose_other_node() const {
+
+    // Currently just select a node from the list of active nodes,
+    // but include decommissioned nodes in the future too
+    if (all_other_nodes_.empty())
+        return boost::none;
+
+    const auto idx =
+        util::uniform_distribution_portable(all_other_nodes_.size());
+
+    return all_other_nodes_[idx];
 }
 
 static uint64_t hex_to_u64(const user_pubkey_t& pk) {

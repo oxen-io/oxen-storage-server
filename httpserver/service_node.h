@@ -123,6 +123,8 @@ class ServiceNode {
 
     boost::asio::steady_timer stats_cleanup_timer_;
 
+    boost::asio::steady_timer peer_ping_timer_;
+
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
@@ -157,9 +159,10 @@ class ServiceNode {
 
     void attach_pubkey(std::shared_ptr<request_t>& request) const;
 
-    /// used on push and on swarm bootstrapping
-    void send_sn_request(const std::shared_ptr<request_t>& req,
-                         const sn_record_t& address) const;
+    /// Reliably push message/batch to a service node
+    void relay_data_reliable(const std::shared_ptr<request_t>& req,
+                             const sn_record_t& address) const;
+
     void relay_messages(const std::vector<storage::Item>& messages,
                         const std::vector<sn_record_t>& snodes) const;
 
@@ -167,6 +170,8 @@ class ServiceNode {
     void swarm_timer_tick();
 
     void cleanup_timer_tick();
+
+    void ping_peers_tick();
 
     /// Check the latest version from DNS text record
     void check_version_timer_tick();
@@ -199,6 +204,9 @@ class ServiceNode {
 
     // Select a random message from our database, return false on error
     bool select_random_message(storage::Item& item);
+
+    // Ping some node and record its reachability
+    void test_reachability(const sn_record_t& sn);
 
   public:
     ServiceNode(boost::asio::io_context& ioc,

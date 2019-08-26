@@ -275,3 +275,29 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
 } // namespace http_server
 
 } // namespace loki
+
+namespace fmt {
+
+  template <>
+  struct formatter<loki::SNodeError> {
+
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
+
+    template <typename FormatContext>
+    auto format(const loki::SNodeError& err, FormatContext &ctx) {
+
+      switch (err) {
+        case loki::SNodeError::NO_ERROR: return format_to(ctx.out(), "NO_ERROR");
+        case loki::SNodeError::ERROR_OTHER: return format_to(ctx.out(), "ERROR_OTHER");
+        case loki::SNodeError::NO_REACH: return format_to(ctx.out(), "NO_REACH");
+        case loki::SNodeError::HTTP_ERROR: return format_to(ctx.out(), "HTTP_ERROR");
+        default: return format_to(ctx.out(), "[UNKNOWN]");
+      }
+      
+    }
+
+  };
+
+
+}

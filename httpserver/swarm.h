@@ -55,6 +55,9 @@ class Swarm {
     sn_record_t our_address_;
     std::vector<sn_record_t> swarm_peers_;
 
+    std::vector<sn_record_t> all_other_nodes_;
+
+    /// Check if `sid` is an existing (active) swarm
     bool is_existing_swarm(swarm_id_t sid) const;
 
   public:
@@ -81,6 +84,10 @@ class Swarm {
     bool is_valid() const { return cur_swarm_id_ != INVALID_SWARM_ID; }
 
     void set_swarm_id(swarm_id_t sid);
+
+    // Select a node from all existing nodes (excluding us); throws if there is
+    // no other nodes
+    boost::optional<sn_record_t> choose_other_node() const;
 };
 
 } // namespace loki

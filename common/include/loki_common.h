@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/optional.hpp>
+
 struct sn_record_t {
 
     // our 32 byte pub keys should always be 52 bytes long in base32z
