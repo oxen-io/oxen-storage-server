@@ -477,6 +477,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
         };
 
         service_node_.perform_blockchain_test(params, callback);
+    } else if (target == "/swarms/ping_test/v1") {
+        response_.result(http::status::ok);
     } else if (target == "/swarms/push/v1") {
 
         LOKI_LOG(trace, "swarms/push");
@@ -547,6 +549,8 @@ void connection_t::process_request() {
 
             this->process_swarm_req(target);
 
+        } else if (target == "/swarms/ping_test/v1") {
+            this->process_swarm_req(target);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
@@ -687,16 +691,18 @@ void connection_t::process_store(const json& params) {
         }
     }
 
-    const auto pubKey = params["pubKey"].get<std::string>();
     const auto ttl = params["ttl"].get<std::string>();
     const auto nonce = params["nonce"].get<std::string>();
     const auto timestamp = params["timestamp"].get<std::string>();
     const auto data = params["data"].get<std::string>();
 
-    if (pubKey.size() != 66) {
+    bool created;
+    auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), created);
+
+    if (!created) {
         response_.result(http::status::bad_request);
-        body_stream_ << "Pubkey must be 66 characters long\n";
-        LOKI_LOG(debug, "Pubkey must be 66 characters long");
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        LOKI_LOG(error, "Pubkey must be {} characters long", USER_PUBKEY_SIZE);
         return;
     }
 
@@ -708,8 +714,8 @@ void connection_t::process_store(const json& params) {
         return;
     }
 
-    if (!service_node_.is_pubkey_for_us(pubKey)) {
-        handle_wrong_swarm(pubKey);
+    if (!service_node_.is_pubkey_for_us(pk)) {
+        handle_wrong_swarm(pk);
         return;
     }
 
@@ -738,7 +744,7 @@ void connection_t::process_store(const json& params) {
     std::string messageHash;
 
     const bool valid_pow =
-        checkPoW(nonce, timestamp, ttl, pubKey, data, messageHash,
+        checkPoW(nonce, timestamp, ttl, pk.str(), data, messageHash,
                  service_node_.get_curr_pow_difficulty());
 #ifndef DISABLE_POW
     if (!valid_pow) {
@@ -759,7 +765,7 @@ void connection_t::process_store(const json& params) {
 
     try {
         const auto msg =
-            message_t{pubKey, data, messageHash, ttlInt, timestampInt, nonce};
+            message_t{pk.str(), data, messageHash, ttlInt, timestampInt, nonce};
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         response_.result(http::status::internal_server_error);
@@ -767,7 +773,7 @@ void connection_t::process_store(const json& params) {
         body_stream_ << e.what() << "\n";
         LOKI_LOG(critical,
                  "Internal Server Error. Could not store message for {}",
-                 obfuscate_pubkey(pubKey));
+                 obfuscate_pubkey(pk.str()));
         return;
     }
 
@@ -786,7 +792,7 @@ void connection_t::process_store(const json& params) {
     res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
     body_stream_ << res_body.dump();
     LOKI_LOG(trace, "Successfully stored message for {}",
-             obfuscate_pubkey(pubKey));
+             obfuscate_pubkey(pk.str()));
 }
 
 void connection_t::process_snodes_by_pk(const json& params) {
@@ -798,17 +804,17 @@ void connection_t::process_snodes_by_pk(const json& params) {
         return;
     }
 
-    auto pubKey = params["pubKey"].get<std::string>();
-
-    if (pubKey.size() != 66) {
+    bool success;
+    const auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
+    if (!success) {
         response_.result(http::status::bad_request);
-        body_stream_ << "Pubkey must be 66 characters long\n";
-        LOKI_LOG(debug, "Pubkey must be 66 characters long ");
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
         return;
     }
 
     const std::vector<sn_record_t> nodes =
-        service_node_.get_snodes_by_pk(pubKey);
+        service_node_.get_snodes_by_pk(pk);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
@@ -846,7 +852,7 @@ void connection_t::process_retrieve_all() {
     response_.result(http::status::ok);
 }
 
-void connection_t::handle_wrong_swarm(const std::string& pubKey) {
+void connection_t::handle_wrong_swarm(const user_pubkey_t& pubKey) {
 
     const std::vector<sn_record_t> nodes =
         service_node_.get_snodes_by_pk(pubKey);
@@ -961,19 +967,28 @@ void connection_t::process_retrieve(const json& params) {
         }
     }
 
-    const auto pub_key = params["pubKey"].get<std::string>();
-    const auto last_hash = params["lastHash"].get<std::string>();
+    bool success;
+    const auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
 
-    if (!service_node_.is_pubkey_for_us(pub_key)) {
-        handle_wrong_swarm(pub_key);
+    if (!success) {
+        response_.result(http::status::bad_request);
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
         return;
     }
+
+    if (!service_node_.is_pubkey_for_us(pk)) {
+        handle_wrong_swarm(pk);
+        return;
+    }
+
+    const auto last_hash = params["lastHash"].get<std::string>();
 
     // we are going to send the response anynchronously
     // once we have new data
     delay_response_ = true;
 
-    poll_db(pub_key, last_hash);
+    poll_db(pk.str(), last_hash);
 }
 
 void connection_t::process_client_req() {

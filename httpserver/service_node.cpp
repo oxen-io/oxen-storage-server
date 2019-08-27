@@ -97,7 +97,8 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 #else
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
-constexpr std::chrono::seconds CLEANUP_TIMER = 60min;
+constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
+constexpr std::chrono::seconds PING_PEERS_INTERVAL = 2s;
 constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
@@ -164,8 +165,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       db_(std::make_unique<Database>(ioc, db_location)),
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      check_version_timer_(worker_ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_client_(lokid_client), force_start_(force_start) {
+      check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
+      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -186,6 +188,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     swarm_timer_tick();
     lokid_ping_timer_tick();
     cleanup_timer_tick();
+
+    ping_peers_tick();
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -339,7 +343,7 @@ ServiceNode::~ServiceNode() {
     worker_thread_.join();
 };
 
-void ServiceNode::send_sn_request(const std::shared_ptr<request_t>& req,
+void ServiceNode::relay_data_reliable(const std::shared_ptr<request_t>& req,
                                   const sn_record_t& sn) const {
 
     LOKI_LOG(debug, "Relaying data to: {}", sn);
@@ -480,7 +484,7 @@ void ServiceNode::push_message(const message_t& msg) {
 
     for (const auto& address : others) {
         /// send a request asynchronously
-        send_sn_request(req, address);
+        relay_data_reliable(req, address);
     }
 }
 
@@ -654,6 +658,8 @@ void ServiceNode::swarm_timer_tick() {
     fields["hardfork"] = true;
 
     params["fields"] = fields;
+
+    /// TODO: include decommissioned
     params["active_only"] = true;
 
     lokid_client_.make_lokid_request(
@@ -680,9 +686,50 @@ void ServiceNode::cleanup_timer_tick() {
 
     all_stats_.cleanup();
 
-    stats_cleanup_timer_.expires_after(CLEANUP_TIMER);
+    stats_cleanup_timer_.expires_after(STATS_CLEANUP_INTERVAL);
     stats_cleanup_timer_.async_wait(
         boost::bind(&ServiceNode::cleanup_timer_tick, this));
+}
+
+void ServiceNode::ping_peers_tick() {
+
+    this->peer_ping_timer_.expires_after(PING_PEERS_INTERVAL);
+    this->peer_ping_timer_.async_wait(
+        std::bind(&ServiceNode::ping_peers_tick, this));
+
+    auto node = swarm_->choose_other_node();
+
+    if (!node) {
+        LOKI_LOG(debug, "No nodes to ping test yet");
+        return;
+    }
+
+    test_reachability(*node);
+
+}
+
+void ServiceNode::test_reachability(const sn_record_t& sn) {
+
+    LOKI_LOG(info, "TODO: testing node {}", sn);
+
+    auto callback = [](sn_response_t&& res) {
+        LOKI_LOG(info, "PING RESPONSE STATUS: {}", res.error_code);
+    };
+
+    nlohmann::json json_body;
+
+    auto req = make_post_request("/swarms/ping_test/v1", json_body.dump());
+
+#ifndef DISABLE_SNODE_SIGNATURE
+    const auto hash = hash_data(req->body());
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+    attach_signature(req, signature);
+#else
+    attach_pubkey(req);
+#endif
+
+    make_sn_request(ioc_, sn, req, std::move(callback));
+
 }
 
 void ServiceNode::lokid_ping_timer_tick() {
@@ -1188,7 +1235,17 @@ void ServiceNode::bootstrap_swarms(
         swarm_id_t swarm_id;
         const auto it = cache.find(entry.pub_key);
         if (it == cache.end()) {
-            swarm_id = get_swarm_by_pk(all_swarms, entry.pub_key);
+
+            bool success;
+            auto pk = user_pubkey_t::create(entry.pub_key, success);
+
+            if (!success) {
+                LOKI_LOG(error, "Invalid pubkey in a message while "
+                                "bootstrapping other nodes");
+                continue;
+            }
+
+            swarm_id = get_swarm_by_pk(all_swarms, pk);
             cache.insert({entry.pub_key, swarm_id});
         } else {
             swarm_id = it->second;
@@ -1245,7 +1302,7 @@ void ServiceNode::relay_messages(const std::vector<storage::Item>& messages,
     LOKI_LOG(debug, "Serialised batches: {}", data.size());
     for (const sn_record_t& sn : snodes) {
         for (const std::shared_ptr<request_t>& batch : batches) {
-            send_sn_request(batch, sn);
+            relay_data_reliable(batch, sn);
         }
     }
 }
@@ -1387,7 +1444,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     LOKI_LOG(trace, "Saving all: end");
 }
 
-bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
+bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
         return false;
@@ -1395,7 +1452,7 @@ bool ServiceNode::is_pubkey_for_us(const std::string& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const std::string& pk) {
+std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
