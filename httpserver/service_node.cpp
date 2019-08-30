@@ -227,12 +227,12 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
-            std::string snode_address = util::hex64_to_base32z(pubkey);
+            std::string snode_address = util::hex_to_base32z(pubkey);
 
             const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
             const std::string snode_ip =
                 sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, std::move(snode_address),
+            const sn_record_t sn{port, std::move(snode_address), pubkey,
                                  std::move(snode_ip)};
 
             swarm_map[swarm_id].push_back(sn);
@@ -697,23 +697,44 @@ void ServiceNode::ping_peers_tick() {
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
 
-    auto node = swarm_->choose_other_node();
+    /// We always test one node already known to be offline
+    /// plus one random other node (could even be the same node)
 
-    if (!node) {
-        LOKI_LOG(debug, "No nodes to ping test yet");
-        return;
+    const auto other_node = swarm_->choose_other_node();
+
+    if (other_node) {
+        LOKI_LOG(debug, "Selected random node for testing: {}", (*other_node).pub_key());
+        test_reachability(*other_node);
+    } else {
+        LOKI_LOG(debug, "No nodes to test for reachability");
     }
 
-    test_reachability(*node);
+    // TODO: there is an edge case where SS reported some offending
+    // nodes, but then restarted, so SS won't give priority to those
+    // nodes. SS will still test them eventually (through random selection) and
+    // update Lokid, but this scenario could be made more robust.
+    const auto offline_node = reach_records_.next_to_test();
+
+    if (offline_node) {
+        const boost::optional<sn_record_t> sn = swarm_->get_node_by_pk(*offline_node);
+        LOKI_LOG(debug, "No nodes offline nodes to ping test yet");
+        if (sn) {
+            test_reachability(*sn);
+        } else {
+            LOKI_LOG(debug, "Node does not seem to exist anymore: {}", *offline_node);
+            // delete its entry from test records as irrelevant
+            reach_records_.expire(*offline_node);
+        }
+    }
 
 }
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
-    LOKI_LOG(info, "TODO: testing node {}", sn);
+    LOKI_LOG(debug, "testing node for reachability {}", sn);
 
-    auto callback = [](sn_response_t&& res) {
-        LOKI_LOG(info, "PING RESPONSE STATUS: {}", res.error_code);
+    auto callback = [this, sn](sn_response_t&& res) {
+        this->process_reach_test_response(std::move(res), sn.pub_key());
     };
 
     nlohmann::json json_body;
@@ -734,6 +755,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
 void ServiceNode::lokid_ping_timer_tick() {
 
+    /// TODO: Note that this is not actually an SN response! (but Lokid)
     auto cb = [](const sn_response_t&& res) {
         if (res.error_code == SNodeError::NO_ERROR) {
 
@@ -931,6 +953,86 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
                     std::bind(&ServiceNode::process_blockchain_test_response,
                               this, std::placeholders::_1, answer, testee,
                               this->block_height_));
+}
+
+void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
+                                           bool reachable) {
+
+    const auto sn = swarm_->get_node_by_pk(sn_pk);
+
+    if (!sn) {
+        LOKI_LOG(debug, "No Service node with pubkey: {}", sn_pk);
+        return;
+    }
+
+    json params;
+    params["type"] = "reachability";
+    params["pubkey"] = (*sn).pub_key_hex();
+    params["passed"] = reachable;
+
+    /// Note that if Lokid restarts, all its reachability records will be
+    /// updated to "true".
+
+    auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
+        bool success = false;
+
+        if (res.error_code == SNodeError::NO_ERROR) {
+            if (!res.body) {
+                LOKI_LOG(error, "Empty body on Lokid report node status");
+                return;
+            }
+
+            try {
+                const json res_json = json::parse(*res.body);
+
+                const auto status =
+                    res_json.at("result").at("status").get<std::string>();
+
+                if (status == "OK") {
+                    success = true;
+                } else {
+                    LOKI_LOG(error, "Could not report node. Status: {}",
+                             status);
+                }
+            } catch (...) {
+                LOKI_LOG(error,
+                         "Could not report node status: bad json in response");
+            }
+        } else {
+            LOKI_LOG(error, "Could not report node status");
+        }
+
+        if (success) {
+            if (reachable) {
+                LOKI_LOG(debug, "Successfully reported node as reachable: {}", sn_pk);
+                this->reach_records_.expire(sn_pk);
+            } else {
+                LOKI_LOG(debug, "Successfully reported node as unreachable {}", sn_pk);
+                this->reach_records_.set_reported(sn_pk);
+            }
+        }
+    };
+
+    lokid_client_.make_lokid_request("report_peer_storage_server_status", params,
+                                     std::move(cb));
+}
+
+void ServiceNode::process_reach_test_response(sn_response_t&& res,
+                                              const sn_pub_key_t& pk) {
+
+    if (res.error_code == SNodeError::NO_ERROR) {
+        // NOTE: We don't need to report healthy nodes that previously has been
+        // not been reported to Lokid as unreachable but I'm worried there might
+        // be some race conditions, so do it anyway for now.
+        report_node_reachability(pk, true);
+        return;
+    }
+
+    const bool should_report = reach_records_.record_unreachable(pk);
+
+    if (should_report) {
+        report_node_reachability(pk, false);
+    }
 }
 
 void ServiceNode::process_blockchain_test_response(

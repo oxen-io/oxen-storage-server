@@ -208,6 +208,18 @@ boost::optional<sn_record_t> Swarm::choose_other_node() const {
     return all_other_nodes_[idx];
 }
 
+boost::optional<sn_record_t> Swarm::get_node_by_pk(const sn_pub_key_t &pk) const {
+
+    for (const auto& si : all_cur_swarms_) {
+        for (const auto& sn : si.snodes) {
+            if (sn.pub_key() == pk)
+                return sn;
+        }
+    }
+
+    return boost::none;
+}
+
 static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 
     /// Create a buffer for 16 characters null terminated

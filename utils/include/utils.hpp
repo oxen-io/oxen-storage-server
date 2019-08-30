@@ -106,7 +106,7 @@ bool base32z_decode(const Stack& stack, V& value) {
     return true;
 }
 
-std::string hex64_to_base32z(const std::string& src);
+std::string hex_to_base32z(const std::string& src);
 
 /// Returns a random number from [0, n) using a static generator
 uint64_t uniform_distribution_portable(uint64_t n);

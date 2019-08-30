@@ -25,6 +25,8 @@ void make_https_request(boost::asio::io_context& ioc,
     if (sn_address == "0.0.0.0") {
         LOKI_LOG(warn, "Could not initiate request to snode (we don't know "
                        "their IP yet).");
+
+        cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
     }
 

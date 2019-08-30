@@ -88,6 +88,9 @@ class Swarm {
     // Select a node from all existing nodes (excluding us); throws if there is
     // no other nodes
     boost::optional<sn_record_t> choose_other_node() const;
+
+    // Get the node with public key `pk` if exists
+    boost::optional<sn_record_t> get_node_by_pk(const sn_pub_key_t &pk) const;
 };
 
 } // namespace loki

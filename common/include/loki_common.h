@@ -9,6 +9,9 @@
 
 #include <boost/optional.hpp>
 
+// TODO: this should be a proper struct w/o heap allocation!
+using sn_pub_key_t = std::string;
+
 struct sn_record_t {
 
     // our 32 byte pub keys should always be 52 bytes long in base32z
@@ -16,13 +19,14 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    std::string sn_address_; // Snode address
-    std::string pub_key_;
+    std::string sn_address_; // Snode address (pubkey plus .snode)
+    std::string pub_key_; // base32z
+    std::string pub_key_hex_;
     std::string ip_; // Snode ip
   public:
     sn_record_t(uint16_t port, const std::string& address,
-                const std::string& ip)
-        : port_(port), ip_(ip) {
+                const std::string& pk_hex, const std::string& ip)
+        : port_(port), pub_key_hex_(pk_hex), ip_(ip) {
         set_address(address);
     }
 
@@ -45,6 +49,7 @@ struct sn_record_t {
     uint16_t port() const { return port_; }
     const std::string& sn_address() const { return sn_address_; }
     const std::string& pub_key() const { return pub_key_; }
+    const std::string& pub_key_hex() const { return pub_key_hex_; }
     const std::string& ip() const { return ip_; }
 
     template <typename OStream>
