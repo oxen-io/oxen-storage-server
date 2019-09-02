@@ -22,6 +22,7 @@
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
+static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
 
 class Database;
 

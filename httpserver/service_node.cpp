@@ -718,6 +718,10 @@ void ServiceNode::ping_peers_tick() {
 
     /// TODO: To be safe, let's not even test peers until we
     /// have reached the right hardfork height
+    if (hardfork_ < ENFORCED_REACHABILITY_HARDFORK) {
+        LOKI_LOG(debug, "Have not reached HF13, skipping reachability tests");
+        return;
+    }
 
     /// We always test one node already known to be offline
     /// plus one random other node (could even be the same node)
