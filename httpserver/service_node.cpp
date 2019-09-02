@@ -235,7 +235,21 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const sn_record_t sn{port, std::move(snode_address), pubkey,
                                  std::move(snode_ip)};
 
-            swarm_map[swarm_id].push_back(sn);
+            const bool fully_funded = sn_json.at("funded").get<bool>();
+
+            /// We want to include (test) decommissioned nodes, but not
+            /// partially funded ones.
+            if (!fully_funded) {
+                continue;
+            }
+
+            /// Storing decommissioned nodes (with dummy swarm id) in
+            /// a separate data structure as it seems less error prone
+            if (swarm_id == INVALID_SWARM_ID) {
+                bu.decommissioned_nodes.push_back(sn);
+            } else {
+                swarm_map[swarm_id].push_back(sn);
+            }
         }
 
         bu.height = body.at("result").at("height").get<uint64_t>();
@@ -268,6 +282,7 @@ void ServiceNode::bootstrap_data() {
     fields["height"] = true;
     fields["block_hash"] = true;
     fields["hardfork"] = true;
+    fields["funded"] = true;
 
     params["fields"] = fields;
 
@@ -286,6 +301,8 @@ void ServiceNode::bootstrap_data() {
                 if (res.error_code == SNodeError::NO_ERROR) {
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
+                        // TODO: this should be disabled in the "testnet" mode
+                        // (or changed to point to testnet seeds)
                         on_bootstrap_update(bu);
                     } catch (const std::exception& e) {
                         LOKI_LOG(
@@ -344,7 +361,7 @@ ServiceNode::~ServiceNode() {
 };
 
 void ServiceNode::relay_data_reliable(const std::shared_ptr<request_t>& req,
-                                  const sn_record_t& sn) const {
+                                      const sn_record_t& sn) const {
 
     LOKI_LOG(debug, "Relaying data to: {}", sn);
 
@@ -605,7 +622,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         }
     }
 
-    swarm_->update_state(bu.swarms, events);
+    swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events);
 
     if (!events.new_snodes.empty()) {
         bootstrap_peers(events.new_snodes);
@@ -615,7 +632,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         bootstrap_swarms(events.new_swarms);
     }
 
-    if (events.decommissioned) {
+    if (events.dissolved) {
         /// Go through all our PK and push them accordingly
         salvage_data();
     }
@@ -656,11 +673,12 @@ void ServiceNode::swarm_timer_tick() {
     fields["height"] = true;
     fields["block_hash"] = true;
     fields["hardfork"] = true;
+    fields["funded"] = true;
 
     params["fields"] = fields;
 
     /// TODO: include decommissioned
-    params["active_only"] = true;
+    params["active_only"] = false;
 
     lokid_client_.make_lokid_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
@@ -697,14 +715,24 @@ void ServiceNode::ping_peers_tick() {
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
 
+
+    /// TODO: To be safe, let's not even test peers until we
+    /// have reached the right hardfork height
+
     /// We always test one node already known to be offline
     /// plus one random other node (could even be the same node)
 
-    const auto other_node = swarm_->choose_other_node();
+    const auto random_node = swarm_->choose_funded_node();
 
-    if (other_node) {
-        LOKI_LOG(debug, "Selected random node for testing: {}", (*other_node).pub_key());
-        test_reachability(*other_node);
+    if (random_node) {
+
+        if (random_node == our_address_) {
+            LOKI_LOG(debug, "Would test our own node, skipping");
+        } else {
+            LOKI_LOG(debug, "Selected random node for testing: {}",
+                     (*random_node).pub_key());
+            test_reachability(*random_node);
+        }
     } else {
         LOKI_LOG(debug, "No nodes to test for reachability");
     }
@@ -716,17 +744,18 @@ void ServiceNode::ping_peers_tick() {
     const auto offline_node = reach_records_.next_to_test();
 
     if (offline_node) {
-        const boost::optional<sn_record_t> sn = swarm_->get_node_by_pk(*offline_node);
+        const boost::optional<sn_record_t> sn =
+            swarm_->get_node_by_pk(*offline_node);
         LOKI_LOG(debug, "No nodes offline nodes to ping test yet");
         if (sn) {
             test_reachability(*sn);
         } else {
-            LOKI_LOG(debug, "Node does not seem to exist anymore: {}", *offline_node);
+            LOKI_LOG(debug, "Node does not seem to exist anymore: {}",
+                     *offline_node);
             // delete its entry from test records as irrelevant
             reach_records_.expire(*offline_node);
         }
     }
-
 }
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
@@ -750,7 +779,6 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 #endif
 
     make_sn_request(ioc_, sn, req, std::move(callback));
-
 }
 
 void ServiceNode::lokid_ping_timer_tick() {
@@ -1004,17 +1032,19 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
 
         if (success) {
             if (reachable) {
-                LOKI_LOG(debug, "Successfully reported node as reachable: {}", sn_pk);
+                LOKI_LOG(debug, "Successfully reported node as reachable: {}",
+                         sn_pk);
                 this->reach_records_.expire(sn_pk);
             } else {
-                LOKI_LOG(debug, "Successfully reported node as unreachable {}", sn_pk);
+                LOKI_LOG(debug, "Successfully reported node as unreachable {}",
+                         sn_pk);
                 this->reach_records_.set_reported(sn_pk);
             }
         }
     };
 
-    lokid_client_.make_lokid_request("report_peer_storage_server_status", params,
-                                     std::move(cb));
+    lokid_client_.make_lokid_request("report_peer_storage_server_status",
+                                     params, std::move(cb));
 }
 
 void ServiceNode::process_reach_test_response(sn_response_t&& res,
@@ -1312,7 +1342,7 @@ void ServiceNode::bootstrap_swarms(
         LOKI_LOG(info, "Bootstrapping swarms: {}", vec_to_string(swarms));
     }
 
-    const auto& all_swarms = swarm_->all_swarms();
+    const auto& all_swarms = swarm_->all_valid_swarms();
 
     std::vector<Item> all_entries;
     if (!get_all_messages(all_entries)) {
@@ -1554,14 +1584,15 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-std::vector<sn_record_t> ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
+std::vector<sn_record_t>
+ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
         return {};
     }
 
-    const auto& all_swarms = swarm_->all_swarms();
+    const auto& all_swarms = swarm_->all_valid_swarms();
 
     swarm_id_t swarm_id = get_swarm_by_pk(all_swarms, pk);
 
@@ -1586,17 +1617,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
         return {};
     }
 
-    const auto& all_swarms = swarm_->all_swarms();
-
-    return std::any_of(all_swarms.begin(), all_swarms.end(),
-                       [&sn_address](const SwarmInfo& swarm_info) {
-                           return std::any_of(
-                               swarm_info.snodes.begin(),
-                               swarm_info.snodes.end(),
-                               [&sn_address](const sn_record_t& sn_record) {
-                                   return sn_record.sn_address() == sn_address;
-                               });
-                       });
+    return swarm_->is_fully_funded_node(sn_address);
 }
 
 } // namespace loki

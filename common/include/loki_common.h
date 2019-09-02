@@ -20,7 +20,7 @@ struct sn_record_t {
   private:
     uint16_t port_;
     std::string sn_address_; // Snode address (pubkey plus .snode)
-    std::string pub_key_; // base32z
+    std::string pub_key_;    // base32z
     std::string pub_key_hex_;
     std::string ip_; // Snode ip
   public:
@@ -70,13 +70,11 @@ class user_pubkey_t {
 
     user_pubkey_t() {}
 
-    user_pubkey_t(std::string&& pk) : pubkey_(std::move(pk)) {
-    }
+    user_pubkey_t(std::string&& pk) : pubkey_(std::move(pk)) {}
 
     user_pubkey_t(const std::string& pk) : pubkey_(pk) {}
 
-public:
-
+  public:
     static user_pubkey_t create(std::string&& pk, bool& success) {
         success = true;
         if (pk.size() != USER_PUBKEY_SIZE) {
@@ -95,9 +93,7 @@ public:
         return user_pubkey_t(pk);
     }
 
-    const std::string& str() const {
-        return pubkey_;
-    }
+    const std::string& str() const { return pubkey_; }
 };
 
 namespace loki {

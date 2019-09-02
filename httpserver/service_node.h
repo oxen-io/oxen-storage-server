@@ -201,7 +201,8 @@ class ServiceNode {
 
     /// Check if status is OK and handle failed test otherwise; note
     /// that we want a copy of `sn` here because of the way it is called
-    void process_reach_test_response(sn_response_t&& res, const sn_pub_key_t& sn);
+    void process_reach_test_response(sn_response_t&& res,
+                                     const sn_pub_key_t& sn);
 
     /// From a peer
     void process_blockchain_test_response(sn_response_t&& res,

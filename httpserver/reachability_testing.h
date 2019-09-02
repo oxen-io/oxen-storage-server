@@ -1,8 +1,8 @@
 #pragma once
 
 #include "loki_common.h"
-#include <unordered_map>
 #include <chrono>
+#include <unordered_map>
 
 namespace loki {
 
@@ -16,14 +16,13 @@ class reach_record_t {
 
     using time_point_t = std::chrono::time_point<std::chrono::steady_clock>;
 
-public:
+  public:
     time_point_t first_failure;
     time_point_t last_tested;
     // whether it's been reported to Lokid
     bool reported = false;
 
     reach_record_t();
-
 };
 } // namespace detail
 

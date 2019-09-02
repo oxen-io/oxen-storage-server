@@ -1,6 +1,6 @@
 
-#include "loki_logger.h"
 #include "reachability_testing.h"
+#include "loki_logger.h"
 
 using std::chrono::steady_clock;
 using namespace std::chrono_literals;
@@ -60,7 +60,6 @@ bool reachability_records_t::expire(const sn_pub_key_t& sn) {
     if (offline_nodes_.erase(sn)) {
         LOKI_LOG(warn, "    - removed entry for {}", sn);
     }
-
 }
 
 void reachability_records_t::set_reported(const sn_pub_key_t& sn) {
