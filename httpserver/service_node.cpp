@@ -38,8 +38,8 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    return make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key(), req,
-                              std::move(cb));
+    return make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key_base32z(),
+                              req, std::move(cb));
 }
 
 FailedRequestHandler::FailedRequestHandler(
@@ -677,7 +677,6 @@ void ServiceNode::swarm_timer_tick() {
 
     params["fields"] = fields;
 
-    /// TODO: include decommissioned
     params["active_only"] = false;
 
     lokid_client_.make_lokid_request(
@@ -715,7 +714,6 @@ void ServiceNode::ping_peers_tick() {
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
 
-
     /// TODO: To be safe, let's not even test peers until we
     /// have reached the right hardfork height
     if (hardfork_ < ENFORCED_REACHABILITY_HARDFORK) {
@@ -734,7 +732,7 @@ void ServiceNode::ping_peers_tick() {
             LOKI_LOG(debug, "Would test our own node, skipping");
         } else {
             LOKI_LOG(debug, "Selected random node for testing: {}",
-                     (*random_node).pub_key());
+                     (*random_node).pub_key_hex());
             test_reachability(*random_node);
         }
     } else {
@@ -750,7 +748,7 @@ void ServiceNode::ping_peers_tick() {
     if (offline_node) {
         const boost::optional<sn_record_t> sn =
             swarm_->get_node_by_pk(*offline_node);
-        LOKI_LOG(debug, "No nodes offline nodes to ping test yet");
+        LOKI_LOG(debug, "No offline nodes to test for reachability yet");
         if (sn) {
             test_reachability(*sn);
         } else {
@@ -764,10 +762,10 @@ void ServiceNode::ping_peers_tick() {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
-    LOKI_LOG(debug, "testing node for reachability {}", sn);
+    LOKI_LOG(debug, "Testing node for reachability {}", sn);
 
     auto callback = [this, sn](sn_response_t&& res) {
-        this->process_reach_test_response(std::move(res), sn.pub_key());
+        this->process_reach_test_response(std::move(res), sn.pub_key_base32z());
     };
 
     nlohmann::json json_body;
@@ -895,7 +893,8 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
 }
 
 void ServiceNode::attach_pubkey(std::shared_ptr<request_t>& request) const {
-    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER, our_address_.pub_key());
+    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER,
+                 our_address_.pub_key_base32z());
 }
 
 void abort_if_integration_test() {
@@ -1006,32 +1005,32 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     /// updated to "true".
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
+        if (res.error_code != SNodeError::NO_ERROR) {
+            LOKI_LOG(error, "Could not report node status");
+            return;
+        }
+
+        if (!res.body) {
+            LOKI_LOG(error, "Empty body on Lokid report node status");
+            return;
+        }
+
         bool success = false;
 
-        if (res.error_code == SNodeError::NO_ERROR) {
-            if (!res.body) {
-                LOKI_LOG(error, "Empty body on Lokid report node status");
-                return;
+        try {
+            const json res_json = json::parse(*res.body);
+
+            const auto status =
+                res_json.at("result").at("status").get<std::string>();
+
+            if (status == "OK") {
+                success = true;
+            } else {
+                LOKI_LOG(error, "Could not report node. Status: {}", status);
             }
-
-            try {
-                const json res_json = json::parse(*res.body);
-
-                const auto status =
-                    res_json.at("result").at("status").get<std::string>();
-
-                if (status == "OK") {
-                    success = true;
-                } else {
-                    LOKI_LOG(error, "Could not report node. Status: {}",
-                             status);
-                }
-            } catch (...) {
-                LOKI_LOG(error,
-                         "Could not report node status: bad json in response");
-            }
-        } else {
-            LOKI_LOG(error, "Could not report node status");
+        } catch (...) {
+            LOKI_LOG(error,
+                     "Could not report node status: bad json in response");
         }
 
         if (success) {
@@ -1491,7 +1490,7 @@ static nlohmann::json to_json(const all_stats_t& stats) {
     nlohmann::json peers;
 
     for (const auto& kv : stats.peer_report_) {
-        const auto& pubkey = kv.first.pub_key();
+        const auto& pubkey = kv.first.pub_key_base32z();
 
         peers[pubkey]["requests_failed"] = kv.second.requests_failed;
         peers[pubkey]["pushes_failed"] = kv.second.requests_failed;

@@ -20,7 +20,9 @@ struct sn_record_t {
   private:
     uint16_t port_;
     std::string sn_address_; // Snode address (pubkey plus .snode)
-    std::string pub_key_;    // base32z
+    // TODO: create separate types for different encodings of pubkeys,
+    // so if we confuse them, it will be a compiler error
+    std::string pub_key_base_32z_;
     std::string pub_key_hex_;
     std::string ip_; // Snode ip
   public:
@@ -43,12 +45,12 @@ struct sn_record_t {
 
         sn_address_ = addr;
         sn_address_.append(".snode");
-        pub_key_ = addr;
+        pub_key_base_32z_ = addr;
     }
 
     uint16_t port() const { return port_; }
     const std::string& sn_address() const { return sn_address_; }
-    const std::string& pub_key() const { return pub_key_; }
+    const std::string& pub_key_base32z() const { return pub_key_base_32z_; }
     const std::string& pub_key_hex() const { return pub_key_hex_; }
     const std::string& ip() const { return ip_; }
 

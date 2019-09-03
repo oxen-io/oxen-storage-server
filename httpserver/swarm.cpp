@@ -211,7 +211,7 @@ Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
 
     for (const auto& si : all_valid_swarms_) {
         for (const auto& sn : si.snodes) {
-            if (sn.pub_key() == pk)
+            if (sn.pub_key_base32z() == pk)
                 return sn;
         }
     }
