@@ -342,15 +342,20 @@ bool connection_t::verify_signature(const std::string& signature,
 }
 
 void connection_t::process_storage_test_req(uint64_t height,
-                                            const std::string& tester_addr,
+                                            const std::string& tester_pk,
                                             const std::string& msg_hash) {
 
     LOKI_LOG(trace, "Performing storage test, attempt: {}", repetition_count_);
 
     std::string answer;
 
+    /// TODO: we never actually test that `height` is within any reasonable
+    /// time window (or that it is not repeated multiple times), we should do that!
+    /// This is done implicitly to some degree using `block_hashes_cache_`, which
+    /// holds a limited number of recent blocks only and fails if an earlier block
+    /// is requested
     const MessageTestStatus status = service_node_.process_storage_test_req(
-        height, tester_addr, msg_hash, answer);
+        height, tester_pk, msg_hash, answer);
     const auto elapsed_time =
         std::chrono::steady_clock::now() - start_timestamp_;
     if (status == MessageTestStatus::SUCCESS) {
@@ -369,7 +374,7 @@ void connection_t::process_storage_test_req(uint64_t height,
 
         repeat_timer_.expires_after(TEST_RETRY_PERIOD);
         repeat_timer_.async_wait([self = shared_from_this(), height, msg_hash,
-                                  tester_addr](const error_code& ec) {
+                                  tester_pk](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
                     LOKI_LOG(error,
@@ -377,7 +382,7 @@ void connection_t::process_storage_test_req(uint64_t height,
                              ec.value(), ec.message());
                 }
             } else {
-                self->process_storage_test_req(height, tester_addr, msg_hash);
+                self->process_storage_test_req(height, tester_pk, msg_hash);
             }
         });
 
@@ -387,6 +392,29 @@ void connection_t::process_storage_test_req(uint64_t height,
         response_.result(http::status::bad_request);
         /// TODO: send a helpful error message
     }
+}
+
+void connection_t::process_blockchain_test_req(uint64_t,
+                                               const std::string& tester_pk,
+                                               bc_test_params_t params) {
+
+    // Note: `height` can be 0, which is the default value for old SS, allowed
+    // pre HF13
+
+    LOKI_LOG(debug, "Performing blockchain test");
+
+    auto callback = [this](blockchain_test_answer_t answer) {
+        this->response_.result(http::status::ok);
+
+        nlohmann::json json_res;
+        json_res["res_height"] = answer.res_height;
+
+        this->body_stream_ << json_res.dump();
+        this->write_response();
+    };
+
+    /// TODO: this should first check if tester/testee are correct! (use `height`)
+    service_node_.perform_blockchain_test(params, std::move(callback));
 }
 
 void connection_t::process_swarm_req(boost::string_view target) {
@@ -434,8 +462,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
         if (it != header_.end()) {
-            std::string& tester_pk = it->second;
-            tester_pk.append(".snode");
+            const std::string& tester_pk = it->second;
             this->process_storage_test_req(blk_height, tester_pk, msg_hash);
         } else {
             LOKI_LOG(debug, "Ignoring test request, no pubkey present");
@@ -455,28 +482,34 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         bc_test_params_t params;
 
+        // Height that should be used to check derive tester/testee
+        uint64_t height = 0;
+
         try {
             params.max_height = body.at("max_height").get<uint64_t>();
             params.seed = body.at("seed").get<uint64_t>();
+
+            if (body.find("height") != body.end()) {
+                height = body.at("height").get<uint64_t>();
+            } else {
+                LOKI_LOG(debug, "No tester height, defaulting to {}", height);
+            }
         } catch (...) {
             response_.result(http::status::bad_request);
             LOKI_LOG(debug, "Bad snode test request: missing fields in json");
             return;
         }
 
-        delay_response_ = true;
+        /// TODO: only check pubkey field once (in validate snode req)
+        const auto it = header_.find(LOKI_SENDER_SNODE_PUBKEY_HEADER);
+        if (it != header_.end()) {
+            const std::string& tester_pk = it->second;
+            delay_response_ = true;
+            this->process_blockchain_test_req(height, tester_pk, params);
+        } else {
+            LOKI_LOG(debug, "Ignoring test request, no pubkey present");
+        }
 
-        auto callback = [this](blockchain_test_answer_t answer) {
-            this->response_.result(http::status::ok);
-
-            nlohmann::json json_res;
-            json_res["res_height"] = answer.res_height;
-
-            this->body_stream_ << json_res.dump();
-            this->write_response();
-        };
-
-        service_node_.perform_blockchain_test(params, callback);
     } else if (target == "/swarms/ping_test/v1") {
         response_.result(http::status::ok);
     } else if (target == "/swarms/push/v1") {

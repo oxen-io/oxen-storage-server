@@ -255,6 +255,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
                                   const std::string& tester_addr,
                                   const std::string& msg_hash);
 
+    void process_blockchain_test_req(uint64_t height,
+                                     const std::string& tester_pk,
+                                     bc_test_params_t params);
+
     bool parse_header(const char* key);
 
     template <typename... Args>

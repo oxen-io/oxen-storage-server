@@ -346,7 +346,7 @@ ServiceNode::~ServiceNode() {
 void ServiceNode::relay_data_reliable(const std::shared_ptr<request_t>& req,
                                   const sn_record_t& sn) const {
 
-    LOKI_LOG(debug, "Relaying data to: {}", sn);
+    LOKI_LOG(trace, "Relaying data to: {}", sn);
 
     // Note: often one of the reason for failure here is that the node has just
     // deregistered but our SN hasn't updated its swarm list yet.
@@ -466,7 +466,7 @@ void ServiceNode::push_message(const message_t& msg) {
 
     const auto& others = swarm_->other_nodes();
 
-    LOKI_LOG(debug, "push_message to {} other nodes", others.size());
+    LOKI_LOG(trace, "push_message to {} other nodes", others.size());
 
     std::string body;
     serialize_message(body, msg);
@@ -524,7 +524,7 @@ void ServiceNode::save_if_new(const message_t& msg) {
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
                    msg.nonce)) {
         notify_listeners(msg.pub_key, msg);
-        LOKI_LOG(debug, "saved message: {}", msg.data);
+        LOKI_LOG(trace, "saved message: {}", msg.data);
     }
 }
 
@@ -846,12 +846,13 @@ void ServiceNode::attach_pubkey(std::shared_ptr<request_t>& request) const {
 
 void abort_if_integration_test() {
 #ifdef INTEGRATION_TEST
-    LOKI_LOG(error, "ABORT in integration test");
+    LOKI_LOG(critical, "ABORT in integration test");
     abort();
 #endif
 }
 
 void ServiceNode::send_storage_test_req(const sn_record_t& testee,
+                                        uint64_t test_height,
                                         const Item& item) {
 
     auto callback = [testee, item, height = this->block_height_,
@@ -891,7 +892,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
     nlohmann::json json_body;
 
-    json_body["height"] = block_height_;
+    json_body["height"] = test_height;
     json_body["hash"] = item.hash;
 
     auto req = make_post_request("/swarms/storage_test/v1", json_body.dump());
@@ -909,12 +910,14 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
 void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
                                            bc_test_params_t params,
+                                           uint64_t test_height,
                                            blockchain_test_answer_t answer) {
 
     nlohmann::json json_body;
 
     json_body["max_height"] = params.max_height;
     json_body["seed"] = params.seed;
+    json_body["height"] = test_height;
 
     auto req =
         make_post_request("/swarms/blockchain_test/v1", json_body.dump());
@@ -989,7 +992,8 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         block_hash = block_hash_;
     } else if (blk_height < block_height_) {
 
-        LOKI_LOG(debug, "got storage test request for an older block");
+        LOKI_LOG(debug, "got storage test request for an older block: {}/{}",
+                 blk_height, block_height_);
 
         const auto it =
             std::find_if(block_hashes_cache_.begin(), block_hashes_cache_.end(),
@@ -1033,7 +1037,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
 }
 
 MessageTestStatus ServiceNode::process_storage_test_req(
-    uint64_t blk_height, const std::string& tester_addr,
+    uint64_t blk_height, const std::string& tester_pk,
     const std::string& msg_hash, std::string& answer) {
 
     // 1. Check height, retry if we are behind
@@ -1052,17 +1056,17 @@ MessageTestStatus ServiceNode::process_storage_test_req(
         derive_tester_testee(blk_height, tester, testee);
 
         if (testee != our_address_) {
-            LOKI_LOG(debug, "We are NOT the testee for height: {}", blk_height);
+            LOKI_LOG(error, "We are NOT the testee for height: {}", blk_height);
             return MessageTestStatus::ERROR;
         }
 
-        if (tester.sn_address() != tester_addr) {
-            LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_addr,
+        if (tester.pub_key() != tester_pk) {
+            LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
                      tester.sn_address());
             abort_if_integration_test();
             return MessageTestStatus::ERROR;
         } else {
-            LOKI_LOG(trace, "Tester is valid: {}", tester_addr);
+            LOKI_LOG(trace, "Tester is valid: {}", tester_pk);
         }
     }
 
@@ -1110,11 +1114,26 @@ void ServiceNode::initiate_peer_test() {
 
     // 1. Select the tester/testee pair
     sn_record_t tester, testee;
-    if (!derive_tester_testee(block_height_, tester, testee)) {
+
+    /// We test based on the height a few blocks back to minimise discrepancies
+    /// between nodes (we could also use checkpoints, but that is still not
+    /// bulletproof: swarms are calculated based on the latest block, so they
+    /// might be still different and thus derive different pairs)
+    constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
+
+    if (block_height_ < TEST_BLOCKS_BUFFER) {
+        LOKI_LOG(debug, "Height {} is too small, skipping all tests",
+                 block_height_);
         return;
     }
 
-    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", block_height_,
+    const uint64_t test_height = block_height_ - TEST_BLOCKS_BUFFER;
+
+    if (!derive_tester_testee(test_height, tester, testee)) {
+        return;
+    }
+
+    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", test_height,
              tester, testee);
 
     if (tester != our_address_) {
@@ -1133,7 +1152,7 @@ void ServiceNode::initiate_peer_test() {
                      item.data);
 
             // 2.2. Initiate testing request
-            send_storage_test_req(testee, item);
+            send_storage_test_req(testee, test_height, item);
         }
     }
 
@@ -1148,7 +1167,7 @@ void ServiceNode::initiate_peer_test() {
         constexpr uint64_t CHECKPOINT_DISTANCE = 4;
         // We can be confident that blockchain data won't
         // change if we go this many blocks back
-        constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 2;
+        constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 3;
 
         if (block_height_ <= SAFETY_BUFFER_BLOCKS) {
             LOKI_LOG(debug,
@@ -1162,11 +1181,14 @@ void ServiceNode::initiate_peer_test() {
         const uint64_t rng_seed = std::chrono::high_resolution_clock::now()
                                       .time_since_epoch()
                                       .count();
+
+        // TODO: This is slow, fix it!
         std::mt19937_64 mt(rng_seed);
         params.seed = mt();
 
-        auto callback = std::bind(&ServiceNode::send_blockchain_test_req, this,
-                                  testee, params, std::placeholders::_1);
+        auto callback =
+            std::bind(&ServiceNode::send_blockchain_test_req, this, testee,
+                      params, test_height, std::placeholders::_1);
 
         /// Compute your own answer, then initiate a test request
         perform_blockchain_test(params, callback);
