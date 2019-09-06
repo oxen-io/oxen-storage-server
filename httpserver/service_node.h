@@ -20,7 +20,7 @@
 #include "stats.h"
 #include "swarm.h"
 
-static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
+static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
 static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
 
@@ -190,11 +190,12 @@ class ServiceNode {
                               sn_record_t& testee);
 
     /// Send a request to a SN under test
-    void send_storage_test_req(const sn_record_t& testee,
+    void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
                                const storage::Item& item);
 
     void send_blockchain_test_req(const sn_record_t& testee,
                                   bc_test_params_t params,
+                                  uint64_t test_height,
                                   blockchain_test_answer_t answer);
 
     /// Report `sn` to Lokid as unreachable
