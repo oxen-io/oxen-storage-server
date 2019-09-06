@@ -192,6 +192,10 @@ void Swarm::update_state(const all_swarms_t& swarms,
             all_funded_nodes_.push_back(sn);
         }
     }
+
+    for (const auto& sn : decommissioned) {
+        all_funded_nodes_.push_back(sn);
+    }
 }
 
 boost::optional<sn_record_t> Swarm::choose_funded_node() const {

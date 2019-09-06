@@ -11,12 +11,12 @@ namespace detail {
 /// TODO: make this class "private"?
 class reach_record_t {
 
-    // The time the node failed for the first time
-    // (and hasn't come back online)
 
     using time_point_t = std::chrono::time_point<std::chrono::steady_clock>;
 
   public:
+    // The time the node failed for the first time
+    // (and hasn't come back online)
     time_point_t first_failure;
     time_point_t last_tested;
     // whether it's been reported to Lokid

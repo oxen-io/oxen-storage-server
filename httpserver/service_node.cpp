@@ -1006,12 +1006,12 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
         if (res.error_code != SNodeError::NO_ERROR) {
-            LOKI_LOG(error, "Could not report node status");
+            LOKI_LOG(warn, "Could not report node status");
             return;
         }
 
         if (!res.body) {
-            LOKI_LOG(error, "Empty body on Lokid report node status");
+            LOKI_LOG(warn, "Empty body on Lokid report node status");
             return;
         }
 
@@ -1026,7 +1026,7 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
             if (status == "OK") {
                 success = true;
             } else {
-                LOKI_LOG(error, "Could not report node. Status: {}", status);
+                LOKI_LOG(warn, "Could not report node. Status: {}", status);
             }
         } catch (...) {
             LOKI_LOG(error,
