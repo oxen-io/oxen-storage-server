@@ -518,7 +518,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         /// NOTE:: we only expect one message here, but
         /// for now lets reuse the function we already have
-        std::vector<message_t> messages = deserialize_messages(request_.body(), service_node_.valid_pubkey_length());
+        std::vector<message_t> messages = deserialize_messages(request_.body());
         assert(messages.size() == 1);
 
         service_node_.process_push(messages.front());
@@ -736,8 +736,8 @@ void connection_t::process_store(const json& params) {
     if (!created) {
         response_.result(http::status::bad_request);
         body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    USER_PUBKEY_SIZE);
-        LOKI_LOG(error, "Pubkey must be {} characters long", USER_PUBKEY_SIZE);
+                                    get_user_pubkey_size());
+        LOKI_LOG(error, "Pubkey must be {} characters long", get_user_pubkey_size());
         return;
     }
 
@@ -845,8 +845,8 @@ void connection_t::process_snodes_by_pk(const json& params) {
     if (!success) {
         response_.result(http::status::bad_request);
         body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    USER_PUBKEY_SIZE);
-        LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
+                                    get_user_pubkey_size());
+        LOKI_LOG(debug, "Pubkey must be {} characters long ", get_user_pubkey_size());
         return;
     }
 
@@ -1010,8 +1010,8 @@ void connection_t::process_retrieve(const json& params) {
     if (!success) {
         response_.result(http::status::bad_request);
         body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    USER_PUBKEY_SIZE);
-        LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
+                                    get_user_pubkey_size());
+        LOKI_LOG(debug, "Pubkey must be {} characters long ", get_user_pubkey_size());
         return;
     }
 

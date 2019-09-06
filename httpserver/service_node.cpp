@@ -29,6 +29,8 @@ using namespace std::chrono_literals;
 namespace loki {
 using http_server::connection_t;
 
+bool is_mainnet = true;
+
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     std::chrono::seconds(1),   std::chrono::seconds(5),
     std::chrono::seconds(10),  std::chrono::seconds(20),
@@ -159,7 +161,7 @@ static bool verify_message(const message_t& msg,
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
-                         const loki::lokid_key_pair_t& lokid_key_pair,
+                         const lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
                          LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
@@ -268,14 +270,6 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     }
 
     return bu;
-}
-
-int ServiceNode::valid_pubkey_length() const {
-    if (loki::is_mainnet) {
-        return 66;
-    } else {
-        return 64;
-    }
 }
 
 void ServiceNode::bootstrap_data() {
@@ -1577,7 +1571,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    std::vector<message_t> messages = deserialize_messages(blob, valid_pubkey_length());
+    std::vector<message_t> messages = deserialize_messages(blob);
 
     LOKI_LOG(trace, "Saving all: begin");
 

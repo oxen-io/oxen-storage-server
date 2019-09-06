@@ -128,7 +128,7 @@ static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
     return res;
 }
 
-std::vector<message_t> deserialize_messages(const std::string& blob, const size_t pk_size) {
+std::vector<message_t> deserialize_messages(const std::string& blob) {
 
     LOKI_LOG(trace, "=== Deserializing ===");
 
@@ -139,7 +139,7 @@ std::vector<message_t> deserialize_messages(const std::string& blob, const size_
     while (!slice.empty()) {
 
         /// Deserialize PK
-        auto pk = deserialize_string(slice, pk_size);
+        auto pk = deserialize_string(slice, loki::get_user_pubkey_size());
         if (!pk) {
             LOKI_LOG(debug, "Could not deserialize pk");
             return {};

@@ -260,8 +260,7 @@ bool Swarm::is_fully_funded_node(const std::string& sn_address) const {
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk) {
 
-    uint64_t res;
-    res = hex_to_u64(pk);
+    const uint64_t res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;

@@ -24,7 +24,7 @@ BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
     const std::vector<std::string> batches = serialize_messages(inputs);
     BOOST_CHECK_EQUAL(batches.size(), 1);
 
-    const auto messages = deserialize_messages(batches[0], pk_size);
+    const auto messages = deserialize_messages(batches[0]);
     BOOST_CHECK_EQUAL(messages.size(), 2);
     for (int i = 0; i < messages.size(); ++i) {
         BOOST_CHECK_EQUAL(messages[i].pub_key, pub_key);

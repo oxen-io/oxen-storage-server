@@ -32,10 +32,6 @@ static boost::optional<fs::path> get_home_dir() {
     return fs::path(pszHome);
 }
 
-namespace loki {
-    bool is_mainnet = true;
-}
-
 constexpr int EXIT_INVALID_PORT = 2;
 
 int main(int argc, char* argv[]) {
@@ -57,12 +53,19 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    if (options.testnet) {
+        loki::is_mainnet = false;
+        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+    } else {
+        loki::is_mainnet = true;
+    }
+
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
-            if (options.testnet) {
-                options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
-            } else {
+            if (loki::is_mainnet) {
                 options.data_dir = (home_dir.get() / ".loki" / "storage").string();
+            } else {
+                options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
             }
         }
     }
@@ -97,14 +100,6 @@ int main(int argc, char* argv[]) {
         LOKI_LOG(error, "Storage server port must be different from that of "
                         "Lokid! Terminating.");
         exit(EXIT_INVALID_PORT);
-    }
-
-
-    if (options.testnet) {
-        loki::is_mainnet = false;
-        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
-    } else {
-        loki::is_mainnet = true;
     }
 
     LOKI_LOG(info, "Setting log level to {}", options.log_level);

@@ -64,7 +64,21 @@ struct sn_record_t {
     }
 };
 
-constexpr size_t USER_PUBKEY_SIZE = 66;
+namespace loki {
+
+constexpr size_t MAINNET_USER_PUBKEY_SIZE = 66;
+constexpr size_t TESTNET_USER_PUBKEY_SIZE = 64;
+
+extern bool is_mainnet;
+
+inline size_t get_user_pubkey_size() {
+    /// TODO: eliminate the need to check condition every time
+    if (is_mainnet) {
+        return MAINNET_USER_PUBKEY_SIZE;
+    } else {
+        return TESTNET_USER_PUBKEY_SIZE;
+    }
+}
 
 class user_pubkey_t {
 
@@ -79,7 +93,7 @@ class user_pubkey_t {
   public:
     static user_pubkey_t create(std::string&& pk, bool& success) {
         success = true;
-        if (pk.size() != USER_PUBKEY_SIZE) {
+        if (pk.size() != get_user_pubkey_size()) {
             success = false;
             return {};
         }
@@ -88,7 +102,7 @@ class user_pubkey_t {
 
     static user_pubkey_t create(const std::string& pk, bool& success) {
         success = true;
-        if (pk.size() != USER_PUBKEY_SIZE) {
+        if (pk.size() != get_user_pubkey_size()) {
             success = false;
             return {};
         }
@@ -97,10 +111,6 @@ class user_pubkey_t {
 
     const std::string& str() const { return pubkey_; }
 };
-
-namespace loki {
-
-extern bool is_mainnet;
 
 /// message as received by client
 struct message_t {
