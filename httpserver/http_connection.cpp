@@ -697,11 +697,13 @@ void connection_t::process_store(const json& params) {
     const auto data = params["data"].get<std::string>();
 
     bool created;
-    auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), created);
+    auto pk =
+        user_pubkey_t::create(params["pubKey"].get<std::string>(), created);
 
     if (!created) {
         response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
+                                    USER_PUBKEY_SIZE);
         LOKI_LOG(error, "Pubkey must be {} characters long", USER_PUBKEY_SIZE);
         return;
     }
@@ -805,16 +807,17 @@ void connection_t::process_snodes_by_pk(const json& params) {
     }
 
     bool success;
-    const auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
+    const auto pk =
+        user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
     if (!success) {
         response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
+                                    USER_PUBKEY_SIZE);
         LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
         return;
     }
 
-    const std::vector<sn_record_t> nodes =
-        service_node_.get_snodes_by_pk(pk);
+    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pk);
     const json res_body = snodes_to_json(nodes);
 
     response_.result(http::status::ok);
@@ -968,11 +971,13 @@ void connection_t::process_retrieve(const json& params) {
     }
 
     bool success;
-    const auto pk = user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
+    const auto pk =
+        user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
 
     if (!success) {
         response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n", USER_PUBKEY_SIZE);
+        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
+                                    USER_PUBKEY_SIZE);
         LOKI_LOG(debug, "Pubkey must be {} characters long ", USER_PUBKEY_SIZE);
         return;
     }

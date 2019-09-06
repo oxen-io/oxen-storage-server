@@ -181,7 +181,7 @@ void check_latest_version() {
     } else {
         LOKI_LOG(debug,
                  "You are using the latest version of the storage server ({})",
-                 latest_version_str);
+                 STORAGE_SERVER_VERSION_STRING);
     }
 }
 

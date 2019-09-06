@@ -9,6 +9,9 @@
 
 #include <boost/optional.hpp>
 
+// TODO: this should be a proper struct w/o heap allocation!
+using sn_pub_key_t = std::string;
+
 struct sn_record_t {
 
     // our 32 byte pub keys should always be 52 bytes long in base32z
@@ -16,13 +19,16 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    std::string sn_address_; // Snode address
-    std::string pub_key_;
+    std::string sn_address_; // Snode address (pubkey plus .snode)
+    // TODO: create separate types for different encodings of pubkeys,
+    // so if we confuse them, it will be a compiler error
+    std::string pub_key_base_32z_;
+    std::string pub_key_hex_;
     std::string ip_; // Snode ip
   public:
     sn_record_t(uint16_t port, const std::string& address,
-                const std::string& ip)
-        : port_(port), ip_(ip) {
+                const std::string& pk_hex, const std::string& ip)
+        : port_(port), pub_key_hex_(pk_hex), ip_(ip) {
         set_address(address);
     }
 
@@ -39,12 +45,13 @@ struct sn_record_t {
 
         sn_address_ = addr;
         sn_address_.append(".snode");
-        pub_key_ = addr;
+        pub_key_base_32z_ = addr;
     }
 
     uint16_t port() const { return port_; }
     const std::string& sn_address() const { return sn_address_; }
-    const std::string& pub_key() const { return pub_key_; }
+    const std::string& pub_key_base32z() const { return pub_key_base_32z_; }
+    const std::string& pub_key_hex() const { return pub_key_hex_; }
     const std::string& ip() const { return ip_; }
 
     template <typename OStream>
@@ -65,13 +72,11 @@ class user_pubkey_t {
 
     user_pubkey_t() {}
 
-    user_pubkey_t(std::string&& pk) : pubkey_(std::move(pk)) {
-    }
+    user_pubkey_t(std::string&& pk) : pubkey_(std::move(pk)) {}
 
     user_pubkey_t(const std::string& pk) : pubkey_(pk) {}
 
-public:
-
+  public:
     static user_pubkey_t create(std::string&& pk, bool& success) {
         success = true;
         if (pk.size() != USER_PUBKEY_SIZE) {
@@ -90,9 +95,7 @@ public:
         return user_pubkey_t(pk);
     }
 
-    const std::string& str() const {
-        return pubkey_;
-    }
+    const std::string& str() const { return pubkey_; }
 };
 
 namespace loki {

@@ -16,11 +16,13 @@
 #include "loki_common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
+#include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
+static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
 
 class Database;
 
@@ -130,6 +132,8 @@ class ServiceNode {
 
     loki::lokid_key_pair_t lokid_key_pair_;
 
+    reachability_records_t reach_records_;
+
     void push_message(const message_t& msg);
 
     void save_if_new(const message_t& msg);
@@ -192,6 +196,14 @@ class ServiceNode {
     void send_blockchain_test_req(const sn_record_t& testee,
                                   bc_test_params_t params,
                                   blockchain_test_answer_t answer);
+
+    /// Report `sn` to Lokid as unreachable
+    void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
+
+    /// Check if status is OK and handle failed test otherwise; note
+    /// that we want a copy of `sn` here because of the way it is called
+    void process_reach_test_response(sn_response_t&& res,
+                                     const sn_pub_key_t& sn);
 
     /// From a peer
     void process_blockchain_test_response(sn_response_t&& res,
