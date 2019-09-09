@@ -185,7 +185,14 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     LOKI_LOG(info, "Requesting initial swarm state");
+
+#ifndef INTEGRATION_TEST
     bootstrap_data();
+#else
+    this->syncing_ = false;
+#endif
+
+
     swarm_timer_tick();
     lokid_ping_timer_tick();
     cleanup_timer_tick();
@@ -909,44 +916,72 @@ void abort_if_integration_test() {
 #endif
 }
 
+void ServiceNode::process_storage_test_response(const sn_record_t& testee,
+                                                const Item& item,
+                                                uint64_t test_height,
+                                                sn_response_t&& res) {
+
+    if (res.error_code != SNodeError::NO_ERROR) {
+        // TODO: retry here, otherwise tests sometimes fail (when SN not
+        // running yet)
+        this->all_stats_.record_storage_test_result(testee, ResultType::OTHER);
+        LOKI_LOG(debug, "Failed to send a storage test request to snode: {}",
+                 testee);
+        return;
+    }
+
+    // If we got here, the response is 200 OK, but we still need to check
+    // status in response body and check the answer
+    if (!res.body) {
+        this->all_stats_.record_storage_test_result(testee, ResultType::OTHER);
+        LOKI_LOG(debug, "Empty body in storage test response");
+        return;
+    }
+
+    ResultType result = ResultType::OTHER;
+
+    try {
+
+        json res_json = json::parse(*res.body);
+
+        const auto status = res_json.at("status").get<std::string>();
+
+        if (status == "OK") {
+
+            const auto value = res_json.at("value").get<std::string>();
+            if (value == item.data) {
+                LOKI_LOG(debug,
+                         "Storage test is successful for: {} at height: {}",
+                         testee, test_height);
+                result = ResultType::OK;
+            } else {
+                LOKI_LOG(debug,
+                         "Test answer doesn't match for: {} at height {}",
+                         testee, test_height);
+#ifdef INTEGRATION_TEST
+                LOKI_LOG(warn, "got: {} expected: {}", value, item.data);
+#endif
+                result = ResultType::MISMATCH;
+            }
+
+        } else if (status == "wrong request") {
+            LOKI_LOG(debug, "Storage test rejected by testee");
+            result = ResultType::REJECTED;
+        } else {
+            result = ResultType::OTHER;
+            LOKI_LOG(debug, "Storage test failed for some other reason");
+        }
+    } catch (...) {
+        result = ResultType::OTHER;
+        LOKI_LOG(debug, "Invalid json in storage test response");
+    }
+
+    this->all_stats_.record_storage_test_result(testee, result);
+}
+
 void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         uint64_t test_height,
                                         const Item& item) {
-
-    auto callback = [testee, item, height = this->block_height_,
-                     this](sn_response_t&& res) {
-        ResultType result = ResultType::OTHER;
-
-        if (res.error_code == SNodeError::NO_ERROR && res.body) {
-            if (*res.body == item.data) {
-                LOKI_LOG(debug,
-                         "Storage test is successful for: {} at height: {}",
-                         testee, height);
-                result = ResultType::OK;
-            } else {
-
-                LOKI_LOG(debug,
-                         "Test answer doesn't match for: {} at height {}",
-                         testee, height);
-                result = ResultType::MISMATCH;
-
-#ifdef INTEGRATION_TEST
-                LOKI_LOG(warn, "got: {} expected: {}", *res.body, item.data);
-#endif
-                abort_if_integration_test();
-            }
-        } else {
-            LOKI_LOG(debug,
-                     "Failed to send a storage test request to snode: {}",
-                     testee);
-
-            /// TODO: retry here, otherwise tests sometimes fail (when SN not
-            /// running yet)
-            // abort_if_integration_test();
-        }
-
-        this->all_stats_.record_storage_test_result(testee, result);
-    };
 
     nlohmann::json json_body;
 
@@ -963,7 +998,12 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     attach_pubkey(req);
 #endif
 
-    make_sn_request(ioc_, testee, req, callback);
+    make_sn_request(ioc_, testee, req,
+                    [testee, item, height = this->block_height_,
+                     this](sn_response_t&& res) {
+                        this->process_storage_test_response(
+                            testee, item, height, std::move(res));
+                    });
 }
 
 void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
@@ -1144,13 +1184,13 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         if (it != block_hashes_cache_.end()) {
             block_hash = it->second;
         } else {
-            LOKI_LOG(warn, "Could not find hash for a given block height");
+            LOKI_LOG(debug, "Could not find hash for a given block height");
             // TODO: request from lokid?
             return false;
         }
     } else {
         assert(false);
-        LOKI_LOG(warn, "Could not find hash: block height is in the future");
+        LOKI_LOG(debug, "Could not find hash: block height is in the future");
         return false;
     }
 
@@ -1197,14 +1237,14 @@ MessageTestStatus ServiceNode::process_storage_test_req(
 
         if (testee != our_address_) {
             LOKI_LOG(error, "We are NOT the testee for height: {}", blk_height);
-            return MessageTestStatus::ERROR;
+            return MessageTestStatus::WRONG_REQ;
         }
 
         if (tester.pub_key_base32z() != tester_pk) {
             LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
                      tester.sn_address());
             abort_if_integration_test();
-            return MessageTestStatus::ERROR;
+            return MessageTestStatus::WRONG_REQ;
         } else {
             LOKI_LOG(trace, "Tester is valid: {}", tester_pk);
         }

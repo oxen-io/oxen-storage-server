@@ -11,7 +11,7 @@ struct time_entry_t {
     time_t timestamp;
 };
 
-enum class ResultType { OK, MISMATCH, OTHER };
+enum class ResultType { OK, MISMATCH, OTHER, REJECTED };
 
 struct test_result_t {
 
@@ -26,6 +26,8 @@ inline const char* to_str(ResultType result) {
         return "OK";
     case ResultType::MISMATCH:
         return "MISMATCH";
+    case ResultType::REJECTED:
+        return "REJECTED";
     case ResultType::OTHER:
     default:
         return "OTHER";
