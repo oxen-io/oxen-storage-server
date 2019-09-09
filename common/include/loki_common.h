@@ -69,11 +69,23 @@ namespace loki {
 constexpr size_t MAINNET_USER_PUBKEY_SIZE = 66;
 constexpr size_t TESTNET_USER_PUBKEY_SIZE = 64;
 
-extern bool is_mainnet;
+struct net_type_t {
+
+    void set_testnet() { is_mainnet_ = false; }
+    bool is_mainnet() { return is_mainnet_; }
+
+  private:
+    bool is_mainnet_ = true;
+};
+
+inline net_type_t& get_net_type() {
+    static net_type_t net_type;
+    return net_type;
+}
 
 inline size_t get_user_pubkey_size() {
     /// TODO: eliminate the need to check condition every time
-    if (is_mainnet) {
+    if (get_net_type().is_mainnet()) {
         return MAINNET_USER_PUBKEY_SIZE;
     } else {
         return TESTNET_USER_PUBKEY_SIZE;

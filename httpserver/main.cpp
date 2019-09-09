@@ -54,15 +54,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.testnet) {
-        loki::is_mainnet = false;
+        loki::get_net_type().set_testnet();
         LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
-    } else {
-        loki::is_mainnet = true;
     }
 
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
-            if (loki::is_mainnet) {
+            if (loki::get_net_type().is_mainnet()) {
                 options.data_dir = (home_dir.get() / ".loki" / "storage").string();
             } else {
                 options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
