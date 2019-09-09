@@ -1195,7 +1195,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
             return MessageTestStatus::ERROR;
         }
 
-        if (tester.pub_key() != tester_pk) {
+        if (tester.pub_key_base32z() != tester_pk) {
             LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
                      tester.sn_address());
             abort_if_integration_test();
