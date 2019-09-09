@@ -53,19 +53,12 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
-    if (options.testnet) {
-        loki::is_mainnet = false;
-        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
-    } else {
-        loki::is_mainnet = true;
-    }
-
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
-            if (loki::is_mainnet) {
-                options.data_dir = (home_dir.get() / ".loki" / "storage").string();
-            } else {
+            if (options.testnet) {
                 options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
+            } else {
+                options.data_dir = (home_dir.get() / ".loki" / "storage").string();
             }
         }
     }
@@ -82,6 +75,11 @@ int main(int argc, char* argv[]) {
     }
 
     loki::init_logging(options.data_dir, log_level);
+
+    if (options.testnet) {
+        loki::set_testnet();
+        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+    }
 
     // Always print version for the logs
     print_version();

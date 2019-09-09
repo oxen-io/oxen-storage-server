@@ -29,8 +29,6 @@ using namespace std::chrono_literals;
 namespace loki {
 using http_server::connection_t;
 
-bool is_mainnet = true;
-
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     std::chrono::seconds(1),   std::chrono::seconds(5),
     std::chrono::seconds(10),  std::chrono::seconds(20),
@@ -290,7 +288,7 @@ void ServiceNode::bootstrap_data() {
     params["fields"] = fields;
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
-    if (loki::is_mainnet) {
+    if (loki::is_mainnet()) {
         seed_nodes = {{{"storage.seed1.loki.network", 22023},
                        {"storage.seed2.loki.network", 38157},
                        {"imaginary.stream", 38157}}};
