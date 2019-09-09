@@ -45,8 +45,6 @@ class reachability_records_t {
     // reported to Lokid as being unreachable for a long time
     bool record_unreachable(const sn_pub_key_t& sn);
 
-    bool record_reachable(const sn_pub_key_t& sn);
-
     bool expire(const sn_pub_key_t& sn);
 
     void set_reported(const sn_pub_key_t& sn);

@@ -18,7 +18,6 @@ BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
     const uint64_t timestamp = 12345678;
     const uint64_t ttl = 3456000;
     const auto nonce = "nonce";
-    const size_t pk_size = 66;
     message_t msg{pub_key, data, hash, ttl, timestamp, nonce};
     const std::vector<message_t> inputs{msg, msg};
     const std::vector<std::string> batches = serialize_messages(inputs);
