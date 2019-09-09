@@ -55,7 +55,11 @@ int main(int argc, char* argv[]) {
 
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
-            options.data_dir = (home_dir.get() / ".loki" / "storage").string();
+            if (options.testnet) {
+                options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
+            } else {
+                options.data_dir = (home_dir.get() / ".loki" / "storage").string();
+            }
         }
     }
 
@@ -71,6 +75,11 @@ int main(int argc, char* argv[]) {
     }
 
     loki::init_logging(options.data_dir, log_level);
+
+    if (options.testnet) {
+        loki::set_testnet();
+        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+    }
 
     // Always print version for the logs
     print_version();

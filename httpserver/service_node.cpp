@@ -4,6 +4,7 @@
 #include "Item.hpp"
 #include "http_connection.h"
 #include "https_client.h"
+#include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
 #include "net_stats.h"
@@ -158,7 +159,7 @@ static bool verify_message(const message_t& msg,
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
-                         const loki::lokid_key_pair_t& lokid_key_pair,
+                         const lokid_key_pair_t& lokid_key_pair,
                          const std::string& db_location,
                          LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
@@ -286,10 +287,14 @@ void ServiceNode::bootstrap_data() {
 
     params["fields"] = fields;
 
-    std::vector<std::pair<std::string, uint16_t>> seed_nodes{
-        {{"storage.seed1.loki.network", 22023},
-         {"storage.seed2.loki.network", 38157},
-         {"imaginary.stream", 38157}}};
+    std::vector<std::pair<std::string, uint16_t>> seed_nodes;
+    if (loki::is_mainnet()) {
+        seed_nodes = {{{"storage.seed1.loki.network", 22023},
+                       {"storage.seed2.loki.network", 38157},
+                       {"imaginary.stream", 38157}}};
+    } else {
+        seed_nodes = {{{"storage.testnetseed1.loki.network", 38157}}};
+    }
 
     auto req_counter = std::make_shared<int>(0);
 

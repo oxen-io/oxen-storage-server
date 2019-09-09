@@ -51,10 +51,6 @@ bool reachability_records_t::record_unreachable(const sn_pub_key_t& sn) {
     return false;
 }
 
-bool reachability_records_t::record_reachable(const sn_pub_key_t& sn) {
-    expire(sn);
-}
-
 bool reachability_records_t::expire(const sn_pub_key_t& sn) {
 
     if (offline_nodes_.erase(sn)) {
