@@ -85,7 +85,8 @@ class FailedRequestHandler
     void init_timer();
 };
 
-enum class MessageTestStatus { SUCCESS, RETRY, ERROR };
+/// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
+enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
@@ -200,6 +201,11 @@ class ServiceNode {
 
     /// Report `sn` to Lokid as unreachable
     void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
+
+    void process_storage_test_response(const sn_record_t& testee,
+                                       const storage::Item& item,
+                                       uint64_t test_height,
+                                       sn_response_t&& res);
 
     /// Check if status is OK and handle failed test otherwise; note
     /// that we want a copy of `sn` here because of the way it is called

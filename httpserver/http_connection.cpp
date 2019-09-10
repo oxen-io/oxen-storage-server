@@ -365,7 +365,13 @@ void connection_t::process_storage_test_req(uint64_t height,
             std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time)
                 .count());
         delay_response_ = true;
-        body_stream_ << answer;
+
+        nlohmann::json json_res;
+        json_res["status"] = "OK";
+        json_res["value"] = answer;
+
+        this->body_stream_ << json_res.dump();
+
         response_.result(http::status::ok);
         this->write_response();
     } else if (status == MessageTestStatus::RETRY && elapsed_time < 1min) {
@@ -386,11 +392,18 @@ void connection_t::process_storage_test_req(uint64_t height,
             }
         });
 
+    } else if (status == MessageTestStatus::WRONG_REQ) {
+        nlohmann::json json_res;
+        json_res["status"] = "wrong request";
+        this->body_stream_ << json_res.dump();
+        response_.result(http::status::ok);
     } else {
         LOKI_LOG(error, "Failed storage test, tried {} times.",
                  repetition_count_);
-        response_.result(http::status::bad_request);
-        /// TODO: send a helpful error message
+        nlohmann::json json_res;
+        json_res["status"] = "other";
+        this->body_stream_ << json_res.dump();
+        response_.result(http::status::ok);
     }
 }
 
@@ -433,6 +446,9 @@ void connection_t::process_swarm_req(boost::string_view target) {
         service_node_.process_push_batch(request_.body());
 
     } else if (target == "/swarms/storage_test/v1") {
+
+        /// Set to "bad request" by default
+        response_.result(http::status::bad_request);
         LOKI_LOG(debug, "Got storage test request");
 
         using nlohmann::json;
