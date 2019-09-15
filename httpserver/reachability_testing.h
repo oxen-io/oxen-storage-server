@@ -45,6 +45,8 @@ class reachability_records_t {
     // reported to Lokid as being unreachable for a long time
     bool record_unreachable(const sn_pub_key_t& sn);
 
+    // Expires a node, removing it from offline nodes.  Returns true if found
+    // and removed, false if it didn't exist.
     bool expire(const sn_pub_key_t& sn);
 
     void set_reported(const sn_pub_key_t& sn);

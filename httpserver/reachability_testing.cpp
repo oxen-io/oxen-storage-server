@@ -53,9 +53,11 @@ bool reachability_records_t::record_unreachable(const sn_pub_key_t& sn) {
 
 bool reachability_records_t::expire(const sn_pub_key_t& sn) {
 
-    if (offline_nodes_.erase(sn)) {
+    bool erased = offline_nodes_.erase(sn);
+    if (erased)
         LOKI_LOG(debug, "Removed entry for {}", sn);
-    }
+
+    return erased;
 }
 
 void reachability_records_t::set_reported(const sn_pub_key_t& sn) {
