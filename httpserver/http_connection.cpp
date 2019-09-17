@@ -560,6 +560,12 @@ void connection_t::process_request() {
     switch (request_.method()) {
     case http::verb::post: {
         std::string reason;
+
+        // Respond to ping even if we are not ready
+        if (target == "/swarms/ping_test/v1") {
+            this->process_swarm_req(target);
+            break;
+        }
         if (!service_node_.snode_ready(reason)) {
             LOKI_LOG(debug,
                      "Ignoring post request; storage server not ready: {}",
@@ -598,8 +604,6 @@ void connection_t::process_request() {
 
             this->process_swarm_req(target);
 
-        } else if (target == "/swarms/ping_test/v1") {
-            this->process_swarm_req(target);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
