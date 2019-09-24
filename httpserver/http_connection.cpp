@@ -433,7 +433,8 @@ void connection_t::process_blockchain_test_req(uint64_t,
 void connection_t::process_swarm_req(boost::string_view target) {
 
 #ifndef DISABLE_SNODE_SIGNATURE
-    if (!validate_snode_request()) {
+    // allow ping request as a quick workaround (and they are cheap)
+    if (!validate_snode_request() && (target != "/swarms/ping_test/v1")) {
         return;
     }
 #endif
@@ -527,6 +528,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
         }
 
     } else if (target == "/swarms/ping_test/v1") {
+        LOKI_LOG(debug, "Received ping_test");
         response_.result(http::status::ok);
     } else if (target == "/swarms/push/v1") {
 

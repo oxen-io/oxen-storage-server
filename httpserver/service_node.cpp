@@ -1684,7 +1684,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
     // TODO: need more robust handling of uninitialized swarm_
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
-        return {};
+        return false;
     }
 
     return swarm_->is_fully_funded_node(sn_address);
