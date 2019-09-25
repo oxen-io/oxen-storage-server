@@ -70,11 +70,11 @@ class LokidClient {
     void make_lokid_request(boost::string_view method,
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
-    void make_lokid_request(const std::string& daemon_ip,
-                            const uint16_t daemon_port,
-                            boost::string_view method,
-                            const nlohmann::json& params,
-                            http_callback_t&& cb) const;
+    void make_custom_lokid_request(const std::string& daemon_ip,
+                                   const uint16_t daemon_port,
+                                   boost::string_view method,
+                                   const nlohmann::json& params,
+                                   http_callback_t&& cb) const;
 };
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);

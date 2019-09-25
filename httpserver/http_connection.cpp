@@ -105,15 +105,15 @@ void LokidClient::make_lokid_request(boost::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
-    make_lokid_request(local_ip_, lokid_rpc_port_, method, params,
-                       std::move(cb));
+    make_custom_lokid_request(local_ip_, lokid_rpc_port_, method, params,
+                              std::move(cb));
 }
 
-void LokidClient::make_lokid_request(const std::string& daemon_ip,
-                                     const uint16_t daemon_port,
-                                     boost::string_view method,
-                                     const nlohmann::json& params,
-                                     http_callback_t&& cb) const {
+void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
+                                            const uint16_t daemon_port,
+                                            boost::string_view method,
+                                            const nlohmann::json& params,
+                                            http_callback_t&& cb) const {
 
     auto req = std::make_shared<request_t>();
 
@@ -242,8 +242,12 @@ void connection_t::do_handshake() {
 }
 
 void connection_t::on_handshake(boost::system::error_code ec) {
+
+    const auto sockfd = stream_.lowest_layer().native_handle();
+    LOKI_LOG(debug, "Open https socket: {}", sockfd);
+    get_net_stats().record_socket_open(sockfd);
     if (ec) {
-        LOKI_LOG(warn, "ssl handshake failed: {}", ec.message());
+        LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
         deadline_.cancel();
         return;
     }
@@ -617,6 +621,12 @@ void connection_t::process_request() {
             response_.result(http::status::ok);
             write_response();
             ioc_.stop();
+        } else if (target == "/sleep") {
+            ioc_.post([]() {
+                LOKI_LOG(warn, "Sleeping for some time...");
+                std::this_thread::sleep_for(std::chrono::seconds(30));
+            });
+            response_.result(http::status::ok);
         }
 #endif
         else {
@@ -1166,10 +1176,14 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
     }
-    if (ec)
+    if (ec) {
         LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {}",
                  ec.message());
+    }
 
+    const auto sockfd = stream_.lowest_layer().native_handle();
+    LOKI_LOG(debug, "Close https socket: {}", sockfd);
+    get_net_stats().record_socket_close(sockfd);
     stream_.lowest_layer().close();
 }
 
@@ -1226,7 +1240,9 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
 
 void HttpClientSession::on_connect() {
 
-    LOKI_LOG(trace, "on connect");
+    const auto sockfd = socket_.native_handle();
+    LOKI_LOG(debug, "Open http socket: {}", sockfd);
+    get_net_stats().record_socket_open(sockfd);
     http::async_write(socket_, *req_,
                       std::bind(&HttpClientSession::on_write,
                                 shared_from_this(), std::placeholders::_1,
@@ -1285,11 +1301,21 @@ void HttpClientSession::start() {
         if (ec) {
             // We should make sure that we print the error a few levels above,
             // where we have more context
-            LOKI_LOG(
-                debug,
-                "[http client]: could not connect to {}:{}, message: {} ({})",
-                endpoint_.address().to_string(), endpoint_.port(), ec.message(),
-                ec.value());
+
+            if (ec == boost::system::errc::connection_refused) {
+                LOKI_LOG(debug,
+                         "[http client]: could not connect to {}:{}, message: "
+                         "{} ({})",
+                         endpoint_.address().to_string(), endpoint_.port(),
+                         ec.message(), ec.value());
+            } else {
+                LOKI_LOG(error,
+                         "[http client]: could not connect to {}:{}, message: "
+                         "{} ({})",
+                         endpoint_.address().to_string(), endpoint_.port(),
+                         ec.message(), ec.value());
+            }
+
             trigger_callback(SNodeError::NO_REACH, nullptr);
             return;
         }
@@ -1351,10 +1377,14 @@ void HttpClientSession::clean_up() {
                  ec.message());
     }
 
+    const auto sockfd = socket_.native_handle();
     socket_.close(ec);
 
     if (ec) {
-        LOKI_LOG(error, "On close socket [{}: {}]", ec.value(), ec.message());
+        LOKI_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(), ec.message());
+    } else {
+        LOKI_LOG(debug, "Close http socket: {}", sockfd);
+        get_net_stats().record_socket_close(sockfd);
     }
 }
 
