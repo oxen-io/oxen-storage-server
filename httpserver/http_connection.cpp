@@ -1309,7 +1309,7 @@ void HttpClientSession::start() {
                 }
             } else {
                 LOKI_LOG(warn, "client socket timed out");
-                self->socket_.close();
+                self->clean_up();
             }
         });
 }
@@ -1322,20 +1322,20 @@ void HttpClientSession::trigger_callback(SNodeError error,
     deadline_timer_.cancel();
 }
 
-/// We execute callback (if haven't already) here to make sure it is called
-HttpClientSession::~HttpClientSession() {
+void HttpClientSession::clean_up() {
 
-    if (!used_callback_) {
-        // If we destroy the session before posting the callback,
-        // it must be due to some error
-        ioc_.post(std::bind(callback_,
-                            sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
+    if (!needs_cleanup) {
+        // This can happen because the deadline timer
+        // triggered and cleaned up the connection already
+        LOKI_LOG(debug, "No need for cleanup");
+        return;
     }
 
-    get_net_stats().http_connections_out--;
+    needs_cleanup = false;
 
     if (!socket_.is_open()) {
-        LOKI_LOG(debug, "Socket is already closed");
+        /// This should never happen!
+        LOKI_LOG(critical, "Socket is already closed");
         return;
     }
 
@@ -1356,6 +1356,22 @@ HttpClientSession::~HttpClientSession() {
     if (ec) {
         LOKI_LOG(error, "On close socket [{}: {}]", ec.value(), ec.message());
     }
+}
+
+/// We execute callback (if haven't already) here to make sure it is called
+HttpClientSession::~HttpClientSession() {
+
+    if (!used_callback_) {
+        // If we destroy the session before posting the callback,
+        // it must be due to some error
+        ioc_.post(std::bind(callback_,
+                            sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
+    }
+
+    get_net_stats().http_connections_out--;
+
+    this->clean_up();
+
 
 }
 

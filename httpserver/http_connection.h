@@ -104,6 +104,7 @@ class HttpClientSession
     response_t res_;
 
     bool used_callback_ = false;
+    bool needs_cleanup = true;
 
     void on_connect();
 
@@ -113,6 +114,8 @@ class HttpClientSession
 
     void trigger_callback(SNodeError error,
                           std::shared_ptr<std::string>&& body);
+
+    void clean_up();
 
   public:
     // Resolver and socket require an io_context
