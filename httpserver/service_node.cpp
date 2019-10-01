@@ -704,11 +704,13 @@ void ServiceNode::swarm_timer_tick() {
             } else {
                 LOKI_LOG(critical, "Failed to contact local Lokid");
             }
-        });
 
-    swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    swarm_update_timer_.async_wait(
-        boost::bind(&ServiceNode::swarm_timer_tick, this));
+            // It would make more sense to wait the difference between the time
+            // elapsed and SWARM_UPDATE_INTERVAL, but this is good enough:
+            swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
+            swarm_update_timer_.async_wait(
+                boost::bind(&ServiceNode::swarm_timer_tick, this));
+        });
 }
 
 void ServiceNode::cleanup_timer_tick() {
