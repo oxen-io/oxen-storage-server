@@ -8,6 +8,7 @@
 #include "service_node.h"
 #include "swarm.h"
 #include "version.h"
+#include "utils.hpp"
 
 #include <boost/filesystem.hpp>
 #include <sodium.h>
@@ -117,6 +118,15 @@ int main(int argc, char* argv[]) {
     if (sodium_init() != 0) {
         LOKI_LOG(error, "Could not initialize libsodium");
         return EXIT_FAILURE;
+    }
+
+    {
+        const auto fd_limit = util::get_fd_limit();
+        if (fd_limit != -1) {
+            LOKI_LOG(debug, "Open file descriptor limit: {}", fd_limit);
+        } else {
+            LOKI_LOG(debug, "Open descriptor limit: N/A");
+        }
     }
 
     try {

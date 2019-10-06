@@ -306,7 +306,7 @@ void ServiceNode::bootstrap_data() {
     auto req_counter = std::make_shared<int>(0);
 
     for (auto seed_node : seed_nodes) {
-        lokid_client_.make_lokid_request(
+        lokid_client_.make_custom_lokid_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
             [this, seed_node, req_counter,
              node_count = seed_nodes.size()](const sn_response_t&& res) {
@@ -1587,6 +1587,7 @@ std::string ServiceNode::get_stats() const {
     val["connections_in"] = get_net_stats().connections_in;
     val["http_connections_out"] = get_net_stats().http_connections_out;
     val["https_connections_out"] = get_net_stats().https_connections_out;
+    val["open_socket_count"] = get_net_stats().open_fds.size();
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;

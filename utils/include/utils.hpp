@@ -115,4 +115,7 @@ uint64_t uniform_distribution_portable(uint64_t n);
 uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
                                        uint64_t n);
 
+/// Return the open file limit (-1 on failure)
+int get_fd_limit();
+
 } // namespace util

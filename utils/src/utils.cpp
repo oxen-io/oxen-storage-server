@@ -2,6 +2,10 @@
 
 #include <chrono>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace util {
 
 uint64_t get_time_ms() {
@@ -111,6 +115,15 @@ uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
         x = mersenne_twister();
     while (x >= secure_max);
     return x / (secure_max / n);
+}
+
+int get_fd_limit() {
+
+#ifdef _WIN32
+    return -1;
+#endif
+
+    return sysconf(_SC_OPEN_MAX);
 }
 
 } // namespace util
