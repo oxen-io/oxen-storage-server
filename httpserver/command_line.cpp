@@ -70,6 +70,10 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         return;
     }
 
+    if (options_.testnet && !vm.count("lokid-rpc-port")) {
+        options_.lokid_rpc_port = 38157;
+    }
+
     if (!vm.count("ip") || !vm.count("port")) {
         throw std::runtime_error(
             "Invalid option: address and/or port missing.");

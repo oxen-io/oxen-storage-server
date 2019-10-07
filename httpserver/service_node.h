@@ -128,6 +128,9 @@ class ServiceNode {
 
     boost::asio::steady_timer peer_ping_timer_;
 
+    /// Used to periodially send messages from relay_buffer_
+    boost::asio::steady_timer relay_timer_;
+
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
@@ -135,7 +138,9 @@ class ServiceNode {
 
     reachability_records_t reach_records_;
 
-    void push_message(const message_t& msg);
+    /// Container for recently received messages directly from
+    /// clients;
+    std::vector<message_t> relay_buffer_;
 
     void save_if_new(const message_t& msg);
 
@@ -168,7 +173,8 @@ class ServiceNode {
     void relay_data_reliable(const std::shared_ptr<request_t>& req,
                              const sn_record_t& address) const;
 
-    void relay_messages(const std::vector<storage::Item>& messages,
+    template <typename Message>
+    void relay_messages(const std::vector<Message>& messages,
                         const std::vector<sn_record_t>& snodes) const;
 
     /// Request swarm structure from the deamon and reset the timer
@@ -177,6 +183,8 @@ class ServiceNode {
     void cleanup_timer_tick();
 
     void ping_peers_tick();
+
+    void relay_buffered_messages();
 
     /// Check the latest version from DNS text record
     void check_version_timer_tick();
