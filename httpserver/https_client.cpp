@@ -79,6 +79,9 @@ HttpsClientSession::HttpsClientSession(
       server_pub_key_b32z(sn_pubkey_b32z) {
 
     get_net_stats().https_connections_out++;
+
+    static uint64_t connection_count = 0;
+    this->connection_idx = connection_count++;
 }
 
 void HttpsClientSession::start() {
@@ -128,7 +131,12 @@ void HttpsClientSession::start() {
 }
 
 void HttpsClientSession::on_connect() {
-    LOKI_LOG(trace, "on connect");
+    LOKI_LOG(trace, "on connect, connection idx: {}", this->connection_idx);
+
+    const auto sockfd = stream_.lowest_layer().native_handle();
+    LOKI_LOG(debug, "Open https socket: {}", sockfd);
+    get_net_stats().record_socket_open(sockfd);
+
     stream_.set_verify_mode(ssl::verify_none);
     stream_.set_verify_callback(
         [this](bool preverified, ssl::verify_context& ctx) -> bool {
@@ -259,6 +267,10 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         LOKI_LOG(error, "could not shutdown stream gracefully: {}",
                  ec.message());
     }
+
+    const auto sockfd = stream_.lowest_layer().native_handle();
+    LOKI_LOG(debug, "Close https socket: {}", sockfd);
+    get_net_stats().record_socket_close(sockfd);
 
     stream_.lowest_layer().close();
 
