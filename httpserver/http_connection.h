@@ -70,11 +70,11 @@ class LokidClient {
     void make_lokid_request(boost::string_view method,
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
-    void make_lokid_request(const std::string& daemon_ip,
-                            const uint16_t daemon_port,
-                            boost::string_view method,
-                            const nlohmann::json& params,
-                            http_callback_t&& cb) const;
+    void make_custom_lokid_request(const std::string& daemon_ip,
+                                   const uint16_t daemon_port,
+                                   boost::string_view method,
+                                   const nlohmann::json& params,
+                                   http_callback_t&& cb) const;
 };
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
@@ -104,6 +104,7 @@ class HttpClientSession
     response_t res_;
 
     bool used_callback_ = false;
+    bool needs_cleanup = true;
 
     void on_connect();
 
@@ -113,6 +114,8 @@ class HttpClientSession
 
     void trigger_callback(SNodeError error,
                           std::shared_ptr<std::string>&& body);
+
+    void clean_up();
 
   public:
     // Resolver and socket require an io_context
