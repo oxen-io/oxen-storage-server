@@ -1,5 +1,18 @@
 loki-storage-server (1.0.7-1) unstable; urgency=medium
 
+  [ Jason Rhinelander ]
+  * Use default testnet rpc port under --testnet
+
+  [ Maxim Shishmarev ]
+  * Change ping testing to not require snode signatures
+  * Fix not being able to find decommissioned node
+  * Properly shutdown http (lokid) connection on deadline timer
+  * Print open file descriptor limit
+  * Improve diagnostics for open file descriptors
+  * Fix making unnecessary swarm requests to lokid in some exceptional cases
+  * Always relay messages in batches
+  * Bump version to 1.0.7
+
   [ Maxim Shishmarev ]
   * Fix incorrectly decrementing open http connections on timeout
   * Send version in ping to Lokid
