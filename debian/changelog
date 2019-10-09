@@ -1,3 +1,45 @@
+loki-storage-server (1.0.7-1~ubuntu1804) bionic; urgency=medium
+
+  [ Jason Rhinelander ]
+  * refresh patches
+
+  [ Maxim Shishmarev ]
+  * Fix incorrectly decrementing open http connections on timeout
+  * Send version in ping to Lokid
+  * Clang format
+  * Version as a triplet
+  * From strings to numbers for version triplet in ping json
+  * Separate type for user pubkey
+  * Periodically ping other service nodes
+  * Bookkeeping for reachability of nodes; reporting them to Lokid
+  * Make storage server aware of decommissioned nodes; test them
+  * Only enable reachability testing after HF13
+  * Address review comments
+  * Derive tester/testee based on older (more stable) block
+  * Don't forget to test decommissioned nodes
+  * Fix compiler error after merge
+
+  [ Beaudan ]
+  * Add testnet flag and set it on service_node
+
+  [ Maxim Shishmarev ]
+  * Resolve conflicts and clean up
+  * Remove unused code
+  * Use singleton
+  * Record whether storage test was rejected by testee
+  * Bump version to 1.0.6
+
+  [ Jason Rhinelander ]
+  * Fix a crash when expiring
+
+  [ Maxim Shishmarev ]
+  * Fix inactive nodes not responding to reachability tests
+
+  [ Jason Rhinelander ]
+  * Soften storage server Requires to Wants
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 09 Oct 2019 01:52:39 -0300
+
 loki-storage-server (1.0.5-1~ubuntu1804) bionic; urgency=medium
 
   [ Maxim Shishmarev ]
