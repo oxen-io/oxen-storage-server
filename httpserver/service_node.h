@@ -16,11 +16,13 @@
 #include "loki_common.h"
 #include "lokid_key.h"
 #include "pow.hpp"
+#include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
 
-static constexpr size_t BLOCK_HASH_CACHE_SIZE = 20;
+static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
+static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
 
 class Database;
 
@@ -83,7 +85,8 @@ class FailedRequestHandler
     void init_timer();
 };
 
-enum class MessageTestStatus { SUCCESS, RETRY, ERROR };
+/// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
+enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
@@ -123,10 +126,14 @@ class ServiceNode {
 
     boost::asio::steady_timer stats_cleanup_timer_;
 
+    boost::asio::steady_timer peer_ping_timer_;
+
     /// map pubkeys to a list of connections to be notified
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
     loki::lokid_key_pair_t lokid_key_pair_;
+
+    reachability_records_t reach_records_;
 
     void push_message(const message_t& msg);
 
@@ -157,9 +164,10 @@ class ServiceNode {
 
     void attach_pubkey(std::shared_ptr<request_t>& request) const;
 
-    /// used on push and on swarm bootstrapping
-    void send_sn_request(const std::shared_ptr<request_t>& req,
-                         const sn_record_t& address) const;
+    /// Reliably push message/batch to a service node
+    void relay_data_reliable(const std::shared_ptr<request_t>& req,
+                             const sn_record_t& address) const;
+
     void relay_messages(const std::vector<storage::Item>& messages,
                         const std::vector<sn_record_t>& snodes) const;
 
@@ -167,6 +175,8 @@ class ServiceNode {
     void swarm_timer_tick();
 
     void cleanup_timer_tick();
+
+    void ping_peers_tick();
 
     /// Check the latest version from DNS text record
     void check_version_timer_tick();
@@ -181,12 +191,26 @@ class ServiceNode {
                               sn_record_t& testee);
 
     /// Send a request to a SN under test
-    void send_storage_test_req(const sn_record_t& testee,
+    void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
                                const storage::Item& item);
 
     void send_blockchain_test_req(const sn_record_t& testee,
                                   bc_test_params_t params,
+                                  uint64_t test_height,
                                   blockchain_test_answer_t answer);
+
+    /// Report `sn` to Lokid as unreachable
+    void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
+
+    void process_storage_test_response(const sn_record_t& testee,
+                                       const storage::Item& item,
+                                       uint64_t test_height,
+                                       sn_response_t&& res);
+
+    /// Check if status is OK and handle failed test otherwise; note
+    /// that we want a copy of `sn` here because of the way it is called
+    void process_reach_test_response(sn_response_t&& res,
+                                     const sn_pub_key_t& sn);
 
     /// From a peer
     void process_blockchain_test_response(sn_response_t&& res,
@@ -199,6 +223,9 @@ class ServiceNode {
 
     // Select a random message from our database, return false on error
     bool select_random_message(storage::Item& item);
+
+    // Ping some node and record its reachability
+    void test_reachability(const sn_record_t& sn);
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
@@ -248,9 +275,9 @@ class ServiceNode {
                                                const std::string& msg_hash,
                                                std::string& answer);
 
-    bool is_pubkey_for_us(const std::string& pk) const;
+    bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    std::vector<sn_record_t> get_snodes_by_pk(const std::string& pk);
+    std::vector<sn_record_t> get_snodes_by_pk(const user_pubkey_t& pk);
 
     bool is_snode_address_known(const std::string&);
 

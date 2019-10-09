@@ -18,6 +18,7 @@ set(HEADER_FILES
     command_line.h
     net_stats.h
     dns_text_records.h
+    reachability_testing.h
     )
 
 set(SRC_FILES
@@ -32,6 +33,7 @@ set(SRC_FILES
     security.cpp
     command_line.cpp
     dns_text_records.cpp
+    reachability_testing.cpp
     )
 
 add_library(httpserver_lib STATIC ${HEADER_FILES} ${SRC_FILES})
