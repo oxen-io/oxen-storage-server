@@ -1,7 +1,7 @@
 #include "https_client.h"
 #include "loki_logger.h"
-#include "signature.h"
 #include "net_stats.h"
+#include "signature.h"
 
 #include <openssl/x509.h>
 
@@ -23,8 +23,10 @@ void make_https_request(boost::asio::io_context& ioc,
 #else
 
     if (sn_address == "0.0.0.0") {
-        LOKI_LOG(warn, "Could not initiate request to snode (we don't know "
+        LOKI_LOG(debug, "Could not initiate request to snode (we don't know "
                        "their IP yet).");
+
+        cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
     }
 
@@ -76,8 +78,8 @@ HttpsClientSession::HttpsClientSession(
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
       server_pub_key_b32z(sn_pubkey_b32z) {
 
-          get_net_stats().https_connections_out++;
-      }
+    get_net_stats().https_connections_out++;
+}
 
 void HttpsClientSession::start() {
     // Set SNI Hostname (many hosts need this to handshake successfully)
