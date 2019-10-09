@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <unordered_map>
 
+#include "utils.hpp"
+
 namespace loki {
 
 static bool swarm_exists(const all_swarms_t& all_swarms,
@@ -20,6 +22,14 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
 }
 
 Swarm::~Swarm() = default;
+
+bool Swarm::is_existing_swarm(swarm_id_t sid) const {
+
+    return std::any_of(all_valid_swarms_.begin(), all_valid_swarms_.end(),
+                       [sid](const SwarmInfo& cur_swarm_info) {
+                           return cur_swarm_info.swarm_id == sid;
+                       });
+}
 
 SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
@@ -53,7 +63,7 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
         // Got moved to a new swarm
         if (!swarm_exists(swarms, cur_swarm_id_)) {
             // Dissolved, new to push all our data to new swarms
-            events.decommissioned = true;
+            events.dissolved = true;
         }
 
         // If our old swarm is still alive, there is nothing for us to do
@@ -76,11 +86,7 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     for (const auto& swarm_info : swarms) {
 
-        const bool found = std::any_of(
-            all_cur_swarms_.begin(), all_cur_swarms_.end(),
-            [&swarm_info](const SwarmInfo& cur_swarm_info) {
-                return cur_swarm_info.swarm_id == swarm_info.swarm_id;
-            });
+        const bool found = this->is_existing_swarm(swarm_info.swarm_id);
 
         if (!found) {
             events.new_swarms.push_back(swarm_info.swarm_id);
@@ -144,13 +150,14 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
 
 void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
 
-    all_cur_swarms_ = apply_ips(new_swarms, all_cur_swarms_);
+    all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
 }
 
 void Swarm::update_state(const all_swarms_t& swarms,
+                         const std::vector<sn_record_t>& decommissioned,
                          const SwarmEvents& events) {
 
-    if (events.decommissioned) {
+    if (events.dissolved) {
         LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
     }
 
@@ -176,13 +183,47 @@ void Swarm::update_state(const all_swarms_t& swarms,
     std::copy_if(
         members.begin(), members.end(), std::back_inserter(swarm_peers_),
         [this](const sn_record_t& record) { return record != our_address_; });
+
+    // Store a copy of every node in a separate data structure
+    all_funded_nodes_.clear();
+
+    for (const auto& si : swarms) {
+        for (const auto& sn : si.snodes) {
+            all_funded_nodes_.push_back(sn);
+        }
+    }
+
+    for (const auto& sn : decommissioned) {
+        all_funded_nodes_.push_back(sn);
+    }
 }
 
-static uint64_t hex_to_u64(const std::string& pk) {
+boost::optional<sn_record_t> Swarm::choose_funded_node() const {
 
-    if (pk.size() != 66) {
-        throw std::invalid_argument("invalid pub key size");
+    if (all_funded_nodes_.empty())
+        return boost::none;
+
+    const auto idx =
+        util::uniform_distribution_portable(all_funded_nodes_.size());
+
+    // Note: this can return our own node which should be fine
+    return all_funded_nodes_[idx];
+}
+
+boost::optional<sn_record_t>
+Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
+
+    for (const auto& si : all_valid_swarms_) {
+        for (const auto& sn : si.snodes) {
+            if (sn.pub_key_base32z() == pk)
+                return sn;
+        }
     }
+
+    return boost::none;
+}
+
+static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 
     /// Create a buffer for 16 characters null terminated
     char buf[17] = {};
@@ -194,7 +235,7 @@ static uint64_t hex_to_u64(const std::string& pk) {
     /// get a value in res (possibly 0 or UINT64_MAX), which
     /// we are not handling at the moment
     uint64_t res = 0;
-    for (auto it = pk.begin() + 2; it < pk.end(); it += 16) {
+    for (auto it = pk.str().begin() + 2; it < pk.str().end(); it += 16) {
         memcpy(buf, &(*it), 16);
         res ^= strtoull(buf, nullptr, 16);
     }
@@ -202,28 +243,43 @@ static uint64_t hex_to_u64(const std::string& pk) {
     return res;
 }
 
-bool Swarm::is_pubkey_for_us(const std::string& pk) const {
-    return cur_swarm_id_ == get_swarm_by_pk(all_cur_swarms_, pk);
+bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
+
+    /// TODO: Make sure no exceptions bubble up from here!
+    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk);
+}
+
+bool Swarm::is_fully_funded_node(const std::string& sn_address) const {
+
+    return std::any_of(all_funded_nodes_.begin(), all_funded_nodes_.end(),
+                       [&sn_address](const sn_record_t& sn) {
+                           return sn.sn_address() == sn_address;
+                       });
 }
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const std::string& pk) {
+                           const user_pubkey_t& pk) {
 
     const uint64_t res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
-    constexpr swarm_id_t MAX_ID = std::numeric_limits<uint64_t>::max() - 1;
-    constexpr swarm_id_t SENTINEL_ID = std::numeric_limits<uint64_t>::max();
+    constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
 
-    swarm_id_t cur_best = SENTINEL_ID;
-    uint64_t cur_min = SENTINEL_ID;
+    swarm_id_t cur_best = INVALID_SWARM_ID;
+    uint64_t cur_min = INVALID_SWARM_ID;
 
     /// We don't require that all_swarms is sorted, so we find
     /// the smallest/largest elements in the same loop
-    swarm_id_t leftmost_id = SENTINEL_ID;
+    swarm_id_t leftmost_id = INVALID_SWARM_ID;
     swarm_id_t rightmost_id = 0;
 
     for (const auto& si : all_swarms) {
+
+        if (si.swarm_id == INVALID_SWARM_ID) {
+            /// Just to be sure we check again that no decomissioned
+            /// node is exposed to clients
+            continue;
+        }
 
         uint64_t dist =
             (si.swarm_id > res) ? (si.swarm_id - res) : (res - si.swarm_id);
