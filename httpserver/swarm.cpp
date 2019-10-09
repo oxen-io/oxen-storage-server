@@ -213,10 +213,9 @@ boost::optional<sn_record_t> Swarm::choose_funded_node() const {
 boost::optional<sn_record_t>
 Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
 
-    for (const auto& si : all_valid_swarms_) {
-        for (const auto& sn : si.snodes) {
-            if (sn.pub_key_base32z() == pk)
-                return sn;
+    for (const auto& sn : all_funded_nodes_) {
+        if (sn.pub_key_base32z() == pk) {
+            return sn;
         }
     }
 

@@ -35,6 +35,8 @@ constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     std::chrono::seconds(40),  std::chrono::seconds(80),
     std::chrono::seconds(160), std::chrono::seconds(320)};
 
+constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
+
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
@@ -167,8 +169,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
-      lokid_key_pair_(lokid_key_pair), lokid_client_(lokid_client),
-      force_start_(force_start) {
+      relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
+      lokid_client_(lokid_client), force_start_(force_start) {
 
     char buf[64] = {0};
     if (char const* dest =
@@ -306,7 +308,7 @@ void ServiceNode::bootstrap_data() {
     auto req_counter = std::make_shared<int>(0);
 
     for (auto seed_node : seed_nodes) {
-        lokid_client_.make_lokid_request(
+        lokid_client_.make_custom_lokid_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
             [this, seed_node, req_counter,
              node_count = seed_nodes.size()](const sn_response_t&& res) {
@@ -487,36 +489,6 @@ void ServiceNode::reset_listeners() {
     pk_to_listeners.clear();
 }
 
-/// initiate a /swarms/push request
-void ServiceNode::push_message(const message_t& msg) {
-
-    if (!swarm_)
-        return;
-
-    const auto& others = swarm_->other_nodes();
-
-    LOKI_LOG(trace, "push_message to {} other nodes", others.size());
-
-    std::string body;
-    serialize_message(body, msg);
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(body);
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-#endif
-
-    auto req = make_push_request(std::move(body));
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    attach_signature(req, signature);
-#endif
-
-    for (const auto& address : others) {
-        /// send a request asynchronously
-        relay_data_reliable(req, address);
-    }
-}
-
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
@@ -529,12 +501,12 @@ bool ServiceNode::process_store(const message_t& msg) {
 
     all_stats_.bump_store_requests();
 
-    /// store to the database
-    save_if_new(msg);
+    /// store in the database
+    this->save_if_new(msg);
 
-    /// initiate a /swarms/push request;
-    /// (done asynchronously)
-    this->push_message(msg);
+    // Instead of sending the messages immediatly, store them in a buffer
+    // and periodically send all messages from there as batches
+    this->relay_buffer_.push_back(msg);
 
     return true;
 }
@@ -630,6 +602,11 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         static bool active = false;
         if (!active) {
             LOKI_LOG(info, "Storage server is now active!");
+
+            relay_timer_.expires_after(RELAY_INTERVAL);
+            relay_timer_.async_wait(
+                boost::bind(&ServiceNode::relay_buffered_messages, this));
+
             active = true;
         }
     }
@@ -650,6 +627,22 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     }
 
     initiate_peer_test();
+}
+
+void ServiceNode::relay_buffered_messages() {
+
+    // Should we wait for the response first?
+    relay_timer_.expires_after(RELAY_INTERVAL);
+    relay_timer_.async_wait(
+        boost::bind(&ServiceNode::relay_buffered_messages, this));
+
+    if (relay_buffer_.empty())
+        return;
+
+    LOKI_LOG(debug, "Relaying {} messages from buffer", relay_buffer_.size());
+
+    this->relay_messages(relay_buffer_, swarm_->other_nodes());
+    relay_buffer_.clear();
 }
 
 void ServiceNode::check_version_timer_tick() {
@@ -704,11 +697,13 @@ void ServiceNode::swarm_timer_tick() {
             } else {
                 LOKI_LOG(critical, "Failed to contact local Lokid");
             }
-        });
 
-    swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
-    swarm_update_timer_.async_wait(
-        boost::bind(&ServiceNode::swarm_timer_tick, this));
+            // It would make more sense to wait the difference between the time
+            // elapsed and SWARM_UPDATE_INTERVAL, but this is good enough:
+            swarm_update_timer_.expires_after(SWARM_UPDATE_INTERVAL);
+            swarm_update_timer_.async_wait(
+                boost::bind(&ServiceNode::swarm_timer_tick, this));
+        });
 }
 
 void ServiceNode::cleanup_timer_tick() {
@@ -1478,7 +1473,8 @@ void ServiceNode::bootstrap_swarms(
     }
 }
 
-void ServiceNode::relay_messages(const std::vector<storage::Item>& messages,
+template <typename Message>
+void ServiceNode::relay_messages(const std::vector<Message>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> data = serialize_messages(messages);
 
@@ -1585,6 +1581,7 @@ std::string ServiceNode::get_stats() const {
     val["connections_in"] = get_net_stats().connections_in;
     val["http_connections_out"] = get_net_stats().http_connections_out;
     val["https_connections_out"] = get_net_stats().https_connections_out;
+    val["open_socket_count"] = get_net_stats().open_fds.size();
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;
@@ -1684,7 +1681,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
     // TODO: need more robust handling of uninitialized swarm_
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
-        return {};
+        return false;
     }
 
     return swarm_->is_fully_funded_node(sn_address);
