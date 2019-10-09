@@ -1,7 +1,7 @@
 [Unit]
 Description=Loki storage server (testnet)
 After=network-online.target
-Requires=loki-testnet-node.service
+Wants=loki-testnet-node.service
 After=loki-testnet-node.service
 
 [Service]
