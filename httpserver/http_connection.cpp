@@ -146,6 +146,9 @@ accept_connection(boost::asio::io_context& ioc,
                   ChannelEncryption<std::string>& channel_encryption,
                   RateLimiter& rate_limiter, const Security& security) {
 
+    static boost::asio::steady_timer acceptor_timer(ioc);
+    constexpr std::chrono::milliseconds ACCEPT_DELAY = 50ms;
+
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         LOKI_LOG(trace, "connection accepted");
         if (!ec)
@@ -155,8 +158,26 @@ accept_connection(boost::asio::io_context& ioc,
                 ->start();
 
         if (ec) {
-            LOKI_LOG(error, "Could not accept a new connection {}: {}",
-                     ec.value(), ec.message());
+            LOKI_LOG(
+                error,
+                "Could not accept a new connection {}: {}. Will only start "
+                "accepting new connections after a short delay.",
+                ec.value(), ec.message());
+
+            // If we fail here we are unlikely to be able to accept a new
+            // connection immediately, hence the delay
+            acceptor_timer.expires_after(ACCEPT_DELAY);
+            acceptor_timer.async_wait([&](const error_code& ec) {
+                if (ec && ec != boost::asio::error::operation_aborted) {
+                    // Not sure how to recover here, so it is probably the
+                    // safest to simply abort and let the launcher/systemd
+                    // restart us
+                    abort();
+                }
+
+                accept_connection(ioc, ssl_ctx, acceptor, sn,
+                                  channel_encryption, rate_limiter, security);
+            });
         }
 
         accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
