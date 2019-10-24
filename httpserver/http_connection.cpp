@@ -161,6 +161,14 @@ accept_connection(boost::asio::io_context& ioc,
             accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
                               rate_limiter, security);
         } else {
+
+            // TODO: remove this once we confirmed that there is
+            // no more socket leaking
+            if (ec == boost::system::errc::too_many_files_open) {
+                LOKI_LOG(critical, "Too many open files, aborting");
+                abort();
+            }
+
             LOKI_LOG(
                 error,
                 "Could not accept a new connection {}: {}. Will only start "
@@ -234,9 +242,6 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
 
 connection_t::~connection_t() {
 
-    // TODO: should check if we are still registered for
-    // notifications, and deregister if so.
-
     // Safety net
     if (stream_.lowest_layer().is_open()) {
         LOKI_LOG(debug, "Client socket should be closed by this point, but "
@@ -269,6 +274,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
         LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
+        this->do_close();
         deadline_.cancel();
         return;
     }
@@ -305,6 +311,7 @@ void connection_t::read_request() {
                 error,
                 "Failed to read from a socket [{}: {}], connection idx: {}",
                 ec.value(), ec.message(), self->conn_idx);
+            self->do_close();
             self->deadline_.cancel();
             return;
         }
@@ -1196,10 +1203,9 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         // Rationale:
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
-    }
-    if (ec) {
-        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {}",
-                 ec.message());
+    } else if (ec) {
+        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {} ({})",
+                 ec.message(), ec.value());
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
@@ -1274,7 +1280,7 @@ void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(),
+        LOKI_LOG(error, "Http error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;

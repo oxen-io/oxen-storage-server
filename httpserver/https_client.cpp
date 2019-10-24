@@ -171,7 +171,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(),
+        LOKI_LOG(error, "Https error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
@@ -262,10 +262,9 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         // Rationale:
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
-    }
-    if (ec) {
-        LOKI_LOG(error, "could not shutdown stream gracefully: {}",
-                 ec.message());
+    } else if (ec) {
+        LOKI_LOG(error, "could not shutdown stream gracefully: {} ({})",
+                 ec.message(), ec.value());
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
