@@ -151,13 +151,16 @@ accept_connection(boost::asio::io_context& ioc,
 
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         LOKI_LOG(trace, "connection accepted");
-        if (!ec)
+        if (!ec) {
+
             std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
                                            channel_encryption, rate_limiter,
                                            security)
                 ->start();
 
-        if (ec) {
+            accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
+                              rate_limiter, security);
+        } else {
             LOKI_LOG(
                 error,
                 "Could not accept a new connection {}: {}. Will only start "
@@ -179,9 +182,6 @@ accept_connection(boost::asio::io_context& ioc,
                                   channel_encryption, rate_limiter, security);
             });
         }
-
-        accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                          rate_limiter, security);
     });
 }
 
