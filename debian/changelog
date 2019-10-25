@@ -1,3 +1,14 @@
+loki-storage-server (1.0.8-1) unstable; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * Delay accepting new connections if failed
+  * Address code review
+  * Attempt to perform ssl shutdown every time the deadline timer is cancelled
+  * Bump version to 1.0.8
+  * More robust clean-up for incoming connections
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 25 Oct 2019 00:30:22 -0300
+
 loki-storage-server (1.0.7-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
