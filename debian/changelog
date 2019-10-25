@@ -6,8 +6,9 @@ loki-storage-server (1.0.8-1~ubuntu1804) bionic; urgency=medium
   * Attempt to perform ssl shutdown every time the deadline timer is cancelled
   * Bump version to 1.0.8
   * More robust clean-up for incoming connections
+  * Silence another error message
 
- -- Jason Rhinelander <jason@imaginary.ca>  Fri, 25 Oct 2019 00:30:37 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 25 Oct 2019 01:58:01 -0300
 
 loki-storage-server (1.0.7-1~ubuntu1804) bionic; urgency=medium
 
