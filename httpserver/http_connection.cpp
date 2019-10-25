@@ -274,12 +274,22 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
         LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
-        this->do_close();
+        this->clean_up();
         deadline_.cancel();
         return;
     }
 
     read_request();
+}
+
+void connection_t::clean_up() {
+
+    this->do_close();
+
+    if (this->notification_ctx_) {
+        this->service_node_.remove_listener(this->notification_ctx_->pubkey,
+                                            this);
+    }
 }
 
 void connection_t::notify(boost::optional<const message_t&> msg) {
@@ -311,7 +321,7 @@ void connection_t::read_request() {
                 error,
                 "Failed to read from a socket [{}: {}], connection idx: {}",
                 ec.value(), ec.message(), self->conn_idx);
-            self->do_close();
+            self->clean_up();
             self->deadline_.cancel();
             return;
         }
@@ -731,7 +741,7 @@ void connection_t::write_response() {
                          ec.message());
             }
 
-            self->do_close();
+            self->clean_up();
             /// Is it too early to cancel the deadline here?
             self->deadline_.cancel();
         });
@@ -1182,13 +1192,8 @@ void connection_t::register_deadline() {
                      ec.message());
         }
 
-        // TODO: move this to do_close?
-        if (self->notification_ctx_) {
-            self->service_node_.remove_listener(self->notification_ctx_->pubkey,
-                                                self.get());
-        }
         LOKI_LOG(debug, "Closing [connection_t] socket due to timeout");
-        self->do_close();
+        self->clean_up();
     });
 }
 
@@ -1361,7 +1366,7 @@ void HttpClientSession::start() {
                         ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(warn, "client socket timed out");
+                LOKI_LOG(debug, "client socket timed out");
                 self->clean_up();
             }
         });

@@ -231,6 +231,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// (synchronously).
     void process_request();
 
+    /// Unsubscribe listener (if any) and shutdown the connection
+    void clean_up();
+
     void process_store(const nlohmann::json& params);
 
     void process_retrieve(const nlohmann::json& params);
