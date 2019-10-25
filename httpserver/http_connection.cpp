@@ -1209,7 +1209,7 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
     } else if (ec) {
-        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {} ({})",
+        LOKI_LOG(debug, "Could not close ssl stream gracefully, ec: {} ({})",
                  ec.message(), ec.value());
     }
 
