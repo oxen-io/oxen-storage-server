@@ -146,21 +146,50 @@ accept_connection(boost::asio::io_context& ioc,
                   ChannelEncryption<std::string>& channel_encryption,
                   RateLimiter& rate_limiter, const Security& security) {
 
+    static boost::asio::steady_timer acceptor_timer(ioc);
+    constexpr std::chrono::milliseconds ACCEPT_DELAY = 50ms;
+
     acceptor.async_accept([&](const error_code& ec, tcp::socket socket) {
         LOKI_LOG(trace, "connection accepted");
-        if (!ec)
+        if (!ec) {
+
             std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
                                            channel_encryption, rate_limiter,
                                            security)
                 ->start();
 
-        if (ec) {
-            LOKI_LOG(error, "Could not accept a new connection {}: {}",
-                     ec.value(), ec.message());
-        }
+            accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
+                              rate_limiter, security);
+        } else {
 
-        accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                          rate_limiter, security);
+            // TODO: remove this once we confirmed that there is
+            // no more socket leaking
+            if (ec == boost::system::errc::too_many_files_open) {
+                LOKI_LOG(critical, "Too many open files, aborting");
+                abort();
+            }
+
+            LOKI_LOG(
+                error,
+                "Could not accept a new connection {}: {}. Will only start "
+                "accepting new connections after a short delay.",
+                ec.value(), ec.message());
+
+            // If we fail here we are unlikely to be able to accept a new
+            // connection immediately, hence the delay
+            acceptor_timer.expires_after(ACCEPT_DELAY);
+            acceptor_timer.async_wait([&](const error_code& ec) {
+                if (ec && ec != boost::asio::error::operation_aborted) {
+                    // Not sure how to recover here, so it is probably the
+                    // safest to simply abort and let the launcher/systemd
+                    // restart us
+                    abort();
+                }
+
+                accept_connection(ioc, ssl_ctx, acceptor, sn,
+                                  channel_encryption, rate_limiter, security);
+            });
+        }
     });
 }
 
@@ -213,9 +242,6 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
 
 connection_t::~connection_t() {
 
-    // TODO: should check if we are still registered for
-    // notifications, and deregister if so.
-
     // Safety net
     if (stream_.lowest_layer().is_open()) {
         LOKI_LOG(debug, "Client socket should be closed by this point, but "
@@ -248,11 +274,22 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
         LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
+        this->clean_up();
         deadline_.cancel();
         return;
     }
 
     read_request();
+}
+
+void connection_t::clean_up() {
+
+    this->do_close();
+
+    if (this->notification_ctx_) {
+        this->service_node_.remove_listener(this->notification_ctx_->pubkey,
+                                            this);
+    }
 }
 
 void connection_t::notify(boost::optional<const message_t&> msg) {
@@ -284,6 +321,7 @@ void connection_t::read_request() {
                 error,
                 "Failed to read from a socket [{}: {}], connection idx: {}",
                 ec.value(), ec.message(), self->conn_idx);
+            self->clean_up();
             self->deadline_.cancel();
             return;
         }
@@ -703,7 +741,7 @@ void connection_t::write_response() {
                          ec.message());
             }
 
-            self->do_close();
+            self->clean_up();
             /// Is it too early to cancel the deadline here?
             self->deadline_.cancel();
         });
@@ -1154,13 +1192,8 @@ void connection_t::register_deadline() {
                      ec.message());
         }
 
-        // TODO: move this to do_close?
-        if (self->notification_ctx_) {
-            self->service_node_.remove_listener(self->notification_ctx_->pubkey,
-                                                self.get());
-        }
         LOKI_LOG(debug, "Closing [connection_t] socket due to timeout");
-        self->do_close();
+        self->clean_up();
     });
 }
 
@@ -1175,10 +1208,9 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
         // Rationale:
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
-    }
-    if (ec) {
-        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {}",
-                 ec.message());
+    } else if (ec) {
+        LOKI_LOG(error, "Could not close ssl stream gracefully, ec: {} ({})",
+                 ec.message(), ec.value());
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
@@ -1253,7 +1285,7 @@ void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Error on write, ec: {}. Message: {}", ec.value(),
+        LOKI_LOG(error, "Http error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
@@ -1334,7 +1366,7 @@ void HttpClientSession::start() {
                         ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(warn, "client socket timed out");
+                LOKI_LOG(debug, "client socket timed out");
                 self->clean_up();
             }
         });
