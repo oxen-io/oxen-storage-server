@@ -124,7 +124,7 @@ void HttpsClientSession::start() {
                              ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(warn, "client socket timed out");
+                LOKI_LOG(debug, "client socket timed out");
                 self->do_close();
             }
         });
@@ -263,7 +263,8 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
         ec.assign(0, ec.category());
     } else if (ec) {
-        LOKI_LOG(error, "could not shutdown stream gracefully: {} ({})",
+        // This one is too noisy, so demoted to debug:
+        LOKI_LOG(debug, "could not shutdown stream gracefully: {} ({})",
                  ec.message(), ec.value());
     }
 
