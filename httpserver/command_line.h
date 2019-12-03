@@ -7,6 +7,7 @@ namespace loki {
 
 struct command_line_options {
     uint16_t port;
+    std::string lokid_rpc_ip = "127.0.0.1";
     uint16_t lokid_rpc_port = 22023; // Or 38157 if `testnet`
     bool force_start = false;
     bool print_version = false;

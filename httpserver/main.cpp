@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);
     LOKI_LOG(info, "Setting Lokid key path to {}", options.lokid_key_path);
-    LOKI_LOG(info, "Setting Lokid RPC port to {}", options.lokid_rpc_port);
+    LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
     LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
 
 #ifdef DISABLE_SNODE_SIGNATURE
@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
 
-        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_port);
+        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
 
         loki::ServiceNode service_node(ioc, worker_ioc, options.port,
                                        lokid_key_pair, options.data_dir,

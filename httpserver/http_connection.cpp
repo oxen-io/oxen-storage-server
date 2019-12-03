@@ -98,14 +98,14 @@ static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
     return std::string(hex);
 }
 // ======================== Lokid Client ========================
-LokidClient::LokidClient(boost::asio::io_context& ioc, uint16_t port)
-    : ioc_(ioc), lokid_rpc_port_(port) {}
+LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port)
+    : ioc_(ioc), lokid_rpc_ip_(std::move(ip)), lokid_rpc_port_(port) {}
 
 void LokidClient::make_lokid_request(boost::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
-    make_custom_lokid_request(local_ip_, lokid_rpc_port_, method, params,
+    make_custom_lokid_request(lokid_rpc_ip_, lokid_rpc_port_, method, params,
                               std::move(cb));
 }
 

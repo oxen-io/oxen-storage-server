@@ -61,12 +61,12 @@ using http_callback_t = std::function<void(sn_response_t)>;
 
 class LokidClient {
 
-    const uint16_t lokid_rpc_port_;
-    const char* local_ip_ = "127.0.0.1";
     boost::asio::io_context& ioc_;
+    std::string lokid_rpc_ip_;
+    const uint16_t lokid_rpc_port_;
 
   public:
-    LokidClient(boost::asio::io_context& ioc, uint16_t port);
+    LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
     void make_lokid_request(boost::string_view method,
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
