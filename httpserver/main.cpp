@@ -106,11 +106,6 @@ int main(int argc, char* argv[]) {
     LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
     LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
 
-#ifdef DISABLE_SNODE_SIGNATURE
-    LOKI_LOG(warn, "IMPORTANT: This binary is compiled with Service Node "
-                   "signatures disabled, make sure this is intentional!");
-#endif
-
     boost::asio::io_context ioc{1};
     boost::asio::io_context worker_ioc{1};
 

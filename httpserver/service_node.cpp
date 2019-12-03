@@ -122,10 +122,6 @@ static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
     return make_post_request("/swarms/push_batch/v1", std::move(data));
 }
 
-static std::shared_ptr<request_t> make_push_request(std::string&& data) {
-    return make_post_request("/swarms/push/v1", std::move(data));
-}
-
 static bool verify_message(const message_t& msg,
                            const std::vector<pow_difficulty_t> history,
                            const char** error_message = nullptr) {
@@ -767,6 +763,12 @@ void ServiceNode::ping_peers_tick() {
     }
 }
 
+void ServiceNode::sign_request(std::shared_ptr<request_t> &req) const {
+    const auto hash = hash_data(req->body());
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+    attach_signature(req, signature);
+}
+
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     LOKI_LOG(debug, "Testing node for reachability {}", sn);
@@ -778,14 +780,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     nlohmann::json json_body;
 
     auto req = make_post_request("/swarms/ping_test/v1", json_body.dump());
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+    this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
 }
@@ -985,13 +980,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
     auto req = make_post_request("/swarms/storage_test/v1", json_body.dump());
 
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+    this->sign_request(req);
 
     make_sn_request(ioc_, testee, req,
                     [testee, item, height = this->block_height_,
@@ -1014,14 +1003,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
 
     auto req =
         make_post_request("/swarms/blockchain_test/v1", json_body.dump());
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+    this->sign_request(req);
 
     make_sn_request(ioc_, testee, req,
                     std::bind(&ServiceNode::process_blockchain_test_response,
@@ -1478,24 +1460,20 @@ void ServiceNode::relay_messages(const std::vector<Message>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> data = serialize_messages(messages);
 
-#ifndef DISABLE_SNODE_SIGNATURE
     std::vector<signature> signatures;
     signatures.reserve(data.size());
     for (const auto& d : data) {
         const auto hash = hash_data(d);
         signatures.push_back(generate_signature(hash, lokid_key_pair_));
     }
-#endif
 
     std::vector<std::shared_ptr<request_t>> batches =
         make_batch_requests(std::move(data));
 
-#ifndef DISABLE_SNODE_SIGNATURE
     assert(batches.size() == signatures.size());
     for (size_t i = 0; i < batches.size(); ++i) {
         attach_signature(batches[i], signatures[i]);
     }
-#endif
 
     LOKI_LOG(debug, "Serialised batches: {}", data.size());
     for (const sn_record_t& sn : snodes) {

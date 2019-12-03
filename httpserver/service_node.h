@@ -164,6 +164,8 @@ class ServiceNode {
     /// (called when our old node got dissolved)
     void salvage_data() const;
 
+    void sign_request(std::shared_ptr<request_t> &req) const;
+
     void attach_signature(std::shared_ptr<request_t>& request,
                           const signature& sig) const;
 

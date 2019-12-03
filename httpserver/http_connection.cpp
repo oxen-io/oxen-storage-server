@@ -505,12 +505,10 @@ void connection_t::process_blockchain_test_req(uint64_t,
 
 void connection_t::process_swarm_req(boost::string_view target) {
 
-#ifndef DISABLE_SNODE_SIGNATURE
     // allow ping request as a quick workaround (and they are cheap)
     if (!validate_snode_request() && (target != "/swarms/ping_test/v1")) {
         return;
     }
-#endif
 
     response_.set(LOKI_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
