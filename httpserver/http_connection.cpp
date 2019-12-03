@@ -22,8 +22,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/beast/core/detail/base64.hpp>
-
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
