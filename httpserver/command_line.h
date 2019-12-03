@@ -15,7 +15,6 @@ struct command_line_options {
     bool testnet = false;
     std::string ip;
     std::string log_level = "info";
-    std::string lokid_key_path;
     std::string data_dir;
 };
 

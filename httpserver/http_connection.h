@@ -15,6 +15,7 @@
 #include <boost/format.hpp>
 
 #include "swarm.h"
+#include "lokid_key.h"
 
 constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
 constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
@@ -75,6 +76,10 @@ class LokidClient {
                                    boost::string_view method,
                                    const nlohmann::json& params,
                                    http_callback_t&& cb) const;
+    // Synchronously fetches the private key from lokid.  Designed to be called *before* the
+    // io_context has been started (this runs it, waits for a successful fetch, then restarts it
+    // when finished).
+    private_key_t wait_for_privkey();
 };
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
@@ -284,6 +289,22 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
 
 } // namespace http_server
 
+constexpr const char *error_string(SNodeError err) {
+    switch (err) {
+        case loki::SNodeError::NO_ERROR:
+            return "NO_ERROR";
+        case loki::SNodeError::ERROR_OTHER:
+            return "ERROR_OTHER";
+        case loki::SNodeError::NO_REACH:
+            return "NO_REACH";
+        case loki::SNodeError::HTTP_ERROR:
+            return "HTTP_ERROR";
+        default:
+            return "[UNKNOWN]";
+    }
+}
+
+
 } // namespace loki
 
 namespace fmt {
@@ -298,19 +319,7 @@ struct formatter<loki::SNodeError> {
 
     template <typename FormatContext>
     auto format(const loki::SNodeError& err, FormatContext& ctx) {
-
-        switch (err) {
-        case loki::SNodeError::NO_ERROR:
-            return format_to(ctx.out(), "NO_ERROR");
-        case loki::SNodeError::ERROR_OTHER:
-            return format_to(ctx.out(), "ERROR_OTHER");
-        case loki::SNodeError::NO_REACH:
-            return format_to(ctx.out(), "NO_REACH");
-        case loki::SNodeError::HTTP_ERROR:
-            return format_to(ctx.out(), "HTTP_ERROR");
-        default:
-            return format_to(ctx.out(), "[UNKNOWN]");
-        }
+        return format_to(ctx.out(), error_string(err));
     }
 };
 
