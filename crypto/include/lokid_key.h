@@ -15,7 +15,7 @@ struct lokid_key_pair_t {
     public_key_t public_key;
 };
 
-private_key_t parseLokidKey(const std::string& path);
+private_key_t lokidKeyFromHex(const std::string& private_key_hex);
 
 public_key_t calcPublicKey(const private_key_t& private_key);
 

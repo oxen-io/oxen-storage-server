@@ -20,10 +20,10 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     po::options_description all, hidden;
     // clang-format off
     desc_.add_options()
-        ("lokid-key", po::value(&options_.lokid_key_path), "Path to the Service Node key file")
         ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.loki/storage)")
         ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
+        ("lokid-rpc-ip", po::value(&options_.lokid_rpc_port), "RPC IP on which the local Loki daemon is listening (usually localhost)")
         ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
@@ -34,7 +34,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         // and `port=` in the config file to specify them.
     hidden.add_options()
         ("ip", po::value(&options_.ip), "IP to listen on")
-        ("port", po::value(&options_.port), "Port to listen on");
+        ("port", po::value(&options_.port), "Port to listen on")
+        ("lokid-key", po::value<std::string>(), "(deprecated)");
     // clang-format on
 
     all.add(desc_).add(hidden);
