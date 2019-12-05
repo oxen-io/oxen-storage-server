@@ -127,7 +127,16 @@ int main(int argc, char* argv[]) {
 
         auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
 
-        const auto private_key = lokid_client.wait_for_privkey();
+        // Normally we request the key from daemon, but in integrations/swarm testing we
+        // are not able to do that, so we extract the key as a command line option:
+        loki::private_key_t private_key; 
+#ifndef INTEGRATION_TEST
+        private_key = lokid_client.wait_for_privkey();
+#else
+        LOKI_LOG(info, "LOKID OPTION: {}", options.lokid_key);
+        private_key = loki::lokidKeyFromHex(options.lokid_key);
+#endif
+
         const auto public_key = loki::calcPublicKey(private_key);
         LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}", util::as_hex(public_key));
 

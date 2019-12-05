@@ -35,7 +35,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     hidden.add_options()
         ("ip", po::value(&options_.ip), "IP to listen on")
         ("port", po::value(&options_.port), "Port to listen on")
-        ("lokid-key", po::value<std::string>(), "(deprecated)");
+        ("lokid-key", po::value(&options_.lokid_key), "(deprecated)");
     // clang-format on
 
     all.add(desc_).add(hidden);
