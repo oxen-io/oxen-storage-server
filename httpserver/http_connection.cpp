@@ -130,12 +130,12 @@ static bool validateHexKey(const std::string& key) {
            });
 }
 
-std::tuple<private_key_t, private_key_t, private_key_t>
+std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
 LokidClient::wait_for_privkey() {
     // fetch SN private key from lokid; do this synchronously because we can't finish startup
     // until we have it.
     loki::private_key_t private_key;
-    loki::private_key_t private_key_ed;
+    loki::private_key_ed25519_t private_key_ed;
     loki::private_key_t private_key_x;
     LOKI_LOG(info, "Retrieving SN key from lokid");
     boost::asio::steady_timer delay{ioc_};
@@ -155,7 +155,7 @@ LokidClient::wait_for_privkey() {
                     throw std::runtime_error("returned value is not hex");
                 else {
                     private_key = loki::lokidKeyFromHex(legacy_privkey);
-                    private_key_ed = loki::lokidKeyFromHex(privkey_ed);
+                    private_key_ed = private_key_ed25519_t::from_hex(privkey_ed);
                     private_key_x = loki::lokidKeyFromHex(privkey_x);
                     // run out of work, which will end the event loop
                 }

@@ -79,7 +79,7 @@ class LokidClient {
     // Synchronously fetches the private key from lokid.  Designed to be called *before* the
     // io_context has been started (this runs it, waits for a successful fetch, then restarts it
     // when finished).
-    std::tuple<private_key_t, private_key_t, private_key_t> wait_for_privkey();
+    std::tuple<private_key_t, private_key_ed25519_t, private_key_t> wait_for_privkey();
 };
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);

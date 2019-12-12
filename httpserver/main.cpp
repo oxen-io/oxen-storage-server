@@ -131,7 +131,7 @@ int main(int argc, char* argv[]) {
         // testing we are not able to do that, so we extract the key as a
         // command line option:
         loki::private_key_t private_key;
-        loki::private_key_t private_key_ed25519; // Unused at the moment
+        loki::private_key_ed25519_t private_key_ed25519; // Unused at the moment
         loki::private_key_t private_key_x25519;
 #ifndef INTEGRATION_TEST
         std::tie(private_key, private_key_ed25519, private_key_x25519) =
@@ -143,7 +143,8 @@ int main(int argc, char* argv[]) {
         private_key_x25519 = loki::lokidKeyFromHex(options.lokid_x25519_key);
         LOKI_LOG(info, "x25519 SECRET KEY: {}", options.lokid_x25519_key);
 
-        private_key_ed25519 = loki::lokidKeyFromHex(options.lokid_ed25519_key);
+        private_key_ed25519 = loki::private_key_ed25519_t::from_hex(options.lokid_ed25519_key);
+
         LOKI_LOG(info, "ed25519 SECRET KEY: {}", options.lokid_ed25519_key);
 #endif
 
@@ -163,6 +164,12 @@ int main(int argc, char* argv[]) {
 
         LOKI_LOG(info, "SN x25519 pubkey is: {}",
                  util::as_hex(public_key_x25519));
+
+        const auto public_key_ed25519 =
+            loki::derive_pubkey_ed25519(private_key_ed25519);
+
+        LOKI_LOG(info, "SN ed25519 pubkey is: {}",
+                 util::as_hex(public_key_ed25519));
 
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
