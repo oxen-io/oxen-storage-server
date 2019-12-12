@@ -17,6 +17,7 @@ struct lokid_key_pair_t {
 
 private_key_t lokidKeyFromHex(const std::string& private_key_hex);
 
-public_key_t calcPublicKey(const private_key_t& private_key);
+public_key_t derive_pubkey_legacy(const private_key_t& private_key);
+public_key_t derive_pubkey_x25519(const private_key_t& private_key);
 
 } // namespace loki

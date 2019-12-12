@@ -157,6 +157,7 @@ static bool verify_message(const message_t& msg,
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          const lokid_key_pair_t& lokid_key_pair,
+                         const loki::lokid_key_pair_t& key_pair_x25519,
                          const std::string& db_location,
                          LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
@@ -165,20 +166,22 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_client_(lokid_client), force_start_(force_start) {
+      lokid_key_pair_x25519_(key_pair_x25519), lokid_client_(lokid_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
-    if (char const* dest =
-            util::base32z_encode(lokid_key_pair_.public_key, buf)) {
-
-        std::string addr = dest;
-        our_address_.set_address(addr);
-    } else {
+    if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
         throw std::runtime_error("Could not encode our public key");
     }
+
+    const std::string addr = buf;
+    LOKI_LOG(info, "Our loki address: {}", addr);
+
+    // TODO: get rid of "unused" fields
+    our_address_ = sn_record_t(port, addr, "unused", "unused", "unused", "1.1.1.1");
+
     // TODO: fail hard if we can't encode our public key
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
-    our_address_.set_port(port);
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     LOKI_LOG(info, "Requesting initial swarm state");
@@ -227,18 +230,26 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             body.at("result").at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
-            const std::string pubkey =
-                sn_json.at("service_node_pubkey").get<std::string>();
+            const auto& pubkey =
+                sn_json.at("service_node_pubkey").get_ref<const std::string&>();
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
             std::string snode_address = util::hex_to_base32z(pubkey);
 
             const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
-            const std::string snode_ip =
-                sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, std::move(snode_address), pubkey,
-                                 std::move(snode_ip)};
+            const auto& snode_ip =
+                sn_json.at("public_ip").get_ref<const std::string&>();
+
+            const auto& pubkey_x25519 =
+                sn_json.at("pubkey_x25519").get_ref<const std::string&>();
+
+            const auto& pubkey_ed25519 =
+                sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
+
+            const auto sn =
+                sn_record_t{port,          std::move(snode_address), pubkey,
+                            pubkey_x25519, pubkey_ed25519,           snode_ip};
 
             const bool fully_funded = sn_json.at("funded").get<bool>();
 
@@ -674,6 +685,8 @@ void ServiceNode::swarm_timer_tick() {
     fields["block_hash"] = true;
     fields["hardfork"] = true;
     fields["funded"] = true;
+    fields["pubkey_x25519"] = true;
+    fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
 

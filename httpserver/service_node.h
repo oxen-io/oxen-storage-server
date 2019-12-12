@@ -135,6 +135,7 @@ class ServiceNode {
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
     loki::lokid_key_pair_t lokid_key_pair_;
+    loki::lokid_key_pair_t lokid_key_pair_x25519_;
 
     reachability_records_t reach_records_;
 
@@ -241,6 +242,7 @@ class ServiceNode {
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 const loki::lokid_key_pair_t& key_pair,
+                const loki::lokid_key_pair_t& key_pair_x25519,
                 const std::string& db_location, LokidClient& lokid_client,
                 const bool force_start);
 

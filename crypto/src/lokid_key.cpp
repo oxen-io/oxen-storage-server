@@ -7,6 +7,8 @@ extern "C" {
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
+#include <sodium.h>
+
 #include <exception>
 #include <fstream>
 #include <iterator>
@@ -28,13 +30,22 @@ private_key_t lokidKeyFromHex(const std::string& private_key_hex) {
     return private_key;
 }
 
-public_key_t calcPublicKey(const private_key_t& private_key) {
+public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
     ge25519_p3 A;
     ge25519_scalarmult_base(&A, private_key.data());
     public_key_t publicKey;
     ge25519_p3_tobytes(publicKey.data(), &A);
 
     return publicKey;
+}
+
+
+public_key_t derive_pubkey_x25519(const private_key_t& seckey) {
+
+    public_key_t pubkey;
+    crypto_scalarmult_base(pubkey.data(), seckey.data());
+
+    return pubkey;
 }
 
 } // namespace loki
