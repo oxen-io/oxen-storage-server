@@ -202,8 +202,6 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
-    std::shared_ptr<std::string> body = nullptr;
-
     if (!ec || (ec == http::error::end_of_stream)) {
 
         if (http::to_status_class(res_.result_int()) ==
@@ -211,14 +209,14 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
             if (!verify_signature()) {
                 LOKI_LOG(debug, "Bad signature from {}", server_pub_key_b32z);
-                trigger_callback(SNodeError::ERROR_OTHER, nullptr);
-                return;
+                trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
+            } else {
+                auto body = std::make_shared<std::string>(res_.body());
+                trigger_callback(SNodeError::NO_ERROR, std::move(body), res_);
             }
 
-            body = std::make_shared<std::string>(res_.body());
-            trigger_callback(SNodeError::NO_ERROR, std::move(body));
         } else {
-            trigger_callback(SNodeError::ERROR_OTHER, nullptr);
+            trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
         }
 
     } else {
@@ -227,7 +225,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
         /// deadline timer)?
         LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
                  ec.message());
-        trigger_callback(SNodeError::ERROR_OTHER, nullptr);
+        trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
     }
 
     // Gracefully close the socket
@@ -243,9 +241,10 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     // If we get here then the connection is closed gracefully
 }
 
-void HttpsClientSession::trigger_callback(SNodeError error,
-                                          std::shared_ptr<std::string>&& body) {
-    ioc_.post(std::bind(callback_, sn_response_t{error, body}));
+void HttpsClientSession::trigger_callback(
+    SNodeError error, std::shared_ptr<std::string>&& body,
+    boost::optional<response_t> raw_response) {
+    ioc_.post(std::bind(callback_, sn_response_t{error, body, raw_response}));
     used_callback_ = true;
     deadline_timer_.cancel();
 }

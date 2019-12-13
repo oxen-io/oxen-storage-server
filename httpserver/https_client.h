@@ -45,8 +45,9 @@ class HttpsClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void trigger_callback(SNodeError error,
-                          std::shared_ptr<std::string>&& body);
+    void
+    trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body,
+                     boost::optional<response_t> raw_response = boost::none);
 
     void on_handshake(boost::system::error_code ec);
     bool verify_signature();
