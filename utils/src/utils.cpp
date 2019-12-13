@@ -37,6 +37,7 @@ std::string hex_to_bytes(const std::string &hex) {
     return result;
 }
 
+// TODO: stop relying on beast::detail
 namespace base64 = boost::beast::detail::base64;
 
 // base64 stuff was copied from boost 1.66 sources

@@ -155,6 +155,7 @@ LokidClient::wait_for_privkey() {
                     throw std::runtime_error("returned value is not hex");
                 else {
                     private_key = loki::lokidKeyFromHex(legacy_privkey);
+                    // TODO: check that one is derived from the other as a sanity check?
                     private_key_ed = private_key_ed25519_t::from_hex(privkey_ed);
                     private_key_x = loki::lokidKeyFromHex(privkey_x);
                     // run out of work, which will end the event loop

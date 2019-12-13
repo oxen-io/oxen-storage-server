@@ -59,7 +59,7 @@ public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
 public_key_t derive_pubkey_x25519(const private_key_t& seckey) {
 
     public_key_t pubkey;
-    crypto_scalarmult_base(pubkey.data(), seckey.data());
+    crypto_scalarmult_curve25519_base(pubkey.data(), seckey.data());
 
     return pubkey;
 }
