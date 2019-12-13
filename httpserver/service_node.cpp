@@ -535,6 +535,7 @@ void ServiceNode::process_proxy_req(const std::string& req_body,
 
     if (!sn) {
         LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode);
+        return;
     }
 
     LOKI_LOG(info, "Target Snode: {}", target_snode);
