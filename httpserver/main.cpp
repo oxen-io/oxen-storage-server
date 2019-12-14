@@ -103,8 +103,7 @@ int main(int argc, char* argv[]) {
 
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);
-    LOKI_LOG(info, "Setting Lokid key path to {}", options.lokid_key_path);
-    LOKI_LOG(info, "Setting Lokid RPC port to {}", options.lokid_rpc_port);
+    LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
     LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
 
 #ifdef DISABLE_SNODE_SIGNATURE
@@ -131,17 +130,17 @@ int main(int argc, char* argv[]) {
 
     try {
 
-        // ed25519 key
-        const auto private_key = loki::parseLokidKey(options.lokid_key_path);
+        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
+
+        const auto private_key = lokid_client.wait_for_privkey();
         const auto public_key = loki::calcPublicKey(private_key);
+        LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}", util::as_hex(public_key));
 
         // TODO: avoid conversion to vector
         const std::vector<uint8_t> priv(private_key.begin(), private_key.end());
         ChannelEncryption<std::string> channel_encryption(priv);
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
-
-        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_port);
 
         loki::ServiceNode service_node(ioc, worker_ioc, options.port,
                                        lokid_key_pair, options.data_dir,

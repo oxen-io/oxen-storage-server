@@ -16,15 +16,23 @@ uint64_t get_time_ms() {
 }
 
 constexpr uint8_t hex_to_nibble(const char& ch) {
-    return (ch >= '0' && ch <= '9')
-               ? ch - 48
-               : ((ch >= 'A' && ch <= 'F')
-                      ? ch - 55
-                      : ((ch >= 'a' && ch <= 'f') ? ch - 87 : 0));
+    return
+        (ch >= '0' && ch <= '9') ? ch - '0' :
+        (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 :
+        (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 :
+        0;
 }
 
 constexpr uint8_t hexpair_to_byte(const char& hi, const char& lo) {
     return hex_to_nibble(hi) << 4 | hex_to_nibble(lo);
+}
+
+std::string hex_to_bytes(const std::string &hex) {
+    std::string result;
+    result.reserve(hex.size() / 2);
+    for (size_t i = 0, end = hex.size() & ~1; i < end; i += 2)
+        result.push_back(hexpair_to_byte(hex[i], hex[i+1]));
+    return result;
 }
 
 std::string hex_to_base32z(const std::string& src) {
