@@ -87,25 +87,15 @@ void make_http_request(boost::asio::io_context& ioc,
     session->start();
 }
 
-static std::string arr32_to_hex(const std::array<uint8_t, 32>& arr) {
-
-    constexpr size_t res_len = 32 * 2 + 1;
-
-    char hex[res_len];
-
-    sodium_bin2hex(hex, res_len, arr.data(), 32);
-
-    return std::string(hex);
-}
 // ======================== Lokid Client ========================
-LokidClient::LokidClient(boost::asio::io_context& ioc, uint16_t port)
-    : ioc_(ioc), lokid_rpc_port_(port) {}
+LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port)
+    : ioc_(ioc), lokid_rpc_ip_(std::move(ip)), lokid_rpc_port_(port) {}
 
 void LokidClient::make_lokid_request(boost::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
-    make_custom_lokid_request(local_ip_, lokid_rpc_port_, method, params,
+    make_custom_lokid_request(lokid_rpc_ip_, lokid_rpc_port_, method, params,
                               std::move(cb));
 }
 
@@ -134,6 +124,47 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
 
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
+
+private_key_t LokidClient::wait_for_privkey() {
+    // fetch SN private key from lokid; do this synchronously because we can't finish startup
+    // until we have it.
+    loki::private_key_t private_key;
+    LOKI_LOG(info, "Retrieving SN key from lokid");
+    boost::asio::steady_timer delay{ioc_};
+    std::function<void(loki::sn_response_t &&res)> key_fetch;
+    key_fetch = [&](loki::sn_response_t res) {
+        try {
+            if (res.error_code != loki::SNodeError::NO_ERROR)
+                throw std::runtime_error(loki::error_string(res.error_code));
+            else if (!res.body)
+                throw std::runtime_error("empty body");
+            else {
+                auto r = nlohmann::json::parse(*res.body);
+                const auto &privkey = r.at("result").at("service_node_privkey").get_ref<const std::string &>();
+                if (privkey.size() != 2 * loki::KEY_LENGTH && !std::all_of(privkey.begin(), privkey.end(),
+                            [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+                    throw std::runtime_error("returned value is not hex");
+                else {
+                    private_key = loki::lokidKeyFromHex(privkey);
+                    // run out of work, which will end the event loop
+                }
+            }
+        } catch (const std::exception &e) {
+            LOKI_LOG(critical, "Error retrieving SN privkey from lokid @ {}:{}: {}.  Is lokid running?  Retrying in 5s",
+                     lokid_rpc_ip_, lokid_rpc_port_, e.what());
+
+            delay.expires_after(std::chrono::seconds{5});
+            delay.async_wait([this, &key_fetch](const boost::system::error_code &) {
+                    make_lokid_request("get_service_node_privkey", {}, key_fetch); });
+        }
+    };
+    make_lokid_request("get_service_node_privkey", {}, key_fetch);
+    ioc_.run(); // runs until we get success above
+    ioc_.restart();
+
+    return private_key;
+}
+
 // =============================================================
 
 namespace http_server {
