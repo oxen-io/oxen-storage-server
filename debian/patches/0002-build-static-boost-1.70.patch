@@ -26,10 +26,10 @@ index 0c62c49..1691be4 100644
  if (DISABLE_SNODE_SIGNATURE)
      add_definitions(-DDISABLE_SNODE_SIGNATURE)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 9123362..71d9c1b 100644
+index 014d61e..12c830e 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -14,10 +14,7 @@ add_library(common STATIC
+@@ -14,10 +14,7 @@ set(HEADER_FILES
  
  add_library(common STATIC ${HEADER_FILES} ${SRC_FILES})
  
@@ -57,10 +57,10 @@ index bc8d4e2..a4e7667 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 7737414..ab8b7b0 100644
+index 3e3c215..34dc65f 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -43,13 +43,7 @@ loki_add_subdirectory(../pow pow)
+@@ -45,13 +45,7 @@ loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
  find_package(OpenSSL REQUIRED)
  
