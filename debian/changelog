@@ -1,3 +1,11 @@
+loki-storage-server (1.0.9~pre1-1) unstable; urgency=medium
+
+  * Don't terminate two-arg LOKI_LOG with ;
+  * Allow overriding lokid rpc ip
+  * Fetch SN private key from lokid on startup
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 14 Dec 2019 19:15:18 -0400
+
 loki-storage-server (1.0.8-1) unstable; urgency=medium
 
   [ Maxim Shishmarev ]
