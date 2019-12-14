@@ -25,10 +25,10 @@ index 0c62c49..906616f 100644
  
  if (BUILD_TESTS)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 9123362..066463e 100644
+index 014d61e..8958fd9 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -13,7 +13,7 @@ find_package(Boost
+@@ -21,7 +21,7 @@ find_package(Boost
  
  set_property(TARGET common PROPERTY CXX_STANDARD 14)
  
@@ -90,11 +90,12 @@ index c9ad6f8..bc8d4e2 100644
  if (UNIX AND NOT APPLE)
      target_link_libraries(crypto PUBLIC pthread dl)
 diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index 7ca1afb..e069eac 100644
+index b84d2cf..e9ff3f9 100644
 --- a/crypto/src/lokid_key.cpp
 +++ b/crypto/src/lokid_key.cpp
-@@ -1,7 +1,6 @@
+@@ -1,8 +1,7 @@
  #include "lokid_key.h"
+ #include "utils.hpp"
 -extern "C" {
 -#include "sodium/private/ed25519_ref10.h"
 -}
@@ -103,7 +104,7 @@ index 7ca1afb..e069eac 100644
  
  #include <boost/filesystem.hpp>
  #include <boost/format.hpp>
-@@ -9,6 +8,7 @@ extern "C" {
+@@ -10,6 +9,7 @@ extern "C" {
  #include <exception>
  #include <fstream>
  #include <iterator>
@@ -111,7 +112,7 @@ index 7ca1afb..e069eac 100644
  
  namespace fs = boost::filesystem;
  
-@@ -53,11 +53,12 @@ private_key_t parseLokidKey(const std::string& path) {
+@@ -29,11 +29,12 @@ private_key_t lokidKeyFromHex(const std::string& private_key_hex) {
  }
  
  public_key_t calcPublicKey(const private_key_t& private_key) {
@@ -144,10 +145,10 @@ index a8b50f3..b5a8ca6 100644
  
  #include <boost/beast/core/detail/base64.hpp>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 02bcebd..7737414 100644
+index ecd3dae..3e3c215 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -69,15 +69,8 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+@@ -74,15 +74,8 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
