@@ -1,3 +1,11 @@
+loki-storage-server (1.0.9~pre1-2~ubuntu1804) bionic; urgency=medium
+
+  * Rediff patches
+  * Bump PATCH to 9 for pre-release version
+  * Bump required lokid versions
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2019 23:45:34 -0400
+
 loki-storage-server (1.0.9~pre1-1~ubuntu1804) bionic; urgency=medium
 
   * Don't terminate two-arg LOKI_LOG with ;
