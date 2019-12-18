@@ -22,8 +22,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/beast/core/detail/base64.hpp>
-
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
@@ -125,10 +123,20 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
 
-private_key_t LokidClient::wait_for_privkey() {
+static bool validateHexKey(const std::string& key) {
+    return key.size() == 2 * loki::KEY_LENGTH &&
+           std::all_of(key.begin(), key.end(), [](char c) {
+               return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+           });
+}
+
+std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
+LokidClient::wait_for_privkey() {
     // fetch SN private key from lokid; do this synchronously because we can't finish startup
     // until we have it.
     loki::private_key_t private_key;
+    loki::private_key_ed25519_t private_key_ed;
+    loki::private_key_t private_key_x;
     LOKI_LOG(info, "Retrieving SN key from lokid");
     boost::asio::steady_timer delay{ioc_};
     std::function<void(loki::sn_response_t &&res)> key_fetch;
@@ -140,12 +148,16 @@ private_key_t LokidClient::wait_for_privkey() {
                 throw std::runtime_error("empty body");
             else {
                 auto r = nlohmann::json::parse(*res.body);
-                const auto &privkey = r.at("result").at("service_node_privkey").get_ref<const std::string &>();
-                if (privkey.size() != 2 * loki::KEY_LENGTH && !std::all_of(privkey.begin(), privkey.end(),
-                            [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+                const auto &legacy_privkey = r.at("result").at("service_node_privkey").get_ref<const std::string &>();
+                const auto &privkey_ed = r.at("result").at("service_node_ed25519_privkey").get_ref<const std::string &>();
+                const auto &privkey_x = r.at("result").at("service_node_x25519_privkey").get_ref<const std::string &>();
+                if (!validateHexKey(legacy_privkey) || !validateHexKey(privkey_ed) || !validateHexKey(privkey_x))
                     throw std::runtime_error("returned value is not hex");
                 else {
-                    private_key = loki::lokidKeyFromHex(privkey);
+                    private_key = loki::lokidKeyFromHex(legacy_privkey);
+                    // TODO: check that one is derived from the other as a sanity check?
+                    private_key_ed = private_key_ed25519_t::from_hex(privkey_ed);
+                    private_key_x = loki::lokidKeyFromHex(privkey_x);
                     // run out of work, which will end the event loop
                 }
             }
@@ -162,7 +174,7 @@ private_key_t LokidClient::wait_for_privkey() {
     ioc_.run(); // runs until we get success above
     ioc_.restart();
 
-    return private_key;
+    return {private_key, private_key_ed, private_key_x};
 }
 
 // =============================================================
@@ -505,12 +517,10 @@ void connection_t::process_blockchain_test_req(uint64_t,
 
 void connection_t::process_swarm_req(boost::string_view target) {
 
-#ifndef DISABLE_SNODE_SIGNATURE
     // allow ping request as a quick workaround (and they are cheap)
     if (!validate_snode_request() && (target != "/swarms/ping_test/v1")) {
         return;
     }
-#endif
 
     response_.set(LOKI_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
@@ -801,6 +811,8 @@ json snodes_to_json(const std::vector<sn_record_t>& snodes) {
     for (const auto& sn : snodes) {
         json snode;
         snode["address"] = sn.sn_address();
+        snode["pubkey_x25519"] = sn.pubkey_x25519_hex();
+        snode["pubkey_ed25519"] = sn.pubkey_ed25519_hex();
         snode["port"] = std::to_string(sn.port());
         snode["ip"] = sn.ip();
         snodes_json.push_back(snode);

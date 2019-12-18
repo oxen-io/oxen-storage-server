@@ -1,7 +1,6 @@
 #include "signature.h"
 #include "utils.hpp"
 
-#include <boost/beast/core/detail/base64.hpp>
 #include <boost/test/unit_test.hpp>
 
 #include <vector>
@@ -67,7 +66,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-    const std::string sig_b64 = boost::beast::detail::base64_encode(raw_sig);
+    const std::string sig_b64 = util::base64_encode(raw_sig);
 
     char buf[64] = {0};
     const auto public_key_b32z = util::base32z_encode(public_key, buf);
