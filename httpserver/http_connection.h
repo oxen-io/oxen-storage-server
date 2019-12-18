@@ -34,6 +34,10 @@ using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
 namespace loki {
+
+std::shared_ptr<request_t> build_post_request(const char* target,
+                                              std::string&& data);
+
 struct message_t;
 struct Security;
 
@@ -107,8 +111,6 @@ class LokidClient {
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
 
-// TODO: the name should indicate that we are actually trying to send data
-// unlike in `make_post_request`
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb);
@@ -286,7 +288,9 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void process_swarm_req(boost::string_view target);
 
-    void process_proxy_req(boost::string_view target);
+    void process_proxy_req();
+
+    void process_file_proxy_req();
 
     // Check whether we have spent enough time on this connection.
     void register_deadline();

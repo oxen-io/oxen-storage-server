@@ -12,6 +12,9 @@
 #include "signature.h"
 #include "utils.hpp"
 
+// needed for proxy requests
+#include "https_client.h"
+
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -33,6 +36,10 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
 static constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
+static constexpr auto LOKI_FILE_SERVER_TARGET_HEADER = "X-Loki-File-Server-Target";
+static constexpr auto LOKI_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
+static constexpr auto LOKI_FILE_SERVER_HEADERS_HEADER = "X-Loki-File-Server-Headers";
+
 using loki::storage::Item;
 
 using error_code = boost::system::error_code;
@@ -48,6 +55,17 @@ constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 // of unencrypted message body in our experiments
 // (rounded up)
 constexpr size_t MAX_MESSAGE_BODY = 3100;
+
+std::shared_ptr<request_t> build_post_request(const char* target,
+                                              std::string&& data) {
+    auto req = std::make_shared<request_t>();
+    req->body() = std::move(data);
+    req->method(http::verb::post);
+    req->set(http::field::host, "service node");
+    req->target(target);
+    req->prepare_payload();
+    return req;
+}
 
 void make_http_request(boost::asio::io_context& ioc,
                        const std::string& sn_address, uint16_t port,
@@ -523,7 +541,7 @@ static void print_headers(const request_t& req) {
     }
 }
 
-void connection_t::process_proxy_req(boost::string_view target) {
+void connection_t::process_proxy_req() {
 
     LOKI_LOG(debug, "Processing proxy request: we are first hop");
 
@@ -550,6 +568,92 @@ void connection_t::process_proxy_req(boost::string_view target) {
 
         this->write_response();
     });
+}
+
+void connection_t::process_file_proxy_req() {
+
+    LOKI_LOG(debug, "Processing a file proxy request: we are first hop");
+
+    delay_response_ = true;
+
+    if (!parse_header(LOKI_FILE_SERVER_TARGET_HEADER,
+                      LOKI_FILE_SERVER_VERB_HEADER,
+                      LOKI_FILE_SERVER_HEADERS_HEADER)) {
+        LOKI_LOG(error, "Missing headers for a file proxy request");
+        // TODO: The connection should be closed by the timer if we return early,
+        // but need to double-check that! (And close it early if possible)
+        return;
+    }
+
+    auto original_req = this->request_.body();
+
+    const auto& target = header_[LOKI_FILE_SERVER_TARGET_HEADER];
+    const auto& verb_str = header_[LOKI_FILE_SERVER_VERB_HEADER];
+    const auto& headers_str = header_[LOKI_FILE_SERVER_HEADERS_HEADER];
+
+    LOKI_LOG(trace, "Target: {}", target);
+    LOKI_LOG(trace, "Verb: {}", verb_str);
+    LOKI_LOG(trace, "Headers json: {}", headers_str);
+
+    const json headers_json = json::parse(headers_str, nullptr, false);
+
+    if (headers_json.is_discarded()) {
+        LOKI_LOG(debug, "Bad file proxy request: invalid header json");
+        response_.result(http::status::bad_request);
+        return;
+    }
+
+    auto req = std::make_shared<request_t>();
+
+    namespace http = boost::beast::http;
+
+    if (verb_str == "POST") {
+        req->method(http::verb::post);
+    } else if (verb_str == "PATCH") {
+        req->method(http::verb::patch);
+    } else if (verb_str == "PUT") {
+        req->method(http::verb::put);
+    } else if (verb_str == "DELETE") {
+        req->method(http::verb::delete_);
+    } else {
+        req->method(http::verb::get);
+    }
+
+    {
+        const auto it = this->request_.find(http::field::content_type);
+        if (it != request_.end()) {
+            LOKI_LOG(trace, "Content-Type: {}", it->value().to_string());
+            req->set(http::field::content_type, it->value().to_string());
+        }
+    }
+
+    req->body() = std::move(original_req);
+    req->target(target);
+    req->set(http::field::host, "file.lokinet.org");
+    
+    req->prepare_payload();
+
+    for (auto& el : headers_json.items())
+    {
+        req->insert(el.key(), el.value());
+    }
+
+
+    auto cb = [this](sn_response_t res) {
+        LOKI_LOG(trace, "Successful file proxy request!");
+
+        if (res.raw_response) {
+            this->response_ = *res.raw_response;
+            LOKI_LOG(trace, "Response: {}", this->response_);
+        } else {
+            LOKI_LOG(debug, "No response from file server!");
+        }
+
+        this->write_response();
+    };
+
+    make_https_request(ioc_, "https://file.lokinet.org", req, cb);
+
 }
 
 void connection_t::process_swarm_req(boost::string_view target) {
@@ -702,6 +806,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
                     res.result(http::status::ok);
                 };
 
+                LOKI_LOG(trace, "CLIENT HEADERS: \n\t{}", req.at("headers").dump(2));
+
                 // TODO: copy all other headers from decrypted body to header_?
                 const auto headers_it = req.find("headers");
                 if (headers_it != req.end()) {
@@ -788,7 +894,9 @@ void connection_t::process_request() {
             this->process_swarm_req(target);
 
         } else if (target == "/proxy") {
-            this->process_proxy_req(target);
+            this->process_proxy_req();
+        } else if (target == "/file_proxy") {
+            this->process_file_proxy_req();
         } else if (target == "/swarms/proxy_exit") {
             this->process_swarm_req(target);
         }

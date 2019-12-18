@@ -106,19 +106,8 @@ constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
-static std::shared_ptr<request_t> make_post_request(const char* target,
-                                                    std::string&& data) {
-    auto req = std::make_shared<request_t>();
-    req->body() = std::move(data);
-    req->method(http::verb::post);
-    req->set(http::field::host, "service node");
-    req->target(target);
-    req->prepare_payload();
-    return req;
-}
-
 static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
-    return make_post_request("/swarms/push_batch/v1", std::move(data));
+    return build_post_request("/swarms/push_batch/v1", std::move(data));
 }
 
 static bool verify_message(const message_t& msg,
@@ -542,7 +531,7 @@ void ServiceNode::process_proxy_req(const std::string& req_body,
 
     auto body_clone = req_body;
 
-    auto req = make_post_request("/swarms/proxy_exit", std::move(body_clone));
+    auto req = build_post_request("/swarms/proxy_exit", std::move(body_clone));
 
     req->insert(LOKI_SENDER_KEY_HEADER, sender_key);
 
@@ -817,7 +806,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     nlohmann::json json_body;
 
-    auto req = make_post_request("/swarms/ping_test/v1", json_body.dump());
+    auto req = build_post_request("/swarms/ping_test/v1", json_body.dump());
     this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
@@ -1016,7 +1005,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     json_body["height"] = test_height;
     json_body["hash"] = item.hash;
 
-    auto req = make_post_request("/swarms/storage_test/v1", json_body.dump());
+    auto req = build_post_request("/swarms/storage_test/v1", json_body.dump());
 
     this->sign_request(req);
 
@@ -1040,7 +1029,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     json_body["height"] = test_height;
 
     auto req =
-        make_post_request("/swarms/blockchain_test/v1", json_body.dump());
+        build_post_request("/swarms/blockchain_test/v1", json_body.dump());
     this->sign_request(req);
 
     make_sn_request(ioc_, testee, req,
