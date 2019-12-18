@@ -104,6 +104,9 @@ class Swarm {
 
     // Get the node with public key `pk` if exists
     boost::optional<sn_record_t> get_node_by_pk(const sn_pub_key_t& pk) const;
+
+    boost::optional<sn_record_t>
+    find_node_by_ed25519_pk(const sn_pub_key_t& address) const;
 };
 
 } // namespace loki

@@ -31,6 +31,7 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 /// +===========================================
 
 static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
+static constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
 using loki::storage::Item;
 
@@ -515,6 +516,42 @@ void connection_t::process_blockchain_test_req(uint64_t,
     service_node_.perform_blockchain_test(params, std::move(callback));
 }
 
+static void print_headers(const request_t& req) {
+    LOKI_LOG(info, "HEADERS:");
+    for (const auto &field: req) {
+        LOKI_LOG(info, "    [{}]: {}", field.name_string(), field.value());
+    }
+}
+
+void connection_t::process_proxy_req(boost::string_view target) {
+
+    LOKI_LOG(debug, "Processing proxy request: we are first hop");
+
+#ifdef INTEGRATION_TEST
+    print_headers(this->request_);
+#endif
+
+    delay_response_ = true;
+
+    if (!parse_header(LOKI_SENDER_KEY_HEADER,
+                      LOKI_TARGET_SNODE_KEY)) {
+        LOKI_LOG(debug, "Missing headers for a proxy request");
+        return;
+    }
+
+    const auto& sender_key = header_[LOKI_SENDER_KEY_HEADER];
+    const auto& target_snode_key = header_[LOKI_TARGET_SNODE_KEY];
+
+    service_node_.process_proxy_req(this->request_.body(), sender_key, target_snode_key, [this] (sn_response_t res) {
+
+        if (res.raw_response) {
+            this->response_ = *res.raw_response;
+        }
+
+        this->write_response();
+    });
+}
+
 void connection_t::process_swarm_req(boost::string_view target) {
 
     // allow ping request as a quick workaround (and they are cheap)
@@ -625,6 +662,67 @@ void connection_t::process_swarm_req(boost::string_view target) {
         service_node_.process_push(messages.front());
 
         response_.result(http::status::ok);
+    } else if (target == "/swarms/proxy_exit") {
+        LOKI_LOG(debug, "Processing proxy request: we are the destination node");
+
+#ifdef INTEGRATION_TEST
+        print_headers(this->request_);
+#endif
+
+        const auto it = this->request_.find(LOKI_SENDER_KEY_HEADER);
+        if (it != this->request_.end()) {
+
+            const std::string key = {it->value().data(), it->value().size()};
+            const auto plaintext = this->channel_cipher_.decrypt(this->request_.body(), key);
+
+            try {
+                const json req = json::parse(plaintext, nullptr, true);
+
+                const auto body = req.at("body").get<std::string>();
+
+                this->response_modifier_ = [this, key](response_t& res) {
+
+                    nlohmann::json json_res;
+
+                    json_res["status"] = res.result_int();
+                    json_res["body"] = res.body();
+
+                    nlohmann::json headers;
+
+                    for (const auto &field: res) {
+                        std::string name = field.name_string().to_string();
+                        headers[std::move(name)] = field.value();
+                    }
+
+                    json_res["headers"] = headers;
+
+                    const std::string res_body = json_res.dump();
+
+                    res.body() = util::base64_encode(this->channel_cipher_.encrypt(res_body, key));
+                    res.result(http::status::ok);
+                };
+
+                // TODO: copy all other headers from decrypted body to header_?
+                const auto headers_it = req.find("headers");
+                if (headers_it != req.end()) {
+
+                    const auto long_poll_it = headers_it->find(LOKI_LONG_POLL_HEADER);
+                    if (long_poll_it != headers_it->end()) {
+                        const bool val = long_poll_it->get<bool>();
+                        LOKI_LOG(info, "field: {}: {}", LOKI_LONG_POLL_HEADER, val);
+                        this->header_.insert({LOKI_LONG_POLL_HEADER, val ? "true" : "false"});
+                    }
+
+                }
+
+                this->process_client_req(body);
+
+
+            } catch (std::exception& e) {
+                LOKI_LOG(error, "JSON parsing error: {}", e.what());
+            }
+        }
+
     }
 }
 
@@ -665,7 +763,7 @@ void connection_t::process_request() {
             LOKI_LOG(trace, "POST /storage_rpc/v1");
 
             try {
-                process_client_req();
+                process_client_req_rate_limited();
             } catch (std::exception& e) {
                 this->body_stream_ << fmt::format(
                     "Exception caught while processing client request: {}",
@@ -689,6 +787,10 @@ void connection_t::process_request() {
 
             this->process_swarm_req(target);
 
+        } else if (target == "/proxy") {
+            this->process_proxy_req(target);
+        } else if (target == "/swarms/proxy_exit") {
+            this->process_swarm_req(target);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
@@ -761,15 +863,30 @@ void connection_t::write_response() {
             response_.set(http::field::content_type, "text/plain");
             body_stream_ << "Could not encrypt/encode response: ";
             body_stream_ << e.what() << "\n";
-            response_.body() = body_stream_.str();
             LOKI_LOG(critical,
                      "Internal Server Error. Could not encrypt response for {}",
                      obfuscate_pubkey(ephemKey));
         }
     }
 #else
-    response_.body() = body_stream_.str();
+
+    const std::string body_stream = body_stream_.str();
+
+    if (!body_stream.empty()) {
+
+        if (!response_.body().empty()) {
+            LOKI_LOG(debug, "Overwritting non-empty body in response!");
+        }
+
+        response_.body() = body_stream_.str();
+    }
+
 #endif
+
+    // Our last change to change the response before we start sending
+    if (this->response_modifier_) {
+        (*this->response_modifier_)(response_);
+    }
 
     response_.set(http::field::content_length, response_.body().size());
 
@@ -1055,8 +1172,7 @@ void connection_t::poll_db(const std::string& pk,
         return;
     }
 
-    const bool lp_requested =
-        request_.find("X-Loki-Long-Poll") != request_.end();
+    const bool lp_requested = header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
 
     if (!items.empty()) {
         LOKI_LOG(trace, "Successfully retrieved messages for {}",
@@ -1142,39 +1258,10 @@ void connection_t::process_retrieve(const json& params) {
     poll_db(pk.str(), last_hash);
 }
 
-void connection_t::process_client_req() {
-    std::string plain_text = request_.body();
-    const std::string client_ip =
-        socket_.remote_endpoint().address().to_string();
-    if (rate_limiter_.should_rate_limit_client(client_ip)) {
-        this->body_stream_ << "too many requests\n";
-        response_.result(http::status::too_many_requests);
-        LOKI_LOG(debug, "Rate limiting client request.");
-        return;
-    }
 
-#ifndef DISABLE_ENCRYPTION
-    if (!parse_header(LOKI_EPHEMKEY_HEADER)) {
-        LOKI_LOG(debug, "Bad client request: could not parse headers");
-        return;
-    }
+void connection_t::process_client_req(const std::string& req_json) {
 
-    try {
-        const std::string decoded =
-            boost::beast::detail::base64_decode(plain_text);
-        plain_text =
-            channel_cipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
-    } catch (const std::exception& e) {
-        response_.result(http::status::bad_request);
-        response_.set(http::field::content_type, "text/plain");
-        body_stream_ << "Could not decode/decrypt body: ";
-        body_stream_ << e.what() << "\n";
-        LOKI_LOG(debug, "Bad client request: could not decrypt body");
-        return;
-    }
-#endif
-
-    const json body = json::parse(plain_text, nullptr, false);
+    const json body = json::parse(req_json, nullptr, false);
     if (body == nlohmann::detail::value_t::discarded) {
         response_.result(http::status::bad_request);
         body_stream_ << "invalid json\n";
@@ -1201,16 +1288,66 @@ void connection_t::process_client_req() {
     }
 
     if (method_name == "store") {
-        process_store(*params_it);
+        LOKI_LOG(trace, "Process client request: store, connection: {}", this->conn_idx);
+        this->process_store(*params_it);
     } else if (method_name == "retrieve") {
-        process_retrieve(*params_it);
+        LOKI_LOG(trace, "Process client request: retrieve, connection: {}", this->conn_idx);
+        this->process_retrieve(*params_it);
     } else if (method_name == "get_snodes_for_pubkey") {
-        process_snodes_by_pk(*params_it);
+        LOKI_LOG(trace, "Process client request: snodes for pubkey");
+        this->process_snodes_by_pk(*params_it);
     } else {
         response_.result(http::status::bad_request);
         body_stream_ << "no method" << method_name << "\n";
         LOKI_LOG(debug, "Bad client request: unknown method '{}'", method_name);
     }
+
+}
+
+void connection_t::process_client_req_rate_limited() {
+    std::string plain_text = request_.body();
+    const std::string client_ip =
+        socket_.remote_endpoint().address().to_string();
+    if (rate_limiter_.should_rate_limit_client(client_ip)) {
+        this->body_stream_ << "too many requests\n";
+        response_.result(http::status::too_many_requests);
+        LOKI_LOG(debug, "Rate limiting client request.");
+        return;
+    }
+
+#ifndef DISABLE_ENCRYPTION
+    // Just in case we ever plan to enable this "channel encryption",
+    // this part will probably be broken for proxy requests (wrong
+    // place to look for headers)
+    if (!parse_header(LOKI_EPHEMKEY_HEADER)) {
+        LOKI_LOG(debug, "Bad client request: could not parse headers");
+        return;
+    }
+
+    try {
+        const std::string decoded =
+            boost::beast::detail::base64_decode(plain_text);
+        plain_text =
+            channel_cipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
+    } catch (const std::exception& e) {
+        response_.result(http::status::bad_request);
+        response_.set(http::field::content_type, "text/plain");
+        body_stream_ << "Could not decode/decrypt body: ";
+        body_stream_ << e.what() << "\n";
+        LOKI_LOG(debug, "Bad client request: could not decrypt body");
+        return;
+    }
+#endif
+
+    // Not sure what the original idea was to distinguish between headers
+    // in request_ and the actual header_ field, but it is useful for
+    // "proxy" client requests as we can have both true html headers
+    // and the headers that came encrypted in body
+    if (request_.find(LOKI_LONG_POLL_HEADER) != request_.end()) {
+        header_[LOKI_LONG_POLL_HEADER] = request_.at(LOKI_LONG_POLL_HEADER).to_string();
+    }
+
+    this->process_client_req(plain_text);
 }
 
 void connection_t::register_deadline() {
@@ -1418,7 +1555,7 @@ void HttpClientSession::start() {
 void HttpClientSession::trigger_callback(SNodeError error,
                                          std::shared_ptr<std::string>&& body) {
     LOKI_LOG(trace, "Trigger callback");
-    ioc_.post(std::bind(callback_, sn_response_t{error, body}));
+    ioc_.post(std::bind(callback_, sn_response_t{error, body, boost::none}));
     used_callback_ = true;
     deadline_timer_.cancel();
 }

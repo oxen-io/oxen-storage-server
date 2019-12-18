@@ -526,6 +526,31 @@ void ServiceNode::process_push(const message_t& msg) {
     save_if_new(msg);
 }
 
+void ServiceNode::process_proxy_req(const std::string& req_body,
+                                    const std::string& sender_key,
+                                    const std::string& target_snode,
+                                    http_callback_t&& on_proxy_response) {
+
+    auto sn = swarm_->find_node_by_ed25519_pk(target_snode);
+
+    if (!sn) {
+        LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode);
+        return;
+    }
+
+    LOKI_LOG(info, "Target Snode: {}", target_snode);
+
+    auto body_clone = req_body;
+
+    auto req = make_post_request("/swarms/proxy_exit", std::move(body_clone));
+
+    req->insert(LOKI_SENDER_KEY_HEADER, sender_key);
+
+    this->sign_request(req);
+
+    make_sn_request(ioc_, *sn, req, std::move(on_proxy_response));
+}
+
 void ServiceNode::save_if_new(const message_t& msg) {
 
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
@@ -776,6 +801,7 @@ void ServiceNode::ping_peers_tick() {
 }
 
 void ServiceNode::sign_request(std::shared_ptr<request_t> &req) const {
+    // TODO: investigate why we are not signing headers
     const auto hash = hash_data(req->body());
     const auto signature = generate_signature(hash, lokid_key_pair_);
     attach_signature(req, signature);

@@ -19,6 +19,8 @@
 
 constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
 constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
+constexpr auto LOKI_SENDER_KEY_HEADER = "X-Sender-Public-Key";
+constexpr auto LOKI_TARGET_SNODE_KEY = "X-Target-Snode-Key";
 
 template <typename T>
 class ChannelEncryption;
@@ -46,7 +48,28 @@ enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 struct sn_response_t {
     SNodeError error_code;
     std::shared_ptr<std::string> body;
+    boost::optional<response_t> raw_response;
 };
+
+template <typename OStream>
+OStream& operator<<(OStream& os, const sn_response_t &res) {
+    switch (res.error_code) {
+        case SNodeError::NO_ERROR:
+            os << "NO_ERROR";
+            break;
+        case SNodeError::ERROR_OTHER:
+            os << "ERROR_OTHER";
+            break;
+        case SNodeError::NO_REACH:
+            os << "NO_REACH";
+            break;
+        case SNodeError::HTTP_ERROR:
+            os << "HTTP_ERROR";
+            break;
+    }
+
+    return os << "(" << (res.body ? *res.body : "n/a") << ")";
+}
 
 struct blockchain_test_answer_t {
     uint64_t res_height;
@@ -117,8 +140,7 @@ class HttpClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void trigger_callback(SNodeError error,
-                          std::shared_ptr<std::string>&& body);
+    void trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body);
 
     void clean_up();
 
@@ -198,6 +220,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     boost::optional<notification_context_t> notification_ctx_;
 
+    // If present, this function will be called just before
+    // writing the response
+    boost::optional<std::function<void(response_t&)>> response_modifier_;
+
   public:
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                  tcp::socket socket, ServiceNode& sn,
@@ -254,9 +280,13 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void write_response();
 
     /// Syncronously (?) process client store/load requests
-    void process_client_req();
+    void process_client_req_rate_limited();
+
+    void process_client_req(const std::string& req_json);
 
     void process_swarm_req(boost::string_view target);
+
+    void process_proxy_req(boost::string_view target);
 
     // Check whether we have spent enough time on this connection.
     void register_deadline();

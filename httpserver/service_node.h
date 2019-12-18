@@ -270,6 +270,11 @@ class ServiceNode {
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
 
+    void
+    process_proxy_req(const std::string& req, const std::string& sender_key,
+                      const std::string& target_snode,
+                      std::function<void(sn_response_t)>&& on_proxy_response);
+
     /// Process message relayed from another SN from our swarm
     void process_push(const message_t& msg);
 
