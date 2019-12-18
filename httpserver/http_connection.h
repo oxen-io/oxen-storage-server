@@ -176,8 +176,8 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     ssl::stream<tcp::socket&> stream_;
     const Security& security_;
 
-    // The request message.
-    request_t request_;
+    // Contains the request message
+    http::request_parser<http::string_body> request_;
 
     // The response message.
     response_t response_;
