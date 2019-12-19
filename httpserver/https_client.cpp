@@ -64,8 +64,6 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         query.erase(0, sizeof(prefix) - 1);
     }
 
-    boost::algorithm::erase_all(query, prefix);
-
     auto resolve_handler = [&ioc, req, query, cb = std::move(cb)] (
                                const boost::system::error_code& ec,
                                boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {

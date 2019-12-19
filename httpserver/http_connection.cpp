@@ -301,8 +301,6 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
 
     request_.body_limit(1024 * 1024 * 10); // 10 mb
 
-    std::cerr << request_.get() << std::endl;
-
     start_timestamp_ = std::chrono::steady_clock::now();
 }
 
