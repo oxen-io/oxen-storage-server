@@ -334,7 +334,7 @@ void connection_t::do_handshake() {
 void connection_t::on_handshake(boost::system::error_code ec) {
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(debug, "Open https socket: {}", sockfd);
+    LOKI_LOG(trace, "Open https socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
         LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
@@ -550,7 +550,7 @@ void connection_t::process_proxy_req() {
     const request_t& req = this->request_.get();
 
 #ifdef INTEGRATION_TEST
-    print_headers(req);
+    // print_headers(req);
 #endif
 
     delay_response_ = true;
@@ -777,7 +777,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
         LOKI_LOG(debug, "Processing proxy request: we are the destination node");
 
 #ifdef INTEGRATION_TEST
-        print_headers(req);
+        // print_headers(req);
 #endif
 
         const auto it = req.find(LOKI_SENDER_KEY_HEADER);
@@ -1075,6 +1075,8 @@ void connection_t::process_store(const json& params) {
     const auto nonce = params["nonce"].get<std::string>();
     const auto timestamp = params["timestamp"].get<std::string>();
     const auto data = params["data"].get<std::string>();
+
+    LOKI_LOG(trace, "Storing message: {}", data);
 
     bool created;
     auto pk =
@@ -1513,7 +1515,7 @@ void connection_t::on_shutdown(boost::system::error_code ec) {
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(debug, "Close https socket: {}", sockfd);
+    LOKI_LOG(trace, "Close https socket: {}", sockfd);
     get_net_stats().record_socket_close(sockfd);
     stream_.lowest_layer().close();
 }
@@ -1572,7 +1574,7 @@ HttpClientSession::HttpClientSession(boost::asio::io_context& ioc,
 void HttpClientSession::on_connect() {
 
     const auto sockfd = socket_.native_handle();
-    LOKI_LOG(debug, "Open http socket: {}", sockfd);
+    LOKI_LOG(trace, "Open http socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     http::async_write(socket_, *req_,
                       std::bind(&HttpClientSession::on_write,
@@ -1714,7 +1716,7 @@ void HttpClientSession::clean_up() {
     if (ec) {
         LOKI_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(), ec.message());
     } else {
-        LOKI_LOG(debug, "Close http socket: {}", sockfd);
+        LOKI_LOG(trace, "Close http socket: {}", sockfd);
         get_net_stats().record_socket_close(sockfd);
     }
 }

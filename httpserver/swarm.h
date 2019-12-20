@@ -31,6 +31,9 @@ struct block_update_t {
     int hardfork;
 };
 
+
+void debug_print(std::ostream& os, const block_update_t& bu);
+
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk);
 

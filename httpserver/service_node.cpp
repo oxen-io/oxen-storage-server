@@ -166,8 +166,10 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     const std::string addr = buf;
     LOKI_LOG(info, "Our loki address: {}", addr);
 
+    const auto pk_hex = util::as_hex(lokid_key_pair_.public_key);
+
     // TODO: get rid of "unused" fields
-    our_address_ = sn_record_t(port, addr, "unused", "unused", "unused", "1.1.1.1");
+    our_address_ = sn_record_t(port, addr, pk_hex, "unused", "unused", "1.1.1.1");
 
     // TODO: fail hard if we can't encode our public key
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
@@ -527,7 +529,7 @@ void ServiceNode::process_proxy_req(const std::string& req_body,
         return;
     }
 
-    LOKI_LOG(info, "Target Snode: {}", target_snode);
+    LOKI_LOG(trace, "Target Snode: {}", target_snode);
 
     auto body_clone = req_body;
 
@@ -571,6 +573,9 @@ void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 }
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
+
+    // Print block update
+    // debug_print(std::cerr, bu);
 
     hardfork_ = bu.hardfork;
 
@@ -659,7 +664,7 @@ void ServiceNode::relay_buffered_messages() {
     if (relay_buffer_.empty())
         return;
 
-    LOKI_LOG(debug, "Relaying {} messages from buffer", relay_buffer_.size());
+    LOKI_LOG(debug, "Relaying {} messages from buffer to {} nodes", relay_buffer_.size(), swarm_->other_nodes().size());
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
     relay_buffer_.clear();
@@ -1486,6 +1491,15 @@ template <typename Message>
 void ServiceNode::relay_messages(const std::vector<Message>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> data = serialize_messages(messages);
+
+    LOKI_LOG(info, "Relayed messages:");
+    for (auto msg : messages) {
+        LOKI_LOG(info, "    {}", msg.data);
+    }
+    LOKI_LOG(info, "To Snodes:");
+    for (auto sn : snodes) {
+        LOKI_LOG(info, "    {}", sn);
+    }
 
     std::vector<signature> signatures;
     signatures.reserve(data.size());
