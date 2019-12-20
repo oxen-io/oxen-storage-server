@@ -14,7 +14,10 @@ class RateLimiter {
   public:
     // TODO: make those two constants command line parameters?
     constexpr static uint32_t BUCKET_SIZE = 600;
-    constexpr static uint32_t TOKEN_RATE = 300;
+
+    // Tokens (requests) per second
+    constexpr static uint32_t TOKEN_RATE = 300; // Too much for a client??
+    constexpr static uint32_t TOKEN_RATE_SN = 600;
     constexpr static uint32_t MAX_CLIENTS = 10000;
 
     bool should_rate_limit(const std::string& identifier,
@@ -37,6 +40,8 @@ class RateLimiter {
 
     void clean_client_buckets(std::chrono::steady_clock::time_point now);
 
+    // Add tokens based on the amount of time elapsed
     void fill_bucket(TokenBucket& bucket,
-                     std::chrono::steady_clock::time_point now);
+                     std::chrono::steady_clock::time_point now,
+                     bool service_node = false);
 };
