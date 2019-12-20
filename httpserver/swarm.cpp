@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <unordered_map>
+#include <ostream>
 
 #include "utils.hpp"
 
@@ -19,6 +20,24 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
         [&swarm](const SwarmInfo& si) { return si.swarm_id == swarm; });
 
     return it != all_swarms.end();
+}
+
+void debug_print(std::ostream& os, const block_update_t& bu) {
+
+    os << "Block update: {\n";
+    os << "     height: " << bu.height << '\n';
+    os << "     block hash: " << bu.block_hash << '\n';
+    os << "     hardfork: " << bu.hardfork << '\n';
+    os << "     swarms: [\n";
+
+    for (const SwarmInfo &swarm : bu.swarms) {
+        os << "         {\n";
+        os << "             id: " << swarm.swarm_id << '\n';
+        os << "         }\n";
+    }
+
+    os << "     ]\n";
+    os << "}\n";
 }
 
 Swarm::~Swarm() = default;

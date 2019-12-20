@@ -171,7 +171,7 @@ void HttpsClientSession::on_connect() {
     LOKI_LOG(trace, "on connect, connection idx: {}", this->connection_idx);
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(debug, "Open https socket: {}", sockfd);
+    LOKI_LOG(trace, "Open https socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
 
     stream_.set_verify_mode(ssl::verify_none);
@@ -310,7 +310,7 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(debug, "Close https socket: {}", sockfd);
+    LOKI_LOG(trace, "Close https socket: {}", sockfd);
     get_net_stats().record_socket_close(sockfd);
 
     stream_.lowest_layer().close();

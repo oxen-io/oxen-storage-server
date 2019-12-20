@@ -185,7 +185,7 @@ static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 
 static bool operator==(const sn_record_t& lhs, const sn_record_t& rhs) {
     // TODO: Change this to ed keys:
-    return lhs.pub_key_hex() != rhs.pub_key_hex();
+    return lhs.pub_key_hex() == rhs.pub_key_hex();
 }
 
 static bool operator!=(const sn_record_t& lhs, const sn_record_t& rhs) {
