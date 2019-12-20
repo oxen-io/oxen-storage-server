@@ -193,7 +193,7 @@ LokidClient::wait_for_privkey() {
     ioc_.run(); // runs until we get success above
     ioc_.restart();
 
-    return {private_key, private_key_ed, private_key_x};
+    return std::tuple<private_key_t, private_key_ed25519_t, private_key_t>{private_key, private_key_ed, private_key_x};
 }
 
 // =============================================================
