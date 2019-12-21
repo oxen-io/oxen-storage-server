@@ -36,6 +36,10 @@ static const std::unordered_map<char, uint8_t> zbase32_reverse_alpha = {
     {'i', 21}, {'s', 22}, {'z', 23}, {'a', 24}, {'3', 25}, {'4', 26}, {'5', 27},
     {'h', 28}, {'7', 29}, {'6', 30}, {'9', 31}};
 
+std::string base64_decode(std::string const& data);
+
+std::string base64_encode(std::string const& s);
+
 /// adapted from i2pd
 template <typename Container, typename stack_t>
 const char* base32z_encode(const Container& value, stack_t& stack) {

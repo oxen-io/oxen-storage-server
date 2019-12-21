@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <unordered_map>
+#include <ostream>
 
 #include "utils.hpp"
 
@@ -19,6 +20,24 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
         [&swarm](const SwarmInfo& si) { return si.swarm_id == swarm; });
 
     return it != all_swarms.end();
+}
+
+void debug_print(std::ostream& os, const block_update_t& bu) {
+
+    os << "Block update: {\n";
+    os << "     height: " << bu.height << '\n';
+    os << "     block hash: " << bu.block_hash << '\n';
+    os << "     hardfork: " << bu.hardfork << '\n';
+    os << "     swarms: [\n";
+
+    for (const SwarmInfo &swarm : bu.swarms) {
+        os << "         {\n";
+        os << "             id: " << swarm.swarm_id << '\n';
+        os << "         }\n";
+    }
+
+    os << "     ]\n";
+    os << "}\n";
 }
 
 Swarm::~Swarm() = default;
@@ -208,6 +227,29 @@ boost::optional<sn_record_t> Swarm::choose_funded_node() const {
 
     // Note: this can return our own node which should be fine
     return all_funded_nodes_[idx];
+}
+
+boost::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
+
+    for (const auto &sn : all_funded_nodes_) {
+        if (sn.port() == port) {
+            return sn;
+        }
+    }
+
+    return boost::none;
+}
+
+boost::optional<sn_record_t>
+Swarm::find_node_by_ed25519_pk(const std::string& pk) const {
+
+    for (const auto& sn : all_funded_nodes_) {
+        if (sn.pubkey_ed25519_hex() == pk) {
+            return sn;
+        }
+    }
+
+    return boost::none;
 }
 
 boost::optional<sn_record_t>

@@ -2,9 +2,8 @@
 #include "lokid_key.h"
 #include "signature.h"
 
+#include "utils.hpp"
 #include <fstream>
-
-#include <boost/beast/core/detail/base64.hpp>
 
 namespace loki {
 Security::Security(const lokid_key_pair_t& key_pair,
@@ -18,7 +17,7 @@ std::string Security::base64_sign(const std::string& body) {
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-    return boost::beast::detail::base64_encode(raw_sig);
+    return util::base64_encode(raw_sig);
 }
 
 void Security::generate_cert_signature() {
@@ -35,7 +34,7 @@ void Security::generate_cert_signature() {
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
-    cert_signature_ = boost::beast::detail::base64_encode(raw_sig);
+    cert_signature_ = util::base64_encode(raw_sig);
 }
 
 std::string Security::get_cert_signature() const { return cert_signature_; }

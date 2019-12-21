@@ -35,7 +35,9 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     hidden.add_options()
         ("ip", po::value(&options_.ip), "IP to listen on")
         ("port", po::value(&options_.port), "Port to listen on")
-        ("lokid-key", po::value<std::string>(), "(deprecated)");
+        ("lokid-key", po::value(&options_.lokid_key), "Legacy secret key (test only)")
+        ("lokid-x25519-key", po::value(&options_.lokid_x25519_key), "x25519 secret key (test only)")
+        ("lokid-ed25519-key", po::value(&options_.lokid_ed25519_key), "ed25519 public key (test only)");
     // clang-format on
 
     all.add(desc_).add(hidden);
