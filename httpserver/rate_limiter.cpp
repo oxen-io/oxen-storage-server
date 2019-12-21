@@ -9,23 +9,35 @@
 
 constexpr uint32_t RateLimiter::BUCKET_SIZE;
 constexpr uint32_t RateLimiter::TOKEN_RATE;
+constexpr uint32_t RateLimiter::TOKEN_RATE_SN;
 
 using namespace std::chrono_literals;
 
+// Time between to consecutive tokens for clients
 constexpr static std::chrono::microseconds TOKEN_PERIOD_US =
     std::chrono::duration_cast<std::chrono::microseconds>(1s) /
     RateLimiter::TOKEN_RATE;
+
+// Time between to consecutive tokens for snodes
+constexpr static std::chrono::microseconds TOKEN_PERIOD_SN_US =
+    std::chrono::duration_cast<std::chrono::microseconds>(1s) /
+    RateLimiter::TOKEN_RATE_SN;
+
 constexpr static std::chrono::microseconds FILL_EMPTY_BUCKET_US =
     TOKEN_PERIOD_US * RateLimiter::BUCKET_SIZE;
 
 void RateLimiter::fill_bucket(TokenBucket& bucket,
-                              std::chrono::steady_clock::time_point now) {
+                              std::chrono::steady_clock::time_point now,
+                              bool service_node) {
     auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
         now - bucket.last_time_point);
     // clamp elapsed time to how long it takes to fill up the whole bucket
     // (simplifies overlow checking)
     elapsed_us = std::min(elapsed_us, FILL_EMPTY_BUCKET_US);
-    const uint32_t token_added = elapsed_us.count() / TOKEN_PERIOD_US.count();
+
+    const auto token_period = service_node ? TOKEN_PERIOD_SN_US : TOKEN_PERIOD_US;
+
+    const uint32_t token_added = elapsed_us.count() / token_period.count();
     // clamp tokens to bucket size
     bucket.num_tokens = std::min(BUCKET_SIZE, bucket.num_tokens + token_added);
 }

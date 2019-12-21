@@ -6,7 +6,6 @@
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
-#include <boost/beast/core/detail/base64.hpp>
 #include <iomanip>
 #include <limits>
 #include <openssl/sha.h>
@@ -119,7 +118,7 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     // Initial hash
     SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
     // Convert nonce to binary
-    std::string decodedNonce = boost::beast::detail::base64_decode(nonce);
+    std::string decodedNonce = util::base64_decode(nonce);
     // Convert decoded nonce string into uint8_t vector. Will have length 8
     std::vector<uint8_t> innerPayload;
     innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);

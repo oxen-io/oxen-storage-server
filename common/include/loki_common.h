@@ -19,23 +19,15 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    std::string sn_address_; // Snode address (pubkey plus .snode)
+    std::string sn_address_; // Snode address (pubkey plus .snode, was used for lokinet)
     // TODO: create separate types for different encodings of pubkeys,
     // so if we confuse them, it will be a compiler error
-    std::string pub_key_base_32z_;
-    std::string pub_key_hex_;
+    std::string pub_key_base_32z_; // We don't need this! (esp. since it is legacy key)
+    std::string pubkey_x25519_hex_;
+    std::string pubkey_ed25519_hex_;
+    std::string pub_key_hex_; // Monero legacy key
     std::string ip_; // Snode ip
-  public:
-    sn_record_t(uint16_t port, const std::string& address,
-                const std::string& pk_hex, const std::string& ip)
-        : port_(port), pub_key_hex_(pk_hex), ip_(ip) {
-        set_address(address);
-    }
 
-    sn_record_t() = default;
-
-    void set_ip(const std::string& ip) { ip_ = ip; }
-    void set_port(uint16_t port) { port_ = port; }
 
     /// Set service node's public key in base32z (without .snode part)
     void set_address(const std::string& addr) {
@@ -48,10 +40,26 @@ struct sn_record_t {
         pub_key_base_32z_ = addr;
     }
 
+  public:
+    sn_record_t(uint16_t port, const std::string& address,
+                const std::string& pk_hex, const std::string& pk_x25519,
+                const std::string& pk_ed25519, const std::string& ip)
+        : port_(port), pub_key_hex_(pk_hex), pubkey_x25519_hex_(pk_x25519),
+          pubkey_ed25519_hex_(pk_ed25519), ip_(ip) {
+        set_address(address);
+    }
+
+    sn_record_t() = default;
+
+    // Sometimes the IP can change
+    void set_ip(const std::string& ip) { ip_ = ip; }
+
     uint16_t port() const { return port_; }
     const std::string& sn_address() const { return sn_address_; }
     const std::string& pub_key_base32z() const { return pub_key_base_32z_; }
     const std::string& pub_key_hex() const { return pub_key_hex_; }
+    const std::string& pubkey_x25519_hex() const { return pubkey_x25519_hex_; }
+    const std::string& pubkey_ed25519_hex() const { return pubkey_ed25519_hex_; }
     const std::string& ip() const { return ip_; }
 
     template <typename OStream>
@@ -157,22 +165,14 @@ namespace std {
 template <>
 struct hash<sn_record_t> {
     std::size_t operator()(const sn_record_t& k) const {
-#ifdef INTEGRATION_TEST
-        return hash<uint16_t>{}(k.port());
-#else
-        return hash<std::string>{}(k.sn_address());
-#endif
+        return hash<std::string>{}(k.pub_key_hex());
     }
 };
 
 } // namespace std
 
 inline bool operator<(const sn_record_t& lhs, const sn_record_t& rhs) {
-#ifdef INTEGRATION_TEST
-    return lhs.port() < rhs.port();
-#else
-    return lhs.sn_address() < rhs.sn_address();
-#endif
+    return lhs.pub_key_hex() < rhs.pub_key_hex();
 }
 
 static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
@@ -184,11 +184,8 @@ static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 }
 
 static bool operator==(const sn_record_t& lhs, const sn_record_t& rhs) {
-#ifdef INTEGRATION_TEST
-    return lhs.port() == rhs.port();
-#else
-    return lhs.sn_address() == rhs.sn_address();
-#endif
+    // TODO: Change this to ed keys:
+    return lhs.pub_key_hex() == rhs.pub_key_hex();
 }
 
 static bool operator!=(const sn_record_t& lhs, const sn_record_t& rhs) {
