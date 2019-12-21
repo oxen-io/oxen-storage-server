@@ -1,0 +1,24 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Sat, 21 Dec 2019 04:26:16 -0400
+Subject: local boost update
+
+---
+ utils/CMakeLists.txt | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/utils/CMakeLists.txt b/utils/CMakeLists.txt
+index ba17877..2f1d30c 100644
+--- a/utils/CMakeLists.txt
++++ b/utils/CMakeLists.txt
+@@ -7,11 +7,6 @@ set(SOURCES
+     src/utils.cpp
+ )
+ 
+-find_package(Boost
+-    REQUIRED
+-    filesystem
+-)
+-
+ add_library(utils STATIC ${SOURCES})
+ 
+ set_property(TARGET utils PROPERTY CXX_STANDARD 14)
