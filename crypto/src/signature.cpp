@@ -6,7 +6,6 @@ extern "C" {
 #include "loki/crypto-ops/hash-ops.h"
 }
 
-#include <boost/beast/core/detail/base64.hpp>
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_generichash_blake2b.h>
 #include <sodium/randombytes.h>
@@ -120,7 +119,7 @@ bool check_signature(const std::string& signature, const hash& hash,
                      const std::string& public_key_b32z) {
     // convert signature
     const std::string raw_signature =
-        boost::beast::detail::base64_decode(signature);
+        util::base64_decode(signature);
     struct signature sig;
     std::copy_n(raw_signature.begin(), sig.c.size(), sig.c.begin());
     std::copy_n(raw_signature.begin() + sig.c.size(), sig.r.size(),

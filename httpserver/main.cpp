@@ -106,11 +106,6 @@ int main(int argc, char* argv[]) {
     LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
     LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
 
-#ifdef DISABLE_SNODE_SIGNATURE
-    LOKI_LOG(warn, "IMPORTANT: This binary is compiled with Service Node "
-                   "signatures disabled, make sure this is intentional!");
-#endif
-
     boost::asio::io_context ioc{1};
     boost::asio::io_context worker_ioc{1};
 
@@ -132,19 +127,57 @@ int main(int argc, char* argv[]) {
 
         auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
 
-        const auto private_key = lokid_client.wait_for_privkey();
-        const auto public_key = loki::calcPublicKey(private_key);
-        LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}", util::as_hex(public_key));
+        // Normally we request the key from daemon, but in integrations/swarm
+        // testing we are not able to do that, so we extract the key as a
+        // command line option:
+        loki::private_key_t private_key;
+        loki::private_key_ed25519_t private_key_ed25519; // Unused at the moment
+        loki::private_key_t private_key_x25519;
+#ifndef INTEGRATION_TEST
+        std::tie(private_key, private_key_ed25519, private_key_x25519) =
+            lokid_client.wait_for_privkey();
+#else
+        private_key = loki::lokidKeyFromHex(options.lokid_key);
+        LOKI_LOG(info, "LOKID LEGACY KEY: {}", options.lokid_key);
+
+        private_key_x25519 = loki::lokidKeyFromHex(options.lokid_x25519_key);
+        LOKI_LOG(info, "x25519 SECRET KEY: {}", options.lokid_x25519_key);
+
+        private_key_ed25519 = loki::private_key_ed25519_t::from_hex(options.lokid_ed25519_key);
+
+        LOKI_LOG(info, "ed25519 SECRET KEY: {}", options.lokid_ed25519_key);
+#endif
+
+        const auto public_key = loki::derive_pubkey_legacy(private_key);
+        LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
+                 util::as_hex(public_key));
 
         // TODO: avoid conversion to vector
-        const std::vector<uint8_t> priv(private_key.begin(), private_key.end());
+        const std::vector<uint8_t> priv(private_key_x25519.begin(),
+                                        private_key_x25519.end());
         ChannelEncryption<std::string> channel_encryption(priv);
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
 
+        const auto public_key_x25519 =
+            loki::derive_pubkey_x25519(private_key_x25519);
+
+        LOKI_LOG(info, "SN x25519 pubkey is: {}",
+                 util::as_hex(public_key_x25519));
+
+        const auto public_key_ed25519 =
+            loki::derive_pubkey_ed25519(private_key_ed25519);
+
+        LOKI_LOG(info, "SN ed25519 pubkey is: {}",
+                 util::as_hex(public_key_ed25519));
+
+        loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
+                                                     public_key_x25519};
+
         loki::ServiceNode service_node(ioc, worker_ioc, options.port,
-                                       lokid_key_pair, options.data_dir,
-                                       lokid_client, options.force_start);
+                                       lokid_key_pair, lokid_key_pair_x25519,
+                                       options.data_dir, lokid_client,
+                                       options.force_start);
         RateLimiter rate_limiter;
 
         loki::Security security(lokid_key_pair, options.data_dir);

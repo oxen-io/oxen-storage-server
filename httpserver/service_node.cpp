@@ -19,7 +19,6 @@
 #include <chrono>
 #include <fstream>
 
-#include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind.hpp>
 
 using json = nlohmann::json;
@@ -107,23 +106,8 @@ constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
 
-static std::shared_ptr<request_t> make_post_request(const char* target,
-                                                    std::string&& data) {
-    auto req = std::make_shared<request_t>();
-    req->body() = std::move(data);
-    req->method(http::verb::post);
-    req->set(http::field::host, "service node");
-    req->target(target);
-    req->prepare_payload();
-    return req;
-}
-
 static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
-    return make_post_request("/swarms/push_batch/v1", std::move(data));
-}
-
-static std::shared_ptr<request_t> make_push_request(std::string&& data) {
-    return make_post_request("/swarms/push/v1", std::move(data));
+    return build_post_request("/swarms/push_batch/v1", std::move(data));
 }
 
 static bool verify_message(const message_t& msg,
@@ -162,6 +146,7 @@ static bool verify_message(const message_t& msg,
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          const lokid_key_pair_t& lokid_key_pair,
+                         const loki::lokid_key_pair_t& key_pair_x25519,
                          const std::string& db_location,
                          LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
@@ -170,20 +155,24 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
-      lokid_client_(lokid_client), force_start_(force_start) {
+      lokid_key_pair_x25519_(key_pair_x25519), lokid_client_(lokid_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
-    if (char const* dest =
-            util::base32z_encode(lokid_key_pair_.public_key, buf)) {
-
-        std::string addr = dest;
-        our_address_.set_address(addr);
-    } else {
+    if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
         throw std::runtime_error("Could not encode our public key");
     }
+
+    const std::string addr = buf;
+    LOKI_LOG(info, "Our loki address: {}", addr);
+
+    const auto pk_hex = util::as_hex(lokid_key_pair_.public_key);
+
+    // TODO: get rid of "unused" fields
+    our_address_ = sn_record_t(port, addr, pk_hex, "unused", "unused", "1.1.1.1");
+
     // TODO: fail hard if we can't encode our public key
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
-    our_address_.set_port(port);
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     LOKI_LOG(info, "Requesting initial swarm state");
@@ -232,18 +221,26 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             body.at("result").at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
-            const std::string pubkey =
-                sn_json.at("service_node_pubkey").get<std::string>();
+            const auto& pubkey =
+                sn_json.at("service_node_pubkey").get_ref<const std::string&>();
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
             std::string snode_address = util::hex_to_base32z(pubkey);
 
             const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
-            const std::string snode_ip =
-                sn_json.at("public_ip").get<std::string>();
-            const sn_record_t sn{port, std::move(snode_address), pubkey,
-                                 std::move(snode_ip)};
+            const auto& snode_ip =
+                sn_json.at("public_ip").get_ref<const std::string&>();
+
+            const auto& pubkey_x25519 =
+                sn_json.at("pubkey_x25519").get_ref<const std::string&>();
+
+            const auto& pubkey_ed25519 =
+                sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
+
+            const auto sn =
+                sn_record_t{port,          std::move(snode_address), pubkey,
+                            pubkey_x25519, pubkey_ed25519,           snode_ip};
 
             const bool fully_funded = sn_json.at("funded").get<bool>();
 
@@ -520,6 +517,31 @@ void ServiceNode::process_push(const message_t& msg) {
     save_if_new(msg);
 }
 
+void ServiceNode::process_proxy_req(const std::string& req_body,
+                                    const std::string& sender_key,
+                                    const std::string& target_snode,
+                                    http_callback_t&& on_proxy_response) {
+
+    auto sn = swarm_->find_node_by_ed25519_pk(target_snode);
+
+    if (!sn) {
+        LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode);
+        return;
+    }
+
+    LOKI_LOG(trace, "Target Snode: {}", target_snode);
+
+    auto body_clone = req_body;
+
+    auto req = build_post_request("/swarms/proxy_exit", std::move(body_clone));
+
+    req->insert(LOKI_SENDER_KEY_HEADER, sender_key);
+
+    this->sign_request(req);
+
+    make_sn_request(ioc_, *sn, req, std::move(on_proxy_response));
+}
+
 void ServiceNode::save_if_new(const message_t& msg) {
 
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
@@ -551,6 +573,9 @@ void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 }
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
+
+    // Print block update
+    // debug_print(std::cerr, bu);
 
     hardfork_ = bu.hardfork;
 
@@ -639,7 +664,7 @@ void ServiceNode::relay_buffered_messages() {
     if (relay_buffer_.empty())
         return;
 
-    LOKI_LOG(debug, "Relaying {} messages from buffer", relay_buffer_.size());
+    LOKI_LOG(debug, "Relaying {} messages from buffer to {} nodes", relay_buffer_.size(), swarm_->other_nodes().size());
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
     relay_buffer_.clear();
@@ -679,6 +704,8 @@ void ServiceNode::swarm_timer_tick() {
     fields["block_hash"] = true;
     fields["hardfork"] = true;
     fields["funded"] = true;
+    fields["pubkey_x25519"] = true;
+    fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
 
@@ -767,6 +794,13 @@ void ServiceNode::ping_peers_tick() {
     }
 }
 
+void ServiceNode::sign_request(std::shared_ptr<request_t> &req) const {
+    // TODO: investigate why we are not signing headers
+    const auto hash = hash_data(req->body());
+    const auto signature = generate_signature(hash, lokid_key_pair_);
+    attach_signature(req, signature);
+}
+
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     LOKI_LOG(debug, "Testing node for reachability {}", sn);
@@ -777,15 +811,8 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     nlohmann::json json_body;
 
-    auto req = make_post_request("/swarms/ping_test/v1", json_body.dump());
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+    auto req = build_post_request("/swarms/ping_test/v1", json_body.dump());
+    this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
 }
@@ -893,7 +920,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
-    const std::string sig_b64 = boost::beast::detail::base64_encode(raw_sig);
+    const std::string sig_b64 = util::base64_encode(raw_sig);
     request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
 
     attach_pubkey(request);
@@ -983,15 +1010,9 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     json_body["height"] = test_height;
     json_body["hash"] = item.hash;
 
-    auto req = make_post_request("/swarms/storage_test/v1", json_body.dump());
+    auto req = build_post_request("/swarms/storage_test/v1", json_body.dump());
 
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+    this->sign_request(req);
 
     make_sn_request(ioc_, testee, req,
                     [testee, item, height = this->block_height_,
@@ -1013,15 +1034,8 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
     json_body["height"] = test_height;
 
     auto req =
-        make_post_request("/swarms/blockchain_test/v1", json_body.dump());
-
-#ifndef DISABLE_SNODE_SIGNATURE
-    const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
-    attach_signature(req, signature);
-#else
-    attach_pubkey(req);
-#endif
+        build_post_request("/swarms/blockchain_test/v1", json_body.dump());
+    this->sign_request(req);
 
     make_sn_request(ioc_, testee, req,
                     std::bind(&ServiceNode::process_blockchain_test_response,
@@ -1478,24 +1492,29 @@ void ServiceNode::relay_messages(const std::vector<Message>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> data = serialize_messages(messages);
 
-#ifndef DISABLE_SNODE_SIGNATURE
+    LOKI_LOG(info, "Relayed messages:");
+    for (auto msg : messages) {
+        LOKI_LOG(info, "    {}", msg.data);
+    }
+    LOKI_LOG(info, "To Snodes:");
+    for (auto sn : snodes) {
+        LOKI_LOG(info, "    {}", sn);
+    }
+
     std::vector<signature> signatures;
     signatures.reserve(data.size());
     for (const auto& d : data) {
         const auto hash = hash_data(d);
         signatures.push_back(generate_signature(hash, lokid_key_pair_));
     }
-#endif
 
     std::vector<std::shared_ptr<request_t>> batches =
         make_batch_requests(std::move(data));
 
-#ifndef DISABLE_SNODE_SIGNATURE
     assert(batches.size() == signatures.size());
     for (size_t i = 0; i < batches.size(); ++i) {
         attach_signature(batches[i], signatures[i]);
     }
-#endif
 
     LOKI_LOG(debug, "Serialised batches: {}", data.size());
     for (const sn_record_t& sn : snodes) {
