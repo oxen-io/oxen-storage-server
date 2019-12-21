@@ -1,3 +1,26 @@
+loki-storage-server (1.0.9~pre2-1~ubuntu1804) bionic; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * Remove unused compile-time option for disabling signatures
+  * Fix base64 boost dependency
+  * Can specify lokid key as a command line option in integration tests only
+  * Incorporate new keys
+  * Add public ed25519 key derivation
+  * Address review comments
+  * Allow messenger clients to proxy to other snodes
+  * Add missing early return
+  * Allow messenger clients to proxy to Loki's file server
+  * Allow large requests for proxy
+  * Minor clean up
+  * Allow more frequent requests between service nodes. Bump version to 1.0.9
+  * Bug fixes
+  * Fix linux compilation
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 20 Dec 2019 20:53:55 -0400
+
 loki-storage-server (1.0.9~pre1-2~ubuntu1804) bionic; urgency=medium
 
   * Rediff patches
