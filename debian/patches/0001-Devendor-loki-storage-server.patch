@@ -90,7 +90,7 @@ index c9ad6f8..bc8d4e2 100644
  if (UNIX AND NOT APPLE)
      target_link_libraries(crypto PUBLIC pthread dl)
 diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index b84d2cf..e9ff3f9 100644
+index be94963..396bdd5 100644
 --- a/crypto/src/lokid_key.cpp
 +++ b/crypto/src/lokid_key.cpp
 @@ -1,8 +1,7 @@
@@ -104,7 +104,7 @@ index b84d2cf..e9ff3f9 100644
  
  #include <boost/filesystem.hpp>
  #include <boost/format.hpp>
-@@ -10,6 +9,7 @@ extern "C" {
+@@ -12,6 +11,7 @@ extern "C" {
  #include <exception>
  #include <fstream>
  #include <iterator>
@@ -112,10 +112,10 @@ index b84d2cf..e9ff3f9 100644
  
  namespace fs = boost::filesystem;
  
-@@ -29,11 +29,12 @@ private_key_t lokidKeyFromHex(const std::string& private_key_hex) {
+@@ -47,11 +47,12 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
  }
  
- public_key_t calcPublicKey(const private_key_t& private_key) {
+ public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
 -    ge25519_p3 A;
 -    ge25519_scalarmult_base(&A, private_key.data());
 +    crypto::secret_key sec_key;
@@ -130,7 +130,7 @@ index b84d2cf..e9ff3f9 100644
  }
  
 diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
-index a8b50f3..b5a8ca6 100644
+index 4efee3e..d2ccf3b 100644
 --- a/crypto/src/signature.cpp
 +++ b/crypto/src/signature.cpp
 @@ -2,8 +2,8 @@
@@ -143,7 +143,7 @@ index a8b50f3..b5a8ca6 100644
 +#include "loki-core/crypto/hash-ops.h"
  }
  
- #include <boost/beast/core/detail/base64.hpp>
+ #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
 index ecd3dae..3e3c215 100644
 --- a/httpserver/CMakeLists.txt
