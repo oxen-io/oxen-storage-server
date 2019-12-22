@@ -142,8 +142,8 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
 
-static bool validateHexKey(const std::string& key) {
-    return key.size() == 2 * loki::KEY_LENGTH &&
+static bool validateHexKey(const std::string& key, const size_t key_length = loki::KEY_LENGTH) {
+    return key.size() == 2 * key_length &&
            std::all_of(key.begin(), key.end(), [](char c) {
                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
            });
@@ -170,7 +170,7 @@ LokidClient::wait_for_privkey() {
                 const auto &legacy_privkey = r.at("result").at("service_node_privkey").get_ref<const std::string &>();
                 const auto &privkey_ed = r.at("result").at("service_node_ed25519_privkey").get_ref<const std::string &>();
                 const auto &privkey_x = r.at("result").at("service_node_x25519_privkey").get_ref<const std::string &>();
-                if (!validateHexKey(legacy_privkey) || !validateHexKey(privkey_ed) || !validateHexKey(privkey_x))
+                if (!validateHexKey(legacy_privkey) || !validateHexKey(privkey_ed, private_key_ed25519_t::LENGTH) || !validateHexKey(privkey_x))
                     throw std::runtime_error("returned value is not hex");
                 else {
                     private_key = loki::lokidKeyFromHex(legacy_privkey);
