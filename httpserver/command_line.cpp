@@ -27,13 +27,14 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
+        ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
         ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
         ("help", po::bool_switch(&options_.print_help),"Shows this help message");
         // Add hidden ip and port options.  You technically can use the `--ip=` and `--port=` with
         // these here, but they are meant to be positional.  More usefully, you can specify `ip=`
         // and `port=` in the config file to specify them.
     hidden.add_options()
-        ("ip", po::value(&options_.ip), "IP to listen on")
+        ("ip", po::value<std::string>(), "(unused)")
         ("port", po::value(&options_.port), "Port to listen on")
         ("lokid-key", po::value(&options_.lokid_key), "Legacy secret key (test only)")
         ("lokid-x25519-key", po::value(&options_.lokid_x25519_key), "x25519 secret key (test only)")
