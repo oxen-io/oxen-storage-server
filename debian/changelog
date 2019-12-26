@@ -1,3 +1,14 @@
+loki-storage-server (1.0.9-1~ubuntu1804) bionic; urgency=medium
+
+  [ Jason Rhinelander ]
+  * local boost update
+  * Fix length validation for ed25519 key
+
+  [ Maxim Shishmarev ]
+  * Bind to 0.0.0.0 by default
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Thu, 26 Dec 2019 17:27:56 -0400
+
 loki-storage-server (1.0.9~pre2-1~ubuntu1804) bionic; urgency=medium
 
   [ Maxim Shishmarev ]
