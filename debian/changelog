@@ -1,3 +1,9 @@
+loki-storage-server (1.0.9-2~deb10) buster; urgency=medium
+
+  * Add testnet option to testnet storage conf
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 28 Dec 2019 15:45:40 -0400
+
 loki-storage-server (1.0.9-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
