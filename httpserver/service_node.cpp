@@ -217,8 +217,15 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     block_update_t bu;
 
     try {
-        const json service_node_states =
-            body.at("result").at("service_node_states");
+        const auto& result = body.at("result");
+        bu.height = result.at("height").get<uint64_t>();
+        bu.block_hash = result.at("block_hash").get<std::string>();
+        bu.hardfork = result.at("hardfork").get<int>();
+        bu.unchanged = result.count("unchanged") && result.at("unchanged").get<bool>();
+        if (bu.unchanged)
+            return bu;
+
+        const json service_node_states = result.at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
             const auto& pubkey =
@@ -258,10 +265,6 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
                 swarm_map[swarm_id].push_back(sn);
             }
         }
-
-        bu.height = body.at("result").at("height").get<uint64_t>();
-        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
-        bu.hardfork = body.at("result").at("hardfork").get<int>();
 
     } catch (...) {
         LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
@@ -708,6 +711,7 @@ void ServiceNode::swarm_timer_tick() {
     fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
+    params["poll_block_hash"] = block_hash_;
 
     params["active_only"] = false;
 
@@ -716,7 +720,8 @@ void ServiceNode::swarm_timer_tick() {
             if (res.error_code == SNodeError::NO_ERROR) {
                 try {
                     const block_update_t bu = parse_swarm_update(res.body);
-                    on_swarm_update(bu);
+                    if (!bu.unchanged)
+                        on_swarm_update(bu);
                 } catch (const std::exception& e) {
                     LOKI_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
