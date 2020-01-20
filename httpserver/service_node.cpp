@@ -1286,10 +1286,7 @@ bool ServiceNode::select_random_message(Item& item) {
 
     // SNodes don't have to agree on this, rather they should use different
     // messages
-    const uint64_t seed =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    std::mt19937_64 mt(seed);
-    const auto msg_idx = util::uniform_distribution_portable(mt, message_count);
+    const auto msg_idx = util::uniform_distribution_portable(message_count);
 
     if (!db_->retrieve_by_index(msg_idx, item)) {
         LOKI_LOG(error, "Could not retrieve message by index: {}", msg_idx);
@@ -1366,14 +1363,7 @@ void ServiceNode::initiate_peer_test() {
 
         bc_test_params_t params;
         params.max_height = block_height_ - SAFETY_BUFFER_BLOCKS;
-
-        const uint64_t rng_seed = std::chrono::high_resolution_clock::now()
-                                      .time_since_epoch()
-                                      .count();
-
-        // TODO: This is slow, fix it!
-        std::mt19937_64 mt(rng_seed);
-        params.seed = mt();
+        params.seed = util::rng()();
 
         auto callback =
             std::bind(&ServiceNode::send_blockchain_test_req, this, testee,

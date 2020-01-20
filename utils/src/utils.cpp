@@ -134,10 +134,13 @@ bool parseTTL(const std::string& ttlString, uint64_t& ttl) {
     return true;
 }
 
-uint64_t uniform_distribution_portable(uint64_t n) {
+std::mt19937_64& rng() {
+    static thread_local std::mt19937_64 generator{std::random_device{}()};
+    return generator;
+}
 
-    static thread_local std::mt19937_64 generator;
-    return uniform_distribution_portable(generator, n);
+uint64_t uniform_distribution_portable(uint64_t n) {
+    return uniform_distribution_portable(rng(), n);
 }
 
 uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
