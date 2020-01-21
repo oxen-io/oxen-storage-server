@@ -553,13 +553,13 @@ void connection_t::process_proxy_req() {
     // print_headers(req);
 #endif
 
-    delay_response_ = true;
-
     if (!parse_header(LOKI_SENDER_KEY_HEADER,
                       LOKI_TARGET_SNODE_KEY)) {
         LOKI_LOG(debug, "Missing headers for a proxy request");
         return;
     }
+
+    delay_response_ = true;
 
     const auto& sender_key = header_[LOKI_SENDER_KEY_HEADER];
     const auto& target_snode_key = header_[LOKI_TARGET_SNODE_KEY];
