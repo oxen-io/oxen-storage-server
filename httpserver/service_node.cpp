@@ -298,11 +298,13 @@ void ServiceNode::bootstrap_data() {
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
     if (loki::is_mainnet()) {
-        seed_nodes = {{{"storage.seed1.loki.network", 22023},
+        seed_nodes = {{{"public.loki.foundation", 38157},
+                       {"storage.seed1.loki.network", 22023},
                        {"storage.seed2.loki.network", 38157},
                        {"imaginary.stream", 38157}}};
     } else {
-        seed_nodes = {{{"storage.testnetseed1.loki.network", 38157}}};
+        seed_nodes = {{{"public.loki.foundation", 38157},
+                       {"storage.testnetseed1.loki.network", 38157}}};
     }
 
     auto req_counter = std::make_shared<int>(0);
@@ -769,14 +771,14 @@ void ServiceNode::ping_peers_tick() {
     if (random_node) {
 
         if (random_node == our_address_) {
-            LOKI_LOG(debug, "Would test our own node, skipping");
+            LOKI_LOG(trace, "Would test our own node, skipping");
         } else {
-            LOKI_LOG(debug, "Selected random node for testing: {}",
+            LOKI_LOG(trace, "Selected random node for testing: {}",
                      (*random_node).pub_key_hex());
             test_reachability(*random_node);
         }
     } else {
-        LOKI_LOG(debug, "No nodes to test for reachability");
+        LOKI_LOG(trace, "No nodes to test for reachability");
     }
 
     // TODO: there is an edge case where SS reported some offending
@@ -1176,7 +1178,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        LOKI_LOG(debug, "Could not initiate peer test: swarm too small");
+        LOKI_LOG(trace, "Could not initiate peer test: swarm too small");
         return false;
     }
 
