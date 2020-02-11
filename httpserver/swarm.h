@@ -29,7 +29,11 @@ struct block_update_t {
     uint64_t height;
     std::string block_hash;
     int hardfork;
+    bool unchanged = false;
 };
+
+
+void debug_print(std::ostream& os, const block_update_t& bu);
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk);
@@ -99,8 +103,14 @@ class Swarm {
     // no other nodes
     boost::optional<sn_record_t> choose_funded_node() const;
 
+    // TEMPORARY (TODO: change to finding by x25519 PK)
+    boost::optional<sn_record_t> find_node_by_port(uint16_t port) const;
+
     // Get the node with public key `pk` if exists
     boost::optional<sn_record_t> get_node_by_pk(const sn_pub_key_t& pk) const;
+
+    boost::optional<sn_record_t>
+    find_node_by_ed25519_pk(const sn_pub_key_t& address) const;
 };
 
 } // namespace loki

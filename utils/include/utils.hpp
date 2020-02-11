@@ -36,6 +36,10 @@ static const std::unordered_map<char, uint8_t> zbase32_reverse_alpha = {
     {'i', 21}, {'s', 22}, {'z', 23}, {'a', 24}, {'3', 25}, {'4', 26}, {'5', 27},
     {'h', 28}, {'7', 29}, {'6', 30}, {'9', 31}};
 
+std::string base64_decode(std::string const& data);
+
+std::string base64_encode(std::string const& s);
+
 /// adapted from i2pd
 template <typename Container, typename stack_t>
 const char* base32z_encode(const Container& value, stack_t& stack) {
@@ -134,7 +138,10 @@ inline std::string as_hex(const String &s) {
     return as_hex(begin(s), end(s));
 }
 
-/// Returns a random number from [0, n) using a static generator
+/// Returns a reference to a randomly seeded, thread-local RNG.
+std::mt19937_64& rng();
+
+/// Returns a random number from [0, n) using `rng()`
 uint64_t uniform_distribution_portable(uint64_t n);
 
 /// Returns a random number from [0, n); (copied from lokid)
