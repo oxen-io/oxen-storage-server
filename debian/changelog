@@ -1,3 +1,9 @@
+loki-storage-server (1.0.9-4.1) unstable; urgency=medium
+
+  * Fix fmt linking error on debian sid
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 26 Feb 2020 19:20:34 -0400
+
 loki-storage-server (1.0.9-4) unstable; urgency=medium
 
   * Add missing pkg-config dep
