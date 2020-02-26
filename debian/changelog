@@ -1,3 +1,9 @@
+loki-storage-server (1.0.9-4~deb10) buster; urgency=medium
+
+  * Add missing pkg-config dep
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 26 Feb 2020 16:49:49 -0400
+
 loki-storage-server (1.0.9-3~deb10) buster; urgency=medium
 
   * Add systemd notify support
