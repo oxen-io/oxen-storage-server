@@ -1,9 +1,10 @@
 loki-storage-server (1.0.9-3) unstable; urgency=medium
 
+  * Fix spdlog compatibility
   * Add systemd notify support
   * Change service files to Type=notify with watchdog
 
- -- Jason Rhinelander <jason@imaginary.ca>  Wed, 26 Feb 2020 14:13:41 -0400
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 26 Feb 2020 15:45:41 -0400
 
 loki-storage-server (1.0.9-2) unstable; urgency=medium
 
