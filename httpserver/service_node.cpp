@@ -1606,6 +1606,27 @@ std::string ServiceNode::get_stats() const {
     return val.dump(indent);
 }
 
+std::string ServiceNode::get_status_line() const {
+    // This produces a short, single-line status string, used when running as a systemd Type=notify
+    // service to update the service Status line.  The status message has to be fairly short: has to
+    // fit on one line, and if it's too long systemd just truncates it when displaying it.
+    std::ostringstream s;
+    s << 'v' << STORAGE_SERVER_VERSION_STRING;
+    if (!loki::is_mainnet()) s << " (TESTNET)";
+
+    if (!swarm_ || !swarm_->is_valid())
+        s << "; NO SWARM";
+    if (syncing_)
+        s << "; SYNCING";
+    uint64_t total_stored;
+    if (db_->get_message_count(total_stored))
+        s << "; " << total_stored << " msgs";
+    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/' << all_stats_.get_total_retrieve_requests();
+    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/' << get_net_stats().http_connections_out <<
+        '/' << get_net_stats().https_connections_out;
+    return s.str();
+}
+
 int ServiceNode::get_curr_pow_difficulty() const {
     return curr_pow_difficulty_.difficulty;
 }

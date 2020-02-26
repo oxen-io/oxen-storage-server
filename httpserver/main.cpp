@@ -17,6 +17,12 @@
 #include <iostream>
 #include <vector>
 
+#ifdef ENABLE_SYSTEMD
+extern "C" {
+#include <systemd/sd-daemon.h>
+}
+#endif
+
 namespace fs = boost::filesystem;
 
 static boost::optional<fs::path> get_home_dir() {
@@ -32,6 +38,15 @@ static boost::optional<fs::path> get_home_dir() {
 
     return fs::path(pszHome);
 }
+
+#ifdef ENABLE_SYSTEMD
+static void systemd_watchdog_tick(boost::asio::steady_timer &timer, const loki::ServiceNode& sn) {
+    using namespace std::literals;
+    sd_notify(0, ("WATCHDOG=1\nSTATUS=" + sn.get_status_line()).c_str());
+    timer.expires_after(10s);
+    timer.async_wait([&](const boost::system::error_code&) { systemd_watchdog_tick(timer, sn); });
+}
+#endif
 
 constexpr int EXIT_INVALID_PORT = 2;
 
@@ -181,6 +196,12 @@ int main(int argc, char* argv[]) {
         RateLimiter rate_limiter;
 
         loki::Security security(lokid_key_pair, options.data_dir);
+
+#ifdef ENABLE_SYSTEMD
+        sd_notify(0, "READY=1");
+        boost::asio::steady_timer systemd_watchdog_timer(ioc);
+        systemd_watchdog_tick(systemd_watchdog_timer, service_node);
+#endif
 
         /// Should run http server
         loki::http_server::run(ioc, options.ip, options.port, options.data_dir,
