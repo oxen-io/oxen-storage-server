@@ -1,2 +1,3 @@
 0001-Devendor-loki-storage-server.patch
 0002-Add-systemd-notify-support.patch
+0003-Fix-spdlog-compatibility.patch
