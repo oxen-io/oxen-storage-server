@@ -7,16 +7,17 @@ Subject: Fix fmt linking
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 8958fd9..5861f30 100644
+index 8958fd9..92e4137 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -23,7 +23,8 @@ set_property(TARGET common PROPERTY CXX_STANDARD 14)
+@@ -22,8 +22,9 @@ find_package(Boost
+ set_property(TARGET common PROPERTY CXX_STANDARD 14)
  
  find_package(spdlog)
++find_package(fmt)
  
 -target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
-+target_link_libraries(common PUBLIC spdlog::spdlog_header_only ${Boost_LIBRARIES})
-+target_compile_definitions(common PUBLIC FMT_HEADER_ONLY)
++target_link_libraries(common PUBLIC spdlog::spdlog fmt::fmt ${Boost_LIBRARIES})
  target_include_directories(common PUBLIC
      ${CMAKE_CURRENT_LIST_DIR}/include
      ${Boost_INCLUDE_DIRS}
