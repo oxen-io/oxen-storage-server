@@ -1,0 +1,25 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Wed, 26 Feb 2020 19:42:37 -0400
+Subject: Revert to vendored spd until debian sid is fixed
+
+---
+ common/CMakeLists.txt | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
+index 92e4137..014d61e 100644
+--- a/common/CMakeLists.txt
++++ b/common/CMakeLists.txt
+@@ -21,10 +21,9 @@ find_package(Boost
+ 
+ set_property(TARGET common PROPERTY CXX_STANDARD 14)
+ 
+-find_package(spdlog)
+-find_package(fmt)
++loki_add_subdirectory(../vendors/spdlog spdlog)
+ 
+-target_link_libraries(common PUBLIC spdlog::spdlog fmt::fmt ${Boost_LIBRARIES})
++target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
+ target_include_directories(common PUBLIC
+     ${CMAKE_CURRENT_LIST_DIR}/include
+     ${Boost_INCLUDE_DIRS}
