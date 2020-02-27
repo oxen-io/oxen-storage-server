@@ -1614,10 +1614,19 @@ std::string ServiceNode::get_status_line() const {
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
     if (!loki::is_mainnet()) s << " (TESTNET)";
 
-    if (!swarm_ || !swarm_->is_valid())
-        s << "; NO SWARM";
     if (syncing_)
         s << "; SYNCING";
+    s << "; sw=";
+    if (!swarm_ || !swarm_->is_valid())
+        s << "NONE";
+    else {
+        std::string swarm = std::to_string(swarm_->our_swarm_id());
+        if (swarm.size() <= 6)
+            s << swarm;
+        else
+            s << swarm.substr(0, 4) << u8"…" << swarm.back();
+        s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
+    }
     uint64_t total_stored;
     if (db_->get_message_count(total_stored))
         s << "; " << total_stored << " msgs";
