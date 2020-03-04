@@ -293,6 +293,8 @@ void ServiceNode::bootstrap_data() {
     fields["block_hash"] = true;
     fields["hardfork"] = true;
     fields["funded"] = true;
+    fields["pubkey_x25519"] = true;
+    fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
 
@@ -580,18 +582,26 @@ void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
-    // Print block update
-    // debug_print(std::cerr, bu);
-
     hardfork_ = bu.hardfork;
 
-    if (syncing_ && target_height_ != 0) {
-        syncing_ = bu.height < target_height_;
+    if (syncing_) {
+        if (target_height_ == 0) {
+            // If we are here, the probably means we were never able to contact
+            // any seed, so the bast we can do is to assume we are synced
+            // (this shouldn't be necessary as we do the same when all requests
+            //  fail, but it won't hurt either)
+            LOKI_LOG(info, "Target height is 0, assuming we are synced");
+
+            syncing_ = false;
+        } else {
+            syncing_ = bu.height < target_height_;
+        }
     }
 
     /// We don't have anything to do until we have synced
     if (syncing_) {
         LOKI_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
+        // Note that because we are still syncing, we won't update our swarm id
         return;
     }
 
