@@ -85,4 +85,22 @@ message(STATUS "using git commit hash ${SHORT_HASH}")
 message(STATUS "using UTC build time ${BUILD_TIME}")
 target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="${SHORT_HASH}")
 target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
+
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(SYSTEMD libsystemd)
+    # Default ENABLE_SYSTEMD to true if we found it
+    option(ENABLE_SYSTEMD "enable systemd integration for sd_notify" ${SYSTEMD_FOUND})
+
+    if(ENABLE_SYSTEMD)
+        if(NOT SYSTEMD_FOUND)
+            message(FATAL_ERROR "libsystemd not found")
+        endif()
+        target_compile_definitions(httpserver PRIVATE ENABLE_SYSTEMD)
+        target_include_directories(httpserver PRIVATE ${SYSTEMD_INCLUDE_DIRS})
+        target_link_libraries(httpserver PRIVATE ${SYSTEMD_LIBRARIES})
+    endif()
+endif()
+
+
 #
