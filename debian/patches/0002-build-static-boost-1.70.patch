@@ -57,7 +57,7 @@ index bc8d4e2..a4e7667 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 3e3c215..34dc65f 100644
+index 659a0fc..a06cdb7 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
 @@ -45,13 +45,7 @@ loki_add_subdirectory(../pow pow)

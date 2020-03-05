@@ -118,10 +118,10 @@ index 4efee3e..d2ccf3b 100644
  
  #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index ecd3dae..3e3c215 100644
+index 0042fce..659a0fc 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -74,15 +74,8 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+@@ -74,16 +74,9 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
@@ -137,7 +137,8 @@ index ecd3dae..3e3c215 100644
 -target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="${SHORT_HASH}")
 +target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="deb-${LOKISS_VERSION_TAG}")
  target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
- #
+ 
+ find_package(PkgConfig QUIET)
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
 index 8ddd6fe..ee7c7a1 100644
 --- a/storage/CMakeLists.txt
