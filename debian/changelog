@@ -1,3 +1,26 @@
+loki-storage-server (1.0.10-1~ubuntu1804) bionic; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Use get_n_service_node's poll_block_hash for swam updates
+  * RNG optimizations
+
+  [ Maxim Shishmarev ]
+  * Fix not responding immediately on proxy request
+  * Update seed nodes
+  * Increase message size limit to 100KB
+
+  [ Jason Rhinelander ]
+  * Add systemd notify support
+  * Fix spdlog compatibility
+  * Add swarmid & size to systemd Status line
+
+  [ Maxim Shishmarev ]
+  * Fix incorrect requests to seed nodes
+  * Update spdlog submodule
+  * Bump version to 1.0.10
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 04 Mar 2020 20:07:26 -0400
+
 loki-storage-server (1.0.9-4~ubuntu1804) bionic; urgency=medium
 
   * Add missing pkg-config dep
