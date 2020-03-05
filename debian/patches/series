@@ -1,5 +1,1 @@
 0001-Devendor-loki-storage-server.patch
-0002-Add-systemd-notify-support.patch
-0003-Fix-spdlog-compatibility.patch
-0004-Fix-fmt-linking.patch
-0005-Revert-to-vendored-spd-until-debian-sid-is-fixed.patch
