@@ -54,7 +54,7 @@ constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 // corresponds to the client-side limit of 2000 chars
 // of unencrypted message body in our experiments
 // (rounded up)
-constexpr size_t MAX_MESSAGE_BODY = 3100;
+constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit;
 
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data) {

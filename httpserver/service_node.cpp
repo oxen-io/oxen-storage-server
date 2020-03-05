@@ -293,6 +293,8 @@ void ServiceNode::bootstrap_data() {
     fields["block_hash"] = true;
     fields["hardfork"] = true;
     fields["funded"] = true;
+    fields["pubkey_x25519"] = true;
+    fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
 
@@ -580,18 +582,26 @@ void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
-    // Print block update
-    // debug_print(std::cerr, bu);
-
     hardfork_ = bu.hardfork;
 
-    if (syncing_ && target_height_ != 0) {
-        syncing_ = bu.height < target_height_;
+    if (syncing_) {
+        if (target_height_ == 0) {
+            // If we are here, the probably means we were never able to contact
+            // any seed, so the bast we can do is to assume we are synced
+            // (this shouldn't be necessary as we do the same when all requests
+            //  fail, but it won't hurt either)
+            LOKI_LOG(info, "Target height is 0, assuming we are synced");
+
+            syncing_ = false;
+        } else {
+            syncing_ = bu.height < target_height_;
+        }
     }
 
     /// We don't have anything to do until we have synced
     if (syncing_) {
         LOKI_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
+        // Note that because we are still syncing, we won't update our swarm id
         return;
     }
 
@@ -1604,6 +1614,36 @@ std::string ServiceNode::get_stats() const {
     constexpr bool PRETTY = true;
     constexpr int indent = PRETTY ? 4 : 0;
     return val.dump(indent);
+}
+
+std::string ServiceNode::get_status_line() const {
+    // This produces a short, single-line status string, used when running as a systemd Type=notify
+    // service to update the service Status line.  The status message has to be fairly short: has to
+    // fit on one line, and if it's too long systemd just truncates it when displaying it.
+    std::ostringstream s;
+    s << 'v' << STORAGE_SERVER_VERSION_STRING;
+    if (!loki::is_mainnet()) s << " (TESTNET)";
+
+    if (syncing_)
+        s << "; SYNCING";
+    s << "; sw=";
+    if (!swarm_ || !swarm_->is_valid())
+        s << "NONE";
+    else {
+        std::string swarm = std::to_string(swarm_->our_swarm_id());
+        if (swarm.size() <= 6)
+            s << swarm;
+        else
+            s << swarm.substr(0, 4) << u8"…" << swarm.back();
+        s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
+    }
+    uint64_t total_stored;
+    if (db_->get_message_count(total_stored))
+        s << "; " << total_stored << " msgs";
+    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/' << all_stats_.get_total_retrieve_requests();
+    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/' << get_net_stats().http_connections_out <<
+        '/' << get_net_stats().https_connections_out;
+    return s.str();
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {
