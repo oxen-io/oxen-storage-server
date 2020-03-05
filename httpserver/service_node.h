@@ -311,6 +311,8 @@ class ServiceNode {
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
     std::string get_stats() const;
+
+    std::string get_status_line() const;
 };
 
 } // namespace loki

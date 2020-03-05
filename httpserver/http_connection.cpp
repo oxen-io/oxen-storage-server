@@ -54,7 +54,7 @@ constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 // corresponds to the client-side limit of 2000 chars
 // of unencrypted message body in our experiments
 // (rounded up)
-constexpr size_t MAX_MESSAGE_BODY = 3100;
+constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit;
 
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data) {
@@ -553,13 +553,13 @@ void connection_t::process_proxy_req() {
     // print_headers(req);
 #endif
 
-    delay_response_ = true;
-
     if (!parse_header(LOKI_SENDER_KEY_HEADER,
                       LOKI_TARGET_SNODE_KEY)) {
         LOKI_LOG(debug, "Missing headers for a proxy request");
         return;
     }
+
+    delay_response_ = true;
 
     const auto& sender_key = header_[LOKI_SENDER_KEY_HEADER];
     const auto& target_snode_key = header_[LOKI_TARGET_SNODE_KEY];
