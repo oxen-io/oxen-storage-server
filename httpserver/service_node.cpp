@@ -217,8 +217,15 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     block_update_t bu;
 
     try {
-        const json service_node_states =
-            body.at("result").at("service_node_states");
+        const auto& result = body.at("result");
+        bu.height = result.at("height").get<uint64_t>();
+        bu.block_hash = result.at("block_hash").get<std::string>();
+        bu.hardfork = result.at("hardfork").get<int>();
+        bu.unchanged = result.count("unchanged") && result.at("unchanged").get<bool>();
+        if (bu.unchanged)
+            return bu;
+
+        const json service_node_states = result.at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
             const auto& pubkey =
@@ -259,10 +266,6 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             }
         }
 
-        bu.height = body.at("result").at("height").get<uint64_t>();
-        bu.block_hash = body.at("result").at("block_hash").get<std::string>();
-        bu.hardfork = body.at("result").at("hardfork").get<int>();
-
     } catch (...) {
         LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
         LOKI_LOG(critical, "Bad lokid rpc response: invalid json fields");
@@ -290,16 +293,20 @@ void ServiceNode::bootstrap_data() {
     fields["block_hash"] = true;
     fields["hardfork"] = true;
     fields["funded"] = true;
+    fields["pubkey_x25519"] = true;
+    fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
     if (loki::is_mainnet()) {
-        seed_nodes = {{{"storage.seed1.loki.network", 22023},
+        seed_nodes = {{{"public.loki.foundation", 38157},
+                       {"storage.seed1.loki.network", 22023},
                        {"storage.seed2.loki.network", 38157},
                        {"imaginary.stream", 38157}}};
     } else {
-        seed_nodes = {{{"storage.testnetseed1.loki.network", 38157}}};
+        seed_nodes = {{{"public.loki.foundation", 38157},
+                       {"storage.testnetseed1.loki.network", 38157}}};
     }
 
     auto req_counter = std::make_shared<int>(0);
@@ -526,6 +533,7 @@ void ServiceNode::process_proxy_req(const std::string& req_body,
 
     if (!sn) {
         LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode);
+        on_proxy_response(sn_response_t{SNodeError::ERROR_OTHER, nullptr, boost::none});
         return;
     }
 
@@ -574,18 +582,26 @@ void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
 
-    // Print block update
-    // debug_print(std::cerr, bu);
-
     hardfork_ = bu.hardfork;
 
-    if (syncing_ && target_height_ != 0) {
-        syncing_ = bu.height < target_height_;
+    if (syncing_) {
+        if (target_height_ == 0) {
+            // If we are here, the probably means we were never able to contact
+            // any seed, so the bast we can do is to assume we are synced
+            // (this shouldn't be necessary as we do the same when all requests
+            //  fail, but it won't hurt either)
+            LOKI_LOG(info, "Target height is 0, assuming we are synced");
+
+            syncing_ = false;
+        } else {
+            syncing_ = bu.height < target_height_;
+        }
     }
 
     /// We don't have anything to do until we have synced
     if (syncing_) {
         LOKI_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
+        // Note that because we are still syncing, we won't update our swarm id
         return;
     }
 
@@ -708,6 +724,7 @@ void ServiceNode::swarm_timer_tick() {
     fields["pubkey_ed25519"] = true;
 
     params["fields"] = fields;
+    params["poll_block_hash"] = block_hash_;
 
     params["active_only"] = false;
 
@@ -716,7 +733,8 @@ void ServiceNode::swarm_timer_tick() {
             if (res.error_code == SNodeError::NO_ERROR) {
                 try {
                     const block_update_t bu = parse_swarm_update(res.body);
-                    on_swarm_update(bu);
+                    if (!bu.unchanged)
+                        on_swarm_update(bu);
                 } catch (const std::exception& e) {
                     LOKI_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
@@ -763,14 +781,14 @@ void ServiceNode::ping_peers_tick() {
     if (random_node) {
 
         if (random_node == our_address_) {
-            LOKI_LOG(debug, "Would test our own node, skipping");
+            LOKI_LOG(trace, "Would test our own node, skipping");
         } else {
-            LOKI_LOG(debug, "Selected random node for testing: {}",
+            LOKI_LOG(trace, "Selected random node for testing: {}",
                      (*random_node).pub_key_hex());
             test_reachability(*random_node);
         }
     } else {
-        LOKI_LOG(debug, "No nodes to test for reachability");
+        LOKI_LOG(trace, "No nodes to test for reachability");
     }
 
     // TODO: there is an edge case where SS reported some offending
@@ -1170,7 +1188,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        LOKI_LOG(debug, "Could not initiate peer test: swarm too small");
+        LOKI_LOG(trace, "Could not initiate peer test: swarm too small");
         return false;
     }
 
@@ -1286,10 +1304,7 @@ bool ServiceNode::select_random_message(Item& item) {
 
     // SNodes don't have to agree on this, rather they should use different
     // messages
-    const uint64_t seed =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    std::mt19937_64 mt(seed);
-    const auto msg_idx = util::uniform_distribution_portable(mt, message_count);
+    const auto msg_idx = util::uniform_distribution_portable(message_count);
 
     if (!db_->retrieve_by_index(msg_idx, item)) {
         LOKI_LOG(error, "Could not retrieve message by index: {}", msg_idx);
@@ -1366,14 +1381,7 @@ void ServiceNode::initiate_peer_test() {
 
         bc_test_params_t params;
         params.max_height = block_height_ - SAFETY_BUFFER_BLOCKS;
-
-        const uint64_t rng_seed = std::chrono::high_resolution_clock::now()
-                                      .time_since_epoch()
-                                      .count();
-
-        // TODO: This is slow, fix it!
-        std::mt19937_64 mt(rng_seed);
-        params.seed = mt();
+        params.seed = util::rng()();
 
         auto callback =
             std::bind(&ServiceNode::send_blockchain_test_req, this, testee,
@@ -1606,6 +1614,36 @@ std::string ServiceNode::get_stats() const {
     constexpr bool PRETTY = true;
     constexpr int indent = PRETTY ? 4 : 0;
     return val.dump(indent);
+}
+
+std::string ServiceNode::get_status_line() const {
+    // This produces a short, single-line status string, used when running as a systemd Type=notify
+    // service to update the service Status line.  The status message has to be fairly short: has to
+    // fit on one line, and if it's too long systemd just truncates it when displaying it.
+    std::ostringstream s;
+    s << 'v' << STORAGE_SERVER_VERSION_STRING;
+    if (!loki::is_mainnet()) s << " (TESTNET)";
+
+    if (syncing_)
+        s << "; SYNCING";
+    s << "; sw=";
+    if (!swarm_ || !swarm_->is_valid())
+        s << "NONE";
+    else {
+        std::string swarm = std::to_string(swarm_->our_swarm_id());
+        if (swarm.size() <= 6)
+            s << swarm;
+        else
+            s << swarm.substr(0, 4) << u8"…" << swarm.back();
+        s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
+    }
+    uint64_t total_stored;
+    if (db_->get_message_count(total_stored))
+        s << "; " << total_stored << " msgs";
+    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/' << all_stats_.get_total_retrieve_requests();
+    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/' << get_net_stats().http_connections_out <<
+        '/' << get_net_stats().https_connections_out;
+    return s.str();
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {
