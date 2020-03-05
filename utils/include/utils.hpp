@@ -138,7 +138,10 @@ inline std::string as_hex(const String &s) {
     return as_hex(begin(s), end(s));
 }
 
-/// Returns a random number from [0, n) using a static generator
+/// Returns a reference to a randomly seeded, thread-local RNG.
+std::mt19937_64& rng();
+
+/// Returns a random number from [0, n) using `rng()`
 uint64_t uniform_distribution_portable(uint64_t n);
 
 /// Returns a random number from [0, n); (copied from lokid)
