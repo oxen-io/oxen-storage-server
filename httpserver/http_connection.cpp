@@ -1,7 +1,7 @@
 #include "http_connection.h"
 #include "Database.hpp"
 #include "Item.hpp"
-#include "channel_encryption.hpp"
+
 #include "dev_sink.h"
 #include "net_stats.h"
 #include "rate_limiter.h"
@@ -14,6 +14,8 @@
 
 // needed for proxy requests
 #include "https_client.h"
+
+#include "request_handler.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -47,14 +49,6 @@ using error_code = boost::system::error_code;
 namespace loki {
 
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
-
-// Note: on the client side the limit is different
-// as it is not encrypted/encoded there yet.
-// The choice is somewhat arbitrary but it roughly
-// corresponds to the client-side limit of 2000 chars
-// of unencrypted message body in our experiments
-// (rounded up)
-constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit;
 
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data) {
@@ -204,8 +198,7 @@ namespace http_server {
 static void
 accept_connection(boost::asio::io_context& ioc,
                   boost::asio::ssl::context& ssl_ctx, tcp::acceptor& acceptor,
-                  ServiceNode& sn,
-                  ChannelEncryption<std::string>& channel_encryption,
+                  ServiceNode& sn, RequestHandler& rh,
                   RateLimiter& rate_limiter, const Security& security) {
 
     static boost::asio::steady_timer acceptor_timer(ioc);
@@ -216,12 +209,11 @@ accept_connection(boost::asio::io_context& ioc,
         if (!ec) {
 
             std::make_shared<connection_t>(ioc, ssl_ctx, std::move(socket), sn,
-                                           channel_encryption, rate_limiter,
-                                           security)
+                                           rh, rate_limiter, security)
                 ->start();
 
-            accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                              rate_limiter, security);
+            accept_connection(ioc, ssl_ctx, acceptor, sn, rh, rate_limiter,
+                              security);
         } else {
 
             // TODO: remove this once we confirmed that there is
@@ -248,16 +240,15 @@ accept_connection(boost::asio::io_context& ioc,
                     abort();
                 }
 
-                accept_connection(ioc, ssl_ctx, acceptor, sn,
-                                  channel_encryption, rate_limiter, security);
+                accept_connection(ioc, ssl_ctx, acceptor, sn, rh, rate_limiter,
+                                  security);
             });
         }
     });
 }
 
 void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const boost::filesystem::path& base_path, ServiceNode& sn,
-         ChannelEncryption<std::string>& channel_encryption,
+         const boost::filesystem::path& base_path, ServiceNode& sn, RequestHandler& rh,
          RateLimiter& rate_limiter, Security& security) {
 
     LOKI_LOG(trace, "http server run");
@@ -273,8 +264,7 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
 
     security.generate_cert_signature();
 
-    accept_connection(ioc, ssl_ctx, acceptor, sn, channel_encryption,
-                      rate_limiter, security);
+    accept_connection(ioc, ssl_ctx, acceptor, sn, rh, rate_limiter, security);
 
     ioc.run();
 }
@@ -283,12 +273,11 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
 
 connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                            tcp::socket socket, ServiceNode& sn,
-                           ChannelEncryption<std::string>& channel_encryption,
-                           RateLimiter& rate_limiter, const Security& security)
+                           RequestHandler& rh, RateLimiter& rate_limiter,
+                           const Security& security)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
-      stream_(socket_, ssl_ctx_), service_node_(sn),
-      channel_cipher_(channel_encryption), rate_limiter_(rate_limiter),
-      repeat_timer_(ioc),
+      stream_(socket_, ssl_ctx_), service_node_(sn), request_handler_(rh),
+      rate_limiter_(rate_limiter), repeat_timer_(ioc),
       deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{boost::none},
       security_(security) {
 
@@ -543,6 +532,60 @@ static void print_headers(const request_t& req) {
     }
 }
 
+void connection_t::process_onion_req() {
+
+    LOKI_LOG(debug, "Processing an onion request");
+
+    const request_t& req = this->request_.get();
+
+    // We are not expecting any headers, all parameters are in json body
+
+    // Need to make sure we are not blocking waiting for the response
+    delay_response_ = true;
+
+    auto on_response = [this](loki::Response res) {
+        LOKI_LOG(debug, "Got an onion response as guard node");
+
+        if (res.status() == Status::OK) {
+            response_.result(http::status::ok);
+
+            // OK here simply means that the response we got is
+            // coming from the target node as opposed to any other
+            // node on the path. The encrypted body will contain
+            // its own response status.
+
+            this->body_stream_ << res.message();
+        } else {
+            // res.status() is for us, we only report a generic
+            // error to indicate onion request failure
+
+            LOKI_LOG(debug, "Would send 503 error");
+
+            response_.result(http::status::service_unavailable);
+        }
+
+        this->write_response();
+    };
+
+    try {
+
+        const json json_req = json::parse(req.body(), nullptr, true);
+        // base64
+        const auto& ciphertext = json_req.at("ciphertext").get_ref<const std::string&>();
+        // hex
+        const auto& ephem_key = json_req.at("ephemeral_key").get_ref<const std::string&>();
+
+        request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
+
+    } catch (const std::exception& e) {
+        auto msg = fmt::format("Error parsing outer JSON in onion request: {}", e.what());
+        LOKI_LOG(error, "{}", msg);
+        response_.result(http::status::bad_request);
+        this->body_stream_ << std::move(msg);
+    }
+
+}
+
 void connection_t::process_proxy_req() {
 
     LOKI_LOG(debug, "Processing proxy request: we are first hop");
@@ -564,14 +607,49 @@ void connection_t::process_proxy_req() {
     const auto& sender_key = header_[LOKI_SENDER_KEY_HEADER];
     const auto& target_snode_key = header_[LOKI_TARGET_SNODE_KEY];
 
-    service_node_.process_proxy_req(req.body(), sender_key, target_snode_key, [this] (sn_response_t res) {
+    auto sn = service_node_.find_node_by_ed25519_pk(target_snode_key);
 
-        if (res.raw_response) {
-            this->response_ = *res.raw_response;
+    static int req_counter = 0;
+
+    const int req_idx = req_counter;
+
+    // TODO: make an https response out of what we got back
+    auto on_proxy_response = [this, req_idx] (bool success, std::vector<std::string> data) {
+
+        LOKI_LOG(debug, "on proxy response: {}", success ? "success" : "failure");
+
+        if (success && data.size() == 1) {
+
+            LOKI_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
+
+            this->body_stream_ << data[0];
+            response_.result(http::status::ok);
+        } else {
+            LOKI_LOG(debug, "PROXY RESPONSE FAILED, idx: {}", req_idx);
         }
 
+        // This will return an empty, but failed response to the client
+        // if the raw_response is empty (we should provide better errors)
         this->write_response();
-    });
+    };
+
+    if (!sn) {
+        LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode_key);
+        on_proxy_response(false, {});
+        return;
+    }
+
+    LOKI_LOG(debug, "Target Snode: {}", target_snode_key);
+
+    // Send this request to SN over either HTTP or LOKIMQ
+    auto sn_req = ss_client::Request{req.body(), {{LOKI_SENDER_KEY_HEADER, sender_key}}};
+
+    LOKI_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
+    req_counter += 1;
+
+    service_node_.send_to_sn(*sn, ss_client::ReqMethod::PROXY_EXIT,
+                             std::move(sn_req), on_proxy_response);
+
 }
 
 void connection_t::process_file_proxy_req() {
@@ -681,7 +759,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
         /// Set to "bad request" by default
         response_.result(http::status::bad_request);
-        LOKI_LOG(debug, "Got storage test request");
+        LOKI_LOG(trace, "Got storage test request");
 
         using nlohmann::json;
 
@@ -759,84 +837,45 @@ void connection_t::process_swarm_req(boost::string_view target) {
         }
 
     } else if (target == "/swarms/ping_test/v1") {
-        LOKI_LOG(debug, "Received ping_test");
-        response_.result(http::status::ok);
-    } else if (target == "/swarms/push/v1") {
-
-        LOKI_LOG(trace, "swarms/push");
-
-        /// NOTE:: we only expect one message here, but
-        /// for now lets reuse the function we already have
-        std::vector<message_t> messages = deserialize_messages(req.body());
-        assert(messages.size() == 1);
-
-        service_node_.process_push(messages.front());
-
+        LOKI_LOG(trace, "Received ping_test");
         response_.result(http::status::ok);
     } else if (target == "/swarms/proxy_exit") {
         LOKI_LOG(debug, "Processing proxy request: we are the destination node");
 
-#ifdef INTEGRATION_TEST
-        // print_headers(req);
-#endif
-
         const auto it = req.find(LOKI_SENDER_KEY_HEADER);
+        /// TODO: handle the error better?
         if (it != req.end()) {
 
             const std::string key = {it->value().data(), it->value().size()};
-            const auto plaintext = this->channel_cipher_.decrypt(req.body(), key);
 
-            try {
-                const json req = json::parse(plaintext, nullptr, true);
-
-                const auto body = req.at("body").get<std::string>();
-
-                this->response_modifier_ = [this, key](response_t& res) {
-
-                    nlohmann::json json_res;
-
-                    json_res["status"] = res.result_int();
-                    json_res["body"] = res.body();
-
-                    nlohmann::json headers;
-
-                    for (const auto &field: res) {
-                        std::string name = field.name_string().to_string();
-                        headers[std::move(name)] = field.value();
-                    }
-
-                    json_res["headers"] = headers;
-
-                    const std::string res_body = json_res.dump();
-
-                    res.body() = util::base64_encode(this->channel_cipher_.encrypt(res_body, key));
-                    res.result(http::status::ok);
-                };
-
-                LOKI_LOG(trace, "CLIENT HEADERS: \n\t{}", req.at("headers").dump(2));
-
-                // TODO: copy all other headers from decrypted body to header_?
-                const auto headers_it = req.find("headers");
-                if (headers_it != req.end()) {
-
-                    const auto long_poll_it = headers_it->find(LOKI_LONG_POLL_HEADER);
-                    if (long_poll_it != headers_it->end()) {
-                        const bool val = long_poll_it->get<bool>();
-                        LOKI_LOG(info, "field: {}: {}", LOKI_LONG_POLL_HEADER, val);
-                        this->header_.insert({LOKI_LONG_POLL_HEADER, val ? "true" : "false"});
-                    }
-
-                }
-
-                this->process_client_req(body);
-
-
-            } catch (std::exception& e) {
-                LOKI_LOG(error, "JSON parsing error: {}", e.what());
-            }
+            auto res = request_handler_.process_proxy_exit(key, req.body());
+            this->set_response(res);
+        } else {
+            LOKI_LOG(debug, "Error: {} header is missing", LOKI_SENDER_KEY_HEADER);
         }
 
     }
+}
+
+void connection_t::set_response(const Response& res) {
+
+    response_.result(static_cast<unsigned int>(res.status()));
+
+    std::string content_type;
+
+    switch (res.content_type()) {
+        case ContentType::plaintext:
+            content_type = "text/plain";
+            break;
+        case ContentType::json:
+            content_type = "application/json";
+            break;
+        default:
+            LOKI_LOG(critical, "Unrecognized content type");
+    }
+
+    response_.set(http::field::content_type, content_type);
+    body_stream_ << res.message();
 }
 
 // Determine what needs to be done with the request message.
@@ -855,6 +894,13 @@ void connection_t::process_request() {
     response_.result(http::status::internal_server_error);
 
     const auto target = req.target();
+
+    const bool is_swarm_req = (target.find("/swarms/") == 0);
+
+    if (is_swarm_req) {
+        LOKI_LOG(debug, "Processing a swarm request: {}", target);
+    }
+
     switch (req.method()) {
     case http::verb::post: {
         std::string reason;
@@ -868,6 +914,7 @@ void connection_t::process_request() {
             LOKI_LOG(debug,
                      "Ignoring post request; storage server not ready: {}",
                      reason);
+            LOKI_LOG(debug, "Would send 503 error (2)");
             response_.result(http::status::service_unavailable);
             body_stream_ << fmt::format("Service node is not ready: {}\n",
                                         reason);
@@ -889,29 +936,21 @@ void connection_t::process_request() {
                          e.what());
             }
 
-            // TODO: parse target (once) to determine if it is a "swarms" call
-        } else if (target == "/swarms/push/v1") {
+        } else if (is_swarm_req) {
             this->process_swarm_req(target);
-        } else if (target == "/swarms/push_batch/v1") {
-            this->process_swarm_req(target);
-        } else if (target == "/swarms/storage_test/v1") {
-
-            this->process_swarm_req(target);
-
-        } else if (target == "/swarms/blockchain_test/v1") {
-
-            this->process_swarm_req(target);
-
         } else if (target == "/proxy") {
             this->process_proxy_req();
+        } else if (target == "/onion_req") {
+            this->process_onion_req();
         } else if (target == "/file_proxy") {
             this->process_file_proxy_req();
-        } else if (target == "/swarms/proxy_exit") {
-            this->process_swarm_req(target);
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
-            process_retrieve_all();
+
+            const auto res = request_handler_.process_retrieve_all();
+            this->set_response(res);
+
         } else if (target == "/quit") {
             LOKI_LOG(info, "POST /quit");
             // a bit of a hack: sending response manually
@@ -955,37 +994,10 @@ void connection_t::process_request() {
     }
 }
 
-static std::string obfuscate_pubkey(const std::string& pk) {
-    std::string res = pk.substr(0, 2);
-    res += "...";
-    res += pk.substr(pk.length() - 3, pk.length() - 1);
-    return res;
-}
-
 // Asynchronously transmit the response message.
 void connection_t::write_response() {
 
-#ifndef DISABLE_ENCRYPTION
-    const auto it = header_.find(LOKI_EPHEMKEY_HEADER);
-    // TODO: do we need to separately handle the case where we can't find the
-    // key?
-    if (it != header_.end()) {
-        const std::string& ephemKey = it->second;
-        try {
-            auto body = channel_cipher_.encrypt(body_stream_.str(), ephemKey);
-            response_.body() = boost::beast::detail::base64_encode(body);
-            response_.set(http::field::content_type, "text/plain");
-        } catch (const std::exception& e) {
-            response_.result(http::status::internal_server_error);
-            response_.set(http::field::content_type, "text/plain");
-            body_stream_ << "Could not encrypt/encode response: ";
-            body_stream_ << e.what() << "\n";
-            LOKI_LOG(critical,
-                     "Internal Server Error. Could not encrypt response for {}",
-                     obfuscate_pubkey(ephemKey));
-        }
-    }
-#else
+    LOKI_LOG(trace, "write response, {} bytes", response_.body().size());
 
     const std::string body_stream = body_stream_.str();
 
@@ -997,8 +1009,6 @@ void connection_t::write_response() {
 
         response_.body() = body_stream_.str();
     }
-
-#endif
 
     // Our last change to change the response before we start sending
     if (this->response_modifier_) {
@@ -1037,391 +1047,10 @@ bool connection_t::parse_header(const char* first, Args... args) {
     return parse_header(first) && parse_header(args...);
 }
 
-json snodes_to_json(const std::vector<sn_record_t>& snodes) {
-
-    json res_body;
-    json snodes_json = json::array();
-
-    for (const auto& sn : snodes) {
-        json snode;
-        snode["address"] = sn.sn_address();
-        snode["pubkey_x25519"] = sn.pubkey_x25519_hex();
-        snode["pubkey_ed25519"] = sn.pubkey_ed25519_hex();
-        snode["port"] = std::to_string(sn.port());
-        snode["ip"] = sn.ip();
-        snodes_json.push_back(snode);
-    }
-
-    res_body["snodes"] = snodes_json;
-
-    return res_body;
-}
-
-void connection_t::process_store(const json& params) {
-
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
-                                      "data"};
-
-    for (const auto& field : fields) {
-        if (!params.contains(field)) {
-            response_.result(http::status::bad_request);
-            body_stream_ << fmt::format("invalid json: no `{}` field\n", field);
-            LOKI_LOG(debug, "Bad client request: no `{}` field", field);
-            return;
-        }
-    }
-
-    const auto ttl = params["ttl"].get<std::string>();
-    const auto nonce = params["nonce"].get<std::string>();
-    const auto timestamp = params["timestamp"].get<std::string>();
-    const auto data = params["data"].get<std::string>();
-
-    LOKI_LOG(trace, "Storing message: {}", data);
-
-    bool created;
-    auto pk =
-        user_pubkey_t::create(params["pubKey"].get<std::string>(), created);
-
-    if (!created) {
-        response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    get_user_pubkey_size());
-        LOKI_LOG(error, "Pubkey must be {} characters long", get_user_pubkey_size());
-        return;
-    }
-
-    if (data.size() > MAX_MESSAGE_BODY) {
-        response_.result(http::status::bad_request);
-        body_stream_ << "Message body exceeds maximum allowed length of "
-                     << MAX_MESSAGE_BODY << "\n";
-        LOKI_LOG(debug, "Message body too long: {}", data.size());
-        return;
-    }
-
-    if (!service_node_.is_pubkey_for_us(pk)) {
-        handle_wrong_swarm(pk);
-        return;
-    }
-
-#ifdef INTEGRATION_TEST
-    LOKI_LOG(trace, "store body: ", data);
-#endif
-
-    uint64_t ttlInt;
-    if (!util::parseTTL(ttl, ttlInt)) {
-        response_.result(http::status::forbidden);
-        response_.set(http::field::content_type, "text/plain");
-        body_stream_ << "Provided TTL is not valid.\n";
-        LOKI_LOG(debug, "Forbidden. Invalid TTL: {}", ttl);
-        return;
-    }
-    uint64_t timestampInt;
-    if (!util::parseTimestamp(timestamp, ttlInt, timestampInt)) {
-        response_.result(http::status::not_acceptable);
-        response_.set(http::field::content_type, "text/plain");
-        body_stream_ << "Timestamp error: check your clock\n";
-        LOKI_LOG(debug, "Forbidden. Invalid Timestamp: {}", timestamp);
-        return;
-    }
-
-    // Do not store message if the PoW provided is invalid
-    std::string messageHash;
-
-    const bool valid_pow =
-        checkPoW(nonce, timestamp, ttl, pk.str(), data, messageHash,
-                 service_node_.get_curr_pow_difficulty());
-#ifndef DISABLE_POW
-    if (!valid_pow) {
-        response_.result(432); // unassigned http code
-        response_.set(http::field::content_type, "application/json");
-
-        json res_body;
-        res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
-        LOKI_LOG(debug, "Forbidden. Invalid PoW nonce: {}", nonce);
-
-        /// This might throw if not utf-8 endoded
-        body_stream_ << res_body.dump();
-        return;
-    }
-#endif
-
-    bool success;
-
-    try {
-        const auto msg =
-            message_t{pk.str(), data, messageHash, ttlInt, timestampInt, nonce};
-        success = service_node_.process_store(msg);
-    } catch (std::exception e) {
-        response_.result(http::status::internal_server_error);
-        response_.set(http::field::content_type, "text/plain");
-        body_stream_ << e.what() << "\n";
-        LOKI_LOG(critical,
-                 "Internal Server Error. Could not store message for {}",
-                 obfuscate_pubkey(pk.str()));
-        return;
-    }
-
-    if (!success) {
-        response_.result(http::status::service_unavailable);
-        response_.set(http::field::content_type, "text/plain");
-        /// This is not the only reason for faliure
-        body_stream_ << "Service node is initializing\n";
-        LOKI_LOG(warn, "Service node is initializing");
-        return;
-    }
-
-    response_.result(http::status::ok);
-    response_.set(http::field::content_type, "application/json");
-    json res_body;
-    res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
-    body_stream_ << res_body.dump();
-    LOKI_LOG(trace, "Successfully stored message for {}",
-             obfuscate_pubkey(pk.str()));
-}
-
-void connection_t::process_snodes_by_pk(const json& params) {
-
-    if (!params.contains("pubKey")) {
-        response_.result(http::status::bad_request);
-        body_stream_ << "invalid json: no `pubKey` field\n";
-        LOKI_LOG(debug, "Bad client request: no `pubKey` field");
-        return;
-    }
-
-    bool success;
-    const auto pk =
-        user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
-    if (!success) {
-        response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    get_user_pubkey_size());
-        LOKI_LOG(debug, "Pubkey must be {} characters long ", get_user_pubkey_size());
-        return;
-    }
-
-    const std::vector<sn_record_t> nodes = service_node_.get_snodes_by_pk(pk);
-    const json res_body = snodes_to_json(nodes);
-
-    response_.result(http::status::ok);
-    response_.set(http::field::content_type, "application/json");
-
-    /// This might throw if not utf-8 endoded
-    body_stream_ << res_body.dump();
-}
-
-void connection_t::process_retrieve_all() {
-
-    std::vector<Item> all_entries;
-
-    bool res = service_node_.get_all_messages(all_entries);
-
-    if (!res) {
-        this->body_stream_ << "could not retrieve all entries\n";
-        response_.result(http::status::internal_server_error);
-        return;
-    }
-
-    json messages = json::array();
-
-    for (auto& entry : all_entries) {
-        json item;
-        item["data"] = entry.data;
-        item["pk"] = entry.pub_key;
-        messages.push_back(item);
-    }
-
-    json res_body;
-    res_body["messages"] = messages;
-
-    body_stream_ << res_body.dump();
-    response_.result(http::status::ok);
-}
-
-void connection_t::handle_wrong_swarm(const user_pubkey_t& pubKey) {
-
-    const std::vector<sn_record_t> nodes =
-        service_node_.get_snodes_by_pk(pubKey);
-    const json res_body = snodes_to_json(nodes);
-
-    response_.result(http::status::misdirected_request);
-    response_.set(http::field::content_type, "application/json");
-
-    /// This might throw if not utf-8 endoded
-    body_stream_ << res_body.dump();
-    LOKI_LOG(debug, "Client request for different swarm received");
-}
-
 constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
 
-template <typename T>
-void connection_t::respond_with_messages(const std::vector<T>& items) {
-
-    json res_body;
-    json messages = json::array();
-
-    for (const auto& item : items) {
-        json message;
-        message["hash"] = item.hash;
-        /// TODO: calculate expiration time once only?
-        message["expiration"] = item.timestamp + item.ttl;
-        message["data"] = item.data;
-        messages.push_back(message);
-    }
-
-    res_body["messages"] = messages;
-
-    response_.result(http::status::ok);
-    response_.set(http::field::content_type, "application/json");
-    body_stream_ << res_body.dump();
-
-    this->write_response();
-}
-
-void connection_t::poll_db(const std::string& pk,
-                           const std::string& last_hash) {
-
-    std::vector<Item> items;
-
-    if (!service_node_.retrieve(pk, last_hash, items)) {
-        response_.result(http::status::internal_server_error);
-        response_.set(http::field::content_type, "text/plain");
-        LOKI_LOG(critical,
-                 "Internal Server Error. Could not retrieve messages for {}",
-                 obfuscate_pubkey(pk));
-        return;
-    }
-
-    const bool lp_requested = header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
-
-    if (!items.empty()) {
-        LOKI_LOG(trace, "Successfully retrieved messages for {}",
-                 obfuscate_pubkey(pk));
-    }
-
-    if (items.empty() && lp_requested) {
-
-        auto self = shared_from_this();
-
-        // Instead of responding immediately, we delay the response
-        // until new data arrives for this PubKey
-        service_node_.register_listener(pk, self);
-
-        notification_ctx_ = notification_context_t{
-            boost::asio::steady_timer{ioc_}, boost::none, pk};
-
-        notification_ctx_->timer.expires_after(LONG_POLL_TIMEOUT);
-        notification_ctx_->timer.async_wait([=](const error_code& ec) {
-            if (ec == boost::asio::error::operation_aborted) {
-                LOKI_LOG(trace, "Notification timer manually triggered");
-                // we use timer cancellation as notification mechanism
-                std::vector<message_t> items;
-                auto msg = notification_ctx_->message;
-                if (msg) {
-                    items.push_back(*msg);
-                }
-
-                respond_with_messages(items);
-            } else {
-                LOKI_LOG(trace, "Notification timer expired");
-                // If we are here, the notification timer expired
-                // with no messages ready
-                respond_with_messages<Item>({});
-            }
-
-            service_node_.remove_listener(pk, self.get());
-        });
-
-    } else {
-        respond_with_messages(items);
-    }
-}
-
-void connection_t::process_retrieve(const json& params) {
-
-    service_node_.all_stats_.bump_retrieve_requests();
-
-    constexpr const char* fields[] = {"pubKey", "lastHash"};
-
-    for (const auto& field : fields) {
-        if (!params.contains(field)) {
-            response_.result(http::status::bad_request);
-            body_stream_ << fmt::format("invalid json: no `{}` field\n", field);
-            LOKI_LOG(debug, "Bad client request: no `{}` field", field);
-            return;
-        }
-    }
-
-    bool success;
-    const auto pk =
-        user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
-
-    if (!success) {
-        response_.result(http::status::bad_request);
-        body_stream_ << fmt::format("Pubkey must be {} characters long\n",
-                                    get_user_pubkey_size());
-        LOKI_LOG(debug, "Pubkey must be {} characters long ", get_user_pubkey_size());
-        return;
-    }
-
-    if (!service_node_.is_pubkey_for_us(pk)) {
-        handle_wrong_swarm(pk);
-        return;
-    }
-
-    const auto last_hash = params["lastHash"].get<std::string>();
-
-    // we are going to send the response anynchronously
-    // once we have new data
-    delay_response_ = true;
-
-    poll_db(pk.str(), last_hash);
-}
-
-
-void connection_t::process_client_req(const std::string& req_json) {
-
-    const json body = json::parse(req_json, nullptr, false);
-    if (body == nlohmann::detail::value_t::discarded) {
-        response_.result(http::status::bad_request);
-        body_stream_ << "invalid json\n";
-        LOKI_LOG(debug, "Bad client request: invalid json");
-        return;
-    }
-
-    const auto method_it = body.find("method");
-    if (method_it == body.end() || !method_it->is_string()) {
-        response_.result(http::status::bad_request);
-        body_stream_ << "invalid json: no `method` field\n";
-        LOKI_LOG(debug, "Bad client request: no method field");
-        return;
-    }
-
-    const auto method_name = method_it->get<std::string>();
-
-    const auto params_it = body.find("params");
-    if (params_it == body.end() || !params_it->is_object()) {
-        response_.result(http::status::bad_request);
-        body_stream_ << "invalid json: no `params` field\n";
-        LOKI_LOG(debug, "Bad client request: no params field");
-        return;
-    }
-
-    if (method_name == "store") {
-        LOKI_LOG(trace, "Process client request: store, connection: {}", this->conn_idx);
-        this->process_store(*params_it);
-    } else if (method_name == "retrieve") {
-        LOKI_LOG(trace, "Process client request: retrieve, connection: {}", this->conn_idx);
-        this->process_retrieve(*params_it);
-    } else if (method_name == "get_snodes_for_pubkey") {
-        LOKI_LOG(trace, "Process client request: snodes for pubkey");
-        this->process_snodes_by_pk(*params_it);
-    } else {
-        response_.result(http::status::bad_request);
-        body_stream_ << "no method" << method_name << "\n";
-        LOKI_LOG(debug, "Bad client request: unknown method '{}'", method_name);
-    }
-
-}
+/// Move this out of `connection_t` Process client request
+/// Decouple responding from http
 
 void connection_t::process_client_req_rate_limited() {
 
@@ -1436,30 +1065,6 @@ void connection_t::process_client_req_rate_limited() {
         return;
     }
 
-#ifndef DISABLE_ENCRYPTION
-    // Just in case we ever plan to enable this "channel encryption",
-    // this part will probably be broken for proxy requests (wrong
-    // place to look for headers)
-    if (!parse_header(LOKI_EPHEMKEY_HEADER)) {
-        LOKI_LOG(debug, "Bad client request: could not parse headers");
-        return;
-    }
-
-    try {
-        const std::string decoded =
-            boost::beast::detail::base64_decode(plain_text);
-        plain_text =
-            channel_cipher_.decrypt(decoded, header_[LOKI_EPHEMKEY_HEADER]);
-    } catch (const std::exception& e) {
-        response_.result(http::status::bad_request);
-        response_.set(http::field::content_type, "text/plain");
-        body_stream_ << "Could not decode/decrypt body: ";
-        body_stream_ << e.what() << "\n";
-        LOKI_LOG(debug, "Bad client request: could not decrypt body");
-        return;
-    }
-#endif
-
     // Not sure what the original idea was to distinguish between headers
     // in request_ and the actual header_ field, but it is useful for
     // "proxy" client requests as we can have both true html headers
@@ -1468,7 +1073,8 @@ void connection_t::process_client_req_rate_limited() {
         header_[LOKI_LONG_POLL_HEADER] = req.at(LOKI_LONG_POLL_HEADER).to_string();
     }
 
-    this->process_client_req(plain_text);
+    const auto res = request_handler_.process_client_req(plain_text);
+    this->set_response(res);
 }
 
 void connection_t::register_deadline() {

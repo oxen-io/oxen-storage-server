@@ -7,8 +7,11 @@
 #include "security.h"
 #include "service_node.h"
 #include "swarm.h"
-#include "version.h"
 #include "utils.hpp"
+#include "version.h"
+
+#include "lmq_server.h"
+#include "request_handler.h"
 
 #include <boost/filesystem.hpp>
 #include <sodium.h>
@@ -72,9 +75,11 @@ int main(int argc, char* argv[]) {
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
             if (options.testnet) {
-                options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
+                options.data_dir =
+                    (home_dir.get() / ".loki" / "testnet" / "storage").string();
             } else {
-                options.data_dir = (home_dir.get() / ".loki" / "storage").string();
+                options.data_dir =
+                    (home_dir.get() / ".loki" / "storage").string();
             }
         }
     }
@@ -94,7 +99,8 @@ int main(int argc, char* argv[]) {
 
     if (options.testnet) {
         loki::set_testnet();
-        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+        LOKI_LOG(warn,
+                 "Starting in testnet mode, make sure this is intentional!");
     }
 
     // Always print version for the logs
@@ -118,14 +124,23 @@ int main(int argc, char* argv[]) {
 
     LOKI_LOG(info, "Setting log level to {}", options.log_level);
     LOKI_LOG(info, "Setting database location to {}", options.data_dir);
-    LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
-    LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
+    LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip,
+             options.lokid_rpc_port);
+    LOKI_LOG(info, "Https server is listening at {}:{}", options.ip,
+             options.port);
+    LOKI_LOG(info, "LokiMQ is listening at {}:{}", options.ip,
+             options.lmq_port);
 
     boost::asio::io_context ioc{1};
     boost::asio::io_context worker_ioc{1};
 
     if (sodium_init() != 0) {
         LOKI_LOG(error, "Could not initialize libsodium");
+        return EXIT_FAILURE;
+    }
+
+    if (crypto_aead_aes256gcm_is_available() == 0) {
+        LOKI_LOG(error, "AES-256-GCM is not available on this CPU");
         return EXIT_FAILURE;
     }
 
@@ -140,7 +155,8 @@ int main(int argc, char* argv[]) {
 
     try {
 
-        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
+        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip,
+                                              options.lokid_rpc_port);
 
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
@@ -158,7 +174,8 @@ int main(int argc, char* argv[]) {
         private_key_x25519 = loki::lokidKeyFromHex(options.lokid_x25519_key);
         LOKI_LOG(info, "x25519 SECRET KEY: {}", options.lokid_x25519_key);
 
-        private_key_ed25519 = loki::private_key_ed25519_t::from_hex(options.lokid_ed25519_key);
+        private_key_ed25519 =
+            loki::private_key_ed25519_t::from_hex(options.lokid_ed25519_key);
 
         LOKI_LOG(info, "ed25519 SECRET KEY: {}", options.lokid_ed25519_key);
 #endif
@@ -189,10 +206,18 @@ int main(int argc, char* argv[]) {
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
 
-        loki::ServiceNode service_node(ioc, worker_ioc, options.port,
-                                       lokid_key_pair, lokid_key_pair_x25519,
-                                       options.data_dir, lokid_client,
-                                       options.force_start);
+        loki::LokimqServer lokimq_server;
+
+        // TODO: SN doesn't need lokimq_server, just the lmq components
+        loki::ServiceNode service_node(
+            ioc, worker_ioc, options.port, lokimq_server, lokid_key_pair,
+            options.data_dir, lokid_client, options.force_start);
+
+        loki::RequestHandler request_handler(service_node, channel_encryption);
+
+        lokimq_server.init(&service_node, &request_handler,
+                           lokid_key_pair_x25519, options.lmq_port);
+
         RateLimiter rate_limiter;
 
         loki::Security security(lokid_key_pair, options.data_dir);
@@ -203,9 +228,8 @@ int main(int argc, char* argv[]) {
         systemd_watchdog_tick(systemd_watchdog_timer, service_node);
 #endif
 
-        /// Should run http server
         loki::http_server::run(ioc, options.ip, options.port, options.data_dir,
-                               service_node, channel_encryption, rate_limiter,
+                               service_node, request_handler, rate_limiter,
                                security);
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,

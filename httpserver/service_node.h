@@ -23,6 +23,7 @@
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
 static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
+static constexpr int LOKIMQ_ONION_HARDFORK = 15;
 
 class Database;
 
@@ -40,6 +41,14 @@ struct blockchain_test_answer_t;
 struct bc_test_params_t;
 
 class LokidClient;
+class LokimqServer;
+
+namespace ss_client {
+class Request;
+enum class ReqMethod;
+using Callback = std::function<void(bool success, std::vector<std::string>)>;
+
+} // namespace ss_client
 
 namespace http_server {
 class connection_t;
@@ -135,7 +144,8 @@ class ServiceNode {
     std::unordered_map<pub_key_t, listeners_t> pk_to_listeners;
 
     loki::lokid_key_pair_t lokid_key_pair_;
-    loki::lokid_key_pair_t lokid_key_pair_x25519_;
+
+    LokimqServer& lmq_server_;
 
     reachability_records_t reach_records_;
 
@@ -165,15 +175,13 @@ class ServiceNode {
     /// (called when our old node got dissolved)
     void salvage_data() const;
 
-    void sign_request(std::shared_ptr<request_t> &req) const;
-
     void attach_signature(std::shared_ptr<request_t>& request,
                           const signature& sig) const;
 
     void attach_pubkey(std::shared_ptr<request_t>& request) const;
 
     /// Reliably push message/batch to a service node
-    void relay_data_reliable(const std::shared_ptr<request_t>& req,
+    void relay_data_reliable(const std::string& blob,
                              const sn_record_t& address) const;
 
     template <typename Message>
@@ -238,17 +246,31 @@ class ServiceNode {
     // Ping some node and record its reachability
     void test_reachability(const sn_record_t& sn);
 
+    void initLokiMQ(const loki::lokid_key_pair_t& keypair, uint16_t port);
+
   public:
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
+                LokimqServer& lmq_server,
                 const loki::lokid_key_pair_t& key_pair,
-                const loki::lokid_key_pair_t& key_pair_x25519,
                 const std::string& db_location, LokidClient& lokid_client,
                 const bool force_start);
 
     ~ServiceNode();
 
     mutable all_stats_t all_stats_;
+
+    // This is new, so it does not need to support http, thus new (if temp) method
+    void send_onion_to_sn(const sn_record_t& sn, const std::string& payload,
+                          const std::string& eph_key, ss_client::Callback cb) const;
+
+    // TODO: move this eventually out of SN
+    // Send by either http or lmq
+    void send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
+                    ss_client::Request req,
+                    ss_client::Callback cb) const;
+
+    void sign_request(std::shared_ptr<request_t> &req) const;
 
     // Return true if the service node is ready to start running
     bool snode_ready(boost::optional<std::string&> reason);
@@ -269,11 +291,6 @@ class ServiceNode {
 
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
-
-    void
-    process_proxy_req(const std::string& req, const std::string& sender_key,
-                      const std::string& target_snode,
-                      std::function<void(sn_response_t)>&& on_proxy_response);
 
     /// Process message relayed from another SN from our swarm
     void process_push(const message_t& msg);
@@ -313,6 +330,13 @@ class ServiceNode {
     std::string get_stats() const;
 
     std::string get_status_line() const;
+
+    boost::optional<sn_record_t>
+    find_node_by_x25519_bin(const sn_pub_key_t& address) const;
+
+    boost::optional<sn_record_t>
+    find_node_by_ed25519_pk(const std::string& pk) const;
+
 };
 
 } // namespace loki

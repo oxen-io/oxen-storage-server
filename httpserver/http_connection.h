@@ -41,6 +41,9 @@ std::shared_ptr<request_t> build_post_request(const char* target,
 struct message_t;
 struct Security;
 
+class RequestHandler;
+class Response;
+
 namespace storage {
 struct Item;
 }
@@ -186,9 +189,10 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     // as opposed to directly after connection_t::process_request
     bool delay_response_ = false;
 
+    // TODO: remove SN, only use Reqeust Handler as a mediator
     ServiceNode& service_node_;
 
-    ChannelEncryption<std::string>& channel_cipher_;
+    RequestHandler& request_handler_;
 
     RateLimiter& rate_limiter_;
 
@@ -228,8 +232,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
   public:
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
-                 tcp::socket socket, ServiceNode& sn,
-                 ChannelEncryption<std::string>& channel_encryption,
+                 tcp::socket socket, ServiceNode& sn, RequestHandler& rh,
                  RateLimiter& rate_limiter, const Security& security);
 
     ~connection_t();
@@ -257,9 +260,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// process GET /get_logs/v1; only returns errors atm
     void on_get_logs();
 
-    /// Check the database for new data, reschedule if empty
-    void poll_db(const std::string& pk, const std::string& last_hash);
-
     /// Determine what needs to be done with the request message
     /// (synchronously).
     void process_request();
@@ -267,26 +267,15 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Unsubscribe listener (if any) and shutdown the connection
     void clean_up();
 
-    void process_store(const nlohmann::json& params);
-
-    void process_retrieve(const nlohmann::json& params);
-
-    void process_snodes_by_pk(const nlohmann::json& params);
-
-    void process_retrieve_all();
-
-    template <typename T>
-    void respond_with_messages(const std::vector<T>& messages);
-
     /// Asynchronously transmit the response message.
     void write_response();
 
     /// Syncronously (?) process client store/load requests
     void process_client_req_rate_limited();
 
-    void process_client_req(const std::string& req_json);
-
     void process_swarm_req(boost::string_view target);
+
+    void process_onion_req();
 
     void process_proxy_req();
 
@@ -304,12 +293,12 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
                                      const std::string& tester_pk,
                                      bc_test_params_t params);
 
+    void set_response(const Response& res);
+
     bool parse_header(const char* key);
 
     template <typename... Args>
     bool parse_header(const char* first, Args... args);
-
-    void handle_wrong_swarm(const user_pubkey_t& pubKey);
 
     bool validate_snode_request();
     bool verify_signature(const std::string& signature,
@@ -317,8 +306,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 };
 
 void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const boost::filesystem::path& base_path, ServiceNode& sn,
-         ChannelEncryption<std::string>& channelEncryption,
+         const boost::filesystem::path& base_path, ServiceNode& sn, RequestHandler& rh,
          RateLimiter& rate_limiter, Security&);
 
 } // namespace http_server

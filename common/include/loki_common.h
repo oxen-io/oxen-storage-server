@@ -19,13 +19,15 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    std::string sn_address_; // Snode address (pubkey plus .snode, was used for lokinet)
     // TODO: create separate types for different encodings of pubkeys,
     // so if we confuse them, it will be a compiler error
+    std::string sn_address_; // Snode address (pubkey plus .snode, was used for lokinet)
     std::string pub_key_base_32z_; // We don't need this! (esp. since it is legacy key)
     std::string pubkey_x25519_hex_;
     std::string pubkey_ed25519_hex_;
     std::string pub_key_hex_; // Monero legacy key
+    // Required by LokiMQ
+    std::string pubkey_x25519_bin_;
     std::string ip_; // Snode ip
 
 
@@ -43,9 +45,11 @@ struct sn_record_t {
   public:
     sn_record_t(uint16_t port, const std::string& address,
                 const std::string& pk_hex, const std::string& pk_x25519,
-                const std::string& pk_ed25519, const std::string& ip)
+                const std::string& pk_x25519_bin, const std::string& pk_ed25519,
+                const std::string& ip)
         : port_(port), pub_key_hex_(pk_hex), pubkey_x25519_hex_(pk_x25519),
-          pubkey_ed25519_hex_(pk_ed25519), ip_(ip) {
+          pubkey_x25519_bin_(pk_x25519_bin), pubkey_ed25519_hex_(pk_ed25519),
+          ip_(ip) {
         set_address(address);
     }
 
@@ -60,6 +64,7 @@ struct sn_record_t {
     const std::string& pub_key_hex() const { return pub_key_hex_; }
     const std::string& pubkey_x25519_hex() const { return pubkey_x25519_hex_; }
     const std::string& pubkey_ed25519_hex() const { return pubkey_ed25519_hex_; }
+    const std::string& pubkey_x25519_bin() const { return pubkey_x25519_bin_; }
     const std::string& ip() const { return ip_; }
 
     template <typename OStream>
