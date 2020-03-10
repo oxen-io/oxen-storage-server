@@ -4,6 +4,8 @@
 #include <string>
 #include "loki_common.h"
 
+#include <boost/asio.hpp>
+
 // TODO: can I avoid including this in the header?
 #include "../external/json.hpp"
 
@@ -71,6 +73,8 @@ class RequestHandler {
     ServiceNode& service_node_;
     const ChannelEncryption<std::string>& channel_cipher_;
 
+    boost::asio::io_context& ioc_;
+
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
                                  const std::string& client_key) const;
@@ -97,7 +101,7 @@ class RequestHandler {
 
 public:
 
-    RequestHandler(ServiceNode& sn, const ChannelEncryption<std::string>& ce);
+    RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn, const ChannelEncryption<std::string>& ce);
 
     // Process all Session client requests
     Response process_client_req(const std::string& req_json);
@@ -109,10 +113,14 @@ public:
     Response process_proxy_exit(const std::string& client_key,
                                 const std::string& payload);
 
+    Response process_onion_to_url(const std::string& host,
+                                  const std::string& target,
+                                  const std::string& payload,
+                                  std::function<void(loki::Response)> cb);
+
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(const std::string& ciphertext,
                            const std::string& ephem_key,
                            std::function<void(loki::Response)> cb);
-};
-
+    };
 }

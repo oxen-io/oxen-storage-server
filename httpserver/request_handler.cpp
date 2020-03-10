@@ -4,6 +4,8 @@
 #include "utils.hpp"
 #include "channel_encryption.hpp"
 
+#include "https_client.h"
+
 using nlohmann::json;
 
 namespace loki {
@@ -22,9 +24,9 @@ std::string to_string(const Response& res) {
 
 }
 
-RequestHandler::RequestHandler(ServiceNode& sn,
+RequestHandler::RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
                                const ChannelEncryption<std::string>& ce)
-    : service_node_(sn), channel_cipher_(ce) {}
+    : ioc_(ioc), service_node_(sn), channel_cipher_(ce) {}
 
 static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 
@@ -401,6 +403,36 @@ Response RequestHandler::process_proxy_exit(const std::string& client_key,
     return wrap_proxy_response(res, client_key);
 }
 
+Response RequestHandler::process_onion_to_url(
+    const std::string& host, const std::string& target,
+    const std::string& payload, std::function<void(loki::Response)> cb) {
+
+    // TODO: investigate if the use of a shared pointer is necessary
+    auto req = std::make_shared<request_t>();
+
+    req->body() = payload;
+    req->set(http::field::host, host);
+    req->method(http::verb::post);
+    req->target(target);
+
+    req->prepare_payload();
+
+    // `cb` needs to be adapted for http request
+    auto http_cb = [cb = std::move(cb)](sn_response_t res) {
+
+        if (res.error_code == SNodeError::NO_ERROR) {
+            cb(loki::Response{Status::OK, *res.body});
+        } else {
+            LOKI_LOG(debug, "Loki server error: {}", res.error_code);
+            cb(loki::Response{Status::BAD_REQUEST, "Loki Server error"});
+        }
+    };
+
+    make_https_request(ioc_, host, req, http_cb);
+
+    return Response{Status::OK, ""};
+}
+
 void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        const std::string& ephem_key,
                                        std::function<void(loki::Response)> cb) {
@@ -433,18 +465,19 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
             cb(std::move(res));
             return;
-        } else if (inner_json.find("url") != inner_json.end()) {
+        } else if (inner_json.find("host") != inner_json.end()) {
 
-            const auto& url = inner_json.at("url").get_ref<const std::string&>();
-            LOKI_LOG(debug, "We are to forward the request to url: {}", url);
+            const auto& host = inner_json.at("host").get_ref<const std::string&>();
+            const auto& target = inner_json.at("target").get_ref<const std::string&>();
+            LOKI_LOG(trace, "We are to forward the request to url: {}{}", host, target);
 
+            // Forward the request to url but only if it ends in `/lsrpc`
+            if ((target.rfind("/lsrpc") == target.size() - 6) && (target.find('?') == std::string::npos)) {
+                this->process_onion_to_url(host, target, plaintext, std::move(cb));
+            } else {
+                cb(loki::Response{Status::BAD_REQUEST, "Invalid url"});
+            }
 
-            // This will be an async request, so need to pass a callback (and make sure we don't respond until then)
-
-            // TODO2: make open groups work!
-            abort();
-
-            // cb()
             return;
         }
 

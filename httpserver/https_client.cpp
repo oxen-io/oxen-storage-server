@@ -69,6 +69,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
                                boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
         if (ec) {
             LOKI_LOG(error, "DNS resolution error for {}: {}", query, ec.message());
+            cb({SNodeError::ERROR_OTHER});
             return;
         }
 
