@@ -2,18 +2,16 @@
 
 /// TODO: should only be aware of messages
 #include "Item.hpp"
+#include "loki_logger.h"
 #include "service_node.h"
 
 #include <boost/endian/conversion.hpp>
 #include <boost/format.hpp>
-#include <boost/log/trivial.hpp>
 
-using service_node::storage::Item;
+using loki::storage::Item;
 
 namespace loki {
 
-/// TODO: use endianness aware serialisation
-// ( boost::native_to_big_inplace? )
 template <typename T>
 static T deserialize_integer(std::string::const_iterator& it) {
 
@@ -47,7 +45,7 @@ void serialize_message(std::string& res, const T& msg) {
     serialize_integer(res, msg.timestamp);
     serialize(res, msg.nonce);
 
-    BOOST_LOG_TRIVIAL(trace) << "serialized message: " << msg.data;
+    LOKI_LOG(trace, "serialized message: {}", msg.data);
 }
 
 template void serialize_message(std::string& res, const message_t& msg);
@@ -132,9 +130,7 @@ static boost::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
 std::vector<message_t> deserialize_messages(const std::string& blob) {
 
-    BOOST_LOG_TRIVIAL(trace) << "=== Deserializing ===";
-
-    constexpr size_t PK_SIZE = 66; // characters in hex;
+    LOKI_LOG(trace, "=== Deserializing ===");
 
     std::vector<message_t> result;
 
@@ -143,56 +139,55 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
     while (!slice.empty()) {
 
         /// Deserialize PK
-        auto pk = deserialize_string(slice, PK_SIZE);
+        auto pk = deserialize_string(slice, loki::get_user_pubkey_size());
         if (!pk) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize pk";
+            LOKI_LOG(debug, "Could not deserialize pk");
             return {};
         }
 
         /// Deserialize Hash
         auto hash = deserialize_string(slice);
         if (!hash) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize hash";
+            LOKI_LOG(debug, "Could not deserialize hash");
             return {};
         }
 
         /// Deserialize Data
         auto data = deserialize_string(slice);
         if (!data) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize data";
+            LOKI_LOG(debug, "Could not deserialize data");
             return {};
         }
 
         /// Deserialize TTL
         auto ttl = deserialize_uint64(slice);
         if (!ttl) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize ttl";
+            LOKI_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
         auto timestamp = deserialize_uint64(slice);
         if (!timestamp) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize timestamp";
+            LOKI_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
 
         /// Deserialize Nonce
         auto nonce = deserialize_string(slice);
         if (!nonce) {
-            BOOST_LOG_TRIVIAL(error) << "could not deserialize nonce";
+            LOKI_LOG(debug, "Could not deserialize nonce");
             return {};
         }
 
-        BOOST_LOG_TRIVIAL(trace) << "deserialized data: " << *data;
+        LOKI_LOG(trace, "Deserialized data: {}", *data);
 
-        BOOST_LOG_TRIVIAL(trace)
-            << boost::format("pk: %1%, msg: %2%") % *pk % *data;
+        LOKI_LOG(trace, "pk: {}, msg: {}", *pk, *data);
 
         result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 
-    BOOST_LOG_TRIVIAL(trace) << "=== END ===";
+    LOKI_LOG(trace, "=== END ===");
 
     return result;
 }

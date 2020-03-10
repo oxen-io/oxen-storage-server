@@ -6,28 +6,28 @@ add_executable (Test
     pow.cpp
     serialization.cpp
     signature.cpp
-    ../httpserver/serialization.cpp
+    rate_limiter.cpp
+    command_line.cpp
 )
 
 # library under test
 
+loki_add_subdirectory(../common common)
 loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../crypto crypto)
+loki_add_subdirectory(../httpserver httpserver)
 
-target_link_libraries(Test PRIVATE storage pow utils crypto)
-target_include_directories(Test PRIVATE ../httpserver)
+target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)
 
 # boost
-find_package(Boost
-REQUIRED
-system
-filesystem
-chrono
-thread
-unit_test_framework
-log
+find_package(Boost REQUIRED
+    system
+    filesystem
+    chrono
+    thread
+    unit_test_framework
 )
 
 set_property(TARGET Test PROPERTY CXX_STANDARD 14)

@@ -8,7 +8,7 @@ set(SOURCES
 
 add_library(storage STATIC ${SOURCES})
 
-set_property(TARGET storage PROPERTY CXX_STANDARD 11)
+set_property(TARGET storage PROPERTY CXX_STANDARD 14)
 
 target_include_directories(storage
     PUBLIC
@@ -17,10 +17,13 @@ target_include_directories(storage
     ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
+loki_add_subdirectory(../common common)
+target_link_libraries(storage PRIVATE common)
 loki_add_subdirectory(../utils utils)
 target_link_libraries(storage PRIVATE utils)
 loki_add_subdirectory(../vendors/sqlite sqlite)
 target_link_libraries(storage PRIVATE sqlite)
+
 
 if(NOT Boost_FOUND)
     find_package(Boost

@@ -28,20 +28,27 @@ MKDIR := mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR)
 
 all:
 	$(MKDIR) && \
-	$(CMAKE) $(TOP_DIR) \
+	$(CMAKE) \
 		-DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) \
+		-DOPENSSL_USE_STATIC_LIBS=$(BUILD_STATIC) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 		-DBUILD_TESTS=$(BUILD_TESTS) \
+		-DDISABLE_SNODE_SIGNATURE=OFF \
+		$(TOP_DIR) \
 		&& cmake --build .
 
 integration-test:
 	$(MKDIR) && \
 	$(CMAKE) $(TOP_DIR) \
 		-DBoost_USE_STATIC_LIBS=$(BUILD_STATIC) \
+		-DOPENSSL_USE_STATIC_LIBS=$(BUILD_STATIC) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 		-DBUILD_TESTS=$(BUILD_TESTS) \
 		-DINTEGRATION_TEST=ON \
 		&& cmake --build .
+
+tests: all
+	./$(BUILD_DIR)/unit_test/Test --log_level=all
 
 clean:
 	rm -rf build/$(SUB_DIR)
@@ -56,7 +63,8 @@ format:
 		storage/**/*.{cpp,hpp} \
 		utils/**/*.{cpp,hpp} \
 		httpserver/*.{cpp,h} \
-		unit_test/*.cpp
+		unit_test/*.cpp \
+		common/**/*.{cpp,h}
 
 
-.PHONY: all clean format
+.PHONY: all clean format rebuild

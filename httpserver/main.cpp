@@ -1,188 +1,219 @@
 #include "channel_encryption.hpp"
+#include "command_line.h"
 #include "http_connection.h"
+#include "loki_logger.h"
 #include "lokid_key.h"
+#include "rate_limiter.h"
+#include "security.h"
 #include "service_node.h"
 #include "swarm.h"
 #include "version.h"
+#include "utils.hpp"
 
-#include <boost/log/core.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/trivial.hpp>
-#include <boost/log/utility/setup/file.hpp>
-#include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
+#include <sodium.h>
 
 #include <cstdlib>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
-#include <thread>
-#include <utility> // for std::pair
 #include <vector>
 
-using namespace service_node;
-namespace po = boost::program_options;
-namespace logging = boost::log;
+#ifdef ENABLE_SYSTEMD
+extern "C" {
+#include <systemd/sd-daemon.h>
+}
+#endif
 
-using LogLevelPair = std::pair<std::string, logging::trivial::severity_level>;
-using LogLevelMap = std::vector<LogLevelPair>;
-static const LogLevelMap logLevelMap{
-    {"trace", logging::trivial::severity_level::trace},
-    {"debug", logging::trivial::severity_level::debug},
-    {"info", logging::trivial::severity_level::info},
-    {"warning", logging::trivial::severity_level::warning},
-    {"error", logging::trivial::severity_level::error},
-    {"fatal", logging::trivial::severity_level::fatal},
-};
+namespace fs = boost::filesystem;
 
-void usage(char* argv[]) {
-    std::cerr << "Usage: " << argv[0]
-              << " <address> <port> --lokid-key path [--db-location "
-                 "path] [--log-level level] [--output-log path] [--version]\n";
-    std::cerr << "  For IPv4, try:\n";
-    std::cerr << "    receiver 0.0.0.0 80\n";
-    std::cerr << "  For IPv6, try:\n";
-    std::cerr << "    receiver 0::0 80\n";
-    std::cerr << "  Log levels:\n";
-    for (const auto& logLevel : logLevelMap) {
-        std::cerr << "    " << logLevel.first << "\n";
-    }
+static boost::optional<fs::path> get_home_dir() {
+
+    /// TODO: support default dir for Windows
+#ifdef WIN32
+    return boost::none;
+#endif
+
+    char* pszHome = getenv("HOME");
+    if (pszHome == NULL || strlen(pszHome) == 0)
+        return boost::none;
+
+    return fs::path(pszHome);
 }
 
-bool parseLogLevel(const std::string& input,
-                   logging::trivial::severity_level& logLevel) {
-
-    const auto it = std::find_if(
-        logLevelMap.begin(), logLevelMap.end(),
-        [&](const LogLevelPair& pair) { return pair.first == input; });
-    if (it != logLevelMap.end()) {
-        logLevel = it->second;
-        return true;
-    }
-    return false;
+#ifdef ENABLE_SYSTEMD
+static void systemd_watchdog_tick(boost::asio::steady_timer &timer, const loki::ServiceNode& sn) {
+    using namespace std::literals;
+    sd_notify(0, ("WATCHDOG=1\nSTATUS=" + sn.get_status_line()).c_str());
+    timer.expires_after(10s);
+    timer.async_wait([&](const boost::system::error_code&) { systemd_watchdog_tick(timer, sn); });
 }
+#endif
+
+constexpr int EXIT_INVALID_PORT = 2;
 
 int main(int argc, char* argv[]) {
+
+    loki::command_line_parser parser;
+
     try {
-        // Check command line arguments.
-        if (argc < 2) {
-            usage(argv);
-            return EXIT_FAILURE;
-        }
+        parser.parse_args(argc, argv);
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        parser.print_usage();
+        return EXIT_FAILURE;
+    }
 
-        std::string lokid_key_path;
-        std::string db_location(".");
-        std::string log_location;
-        std::string log_level_string("info");
-        bool print_version = false;
-        uint16_t lokid_rpc_port = 22023;
+    auto options = parser.get_options();
 
-        po::options_description desc;
-        desc.add_options()("lokid-key", po::value(&lokid_key_path),
-                           "")("db-location", po::value(&db_location),
-                               "")("output-log", po::value(&log_location), "")(
-            "log-level", po::value(&log_level_string),
-            "")("version,v", po::bool_switch(&print_version),
-                "")("lokid-rpc-port", po::value(&lokid_rpc_port));
+    if (options.print_help) {
+        parser.print_usage();
+        return EXIT_SUCCESS;
+    }
 
-        po::variables_map vm;
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        po::notify(vm);
-
-        std::cout << "Loki Storage Server v" << STORAGE_SERVER_VERSION_STRING
-                  << std::endl
-                  << " git commit hash: " << STORAGE_SERVER_GIT_HASH_STRING
-                  << std::endl
-                  << " build time: " << STORAGE_SERVER_BUILD_TIME << std::endl;
-
-        if (print_version) {
-            return EXIT_SUCCESS;
-        }
-
-        if (argc < 3) {
-            usage(argv);
-            return EXIT_FAILURE;
-        }
-
-        const auto port = static_cast<uint16_t>(std::atoi(argv[2]));
-        std::string ip = argv[1];
-
-        if (vm.count("output-log")) {
-
-            // TODO: remove this line once confirmed that no one
-            // is relying on this
-            log_location += ".out";
-
-            // Hacky, but I couldn't find a way to recover from
-            // boost throwing on invalid file and apparently poisoning
-            // the logging mechanism...
-            std::ofstream input(log_location);
-
-            if (input.is_open()) {
-                input.close();
-                auto sink = logging::add_file_log(log_location);
-                sink->locked_backend()->auto_flush(true);
-                BOOST_LOG_TRIVIAL(info)
-                    << "Outputting logs to " << log_location;
+    if (options.data_dir.empty()) {
+        if (auto home_dir = get_home_dir()) {
+            if (options.testnet) {
+                options.data_dir = (home_dir.get() / ".loki" / "testnet" / "storage").string();
             } else {
-                BOOST_LOG_TRIVIAL(error) << "Could not open " << log_location;
+                options.data_dir = (home_dir.get() / ".loki" / "storage").string();
             }
         }
+    }
 
-        logging::trivial::severity_level logLevel;
-        if (!parseLogLevel(log_level_string, logLevel)) {
-            BOOST_LOG_TRIVIAL(error)
-                << "Incorrect log level" << log_level_string;
-            usage(argv);
-            return EXIT_FAILURE;
+    if (!fs::exists(options.data_dir)) {
+        fs::create_directories(options.data_dir);
+    }
+
+    loki::LogLevel log_level;
+    if (!loki::parse_log_level(options.log_level, log_level)) {
+        std::cerr << "Incorrect log level: " << options.log_level << std::endl;
+        loki::print_log_levels();
+        return EXIT_FAILURE;
+    }
+
+    loki::init_logging(options.data_dir, log_level);
+
+    if (options.testnet) {
+        loki::set_testnet();
+        LOKI_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+    }
+
+    // Always print version for the logs
+    print_version();
+    if (options.print_version) {
+        return EXIT_SUCCESS;
+    }
+
+    if (options.ip == "127.0.0.1") {
+        LOKI_LOG(critical,
+                 "Tried to bind loki-storage to localhost, please bind "
+                 "to outward facing address");
+        return EXIT_FAILURE;
+    }
+
+    if (options.port == options.lokid_rpc_port) {
+        LOKI_LOG(error, "Storage server port must be different from that of "
+                        "Lokid! Terminating.");
+        exit(EXIT_INVALID_PORT);
+    }
+
+    LOKI_LOG(info, "Setting log level to {}", options.log_level);
+    LOKI_LOG(info, "Setting database location to {}", options.data_dir);
+    LOKI_LOG(info, "Setting Lokid RPC to {}:{}", options.lokid_rpc_ip, options.lokid_rpc_port);
+    LOKI_LOG(info, "Listening at address {} port {}", options.ip, options.port);
+
+    boost::asio::io_context ioc{1};
+    boost::asio::io_context worker_ioc{1};
+
+    if (sodium_init() != 0) {
+        LOKI_LOG(error, "Could not initialize libsodium");
+        return EXIT_FAILURE;
+    }
+
+    {
+        const auto fd_limit = util::get_fd_limit();
+        if (fd_limit != -1) {
+            LOKI_LOG(debug, "Open file descriptor limit: {}", fd_limit);
+        } else {
+            LOKI_LOG(debug, "Open descriptor limit: N/A");
         }
+    }
 
-        // TODO: consider adding auto-flushing for logging
-        logging::core::get()->set_filter(logging::trivial::severity >=
-                                         logLevel);
-        BOOST_LOG_TRIVIAL(info) << "Setting log level to " << log_level_string;
+    try {
 
-        if (vm.count("lokid-key")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting Lokid key path to " << lokid_key_path;
-        }
+        auto lokid_client = loki::LokidClient(ioc, options.lokid_rpc_ip, options.lokid_rpc_port);
 
-        if (vm.count("db-location")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting database location to " << db_location;
-        }
+        // Normally we request the key from daemon, but in integrations/swarm
+        // testing we are not able to do that, so we extract the key as a
+        // command line option:
+        loki::private_key_t private_key;
+        loki::private_key_ed25519_t private_key_ed25519; // Unused at the moment
+        loki::private_key_t private_key_x25519;
+#ifndef INTEGRATION_TEST
+        std::tie(private_key, private_key_ed25519, private_key_x25519) =
+            lokid_client.wait_for_privkey();
+#else
+        private_key = loki::lokidKeyFromHex(options.lokid_key);
+        LOKI_LOG(info, "LOKID LEGACY KEY: {}", options.lokid_key);
 
-        if (vm.count("lokid-rpc-port")) {
-            BOOST_LOG_TRIVIAL(info)
-                << "Setting lokid RPC port to " << lokid_rpc_port;
-        }
+        private_key_x25519 = loki::lokidKeyFromHex(options.lokid_x25519_key);
+        LOKI_LOG(info, "x25519 SECRET KEY: {}", options.lokid_x25519_key);
 
-        BOOST_LOG_TRIVIAL(info)
-            << "Listening at address " << ip << " port " << port << std::endl;
+        private_key_ed25519 = loki::private_key_ed25519_t::from_hex(options.lokid_ed25519_key);
 
-        boost::asio::io_context ioc{1};
+        LOKI_LOG(info, "ed25519 SECRET KEY: {}", options.lokid_ed25519_key);
+#endif
 
-        // ed25519 key
-        const auto private_key = loki::parseLokidKey(lokid_key_path);
-        const auto public_key = loki::calcPublicKey(private_key);
+        const auto public_key = loki::derive_pubkey_legacy(private_key);
+        LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
+                 util::as_hex(public_key));
 
         // TODO: avoid conversion to vector
-        const std::vector<uint8_t> priv(private_key.begin(), private_key.end());
+        const std::vector<uint8_t> priv(private_key_x25519.begin(),
+                                        private_key_x25519.end());
         ChannelEncryption<std::string> channel_encryption(priv);
 
         loki::lokid_key_pair_t lokid_key_pair{private_key, public_key};
-        loki::ServiceNode service_node(ioc, port, lokid_key_pair, db_location,
-                                       lokid_rpc_port);
+
+        const auto public_key_x25519 =
+            loki::derive_pubkey_x25519(private_key_x25519);
+
+        LOKI_LOG(info, "SN x25519 pubkey is: {}",
+                 util::as_hex(public_key_x25519));
+
+        const auto public_key_ed25519 =
+            loki::derive_pubkey_ed25519(private_key_ed25519);
+
+        LOKI_LOG(info, "SN ed25519 pubkey is: {}",
+                 util::as_hex(public_key_ed25519));
+
+        loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
+                                                     public_key_x25519};
+
+        loki::ServiceNode service_node(ioc, worker_ioc, options.port,
+                                       lokid_key_pair, lokid_key_pair_x25519,
+                                       options.data_dir, lokid_client,
+                                       options.force_start);
+        RateLimiter rate_limiter;
+
+        loki::Security security(lokid_key_pair, options.data_dir);
+
+#ifdef ENABLE_SYSTEMD
+        sd_notify(0, "READY=1");
+        boost::asio::steady_timer systemd_watchdog_timer(ioc);
+        systemd_watchdog_tick(systemd_watchdog_timer, service_node);
+#endif
 
         /// Should run http server
-        loki::http_server::run(ioc, ip, port, service_node, channel_encryption);
-
+        loki::http_server::run(ioc, options.ip, options.port, options.data_dir,
+                               service_node, channel_encryption, rate_limiter,
+                               security);
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
-        BOOST_LOG_TRIVIAL(fatal) << "Exception caught in main: " << e.what();
+        std::cerr << "Exception caught in main: " << e.what() << std::endl;
         return EXIT_FAILURE;
     } catch (...) {
-        BOOST_LOG_TRIVIAL(fatal) << "Unknown exception caught in main.";
+        std::cerr << "Unknown exception caught in main." << std::endl;
         return EXIT_FAILURE;
     }
 }
