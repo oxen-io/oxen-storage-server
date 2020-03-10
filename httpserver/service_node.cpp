@@ -4,16 +4,16 @@
 #include "Item.hpp"
 #include "http_connection.h"
 #include "https_client.h"
+#include "lmq_server.h"
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
+#include "lokimq.h"
 #include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
-#include "lokimq.h"
-#include "lmq_server.h"
 
 #include "request_handler.h"
 
@@ -31,6 +31,8 @@ using namespace std::chrono_literals;
 
 namespace loki {
 using http_server::connection_t;
+
+using LockGuard = std::lock_guard<std::recursive_mutex>;
 
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     std::chrono::seconds(1),   std::chrono::seconds(5),
@@ -158,8 +160,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
-      relay_timer_(ioc), lokid_key_pair_(lokid_key_pair), lmq_server_(lmq_server),
-      lokid_client_(lokid_client), force_start_(force_start) {
+      relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
+      lmq_server_(lmq_server), lokid_client_(lokid_client),
+      force_start_(force_start) {
 
     char buf[64] = {0};
     if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
@@ -187,7 +190,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     this->syncing_ = false;
 #endif
 
-
     swarm_timer_tick();
     lokid_ping_timer_tick();
     cleanup_timer_tick();
@@ -205,7 +207,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     boost::asio::post(worker_ioc_,
                       [this]() { this->check_version_timer_tick(); });
 }
-
 
 static block_update_t
 parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
@@ -230,7 +231,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         bu.height = result.at("height").get<uint64_t>();
         bu.block_hash = result.at("block_hash").get<std::string>();
         bu.hardfork = result.at("hardfork").get<int>();
-        bu.unchanged = result.count("unchanged") && result.at("unchanged").get<bool>();
+        bu.unchanged =
+            result.count("unchanged") && result.at("unchanged").get<bool>();
         if (bu.unchanged)
             return bu;
 
@@ -251,9 +253,9 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const auto& pubkey_x25519_hex =
                 sn_json.at("pubkey_x25519").get_ref<const std::string&>();
 
-
             // lokidKeyFromHex works for pub keys too
-            const public_key_t pubkey_x25519 = lokidKeyFromHex(pubkey_x25519_hex);
+            const public_key_t pubkey_x25519 =
+                lokidKeyFromHex(pubkey_x25519_hex);
             const std::string pubkey_x25519_bin = key_to_string(pubkey_x25519);
 
             const auto& pubkey_ed25519 =
@@ -298,6 +300,9 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 }
 
 void ServiceNode::bootstrap_data() {
+
+    LockGuard guard(sn_mutex_);
+
     LOKI_LOG(trace, "Bootstrapping peer data");
 
     json params;
@@ -339,7 +344,7 @@ void ServiceNode::bootstrap_data() {
                         const block_update_t bu = parse_swarm_update(res.body);
                         // TODO: this should be disabled in the "testnet" mode
                         // (or changed to point to testnet seeds)
-                        on_bootstrap_update(bu);
+                        this->on_bootstrap_update(bu);
                     } catch (const std::exception& e) {
                         LOKI_LOG(
                             error,
@@ -369,6 +374,9 @@ void ServiceNode::bootstrap_data() {
 }
 
 bool ServiceNode::snode_ready(boost::optional<std::string&> reason) {
+
+    LockGuard guard(sn_mutex_);
+
     bool ready = true;
     std::string buf;
     if (hardfork_ < STORAGE_SERVER_HARDFORK) {
@@ -400,35 +408,38 @@ static const char* method_to_str(ss_client::ReqMethod method, bool lmq) {
 
     if (lmq) {
         switch (method) {
-            case ss_client::ReqMethod::DATA:
-                return "sn.data";
-            case ss_client::ReqMethod::PROXY_EXIT:
-                return "sn.proxy_exit";
-            case ss_client::ReqMethod::ONION_REQUEST:
-                return "sn.onion_req";
-            default:
-                LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
-                return "<invalid>";
+        case ss_client::ReqMethod::DATA:
+            return "sn.data";
+        case ss_client::ReqMethod::PROXY_EXIT:
+            return "sn.proxy_exit";
+        case ss_client::ReqMethod::ONION_REQUEST:
+            return "sn.onion_req";
+        default:
+            LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
+            return "<invalid>";
         }
     } else {
 
         switch (method) {
-            case ss_client::ReqMethod::DATA:
-                return "/swarms/push_batch/v1";
-            case ss_client::ReqMethod::PROXY_EXIT:
-                return "/swarms/proxy_exit";
-            case ss_client::ReqMethod::ONION_REQUEST:
-                return "/onion_req";
-            default:
-                LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
-                return "<invalid>";
+        case ss_client::ReqMethod::DATA:
+            return "/swarms/push_batch/v1";
+        case ss_client::ReqMethod::PROXY_EXIT:
+            return "/swarms/proxy_exit";
+        case ss_client::ReqMethod::ONION_REQUEST:
+            return "/onion_req";
+        default:
+            LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
+            return "<invalid>";
         }
     }
 }
 
-void ServiceNode::send_onion_to_sn(const sn_record_t& sn, const std::string& payload,
+void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
+                                   const std::string& payload,
                                    const std::string& eph_key,
                                    ss_client::Callback cb) const {
+
+    // NO mutex needed (I think)
 
     lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
                                std::move(cb), eph_key, payload);
@@ -439,6 +450,8 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
                              ss_client::Request req,
                              ss_client::Callback cb) const {
 
+    LockGuard guard(sn_mutex_);
+
     const bool use_lmq = this->hardfork_ >= LOKIMQ_ONION_HARDFORK;
 
     const char* method_str = method_to_str(method, use_lmq);
@@ -446,28 +459,34 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     if (use_lmq) {
         // ===== make an lmq request =====
 
-        LOKI_LOG(debug, "Going to use lokimq to send {} request to {}", method_str, util::as_hex(sn.pubkey_x25519_bin()));
+        LOKI_LOG(debug, "Going to use lokimq to send {} request to {}",
+                 method_str, util::as_hex(sn.pubkey_x25519_bin()));
 
-        // NOTE: this is ugly, but we will remove HTTP option in the next release,
-        // and send_to_sn will probably go away with it.
+        // NOTE: this is ugly, but we will remove HTTP option in the next
+        // release, and send_to_sn will probably go away with it.
         switch (method) {
-            case ss_client::ReqMethod::DATA: {
-                lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str, std::move(cb), req.body);
-                break;
-            }
-            case ss_client::ReqMethod::PROXY_EXIT: {
-                auto client_key = req.headers.find(LOKI_SENDER_KEY_HEADER);
+        case ss_client::ReqMethod::DATA: {
+            lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str,
+                                       std::move(cb), req.body);
+            break;
+        }
+        case ss_client::ReqMethod::PROXY_EXIT: {
+            auto client_key = req.headers.find(LOKI_SENDER_KEY_HEADER);
 
-                // I could just always assume that we are passing the right parameters...
-                if (client_key != req.headers.end()) {
-                    lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str, std::move(cb), client_key->second, req.body);
-                } else {
-                    LOKI_LOG(debug, "Developer error: no {} passed in headers", LOKI_SENDER_KEY_HEADER);
-                    // TODO: call cb?
-                    assert(false);
-                }
-                break;
+            // I could just always assume that we are passing the right
+            // parameters...
+            if (client_key != req.headers.end()) {
+                lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str,
+                                           std::move(cb), client_key->second,
+                                           req.body);
+            } else {
+                LOKI_LOG(debug, "Developer error: no {} passed in headers",
+                         LOKI_SENDER_KEY_HEADER);
+                // TODO: call cb?
+                assert(false);
             }
+            break;
+        }
         }
 
     } else {
@@ -487,55 +506,59 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         const bool needs_retrying =
             static_cast<bool>(method == ss_client::ReqMethod::DATA);
 
-        // Note: often one of the reason for failure here is that the node has just
-        // deregistered but our SN hasn't updated its swarm list yet.
-        make_sn_request(ioc_, sn, http_req, [this, sn, http_req, cb, needs_retrying](sn_response_t&& res) {
+        // Note: often one of the reason for failure here is that the node has
+        // just deregistered but our SN hasn't updated its swarm list yet.
+        make_sn_request(
+            ioc_, sn, http_req,
+            [this, sn, http_req, cb, needs_retrying](sn_response_t&& res) {
+                if (res.error_code != SNodeError::NO_ERROR) {
 
-            if (res.error_code != SNodeError::NO_ERROR) {
-                all_stats_.record_request_failed(sn);
+                    // TODO2: probably need a mutex here too
 
-                if (res.error_code == SNodeError::NO_REACH) {
-                    LOKI_LOG(debug,
-                             "Could not send to {} at first attempt: "
-                             "(Unreachable)",
-                             sn);
-                } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                    LOKI_LOG(debug,
-                             "Could send to {} at first attempt: "
-                             "(Generic error)",
-                             sn);
-                }
+                    all_stats_.record_request_failed(sn);
 
-                if (!needs_retrying) {
-                    cb(false, {});
-                    return;
-                }
+                    if (res.error_code == SNodeError::NO_REACH) {
+                        LOKI_LOG(debug,
+                                 "Could not send to {} at first attempt: "
+                                 "(Unreachable)",
+                                 sn);
+                    } else if (res.error_code == SNodeError::ERROR_OTHER) {
+                        LOKI_LOG(debug,
+                                 "Could send to {} at first attempt: "
+                                 "(Generic error)",
+                                 sn);
+                    }
 
-                std::function<void()> give_up_cb = [this, sn, cb]() {
-                    LOKI_LOG(debug, "Failed to send a request to: {}", sn);
-                    this->all_stats_.record_push_failed(sn);
-                    cb(false, {});
-                };
+                    if (!needs_retrying) {
+                        cb(false, {});
+                        return;
+                    }
 
-                boost::optional<std::function<void()>> gu_cb = give_up_cb;
+                    std::function<void()> give_up_cb = [this, sn, cb]() {
+                        LOKI_LOG(debug, "Failed to send a request to: {}", sn);
+                        this->all_stats_.record_push_failed(sn);
+                        cb(false, {});
+                    };
 
-                // TODO: only retry if we are sending messages
+                    boost::optional<std::function<void()>> gu_cb = give_up_cb;
 
-                // Not sure if we should use this for all http requests (or at all)
-                std::make_shared<FailedRequestHandler>(ioc_, sn, http_req, std::move(gu_cb))
-                    ->init_timer();
-            } else {
-                LOKI_LOG(debug, "SN HTTP request is OK");
+                    // TODO: only retry if we are sending messages
 
-                if (res.body) {
-                    cb(true, {*res.body});
+                    // Not sure if we should use this for all http requests (or
+                    // at all)
+                    std::make_shared<FailedRequestHandler>(ioc_, sn, http_req,
+                                                           std::move(gu_cb))
+                        ->init_timer();
                 } else {
-                    cb(true, {});
+                    LOKI_LOG(debug, "SN HTTP request is OK");
+
+                    if (res.body) {
+                        cb(true, {*res.body});
+                    } else {
+                        cb(true, {});
+                    }
                 }
-
-            }
-        });
-
+            });
     }
 }
 
@@ -543,102 +566,23 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
                                       const sn_record_t& sn) const {
 
     auto reply_callback = [](bool success, std::vector<std::string> data) {
-
         if (!success) {
             LOKI_LOG(error, "Failed to send batch data: time-out");
         }
-
     };
 
     LOKI_LOG(debug, "Relaying data to: {}", sn);
 
     auto req = ss_client::Request{blob, {}};
 
-    this->send_to_sn(sn, ss_client::ReqMethod::DATA, std::move(req), reply_callback);
-
-}
-
-void ServiceNode::register_listener(const std::string& pk,
-                                    const std::shared_ptr<connection_t>& c) {
-
-    // NOTE: it is the responsibility of connection_t to deregister itself!
-    pk_to_listeners[pk].push_back(c);
-    LOKI_LOG(debug, "Register pubkey: {}, total pubkeys: {}", pk,
-             pk_to_listeners.size());
-
-    LOKI_LOG(debug, "Number of connections listening for {}: {}", pk,
-             pk_to_listeners[pk].size());
-}
-
-void ServiceNode::remove_listener(const std::string& pk,
-                                  const connection_t* const c) {
-
-    const auto it = pk_to_listeners.find(pk);
-    if (it == pk_to_listeners.end()) {
-        /// This will sometimes happen because we reset all listeners on
-        /// push_all
-        LOKI_LOG(debug, "Trying to remove an unknown pk from the notification "
-                        "map. Operation ignored.");
-    } else {
-        LOKI_LOG(trace,
-                 "Deregistering notification for connection {} for pk {}",
-                 c->conn_idx, pk);
-        auto& cs = it->second;
-        const auto new_end = std::remove_if(
-            cs.begin(), cs.end(), [c](const std::shared_ptr<connection_t>& e) {
-                return e.get() == c;
-            });
-        const auto count = std::distance(new_end, cs.end());
-        cs.erase(new_end, cs.end());
-
-        if (count == 0) {
-            LOKI_LOG(debug, "Connection {} in not registered for pk {}",
-                     c->conn_idx, pk);
-        } else if (count > 1) {
-            LOKI_LOG(debug,
-                     "Multiple registrations ({}) for connection {} for pk {}",
-                     count, c->conn_idx, pk);
-        }
-    }
-}
-
-void ServiceNode::notify_listeners(const std::string& pk,
-                                   const message_t& msg) {
-
-    auto it = pk_to_listeners.find(pk);
-
-    if (it != pk_to_listeners.end()) {
-
-        auto& listeners = it->second;
-
-        LOKI_LOG(debug, "number of notified listeners: {}", listeners.size());
-
-        for (auto& c : listeners) {
-            c->notify(msg);
-        }
-        pk_to_listeners.erase(it);
-    }
-}
-
-void ServiceNode::reset_listeners() {
-
-    /// It is probably not worth it to try to
-    /// determine which connections needn't
-    /// be reset (most of them will need to be),
-    /// so we just reset all connections for
-    /// simplicity
-    for (auto& entry : pk_to_listeners) {
-        for (auto& c : entry.second) {
-            /// notify with no messages
-            c->notify(boost::none);
-        }
-    }
-
-    pk_to_listeners.clear();
+    this->send_to_sn(sn, ss_client::ReqMethod::DATA, std::move(req),
+                     reply_callback);
 }
 
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
+
+    LockGuard guard(sn_mutex_);
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
@@ -659,25 +603,19 @@ bool ServiceNode::process_store(const message_t& msg) {
     return true;
 }
 
-void ServiceNode::process_push(const message_t& msg) {
-#ifndef DISABLE_POW
-    const char* error_msg;
-    if (!verify_message(msg, pow_history_, &error_msg))
-        throw std::runtime_error(error_msg);
-#endif
-    save_if_new(msg);
-}
-
 void ServiceNode::save_if_new(const message_t& msg) {
+
+    LockGuard guard(sn_mutex_);
 
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
                    msg.nonce)) {
-        notify_listeners(msg.pub_key, msg);
         LOKI_LOG(trace, "saved message: {}", msg.data);
     }
 }
 
 void ServiceNode::save_bulk(const std::vector<Item>& items) {
+
+    LockGuard guard(sn_mutex_);
 
     if (!db_->bulk_store(items)) {
         LOKI_LOG(error, "failed to save batch to the database");
@@ -685,20 +623,21 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     }
 
     LOKI_LOG(trace, "saved messages count: {}", items.size());
-
-    // For batches, it is not trivial to get the list of saved (new)
-    // messages, so we are only going to "notify" clients with no data
-    // effectively resetting the connection.
-    reset_listeners();
 }
 
 void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
+
+    // Used in a callback to needs a mutex even if it is private
+    LockGuard guard(sn_mutex_);
 
     swarm_->apply_swarm_changes(bu.swarms);
     target_height_ = std::max(target_height_, bu.height);
 }
 
 void ServiceNode::on_swarm_update(const block_update_t& bu) {
+
+    // Used in a callback to needs a mutex even if it is private
+    LockGuard guard(sn_mutex_);
 
     if (this->hardfork_ != bu.hardfork) {
         LOKI_LOG(debug, "New hardfork: {}", bu.hardfork);
@@ -757,7 +696,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     swarm_->set_swarm_id(events.our_swarm_id);
 
     std::string reason;
-    if (!snode_ready(boost::optional<std::string&>(reason))) {
+    if (!this->snode_ready(boost::optional<std::string&>(reason))) {
         LOKI_LOG(warn, "Storage server is still not ready: {}", reason);
         return;
     } else {
@@ -789,12 +728,13 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     }
 
 #ifndef INTEGRATION_TEST
-    initiate_peer_test();
+    this->initiate_peer_test();
 #endif
-
 }
 
 void ServiceNode::relay_buffered_messages() {
+
+    LockGuard guard(sn_mutex_);
 
     // Should we wait for the response first?
     relay_timer_.expires_after(RELAY_INTERVAL);
@@ -804,7 +744,8 @@ void ServiceNode::relay_buffered_messages() {
     if (relay_buffer_.empty())
         return;
 
-    LOKI_LOG(debug, "Relaying {} messages from buffer to {} nodes", relay_buffer_.size(), swarm_->other_nodes().size());
+    LOKI_LOG(debug, "Relaying {} messages from buffer to {} nodes",
+             relay_buffer_.size(), swarm_->other_nodes().size());
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
     relay_buffer_.clear();
@@ -831,6 +772,9 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
 }
 
 void ServiceNode::swarm_timer_tick() {
+
+    LockGuard guard(sn_mutex_);
+
     LOKI_LOG(trace, "Swarm timer tick");
 
     json params;
@@ -886,6 +830,9 @@ void ServiceNode::cleanup_timer_tick() {
 
 void ServiceNode::ping_peers_tick() {
 
+    // Used as a callback to needs a mutex even if it is private
+    LockGuard guard(sn_mutex_);
+
     this->peer_ping_timer_.expires_after(PING_PEERS_INTERVAL);
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
@@ -936,7 +883,10 @@ void ServiceNode::ping_peers_tick() {
     }
 }
 
-void ServiceNode::sign_request(std::shared_ptr<request_t> &req) const {
+void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
+
+    LockGuard guard(sn_mutex_);
+
     // TODO: investigate why we are not signing headers
     const auto hash = hash_data(req->body());
     const auto signature = generate_signature(hash, lokid_key_pair_);
@@ -960,6 +910,8 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 }
 
 void ServiceNode::lokid_ping_timer_tick() {
+
+    LockGuard guard(sn_mutex_);
 
     /// TODO: Note that this is not actually an SN response! (but Lokid)
     auto cb = [](const sn_response_t&& res) {
@@ -1020,6 +972,8 @@ void ServiceNode::perform_blockchain_test(
     bc_test_params_t test_params,
     std::function<void(blockchain_test_answer_t)>&& cb) const {
 
+    LockGuard guard(sn_mutex_);
+
     LOKI_LOG(debug, "Delegating blockchain test to Lokid");
 
     nlohmann::json params;
@@ -1065,10 +1019,6 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     const std::string sig_b64 = util::base64_encode(raw_sig);
     request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
 
-    attach_pubkey(request);
-}
-
-void ServiceNode::attach_pubkey(std::shared_ptr<request_t>& request) const {
     request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER,
                  our_address_.pub_key_base32z());
 }
@@ -1084,6 +1034,8 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
                                                 const Item& item,
                                                 uint64_t test_height,
                                                 sn_response_t&& res) {
+
+    LockGuard guard(sn_mutex_);
 
     if (res.error_code != SNodeError::NO_ERROR) {
         // TODO: retry here, otherwise tests sometimes fail (when SN not
@@ -1147,6 +1099,9 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         uint64_t test_height,
                                         const Item& item) {
 
+    // Used as a callback to needs a mutex even if it is private
+    LockGuard guard(sn_mutex_);
+
     nlohmann::json json_body;
 
     json_body["height"] = test_height;
@@ -1169,6 +1124,9 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
                                            uint64_t test_height,
                                            blockchain_test_answer_t answer) {
 
+    // Used as a callback to needs a mutex even if it is private
+    LockGuard guard(sn_mutex_);
+
     nlohmann::json json_body;
 
     json_body["max_height"] = params.max_height;
@@ -1187,6 +1145,8 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
 
 void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
                                            bool reachable) {
+
+    LockGuard guard(sn_mutex_);
 
     const auto sn = swarm_->get_node_by_pk(sn_pk);
 
@@ -1252,24 +1212,28 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
 void ServiceNode::process_reach_test_response(sn_response_t&& res,
                                               const sn_pub_key_t& pk) {
 
+    LockGuard guard(sn_mutex_);
+
     if (res.error_code == SNodeError::NO_ERROR) {
         // NOTE: We don't need to report healthy nodes that previously has been
         // not been reported to Lokid as unreachable but I'm worried there might
         // be some race conditions, so do it anyway for now.
-        report_node_reachability(pk, true);
+        this->report_node_reachability(pk, true);
         return;
     }
 
     const bool should_report = reach_records_.record_unreachable(pk);
 
     if (should_report) {
-        report_node_reachability(pk, false);
+        this->report_node_reachability(pk, false);
     }
 }
 
 void ServiceNode::process_blockchain_test_response(
     sn_response_t&& res, blockchain_test_answer_t our_answer,
     sn_record_t testee, uint64_t bc_height) {
+
+    LockGuard guard(sn_mutex_);
 
     LOKI_LOG(debug,
              "Processing blockchain test response from: {} at height: {}",
@@ -1307,6 +1271,8 @@ void ServiceNode::process_blockchain_test_response(
 // Deterministically selects two random swarm members; returns true on success
 bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
                                        sn_record_t& testee) {
+
+    LockGuard guard(sn_mutex_);
 
     std::vector<sn_record_t> members = swarm_->other_nodes();
     members.push_back(our_address_);
@@ -1371,6 +1337,8 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     uint64_t blk_height, const std::string& tester_pk,
     const std::string& msg_hash, std::string& answer) {
 
+    LockGuard guard(sn_mutex_);
+
     // 1. Check height, retry if we are behind
     std::string block_hash;
 
@@ -1384,7 +1352,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     {
         sn_record_t tester;
         sn_record_t testee;
-        derive_tester_testee(blk_height, tester, testee);
+        this->derive_tester_testee(blk_height, tester, testee);
 
         if (testee != our_address_) {
             LOKI_LOG(error, "We are NOT the testee for height: {}", blk_height);
@@ -1440,6 +1408,8 @@ bool ServiceNode::select_random_message(Item& item) {
 
 void ServiceNode::initiate_peer_test() {
 
+    LockGuard guard(sn_mutex_);
+
     // 1. Select the tester/testee pair
     sn_record_t tester, testee;
 
@@ -1457,12 +1427,12 @@ void ServiceNode::initiate_peer_test() {
 
     const uint64_t test_height = block_height_ - TEST_BLOCKS_BUFFER;
 
-    if (!derive_tester_testee(test_height, tester, testee)) {
+    if (!this->derive_tester_testee(test_height, tester, testee)) {
         return;
     }
 
-    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", test_height,
-             tester, testee);
+    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", test_height, tester,
+             testee);
 
     if (tester != our_address_) {
         /// Not our turn to initiate a test
@@ -1480,7 +1450,7 @@ void ServiceNode::initiate_peer_test() {
                      item.data);
 
             // 2.2. Initiate testing request
-            send_storage_test_req(testee, test_height, item);
+            this->send_storage_test_req(testee, test_height, item);
         }
     }
 
@@ -1512,16 +1482,16 @@ void ServiceNode::initiate_peer_test() {
                       params, test_height, std::placeholders::_1);
 
         /// Compute your own answer, then initiate a test request
-        perform_blockchain_test(params, callback);
+        this->perform_blockchain_test(params, callback);
     }
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
 
     std::vector<Item> all_entries;
-    get_all_messages(all_entries);
+    this->get_all_messages(all_entries);
 
-    relay_messages(all_entries, peers);
+    this->relay_messages(all_entries, peers);
 }
 
 template <typename T>
@@ -1546,6 +1516,8 @@ std::string vec_to_string(const std::vector<T>& vec) {
 
 void ServiceNode::bootstrap_swarms(
     const std::vector<swarm_id_t>& swarms) const {
+
+    LockGuard guard(sn_mutex_);
 
     if (swarms.empty()) {
         LOKI_LOG(info, "Bootstrapping all swarms");
@@ -1637,7 +1609,7 @@ void ServiceNode::relay_messages(const std::vector<Message>& messages,
     for (const sn_record_t& sn : snodes) {
         for (auto& batch : batches) {
             // TODO: I could probably avoid copying here
-            relay_data_reliable(batch, sn);
+            this->relay_data_reliable(batch, sn);
         }
     }
 }
@@ -1651,12 +1623,20 @@ void ServiceNode::salvage_data() const {
 bool ServiceNode::retrieve(const std::string& pubKey,
                            const std::string& last_hash,
                            std::vector<Item>& items) {
+
+    LockGuard guard(sn_mutex_);
+
+    all_stats_.bump_retrieve_requests();
+
     return db_->retrieve(pubKey, items, last_hash,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
 void ServiceNode::set_difficulty_history(
     const std::vector<pow_difficulty_t>& new_history) {
+
+    LockGuard guard(sn_mutex_);
+
     pow_history_ = new_history;
     for (const auto& difficulty : pow_history_) {
         if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
@@ -1704,6 +1684,8 @@ static nlohmann::json to_json(const all_stats_t& stats) {
 
 std::string ServiceNode::get_stats() const {
 
+    LockGuard guard(sn_mutex_);
+
     auto val = to_json(all_stats_);
 
     val["version"] = STORAGE_SERVER_VERSION_STRING;
@@ -1727,12 +1709,17 @@ std::string ServiceNode::get_stats() const {
 }
 
 std::string ServiceNode::get_status_line() const {
-    // This produces a short, single-line status string, used when running as a systemd Type=notify
-    // service to update the service Status line.  The status message has to be fairly short: has to
-    // fit on one line, and if it's too long systemd just truncates it when displaying it.
+    // This produces a short, single-line status string, used when running as a
+    // systemd Type=notify service to update the service Status line.  The
+    // status message has to be fairly short: has to fit on one line, and if
+    // it's too long systemd just truncates it when displaying it.
+
+    LockGuard guard(sn_mutex_);
+
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
-    if (!loki::is_mainnet()) s << " (TESTNET)";
+    if (!loki::is_mainnet())
+        s << " (TESTNET)";
 
     if (syncing_)
         s << "; SYNCING";
@@ -1750,17 +1737,24 @@ std::string ServiceNode::get_status_line() const {
     uint64_t total_stored;
     if (db_->get_message_count(total_stored))
         s << "; " << total_stored << " msgs";
-    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/' << all_stats_.get_total_retrieve_requests();
-    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/' << get_net_stats().http_connections_out <<
-        '/' << get_net_stats().https_connections_out;
+    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/'
+      << all_stats_.get_total_retrieve_requests();
+    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/'
+      << get_net_stats().http_connections_out << '/'
+      << get_net_stats().https_connections_out;
     return s.str();
 }
 
 int ServiceNode::get_curr_pow_difficulty() const {
+
+    LockGuard guard(sn_mutex_);
+
     return curr_pow_difficulty_.difficulty;
 }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
+
+    LockGuard guard(sn_mutex_);
 
     LOKI_LOG(trace, "Get all messages");
 
@@ -1768,7 +1762,8 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 }
 
 void ServiceNode::process_push_batch(const std::string& blob) {
-    // Note: we only receive batches on bootstrap (new swarm/new snode)
+
+    LockGuard guard(sn_mutex_);
 
     if (blob.empty())
         return;
@@ -1811,6 +1806,9 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 }
 
 bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
+
+    LockGuard guard(sn_mutex_);
+
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
         return false;
@@ -1820,6 +1818,8 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
 std::vector<sn_record_t>
 ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
+
+    LockGuard guard(sn_mutex_);
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
@@ -1845,6 +1845,8 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
 bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 
+    LockGuard guard(sn_mutex_);
+
     // TODO: need more robust handling of uninitialized swarm_
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
@@ -1857,6 +1859,8 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 boost::optional<sn_record_t>
 ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
 
+    LockGuard guard(sn_mutex_);
+
     if (swarm_) {
         return swarm_->find_node_by_x25519_bin(pk);
     }
@@ -1866,6 +1870,8 @@ ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
 
 boost::optional<sn_record_t>
 ServiceNode::find_node_by_ed25519_pk(const std::string& pk) const {
+
+    LockGuard guard(sn_mutex_);
 
     if (swarm_) {
         return swarm_->find_node_by_ed25519_pk(pk);

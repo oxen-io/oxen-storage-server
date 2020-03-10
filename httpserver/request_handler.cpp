@@ -221,8 +221,6 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
 
 Response RequestHandler::process_retrieve(const json& params) {
 
-    service_node_.all_stats_.bump_retrieve_requests();
-
     constexpr const char* fields[] = {"pubKey", "lastHash"};
 
     for (const auto& field : fields) {

@@ -38,9 +38,11 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
 static constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
-static constexpr auto LOKI_FILE_SERVER_TARGET_HEADER = "X-Loki-File-Server-Target";
+static constexpr auto LOKI_FILE_SERVER_TARGET_HEADER =
+    "X-Loki-File-Server-Target";
 static constexpr auto LOKI_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
-static constexpr auto LOKI_FILE_SERVER_HEADERS_HEADER = "X-Loki-File-Server-Headers";
+static constexpr auto LOKI_FILE_SERVER_HEADERS_HEADER =
+    "X-Loki-File-Server-Headers";
 
 using loki::storage::Item;
 
@@ -99,7 +101,8 @@ void make_http_request(boost::asio::io_context& ioc,
 }
 
 // ======================== Lokid Client ========================
-LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port)
+LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip,
+                         uint16_t port)
     : ioc_(ioc), lokid_rpc_ip_(std::move(ip)), lokid_rpc_port_(port) {}
 
 void LokidClient::make_lokid_request(boost::string_view method,
@@ -136,7 +139,8 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
 
-static bool validateHexKey(const std::string& key, const size_t key_length = loki::KEY_LENGTH) {
+static bool validateHexKey(const std::string& key,
+                           const size_t key_length = loki::KEY_LENGTH) {
     return key.size() == 2 * key_length &&
            std::all_of(key.begin(), key.end(), [](char c) {
                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -145,14 +149,14 @@ static bool validateHexKey(const std::string& key, const size_t key_length = lok
 
 std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
 LokidClient::wait_for_privkey() {
-    // fetch SN private key from lokid; do this synchronously because we can't finish startup
-    // until we have it.
+    // fetch SN private key from lokid; do this synchronously because we can't
+    // finish startup until we have it.
     loki::private_key_t private_key;
     loki::private_key_ed25519_t private_key_ed;
     loki::private_key_t private_key_x;
     LOKI_LOG(info, "Retrieving SN key from lokid");
     boost::asio::steady_timer delay{ioc_};
-    std::function<void(loki::sn_response_t &&res)> key_fetch;
+    std::function<void(loki::sn_response_t && res)> key_fetch;
     key_fetch = [&](loki::sn_response_t res) {
         try {
             if (res.error_code != loki::SNodeError::NO_ERROR)
@@ -161,33 +165,49 @@ LokidClient::wait_for_privkey() {
                 throw std::runtime_error("empty body");
             else {
                 auto r = nlohmann::json::parse(*res.body);
-                const auto &legacy_privkey = r.at("result").at("service_node_privkey").get_ref<const std::string &>();
-                const auto &privkey_ed = r.at("result").at("service_node_ed25519_privkey").get_ref<const std::string &>();
-                const auto &privkey_x = r.at("result").at("service_node_x25519_privkey").get_ref<const std::string &>();
-                if (!validateHexKey(legacy_privkey) || !validateHexKey(privkey_ed, private_key_ed25519_t::LENGTH) || !validateHexKey(privkey_x))
+                const auto& legacy_privkey = r.at("result")
+                                                 .at("service_node_privkey")
+                                                 .get_ref<const std::string&>();
+                const auto& privkey_ed = r.at("result")
+                                             .at("service_node_ed25519_privkey")
+                                             .get_ref<const std::string&>();
+                const auto& privkey_x = r.at("result")
+                                            .at("service_node_x25519_privkey")
+                                            .get_ref<const std::string&>();
+                if (!validateHexKey(legacy_privkey) ||
+                    !validateHexKey(privkey_ed,
+                                    private_key_ed25519_t::LENGTH) ||
+                    !validateHexKey(privkey_x))
                     throw std::runtime_error("returned value is not hex");
                 else {
                     private_key = loki::lokidKeyFromHex(legacy_privkey);
-                    // TODO: check that one is derived from the other as a sanity check?
-                    private_key_ed = private_key_ed25519_t::from_hex(privkey_ed);
+                    // TODO: check that one is derived from the other as a
+                    // sanity check?
+                    private_key_ed =
+                        private_key_ed25519_t::from_hex(privkey_ed);
                     private_key_x = loki::lokidKeyFromHex(privkey_x);
                     // run out of work, which will end the event loop
                 }
             }
-        } catch (const std::exception &e) {
-            LOKI_LOG(critical, "Error retrieving SN privkey from lokid @ {}:{}: {}.  Is lokid running?  Retrying in 5s",
+        } catch (const std::exception& e) {
+            LOKI_LOG(critical,
+                     "Error retrieving SN privkey from lokid @ {}:{}: {}.  Is "
+                     "lokid running?  Retrying in 5s",
                      lokid_rpc_ip_, lokid_rpc_port_, e.what());
 
             delay.expires_after(std::chrono::seconds{5});
-            delay.async_wait([this, &key_fetch](const boost::system::error_code &) {
-                    make_lokid_request("get_service_node_privkey", {}, key_fetch); });
+            delay.async_wait([this,
+                              &key_fetch](const boost::system::error_code&) {
+                make_lokid_request("get_service_node_privkey", {}, key_fetch);
+            });
         }
     };
     make_lokid_request("get_service_node_privkey", {}, key_fetch);
     ioc_.run(); // runs until we get success above
     ioc_.restart();
 
-    return std::tuple<private_key_t, private_key_ed25519_t, private_key_t>{private_key, private_key_ed, private_key_x};
+    return std::tuple<private_key_t, private_key_ed25519_t, private_key_t>{
+        private_key, private_key_ed, private_key_x};
 }
 
 // =============================================================
@@ -195,11 +215,11 @@ LokidClient::wait_for_privkey() {
 namespace http_server {
 
 // "Loop" forever accepting new connections.
-static void
-accept_connection(boost::asio::io_context& ioc,
-                  boost::asio::ssl::context& ssl_ctx, tcp::acceptor& acceptor,
-                  ServiceNode& sn, RequestHandler& rh,
-                  RateLimiter& rate_limiter, const Security& security) {
+static void accept_connection(boost::asio::io_context& ioc,
+                              boost::asio::ssl::context& ssl_ctx,
+                              tcp::acceptor& acceptor, ServiceNode& sn,
+                              RequestHandler& rh, RateLimiter& rate_limiter,
+                              const Security& security) {
 
     static boost::asio::steady_timer acceptor_timer(ioc);
     constexpr std::chrono::milliseconds ACCEPT_DELAY = 50ms;
@@ -248,8 +268,8 @@ accept_connection(boost::asio::io_context& ioc,
 }
 
 void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const boost::filesystem::path& base_path, ServiceNode& sn, RequestHandler& rh,
-         RateLimiter& rate_limiter, Security& security) {
+         const boost::filesystem::path& base_path, ServiceNode& sn,
+         RequestHandler& rh, RateLimiter& rate_limiter, Security& security) {
 
     LOKI_LOG(trace, "http server run");
 
@@ -326,7 +346,8 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     LOKI_LOG(trace, "Open https socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
-        LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(), ec.message());
+        LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(),
+                 ec.message());
         this->clean_up();
         deadline_.cancel();
         return;
@@ -335,15 +356,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     read_request();
 }
 
-void connection_t::clean_up() {
-
-    this->do_close();
-
-    if (this->notification_ctx_) {
-        this->service_node_.remove_listener(this->notification_ctx_->pubkey,
-                                            this);
-    }
-}
+void connection_t::clean_up() { this->do_close(); }
 
 void connection_t::notify(boost::optional<const message_t&> msg) {
 
@@ -396,6 +409,14 @@ void connection_t::read_request() {
     http::async_read(stream_, buffer_, request_, on_data);
 }
 
+// This doesn't need to be a method...
+static bool verify_signature(const std::string& payload,
+                             const std::string& signature,
+                             const std::string& public_key_b32z) {
+    const auto body_hash = hash_data(payload);
+    return check_signature(signature, body_hash, public_key_b32z);
+}
+
 bool connection_t::validate_snode_request() {
     if (!parse_header(LOKI_SENDER_SNODE_PUBKEY_HEADER,
                       LOKI_SNODE_SIGNATURE_HEADER)) {
@@ -415,7 +436,7 @@ bool connection_t::validate_snode_request() {
         return false;
     }
 
-    if (!verify_signature(signature, public_key_b32z)) {
+    if (!verify_signature(request_.get().body(), signature, public_key_b32z)) {
         constexpr auto msg = "Could not verify batch signature";
         LOKI_LOG(debug, "{}", msg);
         body_stream_ << msg;
@@ -430,12 +451,6 @@ bool connection_t::validate_snode_request() {
     return true;
 }
 
-bool connection_t::verify_signature(const std::string& signature,
-                                    const std::string& public_key_b32z) {
-    const auto body_hash = hash_data(request_.get().body());
-    return check_signature(signature, body_hash, public_key_b32z);
-}
-
 void connection_t::process_storage_test_req(uint64_t height,
                                             const std::string& tester_pk,
                                             const std::string& msg_hash) {
@@ -445,10 +460,10 @@ void connection_t::process_storage_test_req(uint64_t height,
     std::string answer;
 
     /// TODO: we never actually test that `height` is within any reasonable
-    /// time window (or that it is not repeated multiple times), we should do that!
-    /// This is done implicitly to some degree using `block_hashes_cache_`, which
-    /// holds a limited number of recent blocks only and fails if an earlier block
-    /// is requested
+    /// time window (or that it is not repeated multiple times), we should do
+    /// that! This is done implicitly to some degree using
+    /// `block_hashes_cache_`, which holds a limited number of recent blocks
+    /// only and fails if an earlier block is requested
     const MessageTestStatus status = service_node_.process_storage_test_req(
         height, tester_pk, msg_hash, answer);
     const auto elapsed_time =
@@ -521,13 +536,14 @@ void connection_t::process_blockchain_test_req(uint64_t,
         this->write_response();
     };
 
-    /// TODO: this should first check if tester/testee are correct! (use `height`)
+    /// TODO: this should first check if tester/testee are correct! (use
+    /// `height`)
     service_node_.perform_blockchain_test(params, std::move(callback));
 }
 
 static void print_headers(const request_t& req) {
     LOKI_LOG(info, "HEADERS:");
-    for (const auto &field: req) {
+    for (const auto& field : req) {
         LOKI_LOG(info, "    [{}]: {}", field.name_string(), field.value());
     }
 }
@@ -571,19 +587,21 @@ void connection_t::process_onion_req() {
 
         const json json_req = json::parse(req.body(), nullptr, true);
         // base64
-        const auto& ciphertext = json_req.at("ciphertext").get_ref<const std::string&>();
+        const auto& ciphertext =
+            json_req.at("ciphertext").get_ref<const std::string&>();
         // hex
-        const auto& ephem_key = json_req.at("ephemeral_key").get_ref<const std::string&>();
+        const auto& ephem_key =
+            json_req.at("ephemeral_key").get_ref<const std::string&>();
 
         request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
 
     } catch (const std::exception& e) {
-        auto msg = fmt::format("Error parsing outer JSON in onion request: {}", e.what());
+        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
+                               e.what());
         LOKI_LOG(error, "{}", msg);
         response_.result(http::status::bad_request);
         this->body_stream_ << std::move(msg);
     }
-
 }
 
 void connection_t::process_proxy_req() {
@@ -596,8 +614,7 @@ void connection_t::process_proxy_req() {
     // print_headers(req);
 #endif
 
-    if (!parse_header(LOKI_SENDER_KEY_HEADER,
-                      LOKI_TARGET_SNODE_KEY)) {
+    if (!parse_header(LOKI_SENDER_KEY_HEADER, LOKI_TARGET_SNODE_KEY)) {
         LOKI_LOG(debug, "Missing headers for a proxy request");
         return;
     }
@@ -614,9 +631,10 @@ void connection_t::process_proxy_req() {
     const int req_idx = req_counter;
 
     // TODO: make an https response out of what we got back
-    auto on_proxy_response = [this, req_idx] (bool success, std::vector<std::string> data) {
-
-        LOKI_LOG(debug, "on proxy response: {}", success ? "success" : "failure");
+    auto on_proxy_response = [this, req_idx](bool success,
+                                             std::vector<std::string> data) {
+        LOKI_LOG(debug, "on proxy response: {}",
+                 success ? "success" : "failure");
 
         if (success && data.size() == 1) {
 
@@ -634,7 +652,8 @@ void connection_t::process_proxy_req() {
     };
 
     if (!sn) {
-        LOKI_LOG(debug, "Could not find target snode for proxy: {}", target_snode_key);
+        LOKI_LOG(debug, "Could not find target snode for proxy: {}",
+                 target_snode_key);
         on_proxy_response(false, {});
         return;
     }
@@ -642,14 +661,14 @@ void connection_t::process_proxy_req() {
     LOKI_LOG(debug, "Target Snode: {}", target_snode_key);
 
     // Send this request to SN over either HTTP or LOKIMQ
-    auto sn_req = ss_client::Request{req.body(), {{LOKI_SENDER_KEY_HEADER, sender_key}}};
+    auto sn_req =
+        ss_client::Request{req.body(), {{LOKI_SENDER_KEY_HEADER, sender_key}}};
 
     LOKI_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
     req_counter += 1;
 
     service_node_.send_to_sn(*sn, ss_client::ReqMethod::PROXY_EXIT,
                              std::move(sn_req), on_proxy_response);
-
 }
 
 void connection_t::process_file_proxy_req() {
@@ -664,11 +683,11 @@ void connection_t::process_file_proxy_req() {
                       LOKI_FILE_SERVER_VERB_HEADER,
                       LOKI_FILE_SERVER_HEADERS_HEADER)) {
         LOKI_LOG(error, "Missing headers for a file proxy request");
-        // TODO: The connection should be closed by the timer if we return early,
-        // but need to double-check that! (And close it early if possible)
+        // TODO: The connection should be closed by the timer if we return
+        // early, but need to double-check that! (And close it early if
+        // possible)
         return;
     }
-
 
     const auto& target = header_[LOKI_FILE_SERVER_TARGET_HEADER];
     const auto& verb_str = header_[LOKI_FILE_SERVER_VERB_HEADER];
@@ -713,14 +732,12 @@ void connection_t::process_file_proxy_req() {
     req->body() = std::move(original_req.body());
     req->target(target);
     req->set(http::field::host, "file.lokinet.org");
-    
+
     req->prepare_payload();
 
-    for (auto& el : headers_json.items())
-    {
+    for (auto& el : headers_json.items()) {
         req->insert(el.key(), el.value());
     }
-
 
     auto cb = [this](sn_response_t res) {
         LOKI_LOG(trace, "Successful file proxy request!");
@@ -736,7 +753,6 @@ void connection_t::process_file_proxy_req() {
     };
 
     make_https_request(ioc_, "https://file.lokinet.org", req, cb);
-
 }
 
 void connection_t::process_swarm_req(boost::string_view target) {
@@ -840,7 +856,8 @@ void connection_t::process_swarm_req(boost::string_view target) {
         LOKI_LOG(trace, "Received ping_test");
         response_.result(http::status::ok);
     } else if (target == "/swarms/proxy_exit") {
-        LOKI_LOG(debug, "Processing proxy request: we are the destination node");
+        LOKI_LOG(debug,
+                 "Processing proxy request: we are the destination node");
 
         const auto it = req.find(LOKI_SENDER_KEY_HEADER);
         /// TODO: handle the error better?
@@ -851,9 +868,9 @@ void connection_t::process_swarm_req(boost::string_view target) {
             auto res = request_handler_.process_proxy_exit(key, req.body());
             this->set_response(res);
         } else {
-            LOKI_LOG(debug, "Error: {} header is missing", LOKI_SENDER_KEY_HEADER);
+            LOKI_LOG(debug, "Error: {} header is missing",
+                     LOKI_SENDER_KEY_HEADER);
         }
-
     }
 }
 
@@ -864,14 +881,14 @@ void connection_t::set_response(const Response& res) {
     std::string content_type;
 
     switch (res.content_type()) {
-        case ContentType::plaintext:
-            content_type = "text/plain";
-            break;
-        case ContentType::json:
-            content_type = "application/json";
-            break;
-        default:
-            LOKI_LOG(critical, "Unrecognized content type");
+    case ContentType::plaintext:
+        content_type = "text/plain";
+        break;
+    case ContentType::json:
+        content_type = "application/json";
+        break;
+    default:
+        LOKI_LOG(critical, "Unrecognized content type");
     }
 
     response_.set(http::field::content_type, content_type);
@@ -1070,7 +1087,8 @@ void connection_t::process_client_req_rate_limited() {
     // "proxy" client requests as we can have both true html headers
     // and the headers that came encrypted in body
     if (req.find(LOKI_LONG_POLL_HEADER) != req.end()) {
-        header_[LOKI_LONG_POLL_HEADER] = req.at(LOKI_LONG_POLL_HEADER).to_string();
+        header_[LOKI_LONG_POLL_HEADER] =
+            req.at(LOKI_LONG_POLL_HEADER).to_string();
     }
 
     const auto res = request_handler_.process_client_req(plain_text);
@@ -1320,7 +1338,8 @@ void HttpClientSession::clean_up() {
     socket_.close(ec);
 
     if (ec) {
-        LOKI_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(), ec.message());
+        LOKI_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(),
+                 ec.message());
     } else {
         LOKI_LOG(trace, "Close http socket: {}", sockfd);
         get_net_stats().record_socket_close(sockfd);
@@ -1340,8 +1359,6 @@ HttpClientSession::~HttpClientSession() {
     get_net_stats().http_connections_out--;
 
     this->clean_up();
-
-
 }
 
 } // namespace loki

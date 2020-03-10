@@ -14,8 +14,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
-#include "swarm.h"
 #include "lokid_key.h"
+#include "swarm.h"
 
 constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
 constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
@@ -59,20 +59,20 @@ struct sn_response_t {
 };
 
 template <typename OStream>
-OStream& operator<<(OStream& os, const sn_response_t &res) {
+OStream& operator<<(OStream& os, const sn_response_t& res) {
     switch (res.error_code) {
-        case SNodeError::NO_ERROR:
-            os << "NO_ERROR";
-            break;
-        case SNodeError::ERROR_OTHER:
-            os << "ERROR_OTHER";
-            break;
-        case SNodeError::NO_REACH:
-            os << "NO_REACH";
-            break;
-        case SNodeError::HTTP_ERROR:
-            os << "HTTP_ERROR";
-            break;
+    case SNodeError::NO_ERROR:
+        os << "NO_ERROR";
+        break;
+    case SNodeError::ERROR_OTHER:
+        os << "ERROR_OTHER";
+        break;
+    case SNodeError::NO_REACH:
+        os << "NO_REACH";
+        break;
+    case SNodeError::HTTP_ERROR:
+        os << "HTTP_ERROR";
+        break;
     }
 
     return os << "(" << (res.body ? *res.body : "n/a") << ")";
@@ -106,10 +106,11 @@ class LokidClient {
                                    boost::string_view method,
                                    const nlohmann::json& params,
                                    http_callback_t&& cb) const;
-    // Synchronously fetches the private key from lokid.  Designed to be called *before* the
-    // io_context has been started (this runs it, waits for a successful fetch, then restarts it
-    // when finished).
-    std::tuple<private_key_t, private_key_ed25519_t, private_key_t> wait_for_privkey();
+    // Synchronously fetches the private key from lokid.  Designed to be called
+    // *before* the io_context has been started (this runs it, waits for a
+    // successful fetch, then restarts it when finished).
+    std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
+    wait_for_privkey();
 };
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
@@ -145,7 +146,8 @@ class HttpClientSession
 
     void on_read(boost::system::error_code ec, std::size_t bytes_transferred);
 
-    void trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body);
+    void trigger_callback(SNodeError error,
+                          std::shared_ptr<std::string>&& body);
 
     void clean_up();
 
@@ -301,31 +303,28 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     bool parse_header(const char* first, Args... args);
 
     bool validate_snode_request();
-    bool verify_signature(const std::string& signature,
-                          const std::string& public_key_b32z);
 };
 
 void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const boost::filesystem::path& base_path, ServiceNode& sn, RequestHandler& rh,
-         RateLimiter& rate_limiter, Security&);
+         const boost::filesystem::path& base_path, ServiceNode& sn,
+         RequestHandler& rh, RateLimiter& rate_limiter, Security&);
 
 } // namespace http_server
 
-constexpr const char *error_string(SNodeError err) {
+constexpr const char* error_string(SNodeError err) {
     switch (err) {
-        case loki::SNodeError::NO_ERROR:
-            return "NO_ERROR";
-        case loki::SNodeError::ERROR_OTHER:
-            return "ERROR_OTHER";
-        case loki::SNodeError::NO_REACH:
-            return "NO_REACH";
-        case loki::SNodeError::HTTP_ERROR:
-            return "HTTP_ERROR";
-        default:
-            return "[UNKNOWN]";
+    case loki::SNodeError::NO_ERROR:
+        return "NO_ERROR";
+    case loki::SNodeError::ERROR_OTHER:
+        return "ERROR_OTHER";
+    case loki::SNodeError::NO_REACH:
+        return "NO_REACH";
+    case loki::SNodeError::HTTP_ERROR:
+        return "HTTP_ERROR";
+    default:
+        return "[UNKNOWN]";
     }
 }
-
 
 } // namespace loki
 
