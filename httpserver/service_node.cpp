@@ -206,6 +206,19 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
     boost::asio::post(worker_ioc_,
                       [this]() { this->check_version_timer_tick(); });
+
+   // We really want to make sure nodes don't get stuck in "syncing" mode,
+   // so if we are still "syncing" after a long time, activate SN regardless
+    auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
+
+    delay_timer->expires_after(std::chrono::minutes(60));
+    delay_timer->async_wait([this, delay_timer](const boost::system::error_code& ec) {
+        if (this->syncing_) {
+            LOKI_LOG(warn, "Block syncing is taking too long, activating SS regardless");
+            this->syncing_ = false;
+        }
+    });
+
 }
 
 static block_update_t
@@ -666,18 +679,8 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         hardfork_ = bu.hardfork;
     }
 
-    if (syncing_) {
-        if (target_height_ == 0) {
-            // If we are here, the probably means we were never able to contact
-            // any seed, so the bast we can do is to assume we are synced
-            // (this shouldn't be necessary as we do the same when all requests
-            //  fail, but it won't hurt either)
-            LOKI_LOG(info, "Target height is 0, assuming we are synced");
-
-            syncing_ = false;
-        } else {
-            syncing_ = bu.height < target_height_;
-        }
+    if (syncing_ && target_height_ != 0) {
+        syncing_ = bu.height < target_height_;
     }
 
     /// We don't have anything to do until we have synced
