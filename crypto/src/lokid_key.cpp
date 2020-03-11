@@ -72,4 +72,9 @@ public_key_t derive_pubkey_ed25519(const private_key_ed25519_t& seckey) {
     return pubkey;
 }
 
+std::string key_to_string(const std::array<uint8_t, loki::KEY_LENGTH>& key) {
+    auto pk = reinterpret_cast<const char*>(&key);
+    return std::string{pk, loki::KEY_LENGTH};
+}
+
 } // namespace loki
