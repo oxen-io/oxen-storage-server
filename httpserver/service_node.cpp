@@ -502,6 +502,13 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
             }
             break;
         }
+        case ss_client::ReqMethod::ONION_REQUEST: {
+            // Onion reqeusts always use lokimq, so they use it
+            // directly, no need for the "send_to_sn" abstraction
+            LOKI_LOG(error, "Onion requests should not use this interface");
+            assert(false);
+            break;
+        }
         }
 
     } else {

@@ -21,6 +21,7 @@ constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
 constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
 constexpr auto LOKI_SENDER_KEY_HEADER = "X-Sender-Public-Key";
 constexpr auto LOKI_TARGET_SNODE_KEY = "X-Target-Snode-Key";
+constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
 template <typename T>
 class ChannelEncryption;

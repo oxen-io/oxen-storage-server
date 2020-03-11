@@ -77,7 +77,8 @@ class RequestHandler {
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
-                                 const std::string& client_key) const;
+                                 const std::string& client_key,
+                                 bool use_gcm) const;
 
     // Return the correct swarm for `pubKey`
     Response handle_wrong_swarm(const user_pubkey_t& pubKey);

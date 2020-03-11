@@ -86,7 +86,12 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
     auto res = request_handler_->process_proxy_exit(std::string(client_key), std::string(payload));
 
     if (res.status() == Status::OK) {
+
+        // TODO: we might want to delay reponding in the case of LP,
+        // unless the proxy delay is long enough
+
         message.send_reply(res.message());
+
     } else {
         // TODO: better handle this (unlikely) error
         LOKI_LOG(debug, "Error: status is not OK for proxy_exit");

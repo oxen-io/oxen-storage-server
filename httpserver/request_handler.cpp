@@ -289,6 +289,8 @@ Response RequestHandler::process_retrieve(const json& params) {
 
 Response RequestHandler::process_client_req(const std::string& req_json) {
 
+    LOKI_LOG(debug, "process_client_req");
+
     const json body = json::parse(req_json, nullptr, false);
     if (body == nlohmann::detail::value_t::discarded) {
         LOKI_LOG(debug, "Bad client request: invalid json");
@@ -329,9 +331,9 @@ Response RequestHandler::process_client_req(const std::string& req_json) {
     }
 }
 
-Response
-RequestHandler::wrap_proxy_response(const Response& res,
-                                    const std::string& client_key) const {
+Response RequestHandler::wrap_proxy_response(const Response& res,
+                                             const std::string& client_key,
+                                             bool use_gcm) const {
 
     nlohmann::json json_res;
 
@@ -339,8 +341,14 @@ RequestHandler::wrap_proxy_response(const Response& res,
     json_res["body"] = res.message();
 
     const std::string res_body = json_res.dump();
-    /// change to encrypt_gcm
-    std::string ciphertext = util::base64_encode(channel_cipher_.encrypt_gcm(res_body, client_key));
+
+    std::string ciphertext;
+
+    if (use_gcm) {
+        ciphertext = util::base64_encode(channel_cipher_.encrypt_gcm(res_body, client_key));
+    } else {
+        ciphertext = util::base64_encode(channel_cipher_.encrypt_cbc(res_body, client_key));
+    }
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};
@@ -370,7 +378,7 @@ Response RequestHandler::process_onion_exit(const std::string& eph_key,
 
     LOKI_LOG(debug, "about to respond with: {}", to_string(res));
 
-    return wrap_proxy_response(res, eph_key);
+    return wrap_proxy_response(res, eph_key, true /* use aes gcm */);
 }
 
 Response RequestHandler::process_proxy_exit(const std::string& client_key,
@@ -382,9 +390,17 @@ Response RequestHandler::process_proxy_exit(const std::string& client_key,
 
     std::string body;
 
+    bool lp_used = false;
+
     try {
         const json req = json::parse(plaintext, nullptr, true);
         body = req.at("body").get<std::string>();
+
+        if (req.find("headers") != req.end()) {
+            if (req.at("headers").find(LOKI_LONG_POLL_HEADER) != req.at("headers").end()) {
+                lp_used = req.at("headers").at(LOKI_LONG_POLL_HEADER).get<bool>();
+            }
+        }
 
         // TOOD: check if the client requested long-polling and see if we want
         // to do anything about it.
@@ -396,11 +412,15 @@ Response RequestHandler::process_proxy_exit(const std::string& client_key,
         return {Status::BAD_REQUEST, msg};
     }
 
+    if (lp_used) {
+        LOKI_LOG(debug, "Long polling requested over a proxy request");
+    }
+
     const auto res = this->process_client_req(body);
 
     LOKI_LOG(debug, "about to respond with: {}", to_string(res));
 
-    return wrap_proxy_response(res, client_key);
+    return wrap_proxy_response(res, client_key, false /* use cbc */);
 }
 
 Response RequestHandler::process_onion_to_url(

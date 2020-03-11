@@ -36,7 +36,6 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 /// +===========================================
 
 static constexpr auto LOKI_EPHEMKEY_HEADER = "X-Loki-EphemKey";
-static constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
 static constexpr auto LOKI_FILE_SERVER_TARGET_HEADER =
     "X-Loki-File-Server-Target";
@@ -1091,8 +1090,36 @@ void connection_t::process_client_req_rate_limited() {
             req.at(LOKI_LONG_POLL_HEADER).to_string();
     }
 
-    const auto res = request_handler_.process_client_req(plain_text);
-    this->set_response(res);
+    const bool lp_requested = header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
+
+    // Annoyingly, we might still have old clients that expect long-polling
+    // to work, spamming us with "retrieve" requests. The workaround for now
+    // is to delay responding to the request for a few seconds
+
+    if (lp_requested) {
+        LOKI_LOG(debug, "Received a long-polling request");
+        this->delay_response_ = true;
+
+        auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
+
+        delay_timer->expires_after(std::chrono::seconds(2));
+        delay_timer->async_wait([this, delay_timer, plaintext = std::move(plain_text)](const error_code& ec) {
+
+            const auto res = this->request_handler_.process_client_req(plaintext);
+
+            LOKI_LOG(debug, "Respond to a long-polling client");
+            this->set_response(res);
+            this->write_response();
+        });
+
+
+    } else {
+        const auto res = request_handler_.process_client_req(plain_text);
+        LOKI_LOG(debug, "Respond to a non-long polling client");
+        this->set_response(res);
+    }
+
+
 }
 
 void connection_t::register_deadline() {
