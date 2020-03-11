@@ -175,8 +175,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     const auto pk_hex = util::as_hex(lokid_key_pair_.public_key);
 
     // TODO: get rid of "unused" fields
-    our_address_ = sn_record_t(port, addr, pk_hex, "unused", "unused", "unused",
-                               "1.1.1.1");
+    our_address_ = sn_record_t(port, lmq_server.port(), addr, pk_hex, "unused",
+                               "unused", "unused", "1.1.1.1");
 
     // TODO: fail hard if we can't encode our public key
     LOKI_LOG(info, "Read our snode address: {}", our_address_);
@@ -250,8 +250,16 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const auto& snode_ip =
                 sn_json.at("public_ip").get_ref<const std::string&>();
 
+            const uint16_t lmq_port =
+                sn_json.at("storage_lmq_port").get<uint16_t>();
+
             const auto& pubkey_x25519_hex =
                 sn_json.at("pubkey_x25519").get_ref<const std::string&>();
+
+            if (pubkey_x25519_hex.empty()) {
+                LOKI_LOG(warn, "pubkey_x25519_hex is missing from sn info");
+                continue;
+            }
 
             // lokidKeyFromHex works for pub keys too
             const public_key_t pubkey_x25519 =
@@ -261,7 +269,13 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const auto& pubkey_ed25519 =
                 sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
 
+            if (pubkey_ed25519.empty()) {
+                LOKI_LOG(warn, "pubkey_ed25519 is missing from sn info");
+                continue;
+            }
+
             const auto sn = sn_record_t{port,
+                                        lmq_port,
                                         std::move(snode_address),
                                         pubkey,
                                         pubkey_x25519_hex,
@@ -318,6 +332,7 @@ void ServiceNode::bootstrap_data() {
     fields["funded"] = true;
     fields["pubkey_x25519"] = true;
     fields["pubkey_ed25519"] = true;
+    fields["storage_lmq_port"] = true;
 
     params["fields"] = fields;
 
@@ -790,6 +805,7 @@ void ServiceNode::swarm_timer_tick() {
     fields["funded"] = true;
     fields["pubkey_x25519"] = true;
     fields["pubkey_ed25519"] = true;
+    fields["storage_lmq_port"] = true;
 
     params["fields"] = fields;
     params["poll_block_hash"] = block_hash_;
@@ -948,6 +964,8 @@ void ServiceNode::lokid_ping_timer_tick() {
     params["version_major"] = VERSION_MAJOR;
     params["version_minor"] = VERSION_MINOR;
     params["version_patch"] = VERSION_PATCH;
+    params["storage_lmq_port"] = lmq_server_.port();
+
     lokid_client_.make_lokid_request("storage_server_ping", params,
                                      std::move(cb));
 

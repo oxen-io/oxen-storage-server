@@ -206,7 +206,11 @@ int main(int argc, char* argv[]) {
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
 
-        loki::LokimqServer lokimq_server;
+
+        // We pass port early because we want to send it in the first ping to
+        // Lokid (in ServiceNode's constructor), but don't want to initialize
+        // the rest of lmq server before we have a reference to ServiceNode
+        loki::LokimqServer lokimq_server(options.lmq_port);
 
         // TODO: SN doesn't need lokimq_server, just the lmq components
         loki::ServiceNode service_node(
@@ -216,7 +220,7 @@ int main(int argc, char* argv[]) {
         loki::RequestHandler request_handler(ioc, service_node, channel_encryption);
 
         lokimq_server.init(&service_node, &request_handler,
-                           lokid_key_pair_x25519, options.lmq_port);
+                           lokid_key_pair_x25519);
 
         RateLimiter rate_limiter;
 

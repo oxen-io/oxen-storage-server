@@ -20,9 +20,7 @@ std::string LokimqServer::peer_lookup(lokimq::string_view pubkey_bin) const {
         this->service_node_->find_node_by_x25519_bin(std::string(pubkey_bin));
 
     if (sn) {
-        // TODO: need to update Lokid to include lokimq_port, for now just
-        // add 200 and hope it is available
-        return fmt::format("tcp://{}:{}", sn->ip(), sn->port() + 200);
+        return fmt::format("tcp://{}:{}", sn->ip(), sn->lmq_port());
     } else {
         LOKI_LOG(debug, "[LMQ] peer node not found!");
         return "";
@@ -124,7 +122,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
 }
 
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
-                        const lokid_key_pair_t& keypair, uint16_t port) {
+                        const lokid_key_pair_t& keypair) {
 
     namespace ph = std::placeholders;
     using lokimq::Allow;
@@ -152,7 +150,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                              lookup_fn,
                              logger});
 
-    LOKI_LOG(info, "LokiMQ is listenting on port {}", port);
+    LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
 
     lokimq_->add_category("sn",
                           lokimq::Access{lokimq::AuthLevel::none, true, false});
@@ -176,12 +174,12 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     lokimq_->set_general_threads(1);
 
-    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port), allow_fn);
+    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_), allow_fn);
 
     lokimq_->start();
 }
 
-LokimqServer::LokimqServer() = default;
+LokimqServer::LokimqServer(uint16_t port) : port_(port){};
 LokimqServer::~LokimqServer() = default;
 
 } // namespace loki

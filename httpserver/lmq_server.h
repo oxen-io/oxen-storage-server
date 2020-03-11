@@ -44,13 +44,17 @@ class LokimqServer {
 
     void handle_onion_request(lokimq::Message& message);
 
+    uint16_t port_ = 0;
+
   public:
-    LokimqServer();
+    LokimqServer(uint16_t port);
     ~LokimqServer();
 
     // Initialize lokimq
     void init(ServiceNode* sn, RequestHandler* rh,
-              const lokid_key_pair_t& keypair, uint16_t port);
+              const lokid_key_pair_t& keypair);
+
+    uint16_t port() { return port_; }
 
     // TODO: maybe we should separate LokiMQ and LokimqServer, so we don't have
     // to do this: Get underlying LokiMQ instance

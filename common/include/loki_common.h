@@ -27,6 +27,7 @@ struct sn_record_t {
     std::string pubkey_ed25519_hex_;
     std::string pub_key_hex_; // Monero legacy key
     // Required by LokiMQ
+    uint16_t lmq_port_;
     std::string pubkey_x25519_bin_;
     std::string ip_; // Snode ip
 
@@ -43,11 +44,11 @@ struct sn_record_t {
     }
 
   public:
-    sn_record_t(uint16_t port, const std::string& address,
+    sn_record_t(uint16_t port, uint16_t lmq_port, const std::string& address,
                 const std::string& pk_hex, const std::string& pk_x25519,
                 const std::string& pk_x25519_bin, const std::string& pk_ed25519,
                 const std::string& ip)
-        : port_(port), pub_key_hex_(pk_hex), pubkey_x25519_hex_(pk_x25519),
+        : port_(port), lmq_port_(lmq_port), pub_key_hex_(pk_hex), pubkey_x25519_hex_(pk_x25519),
           pubkey_x25519_bin_(pk_x25519_bin), pubkey_ed25519_hex_(pk_ed25519),
           ip_(ip) {
         set_address(address);
@@ -59,6 +60,7 @@ struct sn_record_t {
     void set_ip(const std::string& ip) { ip_ = ip; }
 
     uint16_t port() const { return port_; }
+    uint16_t lmq_port() const { return lmq_port_; }
     const std::string& sn_address() const { return sn_address_; }
     const std::string& pub_key_base32z() const { return pub_key_base_32z_; }
     const std::string& pub_key_hex() const { return pub_key_hex_; }
