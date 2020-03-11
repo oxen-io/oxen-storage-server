@@ -111,6 +111,9 @@ class Swarm {
 
     boost::optional<sn_record_t>
     find_node_by_ed25519_pk(const sn_pub_key_t& address) const;
+
+    boost::optional<sn_record_t>
+    find_node_by_x25519_bin(const sn_pub_key_t& address) const;
 };
 
 } // namespace loki

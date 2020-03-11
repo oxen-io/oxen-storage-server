@@ -15,7 +15,7 @@ int main() {
                                   "\"0549b42c7600a25ab9800903630a57f157a1a0f771"
                                   "cac31df559eb13fc5cc0c813\"}}";
 
-    const auto ciphertext = channel.encrypt(plainText, pubKey);
-    const auto decrypted = channel.decrypt(ciphertext, pubKey);
+    const auto ciphertext = channel.encrypt_gcm(plainText, pubKey);
+    const auto decrypted = channel.encrypt_gcm(ciphertext, pubKey);
     assert(plainText == decrypted);
 }

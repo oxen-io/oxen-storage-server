@@ -69,6 +69,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
                                boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
         if (ec) {
             LOKI_LOG(error, "DNS resolution error for {}: {}", query, ec.message());
+            cb({SNodeError::ERROR_OTHER});
             return;
         }
 
@@ -292,6 +293,11 @@ void HttpsClientSession::trigger_callback(
 }
 
 void HttpsClientSession::do_close() {
+
+    // Note: I don't think both the server and the client
+    // should initiate the shutdown, but I'm going to ignore
+    // this error as we will remove https soon
+
     // Gracefully close the stream
     stream_.async_shutdown(std::bind(&HttpsClientSession::on_shutdown,
                                      shared_from_this(),
@@ -305,7 +311,7 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     } else if (ec) {
         // This one is too noisy, so demoted to debug:
-        LOKI_LOG(debug, "could not shutdown stream gracefully: {} ({})",
+        LOKI_LOG(trace, "could not shutdown stream gracefully: {} ({})",
                  ec.message(), ec.value());
     }
 
