@@ -177,10 +177,10 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
     LOKI_LOG(info, "Requesting initial swarm state");
 
-#ifndef INTEGRATION_TEST
-    bootstrap_data();
-#else
+#ifdef INTEGRATION_TEST
     this->syncing_ = false;
+#else
+    bootstrap_data();
 #endif
 
 
