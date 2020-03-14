@@ -45,8 +45,11 @@ RUN set -ex \
 
 ADD https://api.github.com/repos/loki-project/loki-storage-server/git/refs/heads/master version.json
 
+RUN rm -rf loki-storage-server
+
 RUN git clone https://github.com/loki-project/loki-storage-server.git --depth=1
-RUN cd loki-storage-server && git submodule update --init
+
+RUN cd loki-storage-server && git submodule update --init --recursive
 
 ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
 
