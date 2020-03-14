@@ -1,3 +1,25 @@
+loki-storage-server (2.0.0-1~deb10) buster; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+  * Rediff patches
+
+  [ Ryan Tharp ]
+  * Fix foundation's mainnet port to not use testnet port
+  * Minor readability fix
+
+  [ Maxim Shishmarev ]
+  * Initial lokimq integration. Onion requests to SS.
+  * Add thread synchronisation
+  * Allow onion requests to loki servers
+  * Send lokimq port in pings to lokid; obtain lokimq ports for other nodes from lokid
+  * Use the correct decryption in proxy requests; handle long-polling in direct requests
+  * Automatically activate SS when syncing seems to take a long time
+  * Bump version to 2.0.0
+  * Update Dockerfile
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 14 Mar 2020 14:47:27 -0300
+
 loki-storage-server (1.0.10-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
