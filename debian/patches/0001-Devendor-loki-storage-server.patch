@@ -1,17 +1,57 @@
 From: Jason Rhinelander <jason@imaginary.ca>
 Date: Tue, 16 Jul 2019 16:08:10 -0300
-Subject: Partially devendor loki-storage-server
+Subject: Devendor loki-storage-server
 
 ---
- crypto/CMakeLists.txt     | 21 ++++++++-------------
+ CMakeLists.txt            |  5 -----
+ common/CMakeLists.txt     |  2 +-
+ crypto/CMakeLists.txt     | 15 ++++++---------
  crypto/src/lokid_key.cpp  | 15 ++++++++-------
  crypto/src/signature.cpp  |  4 ++--
- httpserver/CMakeLists.txt |  9 +--------
+ httpserver/CMakeLists.txt | 16 ++++++----------
  storage/CMakeLists.txt    |  4 ++--
- 5 files changed, 21 insertions(+), 32 deletions(-)
+ 7 files changed, 25 insertions(+), 36 deletions(-)
 
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ab8e756..80409d3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -25,20 +25,15 @@ if (DISABLE_SNODE_SIGNATURE)
+ endif()
+ 
+ list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
+-set(sodium_USE_STATIC_LIBS ON)
+ find_package(sodium REQUIRED)
+ include_directories(${sodium_INCLUDE_DIR})
+ 
+-include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/cppzmq")
+-include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/mapbox-variant/include")
+-
+ loki_add_subdirectory(common)
+ loki_add_subdirectory(utils)
+ loki_add_subdirectory(crypto)
+ loki_add_subdirectory(pow)
+ loki_add_subdirectory(storage)
+ loki_add_subdirectory(httpserver)
+-loki_add_subdirectory(vendors/spdlog)
+ 
+ if (BUILD_TESTS)
+     loki_add_subdirectory(unit_test)
+diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
+index 014d61e..8958fd9 100644
+--- a/common/CMakeLists.txt
++++ b/common/CMakeLists.txt
+@@ -21,7 +21,7 @@ find_package(Boost
+ 
+ set_property(TARGET common PROPERTY CXX_STANDARD 14)
+ 
+-loki_add_subdirectory(../vendors/spdlog spdlog)
++find_package(spdlog)
+ 
+ target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
+ target_include_directories(common PUBLIC
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
-index c9ad6f8..bc8d4e2 100644
+index a0d3a55..397aa51 100644
 --- a/crypto/CMakeLists.txt
 +++ b/crypto/CMakeLists.txt
 @@ -12,14 +12,6 @@ set(SOURCES
@@ -49,21 +89,8 @@ index c9ad6f8..bc8d4e2 100644
  if (NOT Boost_FOUND)
      find_package(Boost REQUIRED system filesystem)
  endif()
-@@ -52,10 +49,8 @@ add_executable(crypto_test src/test_main.cpp)
- target_link_libraries(crypto_test PRIVATE crypto)
- 
- # sodium
--list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../contrib")
--set(sodium_USE_STATIC_LIBS ON)
--find_package(sodium REQUIRED)
--target_link_libraries(crypto PUBLIC sodium)
-+find_library(SODIUM_LIBRARY sodium)
-+target_link_libraries(crypto INTERFACE sodium)
- 
- if (UNIX AND NOT APPLE)
-     target_link_libraries(crypto PUBLIC pthread dl)
 diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index be94963..396bdd5 100644
+index cf063d9..e732b75 100644
 --- a/crypto/src/lokid_key.cpp
 +++ b/crypto/src/lokid_key.cpp
 @@ -1,8 +1,7 @@
@@ -118,10 +145,23 @@ index 4efee3e..d2ccf3b 100644
  
  #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 0042fce..659a0fc 100644
+index 1db6713..ff3cbb2 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -74,16 +74,9 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+@@ -65,12 +65,10 @@ target_link_libraries(httpserver_lib PUBLIC utils)
+ target_link_libraries(httpserver_lib PUBLIC pow)
+ target_link_libraries(httpserver_lib PUBLIC resolv)
+ target_link_libraries(httpserver_lib PUBLIC crypto)
+-target_link_libraries(httpserver_lib PUBLIC lokimq)
+ 
+ set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
+ 
+ target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
+-target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
+ target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
+ 
+ set(BIN_NAME loki-storage)
+@@ -81,19 +79,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
@@ -139,6 +179,14 @@ index 0042fce..659a0fc 100644
  target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
  
  find_package(PkgConfig QUIET)
++
++pkg_check_modules(LOKIMQ REQUIRED liblokimq>=1.0.0)
++target_link_libraries(httpserver PUBLIC ${LOKIMQ_LIBRARIES})
++target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS})
++
+ if(PKG_CONFIG_FOUND)
+     pkg_check_modules(SYSTEMD libsystemd)
+     # Default ENABLE_SYSTEMD to true if we found it
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
 index 8ddd6fe..ee7c7a1 100644
 --- a/storage/CMakeLists.txt
