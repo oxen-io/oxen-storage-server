@@ -25,6 +25,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
         ("lokid-rpc-ip", po::value(&options_.lokid_rpc_port), "RPC IP on which the local Loki daemon is listening (usually localhost)")
         ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
+        ("lmq-port", po::value(&options_.lmq_port), "Port used by LokiMQ")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
         ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
@@ -76,6 +77,10 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
 
     if (options_.testnet && !vm.count("lokid-rpc-port")) {
         options_.lokid_rpc_port = 38157;
+    }
+
+    if (!vm.count("lmq-port")) {
+        throw std::runtime_error("lmq-port command line option is not specified");
     }
 
     if (!vm.count("ip") || !vm.count("port")) {
