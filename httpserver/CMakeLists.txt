@@ -19,6 +19,8 @@ set(HEADER_FILES
     net_stats.h
     dns_text_records.h
     reachability_testing.h
+    lmq_server.h
+    request_handler.h
     )
 
 set(SRC_FILES
@@ -34,6 +36,8 @@ set(SRC_FILES
     command_line.cpp
     dns_text_records.cpp
     reachability_testing.cpp
+    lmq_server.cpp
+    request_handler.cpp
     )
 
 add_library(httpserver_lib STATIC ${HEADER_FILES} ${SRC_FILES})
@@ -43,6 +47,7 @@ loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../crypto crypto)
+loki_add_subdirectory(../vendors/loki-mq loki-mq)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
@@ -60,10 +65,12 @@ target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
 target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
+target_link_libraries(httpserver_lib PUBLIC lokimq)
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
+target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 
 set(BIN_NAME loki-storage)
