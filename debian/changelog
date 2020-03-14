@@ -1,4 +1,4 @@
-loki-storage-server (2.0.0-1) unstable; urgency=medium
+loki-storage-server (2.0.0-1~ubuntu2004) focal; urgency=medium
 
   [ Jason Rhinelander ]
   * Rediff patches
