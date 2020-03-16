@@ -3,20 +3,19 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  5 -----
- common/CMakeLists.txt     |  2 +-
+ CMakeLists.txt            |  4 ----
  crypto/CMakeLists.txt     | 15 ++++++---------
  crypto/src/lokid_key.cpp  | 15 ++++++++-------
  crypto/src/signature.cpp  |  4 ++--
  httpserver/CMakeLists.txt | 16 ++++++----------
  storage/CMakeLists.txt    |  4 ++--
- 7 files changed, 25 insertions(+), 36 deletions(-)
+ 6 files changed, 24 insertions(+), 34 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ab8e756..80409d3 100644
+index ab8e756..eea7c0a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -25,20 +25,15 @@ if (DISABLE_SNODE_SIGNATURE)
+@@ -25,13 +25,9 @@ if (DISABLE_SNODE_SIGNATURE)
  endif()
  
  list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
@@ -30,26 +29,6 @@ index ab8e756..80409d3 100644
  loki_add_subdirectory(common)
  loki_add_subdirectory(utils)
  loki_add_subdirectory(crypto)
- loki_add_subdirectory(pow)
- loki_add_subdirectory(storage)
- loki_add_subdirectory(httpserver)
--loki_add_subdirectory(vendors/spdlog)
- 
- if (BUILD_TESTS)
-     loki_add_subdirectory(unit_test)
-diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 014d61e..8958fd9 100644
---- a/common/CMakeLists.txt
-+++ b/common/CMakeLists.txt
-@@ -21,7 +21,7 @@ find_package(Boost
- 
- set_property(TARGET common PROPERTY CXX_STANDARD 14)
- 
--loki_add_subdirectory(../vendors/spdlog spdlog)
-+find_package(spdlog)
- 
- target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
- target_include_directories(common PUBLIC
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
 index a0d3a55..397aa51 100644
 --- a/crypto/CMakeLists.txt
