@@ -192,7 +192,7 @@ index 1db6713..28a3c2b 100644
 +
 +pkg_check_modules(LOKIMQ REQUIRED liblokimq>=1.0.0)
 +target_link_libraries(httpserver PUBLIC ${LOKIMQ_LIBRARIES})
-+target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS}/lokimq)
++target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS})
 +
  if(PKG_CONFIG_FOUND)
      pkg_check_modules(SYSTEMD libsystemd)
