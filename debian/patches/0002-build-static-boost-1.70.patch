@@ -14,7 +14,7 @@ storage server needs boost 1.66+
  7 files changed, 7 insertions(+), 36 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 80409d3..ef32739 100644
+index eea7c0a..b6429d9 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -19,6 +19,7 @@ if (INTEGRATION_TEST)
@@ -26,7 +26,7 @@ index 80409d3..ef32739 100644
  if (DISABLE_SNODE_SIGNATURE)
      add_definitions(-DDISABLE_SNODE_SIGNATURE)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 8958fd9..b97fbe6 100644
+index 014d61e..12c830e 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
 @@ -14,10 +14,7 @@ set(HEADER_FILES
