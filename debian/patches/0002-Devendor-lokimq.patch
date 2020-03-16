@@ -1,0 +1,48 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 16 Mar 2020 01:31:30 -0300
+Subject: Devendor lokimq
+
+---
+ httpserver/CMakeLists.txt   | 1 -
+ httpserver/lmq_server.cpp   | 2 +-
+ httpserver/service_node.cpp | 2 +-
+ 3 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
+index ff3cbb2..3a3c46b 100644
+--- a/httpserver/CMakeLists.txt
++++ b/httpserver/CMakeLists.txt
+@@ -47,7 +47,6 @@ loki_add_subdirectory(../storage storage)
+ loki_add_subdirectory(../utils utils)
+ loki_add_subdirectory(../pow pow)
+ loki_add_subdirectory(../crypto crypto)
+-loki_add_subdirectory(../vendors/loki-mq loki-mq)
+ find_package(OpenSSL REQUIRED)
+ 
+ find_package(Boost
+diff --git a/httpserver/lmq_server.cpp b/httpserver/lmq_server.cpp
+index 67f1d98..39200d2 100644
+--- a/httpserver/lmq_server.cpp
++++ b/httpserver/lmq_server.cpp
+@@ -7,7 +7,7 @@
+ #include "request_handler.h"
+ #include "utils.hpp"
+ 
+-#include "lokimq.h"
++#include <lokimq/lokimq.h>
+ 
+ namespace loki {
+ 
+diff --git a/httpserver/service_node.cpp b/httpserver/service_node.cpp
+index 9b70a36..a407053 100644
+--- a/httpserver/service_node.cpp
++++ b/httpserver/service_node.cpp
+@@ -8,7 +8,7 @@
+ #include "loki_common.h"
+ #include "loki_logger.h"
+ #include "lokid_key.h"
+-#include "lokimq.h"
++#include <lokimq/lokimq.h>
+ #include "net_stats.h"
+ #include "serialization.h"
+ #include "signature.h"
