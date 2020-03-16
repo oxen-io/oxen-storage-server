@@ -1,4 +1,4 @@
 [loki-storage-server]
 title=Loki storage server
-description=Loki service node mandatory storage server component
-ports=22021,38155/tcp
+description=Loki service node -- storage server
+ports=22020,22021,38154,38155/tcp
