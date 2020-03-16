@@ -65,12 +65,11 @@ target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
 target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
-target_link_libraries(httpserver_lib PUBLIC lokimq)
+target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
-target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 
 set(BIN_NAME loki-storage)

@@ -7,7 +7,7 @@
 #include "request_handler.h"
 #include "utils.hpp"
 
-#include "lokimq.h"
+#include <lokimq/lokimq.h>
 
 namespace loki {
 
