@@ -8,7 +8,7 @@
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
-#include "lokimq.h"
+#include <lokimq/lokimq.h>
 #include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"

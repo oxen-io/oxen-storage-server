@@ -3,4 +3,4 @@
 	url = https://github.com/gabime/spdlog.git
 [submodule "vendors/loki-mq"]
 	path = vendors/loki-mq
-	url = git@github.com:loki-project/loki-mq.git
+	url = https://github.com/loki-project/loki-mq.git
