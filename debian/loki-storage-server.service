@@ -9,6 +9,7 @@ User=_loki
 Type=notify
 WatchdogSec=5min
 WorkingDirectory=/var/lib/loki
+LimitNOFILE=16384
 Restart=always
 RestartSec=5s
 ExecStart=/usr/bin/loki-storage --config-file /etc/loki/storage.conf
