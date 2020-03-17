@@ -103,8 +103,8 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
 
     LOKI_LOG(debug, "Got an onion request over LOKIMQ");
 
-    auto reply_tag = message.reply_tag;
-    auto origin_pk = message.conn.pubkey();
+    auto &reply_tag = message.reply_tag;
+    auto &origin_pk = message.conn.pubkey();
 
     auto on_response = [this, origin_pk, reply_tag](loki::Response res) mutable {
         LOKI_LOG(debug, "on response: {}", to_string(res));

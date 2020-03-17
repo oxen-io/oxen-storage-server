@@ -5,9 +5,9 @@
 
 struct net_stats_t {
 
-    uint32_t connections_in = 0;
-    uint32_t http_connections_out = 0;
-    uint32_t https_connections_out = 0;
+    std::atomic<uint32_t> connections_in{0};
+    std::atomic<uint32_t> http_connections_out{0};
+    std::atomic<uint32_t> https_connections_out{0};
 
     std::set<int> open_fds;
 
@@ -16,8 +16,8 @@ struct net_stats_t {
         if (open_fds.find(sockfd) != open_fds.end()) {
             LOKI_LOG(critical, "Already recorded as open: {}!", sockfd);
         }
-#endif
         open_fds.insert(sockfd);
+#endif
     }
 
     void record_socket_close(int sockfd) {
@@ -25,8 +25,8 @@ struct net_stats_t {
         if (open_fds.find(sockfd) == open_fds.end()) {
             LOKI_LOG(critical, "Socket is NOT recorded as open: {}", sockfd);
         }
-#endif
         open_fds.erase(sockfd);
+#endif
     }
 };
 

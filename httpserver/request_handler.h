@@ -26,6 +26,8 @@ enum class Status {
     INVALID_POW = 432, // unassigned http code
     SERVICE_UNAVAILABLE = 503,
     INTERNAL_SERVER_ERROR = 500,
+    BAD_GATEWAY = 502,
+    GATEWAY_TIMEOUT = 504,
 };
 
 enum class ContentType {
