@@ -259,8 +259,8 @@ class ServiceNode {
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later
-    bool record_proxy_request();
-    bool record_onion_request();
+    void record_proxy_request();
+    void record_onion_request();
 
     // This is new, so it does not need to support http, thus new (if temp)
     // method
