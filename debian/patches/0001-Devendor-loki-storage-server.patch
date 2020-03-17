@@ -3,22 +3,20 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt              |  5 -----
- common/CMakeLists.txt       |  2 +-
- crypto/CMakeLists.txt       | 15 ++++++---------
- crypto/src/lokid_key.cpp    | 15 ++++++++-------
- crypto/src/signature.cpp    |  4 ++--
- httpserver/CMakeLists.txt   | 17 ++++++-----------
- httpserver/lmq_server.cpp   |  2 +-
- httpserver/service_node.cpp |  2 +-
- storage/CMakeLists.txt      |  4 ++--
- 9 files changed, 27 insertions(+), 39 deletions(-)
+ CMakeLists.txt            |  2 --
+ common/CMakeLists.txt     |  2 +-
+ crypto/CMakeLists.txt     | 15 ++++++---------
+ crypto/src/lokid_key.cpp  | 15 ++++++++-------
+ crypto/src/signature.cpp  |  4 ++--
+ httpserver/CMakeLists.txt | 17 ++++++-----------
+ storage/CMakeLists.txt    |  4 ++--
+ 7 files changed, 25 insertions(+), 34 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ab8e756..80409d3 100644
+index a6b8bfa..80409d3 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -25,20 +25,15 @@ if (DISABLE_SNODE_SIGNATURE)
+@@ -25,7 +25,6 @@ if (DISABLE_SNODE_SIGNATURE)
  endif()
  
  list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
@@ -26,12 +24,7 @@ index ab8e756..80409d3 100644
  find_package(sodium REQUIRED)
  include_directories(${sodium_INCLUDE_DIR})
  
--include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/cppzmq")
--include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/mapbox-variant/include")
--
- loki_add_subdirectory(common)
- loki_add_subdirectory(utils)
- loki_add_subdirectory(crypto)
+@@ -35,7 +34,6 @@ loki_add_subdirectory(crypto)
  loki_add_subdirectory(pow)
  loki_add_subdirectory(storage)
  loki_add_subdirectory(httpserver)
@@ -147,30 +140,26 @@ index 4efee3e..d2ccf3b 100644
  
  #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 1db6713..28a3c2b 100644
+index 78a1ce8..28a3c2b 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -47,7 +47,6 @@ loki_add_subdirectory(../storage storage)
+@@ -47,8 +47,6 @@ loki_add_subdirectory(../storage storage)
  loki_add_subdirectory(../utils utils)
  loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
+-set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 -loki_add_subdirectory(../vendors/loki-mq loki-mq)
  find_package(OpenSSL REQUIRED)
  
  find_package(Boost
-@@ -65,12 +64,10 @@ target_link_libraries(httpserver_lib PUBLIC utils)
+@@ -66,7 +64,6 @@ target_link_libraries(httpserver_lib PUBLIC utils)
  target_link_libraries(httpserver_lib PUBLIC pow)
  target_link_libraries(httpserver_lib PUBLIC resolv)
  target_link_libraries(httpserver_lib PUBLIC crypto)
--target_link_libraries(httpserver_lib PUBLIC lokimq)
+-target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
  
  set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
  
- target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
--target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
- target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
- 
- set(BIN_NAME loki-storage)
 @@ -81,19 +78,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
@@ -192,37 +181,11 @@ index 1db6713..28a3c2b 100644
 +
 +pkg_check_modules(LOKIMQ REQUIRED liblokimq>=1.0.0)
 +target_link_libraries(httpserver PUBLIC ${LOKIMQ_LIBRARIES})
-+target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS})
++target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS}/lokimq)
 +
  if(PKG_CONFIG_FOUND)
      pkg_check_modules(SYSTEMD libsystemd)
      # Default ENABLE_SYSTEMD to true if we found it
-diff --git a/httpserver/lmq_server.cpp b/httpserver/lmq_server.cpp
-index 67f1d98..39200d2 100644
---- a/httpserver/lmq_server.cpp
-+++ b/httpserver/lmq_server.cpp
-@@ -7,7 +7,7 @@
- #include "request_handler.h"
- #include "utils.hpp"
- 
--#include "lokimq.h"
-+#include <lokimq/lokimq.h>
- 
- namespace loki {
- 
-diff --git a/httpserver/service_node.cpp b/httpserver/service_node.cpp
-index 9b70a36..a407053 100644
---- a/httpserver/service_node.cpp
-+++ b/httpserver/service_node.cpp
-@@ -8,7 +8,7 @@
- #include "loki_common.h"
- #include "loki_logger.h"
- #include "lokid_key.h"
--#include "lokimq.h"
-+#include <lokimq/lokimq.h>
- #include "net_stats.h"
- #include "serialization.h"
- #include "signature.h"
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
 index 8ddd6fe..ee7c7a1 100644
 --- a/storage/CMakeLists.txt
