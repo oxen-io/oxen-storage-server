@@ -47,6 +47,7 @@ loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../crypto crypto)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 loki_add_subdirectory(../vendors/loki-mq loki-mq)
 find_package(OpenSSL REQUIRED)
 
@@ -65,12 +66,11 @@ target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
 target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
-target_link_libraries(httpserver_lib PUBLIC lokimq)
+target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
-target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 
 set(BIN_NAME loki-storage)

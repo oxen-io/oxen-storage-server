@@ -29,9 +29,6 @@ set(sodium_USE_STATIC_LIBS ON)
 find_package(sodium REQUIRED)
 include_directories(${sodium_INCLUDE_DIR})
 
-include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/cppzmq")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/mapbox-variant/include")
-
 loki_add_subdirectory(common)
 loki_add_subdirectory(utils)
 loki_add_subdirectory(crypto)
