@@ -3,19 +3,19 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  4 ----
+ CMakeLists.txt            |  1 -
  crypto/CMakeLists.txt     | 15 ++++++---------
  crypto/src/lokid_key.cpp  | 15 ++++++++-------
  crypto/src/signature.cpp  |  4 ++--
- httpserver/CMakeLists.txt | 16 ++++++----------
+ httpserver/CMakeLists.txt | 17 ++++++-----------
  storage/CMakeLists.txt    |  4 ++--
- 6 files changed, 24 insertions(+), 34 deletions(-)
+ 6 files changed, 24 insertions(+), 32 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ab8e756..eea7c0a 100644
+index a6b8bfa..eea7c0a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -25,13 +25,9 @@ if (DISABLE_SNODE_SIGNATURE)
+@@ -25,7 +25,6 @@ if (DISABLE_SNODE_SIGNATURE)
  endif()
  
  list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
@@ -23,12 +23,6 @@ index ab8e756..eea7c0a 100644
  find_package(sodium REQUIRED)
  include_directories(${sodium_INCLUDE_DIR})
  
--include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/cppzmq")
--include_directories("${CMAKE_CURRENT_LIST_DIR}/vendors/loki-mq/mapbox-variant/include")
--
- loki_add_subdirectory(common)
- loki_add_subdirectory(utils)
- loki_add_subdirectory(crypto)
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
 index a0d3a55..397aa51 100644
 --- a/crypto/CMakeLists.txt
@@ -124,23 +118,27 @@ index 4efee3e..d2ccf3b 100644
  
  #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 1db6713..ff3cbb2 100644
+index 78a1ce8..3a3c46b 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -65,12 +65,10 @@ target_link_libraries(httpserver_lib PUBLIC utils)
+@@ -47,8 +47,6 @@ loki_add_subdirectory(../storage storage)
+ loki_add_subdirectory(../utils utils)
+ loki_add_subdirectory(../pow pow)
+ loki_add_subdirectory(../crypto crypto)
+-set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
+-loki_add_subdirectory(../vendors/loki-mq loki-mq)
+ find_package(OpenSSL REQUIRED)
+ 
+ find_package(Boost
+@@ -66,7 +64,6 @@ target_link_libraries(httpserver_lib PUBLIC utils)
  target_link_libraries(httpserver_lib PUBLIC pow)
  target_link_libraries(httpserver_lib PUBLIC resolv)
  target_link_libraries(httpserver_lib PUBLIC crypto)
--target_link_libraries(httpserver_lib PUBLIC lokimq)
+-target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
  
  set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
  
- target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
--target_include_directories(httpserver_lib PUBLIC ../vendors/loki-mq/lokimq)
- target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
- 
- set(BIN_NAME loki-storage)
-@@ -81,19 +79,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+@@ -81,19 +78,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info

@@ -57,11 +57,11 @@ index 397aa51..572076f 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index ff3cbb2..ada1996 100644
+index 3a3c46b..dde1c6d 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -50,13 +50,7 @@ loki_add_subdirectory(../crypto crypto)
- loki_add_subdirectory(../vendors/loki-mq loki-mq)
+@@ -49,13 +49,7 @@ loki_add_subdirectory(../pow pow)
+ loki_add_subdirectory(../crypto crypto)
  find_package(OpenSSL REQUIRED)
  
 -find_package(Boost
