@@ -571,12 +571,9 @@ void connection_t::process_onion_req() {
 
             this->body_stream_ << res.message();
         } else {
-            // res.status() is for us, we only report a generic
-            // error to indicate onion request failure
-
-            LOKI_LOG(debug, "Would send 503 error");
-
-            response_.result(http::status::service_unavailable);
+            // res.status() is for us, should we only report a generic
+            // error to indicate onion request failure?
+            response_.result(static_cast<int>(res.status()));
         }
 
         this->write_response();
@@ -592,6 +589,7 @@ void connection_t::process_onion_req() {
         const auto& ephem_key =
             json_req.at("ephemeral_key").get_ref<const std::string&>();
 
+        service_node_.record_onion_request();
         request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
 
     } catch (const std::exception& e) {
@@ -606,6 +604,8 @@ void connection_t::process_onion_req() {
 void connection_t::process_proxy_req() {
 
     LOKI_LOG(debug, "Processing proxy request: we are first hop");
+
+    service_node_.record_proxy_request();
 
     const request_t& req = this->request_.get();
 
