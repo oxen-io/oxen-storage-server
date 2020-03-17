@@ -589,6 +589,9 @@ void connection_t::process_onion_req() {
         const auto& ephem_key =
             json_req.at("ephemeral_key").get_ref<const std::string&>();
 
+        // This one (and the one below) was causing some issues on testnet,
+        // so disabled for now
+        // service_node_.record_onion_request();
         request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
 
     } catch (const std::exception& e) {
@@ -603,6 +606,8 @@ void connection_t::process_onion_req() {
 void connection_t::process_proxy_req() {
 
     LOKI_LOG(debug, "Processing proxy request: we are first hop");
+
+    // service_node_.record_proxy_request();
 
     const request_t& req = this->request_.get();
 
