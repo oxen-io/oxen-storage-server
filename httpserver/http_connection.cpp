@@ -571,12 +571,9 @@ void connection_t::process_onion_req() {
 
             this->body_stream_ << res.message();
         } else {
-            // res.status() is for us, we only report a generic
-            // error to indicate onion request failure
-
-            LOKI_LOG(debug, "Would send 503 error");
-
-            response_.result(http::status::service_unavailable);
+            // res.status() is for us, should we only report a generic
+            // error to indicate onion request failure?
+            response_.result(static_cast<int>(res.status()));
         }
 
         this->write_response();
