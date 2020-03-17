@@ -1,3 +1,26 @@
+loki-storage-server (2.0.1-1~deb10) buster; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+  * Update lokimq include paths
+  * Update loki-mq to latest & force it to build statically
+  * Change submodule path to use https
+  * Remove more unneeded include dirs
+  * Devendor lokimq
+  * Add default lmq-port; remove deprecated lokid-key option
+  * Update ufw rule for new port
+  * Increase .service file descriptor limit
+  * Update deps for lokimq, lokid 7
+  * Rediff patches
+
+  [ Maxim Shishmarev ]
+  * Improve error reporting for onion requests
+  * Changes in stats
+  * Bump version to 2.0.1
+  * Fix no return value
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 17 Mar 2020 04:06:56 -0300
+
 loki-storage-server (2.0.0-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
