@@ -614,11 +614,11 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
                      reply_callback);
 }
 
-bool ServiceNode::record_proxy_request() {
+void ServiceNode::record_proxy_request() {
     all_stats_.bump_proxy_requests();
 }
 
-bool ServiceNode::record_onion_request() {
+void ServiceNode::record_onion_request() {
     all_stats_.bump_onion_requests();
 }
 
