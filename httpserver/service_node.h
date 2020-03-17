@@ -256,6 +256,12 @@ class ServiceNode {
 
     ~ServiceNode();
 
+
+    // These two are only needed because we store stats in Service Node,
+    // might move it out later
+    void record_proxy_request();
+    void record_onion_request();
+
     // This is new, so it does not need to support http, thus new (if temp)
     // method
     void send_onion_to_sn(const sn_record_t& sn, const std::string& payload,

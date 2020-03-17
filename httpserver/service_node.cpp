@@ -8,7 +8,7 @@
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
-#include "lokimq.h"
+#include <lokimq/lokimq.h>
 #include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
@@ -614,6 +614,14 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
                      reply_callback);
 }
 
+void ServiceNode::record_proxy_request() {
+    all_stats_.bump_proxy_requests();
+}
+
+void ServiceNode::record_onion_request() {
+    all_stats_.bump_onion_requests();
+}
+
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
@@ -846,6 +854,8 @@ void ServiceNode::swarm_timer_tick() {
 }
 
 void ServiceNode::cleanup_timer_tick() {
+
+    LockGuard guard(sn_mutex_);
 
     all_stats_.cleanup();
 
@@ -1725,10 +1735,10 @@ std::string ServiceNode::get_stats() const {
         val["total_stored"] = total_stored;
     }
 
-    val["connections_in"] = get_net_stats().connections_in;
-    val["http_connections_out"] = get_net_stats().http_connections_out;
-    val["https_connections_out"] = get_net_stats().https_connections_out;
-    val["open_socket_count"] = get_net_stats().open_fds.size();
+    val["connections_in"] = get_net_stats().connections_in.load();
+    val["http_connections_out"] = get_net_stats().http_connections_out.load();
+    val["https_connections_out"] = get_net_stats().https_connections_out.load();
+    // val["open_socket_count"] = get_net_stats().open_fds.size();
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;

@@ -80,10 +80,10 @@ Response RequestHandler::process_store(const json& params) {
         }
     }
 
-    const auto ttl = params.at("ttl").get_ref<const std::string&>();
-    const auto nonce = params.at("nonce").get_ref<const std::string&>();
-    const auto timestamp = params.at("timestamp").get_ref<const std::string&>();
-    const auto data = params.at("data").get_ref<const std::string&>();
+    const auto& ttl = params.at("ttl").get_ref<const std::string&>();
+    const auto& nonce = params.at("nonce").get_ref<const std::string&>();
+    const auto& timestamp = params.at("timestamp").get_ref<const std::string&>();
+    const auto& data = params.at("data").get_ref<const std::string&>();
 
     LOKI_LOG(trace, "Storing message: {}", data);
 
@@ -289,13 +289,15 @@ Response RequestHandler::process_retrieve(const json& params) {
 
 Response RequestHandler::process_client_req(const std::string& req_json) {
 
-    LOKI_LOG(debug, "process_client_req");
+    LOKI_LOG(trace, "process_client_req str <{}>", req_json);
 
     const json body = json::parse(req_json, nullptr, false);
     if (body == nlohmann::detail::value_t::discarded) {
         LOKI_LOG(debug, "Bad client request: invalid json");
         return Response{Status::BAD_REQUEST, "invalid json\n"};
     }
+
+    LOKI_LOG(trace, "process_client_req json <{}>", body.dump(2));
 
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
@@ -361,6 +363,10 @@ Response RequestHandler::process_onion_exit(const std::string& eph_key,
 
     std::string body;
 
+    if (!service_node_.snode_ready(boost::none)) {
+        return {Status::SERVICE_UNAVAILABLE, "Snode not ready"};
+    }
+
     try {
         const json req = json::parse(payload, nullptr, true);
         body = req.at("body").get<std::string>();
@@ -378,11 +384,15 @@ Response RequestHandler::process_onion_exit(const std::string& eph_key,
 
     LOKI_LOG(debug, "about to respond with: {}", to_string(res));
 
-    return wrap_proxy_response(res, eph_key, true /* use aes gcm */);
+    return res;
 }
 
 Response RequestHandler::process_proxy_exit(const std::string& client_key,
                                             const std::string& payload) {
+
+    if (!service_node_.snode_ready(boost::none)) {
+        return {Status::SERVICE_UNAVAILABLE, "Snode not ready"};
+    }
 
     LOKI_LOG(debug, "Process proxy exit");
 
@@ -402,9 +412,6 @@ Response RequestHandler::process_proxy_exit(const std::string& client_key,
             }
         }
 
-        // TOOD: check if the client requested long-polling and see if we want
-        // to do anything about it.
-        LOKI_LOG(debug, "CLIENT HEADERS: \n\t{}", req.at("headers").dump(2));
     } catch (std::exception& e) {
         auto msg = fmt::format("JSON parsing error: {}", e.what());
         LOKI_LOG(error, "{}", msg);
@@ -418,7 +425,7 @@ Response RequestHandler::process_proxy_exit(const std::string& client_key,
 
     const auto res = this->process_client_req(body);
 
-    LOKI_LOG(debug, "about to respond with: {}", to_string(res));
+    LOKI_LOG(trace, "about to respond with: {}", to_string(res));
 
     return wrap_proxy_response(res, client_key, false /* use cbc */);
 }
@@ -457,6 +464,11 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        const std::string& ephem_key,
                                        std::function<void(loki::Response)> cb) {
 
+    if (!service_node_.snode_ready(boost::none)) {
+        cb(loki::Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"});
+        return;
+    }
+
     std::string plaintext;
 
     static int counter = 0;
@@ -467,12 +479,13 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         plaintext = channel_cipher_.decrypt_gcm(ciphertext_bin, ephem_key);
     } catch (const std::exception& e) {
         LOKI_LOG(debug, "Error decrypting an onion request: {}", e.what());
-        // Should this error be propagated back to the client?
+        // Should this error be propagated back to the client? (No, if we
+        // couldn't decrypt, we probably won't be able to encrypt either.)
         cb(loki::Response{Status::BAD_REQUEST, "Invalid ciphertext"});
         return;
     }
 
-    LOKI_LOG(debug, "onion request decrypted: <{}>", plaintext);
+    LOKI_LOG(trace, "onion request decrypted: <{}>", plaintext);
 
     try {
 
@@ -482,8 +495,9 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
             LOKI_LOG(debug, "We are the final destination in the onion request!");
 
             loki::Response res = this->process_onion_exit(ephem_key, plaintext);
-
-            cb(std::move(res));
+            
+            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true /* use aes gcm */);
+            cb(std::move(wrapped_res));
             return;
         } else if (inner_json.find("host") != inner_json.end()) {
 
@@ -495,7 +509,10 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
             if ((target.rfind("/lsrpc") == target.size() - 6) && (target.find('?') == std::string::npos)) {
                 this->process_onion_to_url(host, target, plaintext, std::move(cb));
             } else {
-                cb(loki::Response{Status::BAD_REQUEST, "Invalid url"});
+
+                auto res = loki::Response{Status::BAD_REQUEST, "Invalid url"};
+                auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
+                cb(std::move(wrapped_res));
             }
 
             return;
@@ -510,8 +527,9 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         if (!sn) {
             auto msg = fmt::format("Next node not found: {}", dest);
             LOKI_LOG(warn, "{}", msg);
-            auto res = loki::Response{Status::BAD_REQUEST, std::move(msg)};
-            cb(res);
+            auto res = loki::Response{Status::BAD_GATEWAY, std::move(msg)};
+            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
+            cb(std::move(res));
             return;
         }
 
@@ -522,17 +540,11 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
         auto on_response = [cb, counter_copy = counter](bool success, std::vector<std::string> data) {
 
-            LOKI_LOG(debug, "on onion response, {}", counter_copy);
-            LOKI_LOG(debug, "   success: {}", success);
-            LOKI_LOG(debug, "   data.size: {}", data.size());
-
-            for (const std::string& part : data) {
-                LOKI_LOG(debug, "   part: {}", part);
-            }
+            // Processing the result we got from upstream
 
             if (!success) {
                 LOKI_LOG(debug, "[Onion request] Request time out");
-                cb(loki::Response{Status::BAD_REQUEST, "Request time out"});
+                cb(loki::Response{Status::GATEWAY_TIMEOUT, "Request time out"});
                 return;
             }
 
@@ -548,6 +560,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
                 cb(loki::Response{Status::OK, std::move(data[1])});
             } else {
                 LOKI_LOG(debug, "Onion request relay failed with: {}", data[1]);
+                // When do we ever get this??
                 cb(loki::Response{Status::SERVICE_UNAVAILABLE, ""});
             }
 
@@ -560,7 +573,12 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
     } catch (std::exception& e) {
         LOKI_LOG(debug, "Error parsing inner JSON in onion request: {}", e.what());
-        cb(loki::Response{Status::BAD_REQUEST, "Invalid json"});
+
+        auto res = loki::Response{Status::BAD_REQUEST, "Invalid json"};
+
+        auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
+
+        cb(std::move(wrapped_res));
     }
 }
 
