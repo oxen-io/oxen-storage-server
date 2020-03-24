@@ -74,10 +74,11 @@ class Swarm {
     /// Extract relevant information from incoming swarm composition
     SwarmEvents derive_swarm_events(const all_swarms_t& swarms) const;
 
-    /// Update swarm state according to `events`
+    /// Update swarm state according to `events`. If not `is_active`
+    /// only update the list of all nodes
     void update_state(const all_swarms_t& swarms,
                       const std::vector<sn_record_t>& decommissioned,
-                      const SwarmEvents& events);
+                      const SwarmEvents& events, bool is_active);
 
     void apply_swarm_changes(const all_swarms_t& new_swarms);
 

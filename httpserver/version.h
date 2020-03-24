@@ -6,7 +6,7 @@
 
 #define VERSION_MAJOR 2
 #define VERSION_MINOR 0
-#define VERSION_PATCH 1
+#define VERSION_PATCH 2
 
 #define LOKI_STRINGIFY2(val) #val
 #define LOKI_STRINGIFY(val) LOKI_STRINGIFY2(val)
