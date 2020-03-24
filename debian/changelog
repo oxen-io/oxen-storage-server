@@ -1,3 +1,10 @@
+loki-storage-server (2.0.2-2~deb10) buster; urgency=medium
+
+  * Bump required lokimq version
+  * Update liblokimq0 dependency
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 24 Mar 2020 15:06:48 -0300
+
 loki-storage-server (2.0.2-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
