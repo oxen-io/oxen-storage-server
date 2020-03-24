@@ -1,3 +1,26 @@
+loki-storage-server (2.0.2-1~ubuntu1804) bionic; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+
+  [ Maxim Shishmarev ]
+  * Update Dockerfile
+
+  [ Jason Rhinelander ]
+  * Fix segfault when connection_t object is gone
+
+  [ Maxim Shishmarev ]
+  * Fix not writing response after exception; bump lmq message size limit
+
+  [ Ryan Tharp ]
+  * update readme for latest loki-mq
+
+  [ Maxim Shishmarev ]
+  * Inactive nodes maintain a full snode list
+  * Bump version to 2.0.2
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 24 Mar 2020 11:41:30 -0300
+
 loki-storage-server (2.0.1-1~ubuntu1804) bionic; urgency=medium
 
   [ Jason Rhinelander ]
