@@ -598,6 +598,7 @@ void connection_t::process_onion_req() {
         LOKI_LOG(error, "{}", msg);
         response_.result(http::status::bad_request);
         this->body_stream_ << std::move(msg);
+        this->write_response();
     }
 }
 
@@ -630,24 +631,30 @@ void connection_t::process_proxy_req() {
     const int req_idx = req_counter;
 
     // TODO: make an https response out of what we got back
-    auto on_proxy_response = [this, req_idx](bool success,
-                                             std::vector<std::string> data) {
+    auto on_proxy_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}, req_idx](
+            bool success, std::vector<std::string> data) {
         LOKI_LOG(debug, "on proxy response: {}",
                  success ? "success" : "failure");
+
+        auto self = wself.lock();
+        if (!self) {
+            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+            return;
+        }
 
         if (success && data.size() == 1) {
 
             LOKI_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
 
-            this->body_stream_ << data[0];
-            response_.result(http::status::ok);
+            self->body_stream_ << data[0];
+            self->response_.result(http::status::ok);
         } else {
             LOKI_LOG(debug, "PROXY RESPONSE FAILED, idx: {}", req_idx);
         }
 
         // This will return an empty, but failed response to the client
         // if the raw_response is empty (we should provide better errors)
-        this->write_response();
+        self->write_response();
     };
 
     if (!sn) {
@@ -738,17 +745,23 @@ void connection_t::process_file_proxy_req() {
         req->insert(el.key(), el.value());
     }
 
-    auto cb = [this](sn_response_t res) {
+    auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](sn_response_t res) {
         LOKI_LOG(trace, "Successful file proxy request!");
 
+        auto self = wself.lock();
+        if (!self) {
+            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+            return;
+        }
+
         if (res.raw_response) {
-            this->response_ = *res.raw_response;
-            LOKI_LOG(trace, "Response: {}", this->response_);
+            self->response_ = *res.raw_response;
+            LOKI_LOG(trace, "Response: {}", self->response_);
         } else {
             LOKI_LOG(debug, "No response from file server!");
         }
 
-        this->write_response();
+        self->write_response();
     };
 
     make_https_request(ioc_, "https://file.lokinet.org", req, cb);
@@ -901,7 +914,7 @@ void connection_t::process_request() {
 
     /// This method is responsible for filling out response_
 
-    LOKI_LOG(trace, "connection_t::process_request");
+    LOKI_LOG(debug, "connection_t::process_request");
     response_.version(req.version());
     response_.keep_alive(false);
 
@@ -1103,13 +1116,13 @@ void connection_t::process_client_req_rate_limited() {
         auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
 
         delay_timer->expires_after(std::chrono::seconds(2));
-        delay_timer->async_wait([this, delay_timer, plaintext = std::move(plain_text)](const error_code& ec) {
+        delay_timer->async_wait([self = shared_from_this(), delay_timer, plaintext = std::move(plain_text)](const error_code& ec) {
 
-            const auto res = this->request_handler_.process_client_req(plaintext);
+            const auto res = self->request_handler_.process_client_req(plaintext);
 
             LOKI_LOG(debug, "Respond to a long-polling client");
-            this->set_response(res);
-            this->write_response();
+            self->set_response(res);
+            self->write_response();
         });
 
 
@@ -1124,12 +1137,10 @@ void connection_t::process_client_req_rate_limited() {
 
 void connection_t::register_deadline() {
 
-    auto self = shared_from_this();
-
     // Note: deadline callback captures a shared pointer to this, so
     // the connection will not be destroyed until the timer goes off.
     // If we want to destroy it earlier, we need to manually cancel the timer.
-    deadline_.async_wait([self = std::move(self)](error_code ec) {
+    deadline_.async_wait([self = shared_from_this()](error_code ec) {
         const bool cancelled =
             (ec && ec == boost::asio::error::operation_aborted);
 

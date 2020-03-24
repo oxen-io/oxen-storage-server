@@ -237,7 +237,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
     block_update_t bu;
 
-    LOKI_LOG(debug, "swarm repsonse: {}", *response_body);
+    LOKI_LOG(trace, "swarm repsonse: {}", *response_body);
 
     try {
         const auto& result = body.at("result");
@@ -469,8 +469,9 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
 
     // NO mutex needed (I think)
 
-    lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
-                               std::move(cb), eph_key, payload);
+    lmq_server_.lmq()->request(
+        sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
+        lokimq::send_option::request_timeout{10s}, eph_key, payload);
 }
 
 // Calls callback on success only?
@@ -731,10 +732,13 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     std::string reason;
     if (!this->snode_ready(boost::optional<std::string&>(reason))) {
         LOKI_LOG(warn, "Storage server is still not ready: {}", reason);
+        swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
     } else {
         static bool active = false;
         if (!active) {
+            // NOTE: because we never reset `active` after we get decommissioned,
+            // this code won't run when the node comes back again
             LOKI_LOG(info, "Storage server is now active!");
 
             relay_timer_.expires_after(RELAY_INTERVAL);
@@ -745,7 +749,7 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         }
     }
 
-    swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events);
+    swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, true);
 
     if (!events.new_snodes.empty()) {
         bootstrap_peers(events.new_snodes);
