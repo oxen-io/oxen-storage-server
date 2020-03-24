@@ -914,7 +914,7 @@ void connection_t::process_request() {
 
     /// This method is responsible for filling out response_
 
-    LOKI_LOG(trace, "connection_t::process_request");
+    LOKI_LOG(debug, "connection_t::process_request");
     response_.version(req.version());
     response_.keep_alive(false);
 
