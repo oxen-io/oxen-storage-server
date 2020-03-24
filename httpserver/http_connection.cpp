@@ -598,6 +598,7 @@ void connection_t::process_onion_req() {
         LOKI_LOG(error, "{}", msg);
         response_.result(http::status::bad_request);
         this->body_stream_ << std::move(msg);
+        this->write_response();
     }
 }
 
