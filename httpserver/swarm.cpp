@@ -174,34 +174,39 @@ void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
 
 void Swarm::update_state(const all_swarms_t& swarms,
                          const std::vector<sn_record_t>& decommissioned,
-                         const SwarmEvents& events) {
+                         const SwarmEvents& events, bool active) {
 
-    if (events.dissolved) {
-        LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
+    if (active) {
+
+        // The following only makes sense for active nodes in a swarm
+
+        if (events.dissolved) {
+            LOKI_LOG(info, "EVENT: our old swarm got DISSOLVED!");
+        }
+
+        for (const sn_record_t& sn : events.new_snodes) {
+            LOKI_LOG(info, "EVENT: detected new SN: {}", sn);
+        }
+
+        for (swarm_id_t swarm : events.new_swarms) {
+            LOKI_LOG(info, "EVENT: detected a new swarm: {}", swarm);
+        }
+
+        apply_swarm_changes(swarms);
+
+        const auto& members = events.our_swarm_members;
+
+        /// sanity check
+        if (members.empty())
+            return;
+
+        swarm_peers_.clear();
+        swarm_peers_.reserve(members.size() - 1);
+
+        std::copy_if(
+            members.begin(), members.end(), std::back_inserter(swarm_peers_),
+            [this](const sn_record_t& record) { return record != our_address_; });
     }
-
-    for (const sn_record_t& sn : events.new_snodes) {
-        LOKI_LOG(info, "EVENT: detected new SN: {}", sn);
-    }
-
-    for (swarm_id_t swarm : events.new_swarms) {
-        LOKI_LOG(info, "EVENT: detected a new swarm: {}", swarm);
-    }
-
-    apply_swarm_changes(swarms);
-
-    const auto& members = events.our_swarm_members;
-
-    /// sanity check
-    if (members.empty())
-        return;
-
-    swarm_peers_.clear();
-    swarm_peers_.reserve(members.size() - 1);
-
-    std::copy_if(
-        members.begin(), members.end(), std::back_inserter(swarm_peers_),
-        [this](const sn_record_t& record) { return record != our_address_; });
 
     // Store a copy of every node in a separate data structure
     all_funded_nodes_.clear();
