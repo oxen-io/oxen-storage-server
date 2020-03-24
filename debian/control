@@ -9,7 +9,7 @@ Homepage: https://loki.network
 
 Package: loki-storage-server
 Architecture: any
-Depends: lokid (>= 7), ${shlibs:Depends}, ${misc:Depends}
+Depends: lokid (>= 7), liblokimq0 (>= 1.0.2), ${shlibs:Depends}, ${misc:Depends}
 Suggests: loki-service-node
 Description: Loki storage server
  This package contains the Loki storage server component of a Loki service
