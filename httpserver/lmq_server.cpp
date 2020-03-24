@@ -181,6 +181,8 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_), allow_fn);
 
+    lokimq_->MAX_MSG_SIZE = 10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+
     lokimq_->start();
 }
 
