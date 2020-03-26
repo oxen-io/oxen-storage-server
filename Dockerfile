@@ -53,6 +53,17 @@ RUN cd loki-storage-server && git submodule update --init --recursive
 
 ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
 
+RUN apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | apt-key add -
+RUN apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main'
+
+RUN apt-get update
+
+RUN apt-get install -y kitware-archive-keyring
+RUN apt-key --keyring /etc/apt/trusted.gpg del C1F34CDD40CD72DA
+
+RUN apt-get install -y cmake
+
 RUN cd loki-storage-server \
     && mkdir -p build \
     && cd build \
