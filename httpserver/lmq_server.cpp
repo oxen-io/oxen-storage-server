@@ -22,7 +22,7 @@ std::string LokimqServer::peer_lookup(lokimq::string_view pubkey_bin) const {
     if (sn) {
         return fmt::format("tcp://{}:{}", sn->ip(), sn->lmq_port());
     } else {
-        LOKI_LOG(debug, "[LMQ] peer node not found!");
+        LOKI_LOG(debug, "[LMQ] peer node not found {}!", pubkey_bin);
         return "";
     }
 }

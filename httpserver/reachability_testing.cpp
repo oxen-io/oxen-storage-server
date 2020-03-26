@@ -11,7 +11,7 @@ namespace detail {
 
 reach_record_t::reach_record_t() {
     this->first_failure = steady_clock::now();
-    this->last_tested = this->first_failure;
+    this->last_failure = this->first_failure;
 }
 
 } // namespace detail
@@ -19,43 +19,116 @@ reach_record_t::reach_record_t() {
 /// How long to wait until reporting unreachable nodes to Lokid
 constexpr std::chrono::minutes UNREACH_GRACE_PERIOD = 120min;
 
-bool reachability_records_t::record_unreachable(const sn_pub_key_t& sn) {
+bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType type) {
+
+    using std::chrono::duration_cast;
+    using std::chrono::minutes;
 
     const auto it = offline_nodes_.find(sn);
 
     if (it == offline_nodes_.end()) {
-        /// TODO: change this to debug
-        LOKI_LOG(debug, "Adding a new node to UNREACHABLE: {}", sn);
-        offline_nodes_.insert({sn, {}});
+        // no record, we must have recordered this node as reachable already
+        return false;
+    }
+
+    const auto& record = it->second;
+
+    const bool reachable = record.http_ok && record.zmq_ok;
+
+    if (type == ReportType::GOOD) {
+        // Only report as reachable if both ports are reachable
+        return reachable;
     } else {
-        LOKI_LOG(debug, "Node is ALREAY known to be UNREACHABLE: {}", sn);
 
-        it->second.last_tested = steady_clock::now();
+        if (reachable) {
+            // Not sure if this happens, but check just in case
+            return false;
+        }
 
-        const auto elapsed = it->second.last_tested - it->second.first_failure;
-        const auto elapsed_sec =
-            std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
-        LOKI_LOG(debug, "First time failed {} seconds ago", elapsed_sec);
+        // Only report as unreachable if it has been unreachable for a long time
 
-        /// TODO: Might still want to report as unreachable since this status
-        /// gets reset to `true` on Lokid restart
+        const auto elapsed = record.last_failure - record.first_failure;
+        const auto elapsed_min = duration_cast<minutes>(elapsed).count();
+        LOKI_LOG(debug, "[reach] First time failed {} minutes ago", elapsed_min);
+
         if (it->second.reported) {
-            LOKI_LOG(debug, "Already reported node: {}", sn);
+            LOKI_LOG(debug, "[reach]  Already reported node: {}", sn);
+            // TODO: Might still want to report as unreachable since this status
+            // gets reset to `true` on Lokid restart
+            return false;
         } else if (elapsed > UNREACH_GRACE_PERIOD) {
-            LOKI_LOG(debug, "Will REPORT this node to Lokid!");
+            LOKI_LOG(debug, "[reach] Will REPORT {} to Lokid!", sn);
             return true;
         }
 
     }
 
-    return false;
+}
+
+void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType type, bool val) {
+
+    const auto it = offline_nodes_.find(sn);
+
+    const bool no_record = it == offline_nodes_.end();
+
+    if (no_record) {
+
+        if (val) {
+            // The node is good and there is no record, so do nothing
+            LOKI_LOG(debug, "[reach] Node is reachable via {} (no record) {}",
+                     type == ReachType::HTTP ? "HTTP" : "ZMQ", sn);
+        } else {
+
+            detail::reach_record_t record;
+
+            if (type == ReachType::HTTP) {
+                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via HTTP: {}", sn);
+                record.http_ok = false;
+            } else if (type == ReachType::ZMQ) {
+                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via ZMQ: {}", sn);
+                record.zmq_ok = false;
+            }
+
+            offline_nodes_.insert({sn, record});
+        }
+    } else {
+
+        auto& record = it->second;
+
+        const bool reachable_before = record.http_ok && record.zmq_ok;
+        // Sometimes we might still have this entry even if the node has become reachable again
+
+        if (type == ReachType::HTTP) {
+            LOKI_LOG(debug, "[reach] node {} is {} via HTTP", sn, val ? "OK" : "UNREACHABLE");
+            record.http_ok = val;
+        } else if (type == ReachType::ZMQ) {
+            LOKI_LOG(debug, "[reach] node {} is {} via ZMQ", sn, val ? "OK" : "UNREACHABLE");
+            record.zmq_ok = val;
+        }
+
+        if (!val) {
+            LOKI_LOG(debug,
+                     "[reach] Node is ALREADY known to be UNREACHABLE: {}, "
+                     "http_ok: {}, "
+                     "zmq_ok: {}",
+                     sn, record.http_ok, record.zmq_ok);
+
+            const auto now = steady_clock::now();
+
+            if (reachable_before) {
+                record.first_failure = now;
+            }
+
+            record.last_failure = now;
+        }
+    }
 }
 
 bool reachability_records_t::expire(const sn_pub_key_t& sn) {
 
     bool erased = offline_nodes_.erase(sn);
     if (erased)
-        LOKI_LOG(debug, "Removed entry for {}", sn);
+        LOKI_LOG(debug, "[reach] Removed entry for {}", sn);
 
     return erased;
 }
@@ -73,7 +146,7 @@ boost::optional<sn_pub_key_t> reachability_records_t::next_to_test() {
     const auto it = std::min_element(
         offline_nodes_.begin(), offline_nodes_.end(),
         [&](const auto& lhs, const auto& rhs) {
-            return lhs.second.last_tested < rhs.second.last_tested;
+            return lhs.second.last_failure < rhs.second.last_failure;
         });
 
     if (it == offline_nodes_.end()) {
