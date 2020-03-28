@@ -1,3 +1,9 @@
+loki-storage-server (2.0.2-3) unstable; urgency=medium
+
+  * Rebuild for versioned liblokimq
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 28 Mar 2020 12:39:53 -0300
+
 loki-storage-server (2.0.2-2) unstable; urgency=medium
 
   * Bump required lokimq version
