@@ -1,3 +1,9 @@
+loki-storage-server (2.0.2-4~ubuntu1804) bionic; urgency=medium
+
+  * Fix liblokimq deb deps
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 28 Mar 2020 13:20:01 -0300
+
 loki-storage-server (2.0.2-3~ubuntu1804) bionic; urgency=medium
 
   * Rebuild for versioned liblokimq
