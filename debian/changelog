@@ -1,3 +1,9 @@
+loki-storage-server (2.0.2-3~ubuntu1804) bionic; urgency=medium
+
+  * Rebuild for versioned liblokimq
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 28 Mar 2020 12:40:56 -0300
+
 loki-storage-server (2.0.2-2~ubuntu1804) bionic; urgency=medium
 
   * Bump required lokimq version
