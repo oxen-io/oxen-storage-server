@@ -129,7 +129,6 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                         const lokid_key_pair_t& keypair) {
 
-    namespace ph = std::placeholders;
     using lokimq::Allow;
     using lokimq::string_view;
 
@@ -158,10 +157,9 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 #undef LMQ_LOG_MAP
     };
 
-    auto lookup_fn = std::bind(&LokimqServer::peer_lookup, this, ph::_1);
+    auto lookup_fn = [this](auto pk) { return peer_lookup(pk); };
 
-    auto allow_fn =
-        std::bind(&LokimqServer::auth_level_lookup, this, ph::_1, ph::_2);
+    auto allow_fn = [this](auto ip, auto pk) { return auth_level_lookup(ip, pk); };
 
     lokimq_.reset(new LokiMQ{pubkey,
                              seckey,
@@ -171,23 +169,15 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
 
-    lokimq_->add_category("sn",
-                          lokimq::Access{lokimq::AuthLevel::none, true, false});
-
     lokimq_->log_level(lokimq::LogLevel::warn);
 
     // ============= COMMANDS - BEGIN =============
-
-    lokimq_->add_request_command(
-        "sn", "data", std::bind(&LokimqServer::handle_sn_data, this, ph::_1));
-
-    lokimq_->add_request_command(
-        "sn", "proxy_exit",
-        std::bind(&LokimqServer::handle_sn_proxy_exit, this, ph::_1));
-
-    lokimq_->add_request_command(
-        "sn", "onion_req",
-        std::bind(&LokimqServer::handle_onion_request, this, ph::_1));
+    //
+    lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
+        .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
+        .add_request_command("proxy_exit", [this](auto& m) { handle_sn_proxy_exit(m); })
+        .add_request_command("onion_req", [this](auto& m) { handle_onion_request(m); })
+        ;
 
     // +============= COMMANDS - END ==============
 
