@@ -1,3 +1,9 @@
+loki-storage-server (2.0.2-4~ubuntu2004) focal; urgency=medium
+
+  * Fix liblokimq deb deps
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 28 Mar 2020 13:19:59 -0300
+
 loki-storage-server (2.0.2-3~ubuntu2004) focal; urgency=medium
 
   * Rebuild for versioned liblokimq
