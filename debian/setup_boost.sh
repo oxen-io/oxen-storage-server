@@ -5,9 +5,11 @@ bash -i
 set -e
 set -x
 
-curl -L https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.bz2 | tar xj
+# Boost ran out of download bandwidth; temporarily switch to a local mirror
+#curl -L https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.bz2 | tar xj
+curl -L https://deb.imaginary.stream/boost_1_72_0.tar.bz2 | tar xj
 
-cd boost_1_70_0
+cd boost_1_72_0
 
 ./bootstrap.sh
 
