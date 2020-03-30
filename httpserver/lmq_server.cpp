@@ -82,20 +82,25 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
     const auto& client_key = message.data[0];
     const auto& payload = message.data[1];
 
+    auto &reply_tag = message.reply_tag;
+    auto &origin_pk = message.conn.pubkey();
+
     // TODO: accept string_view?
-    auto res = request_handler_->process_proxy_exit(std::string(client_key), std::string(payload));
+    request_handler_->process_proxy_exit(std::string(client_key), std::string(payload), [this, origin_pk, reply_tag](loki::Response res) {
 
-    if (res.status() == Status::OK) {
+        if (res.status() == Status::OK) {
 
-        // TODO: we might want to delay reponding in the case of LP,
-        // unless the proxy delay is long enough
+            // TODO: we might want to delay reponding in the case of LP,
+            // unless the proxy delay is long enough
 
-        message.send_reply(res.message());
+            this->lokimq_->send(origin_pk, "REPLY", reply_tag, res.message());
 
-    } else {
-        // TODO: better handle this (unlikely) error
-        LOKI_LOG(debug, "Error: status is not OK for proxy_exit");
-    }
+        } else {
+            // TODO: better handle this (unlikely) error
+            LOKI_LOG(debug, "Error: status is not OK for proxy_exit");
+        }
+
+    });
 
 }
 
@@ -107,7 +112,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
     auto &origin_pk = message.conn.pubkey();
 
     auto on_response = [this, origin_pk, reply_tag](loki::Response res) mutable {
-        LOKI_LOG(debug, "on response: {}", to_string(res));
+        LOKI_LOG(trace, "on response: {}", to_string(res));
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
