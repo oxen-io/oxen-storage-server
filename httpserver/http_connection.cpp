@@ -562,6 +562,8 @@ void connection_t::process_onion_req() {
             return;
         }
 
+        self->body_stream_ << res.message();
+
         if (res.status() == Status::OK) {
             self->response_.result(http::status::ok);
 
@@ -569,11 +571,7 @@ void connection_t::process_onion_req() {
             // coming from the target node as opposed to any other
             // node on the path. The encrypted body will contain
             // its own response status.
-
-            self->body_stream_ << res.message();
         } else {
-            // res.status() is for us, should we only report a generic
-            // error to indicate onion request failure?
             self->response_.result(static_cast<int>(res.status()));
         }
 
