@@ -953,18 +953,17 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     make_sn_request(ioc_, sn, req, std::move(callback));
 
     // test lmq port:
-    lmq_server_.lmq()->connect_remote(
-        fmt::format("tcp://{}:{}", sn.ip(), sn.lmq_port()),
-        [this, sn](lokimq::ConnectionID c) {
-            this->process_reach_test_result(sn.pub_key_base32z(),
-                                            ReachType::ZMQ, true);
-            this->lmq_server_.lmq()->disconnect(c);
+    lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
+            [this, sn](bool success, const auto&) {
+            LOKI_LOG(info, "Got success={} testing response from {}",
+                    success, sn.pubkey_x25519_hex());
+            process_reach_test_result(
+                    sn.pub_key_base32z(), ReachType::ZMQ, success);
         },
-        [this, sn](lokimq::ConnectionID c, lokimq::string_view err) {
-            this->process_reach_test_result(sn.pub_key_base32z(),
-                                            ReachType::ZMQ, false);
-        },
-        sn.pubkey_x25519_bin());
+        "ping",
+        // Only use an existing (or new) outgoing connection:
+        lokimq::send_option::outgoing{}
+    );
 }
 
 void ServiceNode::lokid_ping_timer_tick() {

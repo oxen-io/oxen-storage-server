@@ -119,6 +119,15 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
         lokimq_->send(origin_pk, "REPLY", reply_tag, std::move(status), res.message());
     };
 
+    if (message.data.size() == 1 && message.data[0] == "ping") {
+        // Before 2.0.3 we reply with a bad request, below, but reply here to avoid putting the
+        // error message in the log on 2.0.3+ nodes. (the reply code here doesn't actually matter;
+        // the ping test only requires that we provide *some* response).
+        LOKI_LOG(info, "Remote pinged me");
+        on_response(loki::Response{Status::OK, "pong"});
+        return;
+    }
+
     if (message.data.size() != 2) {
         LOKI_LOG(error, "Expected 2 message parts, got {}", message.data.size());
         on_response(loki::Response{Status::BAD_REQUEST, "Incorrect number of messages"});
