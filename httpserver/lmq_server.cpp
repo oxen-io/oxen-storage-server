@@ -31,7 +31,7 @@ lokimq::Allow
 LokimqServer::auth_level_lookup(lokimq::string_view ip,
                                 lokimq::string_view pubkey) const {
 
-    LOKI_LOG(debug, "[LMQ] Auth Level Lookup");
+    LOKI_LOG(debug, "[LMQ] Auth Level Lookup for {}", util::as_hex(pubkey));
 
     // TODO: make SN accept string_view
     boost::optional<sn_record_t> sn =
@@ -86,22 +86,24 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
     auto &origin_pk = message.conn.pubkey();
 
     // TODO: accept string_view?
-    request_handler_->process_proxy_exit(std::string(client_key), std::string(payload), [this, origin_pk, reply_tag](loki::Response res) {
+    request_handler_->process_proxy_exit(
+        std::string(client_key), std::string(payload),
+        [this, origin_pk, reply_tag](loki::Response res) {
+            LOKI_LOG(debug, "    Proxy exit status: {}", res.status());
 
-        if (res.status() == Status::OK) {
+            if (res.status() == Status::OK) {
+                this->lokimq_->send(origin_pk, "REPLY", reply_tag,
+                                    res.message());
 
-            // TODO: we might want to delay reponding in the case of LP,
-            // unless the proxy delay is long enough
-
-            this->lokimq_->send(origin_pk, "REPLY", reply_tag, res.message());
-
-        } else {
-            // TODO: better handle this (unlikely) error
-            LOKI_LOG(debug, "Error: status is not OK for proxy_exit");
-        }
-
-    });
-
+            } else {
+                // We reply with 2 messages which will be treated as
+                // an error (rather than timeout)
+                this->lokimq_->send(origin_pk, "REPLY", reply_tag,
+                                    fmt::format("{}", res.status()),
+                                    res.message());
+                LOKI_LOG(debug, "Error: status is not OK for proxy_exit: {}", res.status());
+            }
+        });
 }
 
 void LokimqServer::handle_onion_request(lokimq::Message& message) {
@@ -183,7 +185,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
 
-    lokimq_->log_level(lokimq::LogLevel::warn);
+    lokimq_->log_level(lokimq::LogLevel::info);
 
     // ============= COMMANDS - BEGIN =============
     //

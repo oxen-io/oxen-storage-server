@@ -59,6 +59,9 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
         } else if (elapsed > UNREACH_GRACE_PERIOD) {
             LOKI_LOG(debug, "[reach] Will REPORT {} to Lokid!", sn);
             return true;
+        } else {
+            // No need to report yet
+            return false;
         }
 
     }
