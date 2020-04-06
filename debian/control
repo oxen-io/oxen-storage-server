@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11), cmake, g++, libloki-core-dev (>= 7), libsodium-dev, libssl-dev, libsqlite3-dev, curl, ca-certificates,
-    libsystemd-dev, pkg-config, liblokimq-dev (>= 1.0.3)
+    libsystemd-dev, pkg-config, liblokimq-dev (>= 1.0.5)
 Standards-Version: 4.1.3
 Homepage: https://loki.network
 
