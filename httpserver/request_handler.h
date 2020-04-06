@@ -8,6 +8,7 @@
 
 // TODO: can I avoid including this in the header?
 #include "../external/json.hpp"
+#include <lokimq/string_view.h>
 
 // TODO: move ChannelEncryption to ::loki
 template <typename T>
@@ -16,6 +17,7 @@ class ChannelEncryption;
 namespace loki {
 
     class ServiceNode;
+    class LokidClient;
 
 enum class Status {
     OK = 200,
@@ -73,6 +75,7 @@ std::string to_string(const Response& res);
 class RequestHandler {
 
     ServiceNode& service_node_;
+    const LokidClient& lokid_client_;
     const ChannelEncryption<std::string>& channel_cipher_;
 
     boost::asio::io_context& ioc_;
@@ -96,34 +99,41 @@ class RequestHandler {
     // Query the database and return requested messages
     Response process_retrieve(const nlohmann::json& params);
 
-    Response process_onion_exit(const std::string& eph_key,
-                                const std::string& payload);
+    void process_onion_exit(const std::string& eph_key,
+                            const std::string& payload,
+                            std::function<void(loki::Response)> cb);
+
+    void process_lns_request(lokimq::string_view name_hash,
+                             std::function<void(loki::Response)> cb);
 
     // ===================================
 
 
 public:
+  RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
+                 const LokidClient& lokid_client,
+                 const ChannelEncryption<std::string>& ce);
 
-    RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn, const ChannelEncryption<std::string>& ce);
+  // Process all Session client requests
+  void process_client_req(const std::string& req_json,
+                          std::function<void(loki::Response)> cb);
 
-    // Process all Session client requests
-    Response process_client_req(const std::string& req_json);
+  // Test only: retrieve all db entires
+  Response process_retrieve_all();
 
-    // Test only: retrieve all db entires
-    Response process_retrieve_all();
+  // Handle a Session client reqeust sent via SN proxy
+  void process_proxy_exit(const std::string& client_key,
+                          const std::string& payload,
+                          std::function<void(loki::Response)> cb);
 
-    // Handle a Session client reqeust sent via SN proxy
-    Response process_proxy_exit(const std::string& client_key,
-                                const std::string& payload);
+  Response process_onion_to_url(const std::string& host,
+                                const std::string& target,
+                                const std::string& payload,
+                                std::function<void(loki::Response)> cb);
 
-    Response process_onion_to_url(const std::string& host,
-                                  const std::string& target,
-                                  const std::string& payload,
-                                  std::function<void(loki::Response)> cb);
-
-    // The result will arrive asynchronously, so it needs a callback handler
-    void process_onion_req(const std::string& ciphertext,
-                           const std::string& ephem_key,
-                           std::function<void(loki::Response)> cb);
+  // The result will arrive asynchronously, so it needs a callback handler
+  void process_onion_req(const std::string& ciphertext,
+                         const std::string& ephem_key,
+                         std::function<void(loki::Response)> cb);
     };
 }
