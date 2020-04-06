@@ -123,7 +123,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
         // Before 2.0.3 we reply with a bad request, below, but reply here to avoid putting the
         // error message in the log on 2.0.3+ nodes. (the reply code here doesn't actually matter;
         // the ping test only requires that we provide *some* response).
-        LOKI_LOG(info, "Remote pinged me");
+        LOKI_LOG(debug, "Remote pinged me");
         on_response(loki::Response{Status::OK, "pong"});
         return;
     }

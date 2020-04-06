@@ -955,7 +955,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     // test lmq port:
     lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
             [this, sn](bool success, const auto&) {
-            LOKI_LOG(info, "Got success={} testing response from {}",
+            LOKI_LOG(debug, "Got success={} testing response from {}",
                     success, sn.pubkey_x25519_hex());
             process_reach_test_result(
                     sn.pub_key_base32z(), ReachType::ZMQ, success);
