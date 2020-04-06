@@ -56,8 +56,11 @@ void init_logging(const std::string& data_dir,
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(log_level);
 
+    // setting this to `true` can be useful for debugging on testnet
+    bool rotate_on_open = false;
+
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES);
+        log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES, rotate_on_open);
     file_sink->set_level(log_level);
 
     auto developer_sink = std::make_shared<loki::dev_sink_mt>();

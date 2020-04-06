@@ -18,13 +18,28 @@ class reach_record_t {
     // The time the node failed for the first time
     // (and hasn't come back online)
     time_point_t first_failure;
-    time_point_t last_tested;
+    time_point_t last_failure;
     // whether it's been reported to Lokid
     bool reported = false;
+
+    // whether reachable over http
+    bool http_ok = true;
+    // whether reachable over zmq
+    bool zmq_ok = true;
 
     reach_record_t();
 };
 } // namespace detail
+
+enum class ReachType {
+  HTTP,
+  ZMQ
+};
+
+enum class ReportType {
+  GOOD,
+  BAD
+};
 
 class reachability_records_t {
 
@@ -41,9 +56,12 @@ class reachability_records_t {
     // and those that failed our earlier tests (but not reported yet)
     // std::vector<> priority_nodes() const;
 
-    // Records node as unreachable, return `true` if the node should be
-    // reported to Lokid as being unreachable for a long time
-    bool record_unreachable(const sn_pub_key_t& sn);
+    // Records node as reachable/unreachable according to `val`
+    void record_reachable(const sn_pub_key_t& sn, ReachType type, bool val);
+
+    // return `true` if the node should be reported to Lokid as being
+    // reachable or unreachable for a long time depending on `type`
+    bool should_report_as(const sn_pub_key_t& sn, ReportType type);
 
     // Expires a node, removing it from offline nodes.  Returns true if found
     // and removed, false if it didn't exist.

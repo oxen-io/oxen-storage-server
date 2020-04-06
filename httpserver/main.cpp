@@ -217,7 +217,8 @@ int main(int argc, char* argv[]) {
             ioc, worker_ioc, options.port, lokimq_server, lokid_key_pair,
             options.data_dir, lokid_client, options.force_start);
 
-        loki::RequestHandler request_handler(ioc, service_node, channel_encryption);
+        loki::RequestHandler request_handler(ioc, service_node, lokid_client,
+                                             channel_encryption);
 
         lokimq_server.init(&service_node, &request_handler,
                            lokid_key_pair_x25519);
