@@ -186,8 +186,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
 #ifdef INTEGRATION_TEST
     this->syncing_ = false;
-#else
-    bootstrap_data();
 #endif
 
     swarm_timer_tick();
@@ -373,6 +371,8 @@ void ServiceNode::bootstrap_data() {
                         // TODO: this should be disabled in the "testnet" mode
                         // (or changed to point to testnet seeds)
                         this->on_bootstrap_update(bu);
+
+                        LOKI_LOG(info, "Bootstrapped from {}", seed_node.first);
                     } catch (const std::exception& e) {
                         LOKI_LOG(
                             error,
@@ -834,10 +834,23 @@ void ServiceNode::swarm_timer_tick() {
 
     params["active_only"] = false;
 
+    static bool got_first_response = false;
+
     lokid_client_.make_lokid_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
             if (res.error_code == SNodeError::NO_ERROR) {
                 try {
+
+                    if (!got_first_response) {
+                        LOKI_LOG(info, "Got initial swarm information from local Lokid");
+                        got_first_response = true;
+#ifndef INTEGRATION_TEST
+                        // Only bootstrap (apply ips) once we have at least
+                        // some entries for snodes from lokid
+                        this->bootstrap_data();
+#endif
+                    }
+
                     const block_update_t bu = parse_swarm_update(res.body);
                     if (!bu.unchanged)
                         on_swarm_update(bu);

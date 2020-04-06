@@ -445,9 +445,27 @@ void RequestHandler::process_proxy_exit(
         return;
     }
 
-    LOKI_LOG(debug, "Process proxy exit");
+    static int proxy_idx = 0;
 
-    const auto plaintext = channel_cipher_.decrypt_cbc(payload, client_key);
+    int idx = proxy_idx++;
+
+    LOKI_LOG(debug, "[{}] Process proxy exit", idx);
+
+    std::string plaintext;
+
+    try {
+        plaintext = channel_cipher_.decrypt_cbc(payload, client_key);
+    } catch (const std::exception& e) {
+        auto msg = fmt::format("Invalid ciphertext: {}", e.what());
+        LOKI_LOG(debug, "{}", msg);
+        auto res = Response{Status::BAD_REQUEST, std::move(msg)};
+
+        // TODO: since we always seem to encrypt the response, we should
+        // do it once one level above instead
+        cb(wrap_proxy_response(res, client_key, false));
+        return;
+    }
+
 
     std::string body;
 
@@ -465,23 +483,23 @@ void RequestHandler::process_proxy_exit(
 
     } catch (std::exception& e) {
         auto msg = fmt::format("JSON parsing error: {}", e.what());
-        LOKI_LOG(error, "{}", msg);
-
-        cb({Status::BAD_REQUEST, msg});
+        LOKI_LOG(debug, "[{}] {}", idx, msg);
+        auto res = Response{Status::BAD_REQUEST, msg};
+        cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+        return;
     }
 
     if (lp_used) {
         LOKI_LOG(debug, "Long polling requested over a proxy request");
     }
 
-    this->process_client_req(body, [this, cb = std::move(cb), client_key](loki::Response res) {
-
-        LOKI_LOG(trace, "about to respond with: {}", to_string(res));
+    this->process_client_req(body, [this, cb = std::move(cb), client_key,
+                                    idx](loki::Response res) {
+        LOKI_LOG(debug, "[{}] proxy about to respond with: {}", idx,
+                 res.status());
 
         cb(wrap_proxy_response(res, client_key, false /* use cbc */));
-
     });
-
 }
 
 Response RequestHandler::process_onion_to_url(
