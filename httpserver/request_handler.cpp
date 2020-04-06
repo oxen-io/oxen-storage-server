@@ -441,7 +441,8 @@ void RequestHandler::process_proxy_exit(
     std::function<void(loki::Response)> cb) {
 
     if (!service_node_.snode_ready(boost::none)) {
-        cb({Status::SERVICE_UNAVAILABLE, "Snode not ready"});
+        auto res = Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"};
+        cb(wrap_proxy_response(res, client_key, false));
         return;
     }
 
