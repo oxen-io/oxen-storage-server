@@ -186,8 +186,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
 #ifdef INTEGRATION_TEST
     this->syncing_ = false;
-#else
-    bootstrap_data();
 #endif
 
     swarm_timer_tick();
@@ -373,6 +371,8 @@ void ServiceNode::bootstrap_data() {
                         // TODO: this should be disabled in the "testnet" mode
                         // (or changed to point to testnet seeds)
                         this->on_bootstrap_update(bu);
+
+                        LOKI_LOG(info, "Bootstrapped from {}", seed_node.first);
                     } catch (const std::exception& e) {
                         LOKI_LOG(
                             error,
@@ -752,16 +752,16 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, true);
 
     if (!events.new_snodes.empty()) {
-        bootstrap_peers(events.new_snodes);
+        this->bootstrap_peers(events.new_snodes);
     }
 
     if (!events.new_swarms.empty()) {
-        bootstrap_swarms(events.new_swarms);
+        this->bootstrap_swarms(events.new_swarms);
     }
 
     if (events.dissolved) {
         /// Go through all our PK and push them accordingly
-        salvage_data();
+        this->salvage_data();
     }
 
 #ifndef INTEGRATION_TEST
@@ -834,10 +834,23 @@ void ServiceNode::swarm_timer_tick() {
 
     params["active_only"] = false;
 
+    static bool got_first_response = false;
+
     lokid_client_.make_lokid_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
             if (res.error_code == SNodeError::NO_ERROR) {
                 try {
+
+                    if (!got_first_response) {
+                        LOKI_LOG(info, "Got initial swarm information from local Lokid");
+                        got_first_response = true;
+#ifndef INTEGRATION_TEST
+                        // Only bootstrap (apply ips) once we have at least
+                        // some entries for snodes from lokid
+                        this->bootstrap_data();
+#endif
+                    }
+
                     const block_update_t bu = parse_swarm_update(res.body);
                     if (!bu.unchanged)
                         on_swarm_update(bu);
@@ -935,10 +948,14 @@ void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
+    LockGuard guard(sn_mutex_);
+
     LOKI_LOG(debug, "Testing node for reachability {}", sn);
 
     auto callback = [this, sn](sn_response_t&& res) {
-        this->process_reach_test_response(std::move(res), sn.pub_key_base32z());
+
+        const bool success = res.error_code == SNodeError::NO_ERROR;
+        this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP, success);
     };
 
     nlohmann::json json_body;
@@ -947,6 +964,19 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
+
+    // test lmq port:
+    lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
+            [this, sn](bool success, const auto&) {
+            LOKI_LOG(debug, "Got success={} testing response from {}",
+                    success, sn.pubkey_x25519_hex());
+            this->process_reach_test_result(
+                    sn.pub_key_base32z(), ReachType::ZMQ, success);
+        },
+        "ping",
+        // Only use an existing (or new) outgoing connection:
+        lokimq::send_option::outgoing{}
+    );
 }
 
 void ServiceNode::lokid_ping_timer_tick() {
@@ -1251,24 +1281,31 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
                                      params, std::move(cb));
 }
 
-void ServiceNode::process_reach_test_response(sn_response_t&& res,
-                                              const sn_pub_key_t& pk) {
+void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk, ReachType type, bool success) {
 
     LockGuard guard(sn_mutex_);
 
-    if (res.error_code == SNodeError::NO_ERROR) {
+    if (success) {
+
+        reach_records_.record_reachable(pk, type, true);
+
         // NOTE: We don't need to report healthy nodes that previously has been
         // not been reported to Lokid as unreachable but I'm worried there might
         // be some race conditions, so do it anyway for now.
-        this->report_node_reachability(pk, true);
-        return;
+
+        if (reach_records_.should_report_as(pk, ReportType::GOOD)) {
+            this->report_node_reachability(pk, true);
+        }
+
+    } else {
+        reach_records_.record_reachable(pk, type, false);
+
+        if (reach_records_.should_report_as(pk, ReportType::BAD)) {
+            // instead of this, we should set http to `unreachable`
+            this->report_node_reachability(pk, false);
+        }
     }
 
-    const bool should_report = reach_records_.record_unreachable(pk);
-
-    if (should_report) {
-        this->report_node_reachability(pk, false);
-    }
 }
 
 void ServiceNode::process_blockchain_test_response(

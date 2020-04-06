@@ -151,6 +151,8 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
 
     all_swarms_t result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
+
+    int updates_count = 0;
     for (auto& swarm : result_swarms) {
         for (auto& snode : swarm.snodes) {
             const auto other_snode_it =
@@ -160,10 +162,13 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
                 // Keep swarms_to_keep but don't overwrite with default IPs
                 if (snode.ip() == "0.0.0.0") {
                     snode.set_ip(other_snode.ip());
+                    updates_count++;
                 }
             }
         }
     }
+
+    LOKI_LOG(info, "Updated {} entries from seed", updates_count);
     return result_swarms;
 }
 
