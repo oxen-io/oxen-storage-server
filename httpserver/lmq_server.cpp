@@ -173,9 +173,9 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 #undef LMQ_LOG_MAP
     };
 
-    auto lookup_fn = [this](auto pk) { return peer_lookup(pk); };
+    auto lookup_fn = [this](auto pk) { return this->peer_lookup(pk); };
 
-    auto allow_fn = [this](auto ip, auto pk) { return auth_level_lookup(ip, pk); };
+    auto allow_fn = [this](auto ip, auto pk) { return this->auth_level_lookup(ip, pk); };
 
     lokimq_.reset(new LokiMQ{pubkey,
                              seckey,
@@ -190,9 +190,9 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     // ============= COMMANDS - BEGIN =============
     //
     lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
-        .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
-        .add_request_command("proxy_exit", [this](auto& m) { handle_sn_proxy_exit(m); })
-        .add_request_command("onion_req", [this](auto& m) { handle_onion_request(m); })
+        .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
+        .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
+        .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m); })
         ;
 
     // +============= COMMANDS - END ==============
