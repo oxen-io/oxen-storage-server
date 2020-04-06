@@ -1,3 +1,31 @@
+loki-storage-server (2.0.3-1~ubuntu1804) bionic; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * Reachability testing via lokimq ports
+  * Disconnect after connect_remote
+
+  [ Jason Rhinelander ]
+  * Bump lokimq to 1.0.4 for fix
+  * Map lokimq log levels to SS log levels
+  * Minor code cleanups
+  * Use local mirrored copy of boost
+
+  [ Maxim Shishmarev ]
+  * Add LNS requests
+  * Fix guard node not forwarding all error messages
+
+  [ Jason Rhinelander ]
+  * Use LMQ's new outgoing-only option for reachability testing
+
+  [ Maxim Shishmarev ]
+  * less verbose logs
+  * Improve error handling in proxy requests
+  * bump version to 2.0.3
+  * minor fix
+  * some more minor fixes
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 06 Apr 2020 18:13:14 -0300
+
 loki-storage-server (2.0.2-5~ubuntu1804) bionic; urgency=medium
 
   * Rebuild against lokimq 1.0.4
