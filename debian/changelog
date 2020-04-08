@@ -1,3 +1,13 @@
+loki-storage-server (2.0.3-2~ubuntu2004) focal; urgency=medium
+
+  * increase req'd lokimq version
+  * Update to lmq 1.0.5 & fix compilation
+  * Don't use libsodium internal functions
+  * Use libsodium 1.0.17 instead of libloki-core
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 08 Apr 2020 15:49:29 -0300
+
 loki-storage-server (2.0.3-1~ubuntu2004) focal; urgency=medium
 
   [ Maxim Shishmarev ]
