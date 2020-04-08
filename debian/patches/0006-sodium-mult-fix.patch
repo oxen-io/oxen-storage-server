@@ -7,7 +7,7 @@ Subject: sodium mult fix
  1 file changed, 1 insertion(+), 3 deletions(-)
 
 diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index 8d79512..9db1977 100644
+index 8d79512..1f15ba1 100644
 --- a/crypto/src/lokid_key.cpp
 +++ b/crypto/src/lokid_key.cpp
 @@ -47,10 +47,8 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
@@ -18,7 +18,7 @@ index 8d79512..9db1977 100644
 -    ge_scalarmult_base(&A, private_key.data());
      public_key_t publicKey;
 -    ge_p3_tobytes(publicKey.data(), &A);
-+    crypto_scalarmult_ed25519_noclamp(publicKey.data(), private_key.data());
++    crypto_scalarmult_ed25519_base(publicKey.data(), private_key.data());
  
      return publicKey;
  }
