@@ -310,7 +310,6 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         }
 
     } catch (...) {
-        LOKI_LOG(trace, "swarm repsonse: {}", body.dump(2));
         LOKI_LOG(critical, "Bad lokid rpc response: invalid json fields");
         throw std::runtime_error("Failed to parse swarm update");
     }
@@ -364,6 +363,7 @@ void ServiceNode::bootstrap_data() {
             [this, seed_node, req_counter,
              node_count = seed_nodes.size()](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
+                    LOKI_LOG(info, "Parsing response from seed {}", seed_node.first);
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
                         // TODO: this should be disabled in the "testnet" mode
