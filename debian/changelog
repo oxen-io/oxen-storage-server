@@ -1,3 +1,11 @@
+loki-storage-server (2.0.3-2~ubuntu1804) bionic; urgency=medium
+
+  * Put boost back to 1.72
+  * Use libsodium 1.0.17 instead of libloki-core
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 08 Apr 2020 15:49:33 -0300
+
 loki-storage-server (2.0.3-1~ubuntu1804.4) bionic; urgency=medium
 
   * sodium fix
