@@ -2,5 +2,4 @@
 0002-build-static-boost-1.70.patch
 0003-local-boost-update.patch
 0004-Update-to-lmq-1.0.5-fix-compilation.patch
-0005-sodium-fix.patch
-0006-sodium-mult-fix.patch
+0003-Don-t-use-libsodium-internal-functions.patch
