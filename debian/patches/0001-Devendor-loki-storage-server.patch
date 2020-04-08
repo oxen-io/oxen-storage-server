@@ -4,12 +4,9 @@ Subject: Devendor loki-storage-server
 
 ---
  CMakeLists.txt            |  1 -
- crypto/CMakeLists.txt     | 15 ++++++---------
- crypto/src/lokid_key.cpp  | 15 ++++++++-------
- crypto/src/signature.cpp  |  4 ++--
  httpserver/CMakeLists.txt | 17 ++++++-----------
  storage/CMakeLists.txt    |  4 ++--
- 6 files changed, 24 insertions(+), 32 deletions(-)
+ 3 files changed, 8 insertions(+), 14 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index a6b8bfa..eea7c0a 100644
@@ -23,100 +20,6 @@ index a6b8bfa..eea7c0a 100644
  find_package(sodium REQUIRED)
  include_directories(${sodium_INCLUDE_DIR})
  
-diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
-index a0d3a55..397aa51 100644
---- a/crypto/CMakeLists.txt
-+++ b/crypto/CMakeLists.txt
-@@ -12,14 +12,6 @@ set(SOURCES
-     src/channel_encryption.cpp
-     src/signature.cpp
-     include/signature.h
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops-data.c
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.h
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.h
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/keccak.c
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/int-util.h
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.h
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/hash-ops.c
- )
- 
- add_library(crypto STATIC ${SOURCES})
-@@ -34,13 +26,18 @@ target_include_directories(crypto
-     ${CMAKE_CURRENT_LIST_DIR}/include
-     PRIVATE
-     ${CMAKE_CURRENT_LIST_DIR}/src
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors
-+    /usr/include/loki-core
- )
- 
- loki_add_subdirectory(../utils utils)
- 
- target_link_libraries(crypto PUBLIC utils)
- 
-+find_library(LOKI_CNCRYPTO cncrypto PATHS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/loki-core)
-+find_library(LOKI_EPEE epee PATHS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/loki-core)
-+target_link_libraries(crypto INTERFACE ${LOKI_CNCRYPTO})
-+target_link_libraries(crypto INTERFACE ${LOKI_EPEE})
-+
- if (NOT Boost_FOUND)
-     find_package(Boost REQUIRED system filesystem)
- endif()
-diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index cf063d9..e732b75 100644
---- a/crypto/src/lokid_key.cpp
-+++ b/crypto/src/lokid_key.cpp
-@@ -1,8 +1,7 @@
- #include "lokid_key.h"
- #include "utils.hpp"
--extern "C" {
--#include "sodium/private/ed25519_ref10.h"
--}
-+
-+#include "crypto/crypto.h"
- 
- #include <boost/filesystem.hpp>
- #include <boost/format.hpp>
-@@ -12,6 +11,7 @@ extern "C" {
- #include <exception>
- #include <fstream>
- #include <iterator>
-+#include <cstring>
- 
- namespace fs = boost::filesystem;
- 
-@@ -47,11 +47,12 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
- }
- 
- public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
--    ge25519_p3 A;
--    ge25519_scalarmult_base(&A, private_key.data());
-+    crypto::secret_key sec_key;
-+    std::memcpy(sec_key.data, private_key.data(), KEY_LENGTH);
-+    crypto::public_key pub_key;
-+    crypto::secret_key_to_public_key(sec_key, pub_key);
-     public_key_t publicKey;
--    ge25519_p3_tobytes(publicKey.data(), &A);
--
-+    std::memcpy(publicKey.data(), pub_key.data, KEY_LENGTH);
-     return publicKey;
- }
- 
-diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
-index 4efee3e..d2ccf3b 100644
---- a/crypto/src/signature.cpp
-+++ b/crypto/src/signature.cpp
-@@ -2,8 +2,8 @@
- #include "utils.hpp"
- 
- extern "C" {
--#include "loki/crypto-ops/crypto-ops.h"
--#include "loki/crypto-ops/hash-ops.h"
-+#include "loki-core/crypto/crypto-ops.h"
-+#include "loki-core/crypto/hash-ops.h"
- }
- 
- #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
 index 78a1ce8..3a3c46b 100644
 --- a/httpserver/CMakeLists.txt

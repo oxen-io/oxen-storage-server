@@ -42,12 +42,12 @@ index 014d61e..12c830e 100644
  set_property(TARGET common PROPERTY CXX_STANDARD 14)
  
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
-index 397aa51..572076f 100644
+index a0d3a55..ffc4888 100644
 --- a/crypto/CMakeLists.txt
 +++ b/crypto/CMakeLists.txt
-@@ -38,9 +38,7 @@ find_library(LOKI_EPEE epee PATHS /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/loki-co
- target_link_libraries(crypto INTERFACE ${LOKI_CNCRYPTO})
- target_link_libraries(crypto INTERFACE ${LOKI_EPEE})
+@@ -41,9 +41,7 @@ loki_add_subdirectory(../utils utils)
+ 
+ target_link_libraries(crypto PUBLIC utils)
  
 -if (NOT Boost_FOUND)
 -    find_package(Boost REQUIRED system filesystem)
