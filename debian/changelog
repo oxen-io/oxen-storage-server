@@ -1,3 +1,11 @@
+loki-storage-server (2.0.3-1~ubuntu1804.2) bionic; urgency=medium
+
+  * increase req'd lokimq version
+  * Update to lmq 1.0.5 & fix compilation
+  * Revert boost to 1.70
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 08 Apr 2020 12:40:15 -0300
+
 loki-storage-server (2.0.3-1~ubuntu1804) bionic; urgency=medium
 
   [ Maxim Shishmarev ]
