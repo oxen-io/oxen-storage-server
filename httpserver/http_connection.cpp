@@ -347,7 +347,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
         return;
     }
 
-    read_request();
+    this->read_request();
 }
 
 void connection_t::clean_up() { this->do_close(); }

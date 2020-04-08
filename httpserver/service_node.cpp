@@ -192,9 +192,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     lokid_ping_timer_tick();
     cleanup_timer_tick();
 
-#ifndef INTEGRATION_TEST
+// #ifndef INTEGRATION_TEST
     ping_peers_tick();
-#endif
+// #endif
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -950,9 +950,11 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     LockGuard guard(sn_mutex_);
 
-    LOKI_LOG(debug, "Testing node for reachability {}", sn);
+    LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
 
     auto callback = [this, sn](sn_response_t&& res) {
+
+        LOKI_LOG(debug, "Got response for HTTP peer test for: {}", sn);
 
         const bool success = res.error_code == SNodeError::NO_ERROR;
         this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP, success);
@@ -964,6 +966,10 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
+
+    return; // disable lmq testing for now
+
+    LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
     lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
