@@ -7,47 +7,42 @@ the functions (which fails completely with a shared libsodium) is a
 nasty hack, and we don't need it with libsodium 1.0.17+ which now
 exposes the functions we need in the public API.
 ---
- crypto/src/lokid_key.cpp                       |   10 +-
+ crypto/src/lokid_key.cpp                       |    7 +-
  vendors/sodium/private/common.h                |  246 ------
  vendors/sodium/private/ed25519_ref10.h         |  125 ---
  vendors/sodium/private/ed25519_ref10_fe_25_5.h | 1050 ------------------------
  vendors/sodium/private/ed25519_ref10_fe_51.h   |  518 ------------
- 5 files changed, 5 insertions(+), 1944 deletions(-)
+ 5 files changed, 1 insertion(+), 1945 deletions(-)
  delete mode 100644 vendors/sodium/private/common.h
  delete mode 100644 vendors/sodium/private/ed25519_ref10.h
  delete mode 100644 vendors/sodium/private/ed25519_ref10_fe_25_5.h
  delete mode 100644 vendors/sodium/private/ed25519_ref10_fe_51.h
 
 diff --git a/crypto/src/lokid_key.cpp b/crypto/src/lokid_key.cpp
-index e732b75..2d326b2 100644
+index cf063d9..fd36e73 100644
 --- a/crypto/src/lokid_key.cpp
 +++ b/crypto/src/lokid_key.cpp
-@@ -1,7 +1,10 @@
+@@ -1,8 +1,5 @@
  #include "lokid_key.h"
  #include "utils.hpp"
-+<<<<<<< HEAD
- 
- #include "crypto/crypto.h"
-+=======
-+>>>>>>> e546574... Don't use libsodium internal functions
+-extern "C" {
+-#include "sodium/private/ed25519_ref10.h"
+-}
  
  #include <boost/filesystem.hpp>
  #include <boost/format.hpp>
-@@ -47,12 +50,9 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
+@@ -47,10 +44,8 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
  }
  
  public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
--    crypto::secret_key sec_key;
--    std::memcpy(sec_key.data, private_key.data(), KEY_LENGTH);
--    crypto::public_key pub_key;
--    crypto::secret_key_to_public_key(sec_key, pub_key);
+-    ge25519_p3 A;
+-    ge25519_scalarmult_base(&A, private_key.data());
      public_key_t publicKey;
--    std::memcpy(publicKey.data(), pub_key.data, KEY_LENGTH);
+-    ge25519_p3_tobytes(publicKey.data(), &A);
 +    crypto_scalarmult_ed25519_base_noclamp(publicKey.data(), private_key.data());
-+
+ 
      return publicKey;
  }
- 
 diff --git a/vendors/sodium/private/common.h b/vendors/sodium/private/common.h
 deleted file mode 100644
 index 632fc8a..0000000
