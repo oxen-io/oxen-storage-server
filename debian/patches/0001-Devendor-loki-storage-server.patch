@@ -4,10 +4,9 @@ Subject: Devendor loki-storage-server
 
 ---
  CMakeLists.txt            |  1 -
- crypto/src/signature.cpp  |  4 ++--
  httpserver/CMakeLists.txt | 17 ++++++-----------
  storage/CMakeLists.txt    |  4 ++--
- 4 files changed, 10 insertions(+), 16 deletions(-)
+ 3 files changed, 8 insertions(+), 14 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index a6b8bfa..eea7c0a 100644
@@ -21,21 +20,6 @@ index a6b8bfa..eea7c0a 100644
  find_package(sodium REQUIRED)
  include_directories(${sodium_INCLUDE_DIR})
  
-diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
-index 4efee3e..1af65fa 100644
---- a/crypto/src/signature.cpp
-+++ b/crypto/src/signature.cpp
-@@ -2,8 +2,8 @@
- #include "utils.hpp"
- 
- extern "C" {
--#include "loki/crypto-ops/crypto-ops.h"
--#include "loki/crypto-ops/hash-ops.h"
-+#include "loki/crypto/crypto-ops.h"
-+#include "loki/crypto/hash-ops.h"
- }
- 
- #include <sodium/crypto_generichash.h>
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
 index 78a1ce8..3a3c46b 100644
 --- a/httpserver/CMakeLists.txt
