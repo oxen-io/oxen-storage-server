@@ -368,7 +368,9 @@ void ServiceNode::bootstrap_data() {
                         const block_update_t bu = parse_swarm_update(res.body);
                         // TODO: this should be disabled in the "testnet" mode
                         // (or changed to point to testnet seeds)
-                        this->on_bootstrap_update(bu);
+                        if (!bu.unchanged) {
+                            this->on_bootstrap_update(bu);
+                        }
 
                         LOKI_LOG(info, "Bootstrapped from {}", seed_node.first);
                     } catch (const std::exception& e) {

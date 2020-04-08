@@ -1081,6 +1081,8 @@ constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
 
 void connection_t::process_client_req_rate_limited() {
 
+    LOKI_LOG(trace, "process_client_req_rate_limited");
+
     const request_t& req = this->request_.get();
     std::string plain_text = req.body();
     const std::string client_ip =
