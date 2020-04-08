@@ -5,11 +5,10 @@ Subject: Devendor loki-storage-server
 ---
  CMakeLists.txt            |  2 --
  common/CMakeLists.txt     |  2 +-
- crypto/CMakeLists.txt     |  1 -
  crypto/src/signature.cpp  |  4 ++--
  httpserver/CMakeLists.txt | 17 ++++++-----------
  storage/CMakeLists.txt    |  4 ++--
- 6 files changed, 11 insertions(+), 19 deletions(-)
+ 5 files changed, 11 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index a6b8bfa..80409d3 100644
@@ -44,18 +43,6 @@ index 014d61e..8958fd9 100644
  
  target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
  target_include_directories(common PUBLIC
-diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
-index a0d3a55..b349eb3 100644
---- a/crypto/CMakeLists.txt
-+++ b/crypto/CMakeLists.txt
-@@ -34,7 +34,6 @@ target_include_directories(crypto
-     ${CMAKE_CURRENT_LIST_DIR}/include
-     PRIVATE
-     ${CMAKE_CURRENT_LIST_DIR}/src
--    ${CMAKE_CURRENT_LIST_DIR}/../vendors
- )
- 
- loki_add_subdirectory(../utils utils)
 diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
 index 4efee3e..d2ccf3b 100644
 --- a/crypto/src/signature.cpp
