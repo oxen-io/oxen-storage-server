@@ -21,6 +21,8 @@ constexpr std::chrono::minutes UNREACH_GRACE_PERIOD = 120min;
 
 bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType type) {
 
+    LOKI_LOG(trace, "should_report_as");
+
     using std::chrono::duration_cast;
     using std::chrono::minutes;
 
@@ -69,6 +71,8 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
 }
 
 void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType type, bool val) {
+
+    LOKI_LOG(trace, "record_reachable");
 
     const auto it = offline_nodes_.find(sn);
 
