@@ -1,3 +1,9 @@
+loki-storage-server (2.0.3-1~ubuntu1804.3) bionic; urgency=medium
+
+  * Don't link to lokid
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 08 Apr 2020 12:52:00 -0300
+
 loki-storage-server (2.0.3-1~ubuntu1804.2) bionic; urgency=medium
 
   * increase req'd lokimq version
