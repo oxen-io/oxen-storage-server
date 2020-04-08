@@ -226,18 +226,16 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         LOKI_LOG(critical, "Bad lokid rpc response: no response body");
         throw std::runtime_error("Failed to parse swarm update");
     }
-    const json body = json::parse(*response_body, nullptr, false);
-    if (body.is_discarded()) {
-        LOKI_LOG(trace, "Response body: {}", *response_body);
-        LOKI_LOG(critical, "Bad lokid rpc response: invalid json");
-        throw std::runtime_error("Failed to parse swarm update");
-    }
+
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
     block_update_t bu;
 
-    LOKI_LOG(trace, "swarm repsonse: {}", *response_body);
+    LOKI_LOG(trace, "swarm repsonse: <{}>", *response_body);
 
     try {
+
+        const json body = json::parse(*response_body, nullptr, true);
+
         const auto& result = body.at("result");
         bu.height = result.at("height").get<uint64_t>();
         bu.block_hash = result.at("block_hash").get<std::string>();
