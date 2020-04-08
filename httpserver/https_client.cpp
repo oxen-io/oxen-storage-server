@@ -172,7 +172,7 @@ void HttpsClientSession::on_connect() {
     LOKI_LOG(trace, "on connect, connection idx: {}", this->connection_idx);
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(trace, "Open https socket: {}", sockfd);
+    LOKI_LOG(trace, "Open https client socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
 
     stream_.set_verify_mode(ssl::verify_none);
