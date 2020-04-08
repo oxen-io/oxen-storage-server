@@ -22,7 +22,7 @@ index a6b8bfa..eea7c0a 100644
  include_directories(${sodium_INCLUDE_DIR})
  
 diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
-index 4efee3e..d2ccf3b 100644
+index 4efee3e..1af65fa 100644
 --- a/crypto/src/signature.cpp
 +++ b/crypto/src/signature.cpp
 @@ -2,8 +2,8 @@
@@ -31,8 +31,8 @@ index 4efee3e..d2ccf3b 100644
  extern "C" {
 -#include "loki/crypto-ops/crypto-ops.h"
 -#include "loki/crypto-ops/hash-ops.h"
-+#include "loki-core/crypto/crypto-ops.h"
-+#include "loki-core/crypto/hash-ops.h"
++#include "loki/crypto/crypto-ops.h"
++#include "loki/crypto/hash-ops.h"
  }
  
  #include <sodium/crypto_generichash.h>
