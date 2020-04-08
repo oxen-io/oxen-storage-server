@@ -948,6 +948,8 @@ void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
+    return; // disable lmq testing for now
+
     LockGuard guard(sn_mutex_);
 
     LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
@@ -960,14 +962,11 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
         this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP, success);
     };
 
-    nlohmann::json json_body;
+    auto req = build_post_request("/swarms/ping_test/v1", "{}");
 
-    auto req = build_post_request("/swarms/ping_test/v1", json_body.dump());
     this->sign_request(req);
 
     make_sn_request(ioc_, sn, req, std::move(callback));
-
-    return; // disable lmq testing for now
 
     LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
@@ -1242,6 +1241,9 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     /// updated to "true".
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
+
+        LockGuard guard(this->sn_mutex_);
+
         if (res.error_code != SNodeError::NO_ERROR) {
             LOKI_LOG(warn, "Could not report node status");
             return;
@@ -1304,6 +1306,9 @@ void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk, ReachType ty
         }
 
     } else {
+
+        LOKI_LOG(trace, "Recording node as unreachable");
+
         reach_records_.record_reachable(pk, type, false);
 
         if (reach_records_.should_report_as(pk, ReportType::BAD)) {
