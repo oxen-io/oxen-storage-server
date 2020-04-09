@@ -948,8 +948,6 @@ void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
-    return; // disable lmq testing for now
-
     LockGuard guard(sn_mutex_);
 
     LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
