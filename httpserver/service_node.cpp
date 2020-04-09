@@ -8,12 +8,12 @@
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
-#include <lokimq/lokimq.h>
 #include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
+#include <lokimq/lokimq.h>
 
 #include "request_handler.h"
 
@@ -192,9 +192,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     lokid_ping_timer_tick();
     cleanup_timer_tick();
 
-// #ifndef INTEGRATION_TEST
+#ifndef INTEGRATION_TEST
     ping_peers_tick();
-// #endif
+#endif
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -205,18 +205,20 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     boost::asio::post(worker_ioc_,
                       [this]() { this->check_version_timer_tick(); });
 
-   // We really want to make sure nodes don't get stuck in "syncing" mode,
-   // so if we are still "syncing" after a long time, activate SN regardless
+    // We really want to make sure nodes don't get stuck in "syncing" mode,
+    // so if we are still "syncing" after a long time, activate SN regardless
     auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
 
     delay_timer->expires_after(std::chrono::minutes(60));
-    delay_timer->async_wait([this, delay_timer](const boost::system::error_code& ec) {
+    delay_timer->async_wait([this,
+                             delay_timer](const boost::system::error_code& ec) {
         if (this->syncing_) {
-            LOKI_LOG(warn, "Block syncing is taking too long, activating SS regardless");
+            LOKI_LOG(
+                warn,
+                "Block syncing is taking too long, activating SS regardless");
             this->syncing_ = false;
         }
     });
-
 }
 
 static block_update_t
@@ -283,14 +285,10 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
                 continue;
             }
 
-            const auto sn = sn_record_t{port,
-                                        lmq_port,
-                                        std::move(snode_address),
-                                        pubkey,
-                                        pubkey_x25519_hex,
-                                        pubkey_x25519_bin,
-                                        pubkey_ed25519,
-                                        snode_ip};
+            const auto sn = sn_record_t{
+                port,           lmq_port,          std::move(snode_address),
+                pubkey,         pubkey_x25519_hex, pubkey_x25519_bin,
+                pubkey_ed25519, snode_ip};
 
             const bool fully_funded = sn_json.at("funded").get<bool>();
 
@@ -363,7 +361,8 @@ void ServiceNode::bootstrap_data() {
             [this, seed_node, req_counter,
              node_count = seed_nodes.size()](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
-                    LOKI_LOG(info, "Parsing response from seed {}", seed_node.first);
+                    LOKI_LOG(info, "Parsing response from seed {}",
+                             seed_node.first);
                     try {
                         const block_update_t bu = parse_swarm_update(res.body);
                         // TODO: this should be disabled in the "testnet" mode
@@ -432,36 +431,6 @@ ServiceNode::~ServiceNode() {
     worker_thread_.join();
 };
 
-static const char* method_to_str(ss_client::ReqMethod method, bool lmq) {
-
-    if (lmq) {
-        switch (method) {
-        case ss_client::ReqMethod::DATA:
-            return "sn.data";
-        case ss_client::ReqMethod::PROXY_EXIT:
-            return "sn.proxy_exit";
-        case ss_client::ReqMethod::ONION_REQUEST:
-            return "sn.onion_req";
-        default:
-            LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
-            return "<invalid>";
-        }
-    } else {
-
-        switch (method) {
-        case ss_client::ReqMethod::DATA:
-            return "/swarms/push_batch/v1";
-        case ss_client::ReqMethod::PROXY_EXIT:
-            return "/swarms/proxy_exit";
-        case ss_client::ReqMethod::ONION_REQUEST:
-            return "/onion_req";
-        default:
-            LOKI_LOG(critical, "UNKNOWN SS CLIENT METHOD");
-            return "<invalid>";
-        }
-    }
-}
-
 void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
                                    const std::string& payload,
                                    const std::string& eph_key,
@@ -481,120 +450,40 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
 
     LockGuard guard(sn_mutex_);
 
-    const bool use_lmq = this->hardfork_ >= LOKIMQ_ONION_HARDFORK;
+    switch (method) {
+    case ss_client::ReqMethod::DATA: {
+        LOKI_LOG(debug, "Sending sn.data request to {}",
+                 util::as_hex(sn.pubkey_x25519_bin()));
+        lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.data",
+                                   std::move(cb), req.body);
+        break;
+    }
+    case ss_client::ReqMethod::PROXY_EXIT: {
+        auto client_key = req.headers.find(LOKI_SENDER_KEY_HEADER);
 
-    const char* method_str = method_to_str(method, use_lmq);
-
-    if (use_lmq) {
-        // ===== make an lmq request =====
-
-        LOKI_LOG(debug, "Going to use lokimq to send {} request to {}",
-                 method_str, util::as_hex(sn.pubkey_x25519_bin()));
-
-        // NOTE: this is ugly, but we will remove HTTP option in the next
-        // release, and send_to_sn will probably go away with it.
-        switch (method) {
-        case ss_client::ReqMethod::DATA: {
-            lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str,
-                                       std::move(cb), req.body);
-            break;
-        }
-        case ss_client::ReqMethod::PROXY_EXIT: {
-            auto client_key = req.headers.find(LOKI_SENDER_KEY_HEADER);
-
-            // I could just always assume that we are passing the right
-            // parameters...
-            if (client_key != req.headers.end()) {
-                lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), method_str,
-                                           std::move(cb), client_key->second,
-                                           req.body);
-            } else {
-                LOKI_LOG(debug, "Developer error: no {} passed in headers",
-                         LOKI_SENDER_KEY_HEADER);
-                // TODO: call cb?
-                assert(false);
-            }
-            break;
-        }
-        case ss_client::ReqMethod::ONION_REQUEST: {
-            // Onion reqeusts always use lokimq, so they use it
-            // directly, no need for the "send_to_sn" abstraction
-            LOKI_LOG(error, "Onion requests should not use this interface");
+        // I could just always assume that we are passing the right
+        // parameters...
+        if (client_key != req.headers.end()) {
+            LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
+                     util::as_hex(sn.pubkey_x25519_bin()));
+            lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
+                                       std::move(cb), client_key->second,
+                                       req.body);
+        } else {
+            LOKI_LOG(debug, "Developer error: no {} passed in headers",
+                     LOKI_SENDER_KEY_HEADER);
+            // TODO: call cb?
             assert(false);
-            break;
         }
-        }
-
-    } else {
-        // ===== make an https request =====
-
-        LOKI_LOG(debug, "Going to use HTTP to send a request");
-
-        auto http_req = build_post_request(method_str, std::move(req.body));
-        // NOTE: we are not signing headers (why not?)
-        this->sign_request(http_req);
-
-        for (auto& header : req.headers) {
-            LOKI_LOG(debug, "   - {}:{}", header.first, header.second);
-            http_req->insert(header.first, header.second);
-        }
-
-        const bool needs_retrying =
-            static_cast<bool>(method == ss_client::ReqMethod::DATA);
-
-        // Note: often one of the reason for failure here is that the node has
-        // just deregistered but our SN hasn't updated its swarm list yet.
-        make_sn_request(
-            ioc_, sn, http_req,
-            [this, sn, http_req, cb, needs_retrying](sn_response_t&& res) {
-                if (res.error_code != SNodeError::NO_ERROR) {
-
-                    // TODO2: probably need a mutex here too
-
-                    all_stats_.record_request_failed(sn);
-
-                    if (res.error_code == SNodeError::NO_REACH) {
-                        LOKI_LOG(debug,
-                                 "Could not send to {} at first attempt: "
-                                 "(Unreachable)",
-                                 sn);
-                    } else if (res.error_code == SNodeError::ERROR_OTHER) {
-                        LOKI_LOG(debug,
-                                 "Could send to {} at first attempt: "
-                                 "(Generic error)",
-                                 sn);
-                    }
-
-                    if (!needs_retrying) {
-                        cb(false, {});
-                        return;
-                    }
-
-                    std::function<void()> give_up_cb = [this, sn, cb]() {
-                        LOKI_LOG(debug, "Failed to send a request to: {}", sn);
-                        this->all_stats_.record_push_failed(sn);
-                        cb(false, {});
-                    };
-
-                    boost::optional<std::function<void()>> gu_cb = give_up_cb;
-
-                    // TODO: only retry if we are sending messages
-
-                    // Not sure if we should use this for all http requests (or
-                    // at all)
-                    std::make_shared<FailedRequestHandler>(ioc_, sn, http_req,
-                                                           std::move(gu_cb))
-                        ->init_timer();
-                } else {
-                    LOKI_LOG(debug, "SN HTTP request is OK");
-
-                    if (res.body) {
-                        cb(true, {*res.body});
-                    } else {
-                        cb(true, {});
-                    }
-                }
-            });
+        break;
+    }
+    case ss_client::ReqMethod::ONION_REQUEST: {
+        // Onion reqeusts always use lokimq, so they use it
+        // directly, no need for the "send_to_sn" abstraction
+        LOKI_LOG(error, "Onion requests should not use this interface");
+        assert(false);
+        break;
+    }
     }
 }
 
@@ -615,13 +504,9 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
                      reply_callback);
 }
 
-void ServiceNode::record_proxy_request() {
-    all_stats_.bump_proxy_requests();
-}
+void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
-void ServiceNode::record_onion_request() {
-    all_stats_.bump_onion_requests();
-}
+void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
@@ -737,8 +622,9 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
     } else {
         static bool active = false;
         if (!active) {
-            // NOTE: because we never reset `active` after we get decommissioned,
-            // this code won't run when the node comes back again
+            // NOTE: because we never reset `active` after we get
+            // decommissioned, this code won't run when the node comes back
+            // again
             LOKI_LOG(info, "Storage server is now active!");
 
             relay_timer_.expires_after(RELAY_INTERVAL);
@@ -842,7 +728,9 @@ void ServiceNode::swarm_timer_tick() {
                 try {
 
                     if (!got_first_response) {
-                        LOKI_LOG(info, "Got initial swarm information from local Lokid");
+                        LOKI_LOG(
+                            info,
+                            "Got initial swarm information from local Lokid");
                         got_first_response = true;
 #ifndef INTEGRATION_TEST
                         // Only bootstrap (apply ips) once we have at least
@@ -953,11 +841,11 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
 
     auto callback = [this, sn](sn_response_t&& res) {
-
         LOKI_LOG(debug, "Got response for HTTP peer test for: {}", sn);
 
         const bool success = res.error_code == SNodeError::NO_ERROR;
-        this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP, success);
+        this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP,
+                                        success);
     };
 
     auto req = build_post_request("/swarms/ping_test/v1", "{}");
@@ -969,17 +857,17 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
-    lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.onion_req",
-            [this, sn](bool success, const auto&) {
-            LOKI_LOG(debug, "Got success={} testing response from {}",
-                    success, sn.pubkey_x25519_hex());
-            this->process_reach_test_result(
-                    sn.pub_key_base32z(), ReachType::ZMQ, success);
+    lmq_server_.lmq()->request(
+        sn.pubkey_x25519_bin(), "sn.onion_req",
+        [this, sn](bool success, const auto&) {
+            LOKI_LOG(debug, "Got success={} testing response from {}", success,
+                     sn.pubkey_x25519_hex());
+            this->process_reach_test_result(sn.pub_key_base32z(),
+                                            ReachType::ZMQ, success);
         },
         "ping",
         // Only use an existing (or new) outgoing connection:
-        lokimq::send_option::outgoing{}
-    );
+        lokimq::send_option::outgoing{});
 }
 
 void ServiceNode::lokid_ping_timer_tick() {
@@ -1239,7 +1127,6 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     /// updated to "true".
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
-
         LockGuard guard(this->sn_mutex_);
 
         if (res.error_code != SNodeError::NO_ERROR) {
@@ -1287,7 +1174,8 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
                                      params, std::move(cb));
 }
 
-void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk, ReachType type, bool success) {
+void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk,
+                                            ReachType type, bool success) {
 
     LockGuard guard(sn_mutex_);
 
@@ -1314,7 +1202,6 @@ void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk, ReachType ty
             this->report_node_reachability(pk, false);
         }
     }
-
 }
 
 void ServiceNode::process_blockchain_test_response(
