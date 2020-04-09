@@ -3,11 +3,10 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <lokimq/string_view.h>
 
 namespace lokimq {
 class LokiMQ;
-class simple_string_view;
-using string_view = simple_string_view;
 struct Allow;
 class Message;
 } // namespace lokimq
