@@ -72,7 +72,7 @@ void init_logging(const std::string& data_dir,
     auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(),
                                                    sinks.end());
     logger->set_level(log_level);
-    logger->flush_on(spdlog::level::trace);
+    logger->flush_on(spdlog::level::err);
 
     developer_sink->set_level(spdlog::level::warn);
     spdlog::register_logger(logger);
