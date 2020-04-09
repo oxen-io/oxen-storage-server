@@ -1,8 +1,5 @@
 #include "lokid_key.h"
 #include "utils.hpp"
-extern "C" {
-#include "sodium/private/ed25519_ref10.h"
-}
 
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
@@ -47,10 +44,8 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
 }
 
 public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
-    ge25519_p3 A;
-    ge25519_scalarmult_base(&A, private_key.data());
     public_key_t publicKey;
-    ge25519_p3_tobytes(publicKey.data(), &A);
+    crypto_scalarmult_ed25519_base_noclamp(publicKey.data(), private_key.data());
 
     return publicKey;
 }

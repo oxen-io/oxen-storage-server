@@ -4,7 +4,7 @@ Storage server for Loki Service Nodes
 Requirements:
 * Boost >= 1.66 (for boost.beast)
 * OpenSSL >= 1.1.1a (for X25519 curves)
-* sodium >= 1.0.16 (for ed25119 to curve25519 conversion)
+* sodium >= 1.0.17 (for ed25119 to curve25519 conversion)
 
 Can use `RelWithDebInfo` instead of `Release` if you want to include debug symbols to provide developers with valueable core dumps from crashes.
 Also make sure you don't have an older (than 4.3.0) libzmq header in /usr/local/include, if so please install a new version.
