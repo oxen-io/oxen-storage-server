@@ -31,10 +31,6 @@ class LokimqServer {
     // Get nodes' address
     std::string peer_lookup(lokimq::string_view pubkey_bin) const;
 
-    // Check if the node is SN
-    lokimq::Allow auth_level_lookup(lokimq::string_view ip,
-                                    lokimq::string_view pubkey) const;
-
     // Handle Session data coming from peer SN
     void handle_sn_data(lokimq::Message& message);
 

@@ -27,23 +27,6 @@ std::string LokimqServer::peer_lookup(lokimq::string_view pubkey_bin) const {
     }
 }
 
-lokimq::Allow
-LokimqServer::auth_level_lookup(lokimq::string_view ip,
-                                lokimq::string_view pubkey) const {
-
-    LOKI_LOG(debug, "[LMQ] Auth Level Lookup for {}", util::as_hex(pubkey));
-
-    // TODO: make SN accept string_view
-    boost::optional<sn_record_t> sn =
-        this->service_node_->find_node_by_x25519_bin(std::string(pubkey));
-
-    bool is_sn = sn ? true : false;
-
-    LOKI_LOG(debug, "[LMQ]    is service node: {}", is_sn);
-
-    return lokimq::Allow{lokimq::AuthLevel::none, is_sn};
-};
-
 void LokimqServer::handle_sn_data(lokimq::Message& message) {
 
     LOKI_LOG(debug, "[LMQ] handle_sn_data");
@@ -175,8 +158,6 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     auto lookup_fn = [this](auto pk) { return this->peer_lookup(pk); };
 
-    auto allow_fn = [this](auto ip, auto pk) { return this->auth_level_lookup(ip, pk); };
-
     lokimq_.reset(new LokiMQ{pubkey,
                              seckey,
                              true /* is service node */,
@@ -199,7 +180,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     lokimq_->set_general_threads(1);
 
-    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_), allow_fn);
+    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_));
 
     lokimq_->MAX_MSG_SIZE = 10 * 1024 * 1024; // 10 MB (needed by the fileserver)
 

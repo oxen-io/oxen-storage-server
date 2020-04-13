@@ -162,9 +162,9 @@ class ServiceNode {
     // Save items to the database, notifying listeners as necessary
     void save_bulk(const std::vector<storage::Item>& items);
 
-    void on_bootstrap_update(const block_update_t& bu);
+    void on_bootstrap_update(block_update_t&& bu);
 
-    void on_swarm_update(const block_update_t& bu);
+    void on_swarm_update(block_update_t&& bu);
 
     void bootstrap_data();
 
