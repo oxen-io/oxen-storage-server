@@ -1,9 +1,7 @@
-set(SOURCES
-    include/pow.hpp
+add_library(pow STATIC
     src/pow.cpp
 )
 
-add_library(pow STATIC ${SOURCES})
 
 loki_add_subdirectory(../utils utils)
 
