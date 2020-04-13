@@ -438,7 +438,7 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
 
     // NO mutex needed (I think)
 
-    lmq_server_.lmq()->request(
+    lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
         lokimq::send_option::request_timeout{10s}, eph_key, payload);
 }
@@ -454,7 +454,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::DATA: {
         LOKI_LOG(debug, "Sending sn.data request to {}",
                  util::as_hex(sn.pubkey_x25519_bin()));
-        lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.data",
+        lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data",
                                    std::move(cb), req.body);
         break;
     }
@@ -466,7 +466,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         if (client_key != req.headers.end()) {
             LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
                      util::as_hex(sn.pubkey_x25519_bin()));
-            lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
+            lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                        std::move(cb), client_key->second,
                                        req.body);
         } else {
@@ -857,7 +857,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
-    lmq_server_.lmq()->request(
+    lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req",
         [this, sn](bool success, const auto&) {
             LOKI_LOG(debug, "Got success={} testing response from {}", success,

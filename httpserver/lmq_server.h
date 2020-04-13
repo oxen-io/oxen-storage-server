@@ -55,9 +55,11 @@ class LokimqServer {
 
     uint16_t port() { return port_; }
 
-    // TODO: maybe we should separate LokiMQ and LokimqServer, so we don't have
-    // to do this: Get underlying LokiMQ instance
-    LokiMQ* lmq() { return lokimq_.get(); }
+    /// True if LokiMQ instance has been set
+    explicit operator bool() const { return (bool) lokimq_; }
+    /// Dereferencing via * or -> accesses the contained LokiMQ instance.
+    LokiMQ& operator*() const { return *lokimq_; }
+    LokiMQ* operator->() const { return lokimq_.get(); }
 };
 
 } // namespace loki
