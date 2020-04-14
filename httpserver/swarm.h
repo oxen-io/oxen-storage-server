@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <lokimq/auth.h>
 
 #include "loki_common.h"
 
@@ -26,6 +27,7 @@ using all_swarms_t = std::vector<SwarmInfo>;
 struct block_update_t {
     all_swarms_t swarms;
     std::vector<sn_record_t> decommissioned_nodes;
+    lokimq::pubkey_set active_x25519_pubkeys;
     uint64_t height;
     std::string block_hash;
     int hardfork;

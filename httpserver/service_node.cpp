@@ -275,7 +275,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             // lokidKeyFromHex works for pub keys too
             const public_key_t pubkey_x25519 =
                 lokidKeyFromHex(pubkey_x25519_hex);
-            const std::string pubkey_x25519_bin = key_to_string(pubkey_x25519);
+            std::string pubkey_x25519_bin = key_to_string(pubkey_x25519);
 
             const auto& pubkey_ed25519 =
                 sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
@@ -304,6 +304,9 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
                 bu.decommissioned_nodes.push_back(sn);
             } else {
                 swarm_map[swarm_id].push_back(sn);
+
+                if (pubkey_x25519_bin.size() == 32)
+                    bu.active_x25519_pubkeys.insert(std::move(pubkey_x25519_bin));
             }
         }
 
@@ -364,11 +367,12 @@ void ServiceNode::bootstrap_data() {
                     LOKI_LOG(info, "Parsing response from seed {}",
                              seed_node.first);
                     try {
-                        const block_update_t bu = parse_swarm_update(res.body);
+                        block_update_t bu = parse_swarm_update(res.body);
+
                         // TODO: this should be disabled in the "testnet" mode
                         // (or changed to point to testnet seeds)
                         if (!bu.unchanged) {
-                            this->on_bootstrap_update(bu);
+                            this->on_bootstrap_update(std::move(bu));
                         }
 
                         LOKI_LOG(info, "Bootstrapped from {}", seed_node.first);
@@ -438,7 +442,7 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
 
     // NO mutex needed (I think)
 
-    lmq_server_.lmq()->request(
+    lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
         lokimq::send_option::request_timeout{10s}, eph_key, payload);
 }
@@ -454,7 +458,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::DATA: {
         LOKI_LOG(debug, "Sending sn.data request to {}",
                  util::as_hex(sn.pubkey_x25519_bin()));
-        lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.data",
+        lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data",
                                    std::move(cb), req.body);
         break;
     }
@@ -466,7 +470,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         if (client_key != req.headers.end()) {
             LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
                      util::as_hex(sn.pubkey_x25519_bin()));
-            lmq_server_.lmq()->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
+            lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                        std::move(cb), client_key->second,
                                        req.body);
         } else {
@@ -554,16 +558,19 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     LOKI_LOG(trace, "saved messages count: {}", items.size());
 }
 
-void ServiceNode::on_bootstrap_update(const block_update_t& bu) {
+void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
     LockGuard guard(sn_mutex_);
 
     swarm_->apply_swarm_changes(bu.swarms);
     target_height_ = std::max(target_height_, bu.height);
+
+    if (syncing_ && lmq_server_)
+        lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 }
 
-void ServiceNode::on_swarm_update(const block_update_t& bu) {
+void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
     LockGuard guard(sn_mutex_);
@@ -609,6 +616,9 @@ void ServiceNode::on_swarm_update(const block_update_t& bu) {
         LOKI_LOG(trace, "already seen this block");
         return;
     }
+
+    if (lmq_server_)
+        lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 
     const SwarmEvents events = swarm_->derive_swarm_events(bu.swarms);
 
@@ -739,9 +749,9 @@ void ServiceNode::swarm_timer_tick() {
 #endif
                     }
 
-                    const block_update_t bu = parse_swarm_update(res.body);
+                    block_update_t bu = parse_swarm_update(res.body);
                     if (!bu.unchanged)
-                        on_swarm_update(bu);
+                        on_swarm_update(std::move(bu));
                 } catch (const std::exception& e) {
                     LOKI_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
@@ -857,7 +867,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
-    lmq_server_.lmq()->request(
+    lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req",
         [this, sn](bool success, const auto&) {
             LOKI_LOG(debug, "Got success={} testing response from {}", success,
