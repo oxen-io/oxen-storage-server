@@ -35,10 +35,7 @@ using http_server::connection_t;
 using LockGuard = std::lock_guard<std::recursive_mutex>;
 
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
-    std::chrono::seconds(1),   std::chrono::seconds(5),
-    std::chrono::seconds(10),  std::chrono::seconds(20),
-    std::chrono::seconds(40),  std::chrono::seconds(80),
-    std::chrono::seconds(160), std::chrono::seconds(320)};
+    1s, 5s, 10s, 20s, 40s, 80s, 160s, 320s};
 
 constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 
@@ -106,7 +103,6 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
-constexpr std::chrono::seconds PING_PEERS_INTERVAL = 10s;
 constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
@@ -192,9 +188,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     lokid_ping_timer_tick();
     cleanup_timer_tick();
 
-#ifndef INTEGRATION_TEST
+// #ifndef INTEGRATION_TEST
     ping_peers_tick();
-#endif
+// #endif
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -439,8 +435,6 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
                                    const std::string& payload,
                                    const std::string& eph_key,
                                    ss_client::Callback cb) const {
-
-    // NO mutex needed (I think)
 
     lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
@@ -779,6 +773,24 @@ void ServiceNode::cleanup_timer_tick() {
         boost::bind(&ServiceNode::cleanup_timer_tick, this));
 }
 
+void ServiceNode::update_last_ping(ReachType type) {
+
+    switch (type) {
+        case ReachType::HTTP: {
+            reach_records_.latest_incoming_http_ = std::chrono::steady_clock::now();
+            break;
+        }
+        case ReachType::ZMQ: {
+            reach_records_.latest_incoming_lmq_ = std::chrono::steady_clock::now();
+            break;
+        }
+        default:
+            LOKI_LOG(error, "Connection type not supported");
+            assert(false);
+            break;
+    }
+}
+
 void ServiceNode::ping_peers_tick() {
 
     // Used as a callback to needs a mutex even if it is private
@@ -788,10 +800,11 @@ void ServiceNode::ping_peers_tick() {
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
 
-    /// TODO: To be safe, let's not even test peers until we
-    /// have reached the right hardfork height
-    if (hardfork_ < ENFORCED_REACHABILITY_HARDFORK) {
-        LOKI_LOG(debug, "Have not reached HF13, skipping reachability tests");
+    // Check if we've been tested (reached) recently ourselves
+    reach_records_.check_incoming_tests(all_stats_.get_reset_time());
+
+    if (!this->swarm_->is_valid()) {
+        LOKI_LOG(debug, "Skipping this round of peer testing (decommissioned)");
         return;
     }
 
@@ -1650,7 +1663,9 @@ static nlohmann::json to_json(const all_stats_t& stats) {
     json["previous_period_retrieve_requests"] =
         stats.get_previous_period_retrieve_requests();
 
-    json["reset_time"] = stats.get_reset_time();
+    json["reset_time"] = std::chrono::duration_cast<std::chrono::seconds>(
+                             stats.get_reset_time().time_since_epoch())
+                             .count();
 
     nlohmann::json peers;
 

@@ -109,6 +109,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
         // error message in the log on 2.0.3+ nodes. (the reply code here doesn't actually matter;
         // the ping test only requires that we provide *some* response).
         LOKI_LOG(debug, "Remote pinged me");
+        service_node_->update_last_ping(ReachType::ZMQ);
         on_response(loki::Response{Status::OK, "pong"});
         return;
     }

@@ -70,6 +70,59 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
 
 }
 
+void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
+
+    constexpr auto MAX_TIME_WITHOUT_PING = PING_PEERS_INTERVAL * 18;
+
+    const auto now = std::chrono::steady_clock::now();
+
+    const auto last_http = std::max(reset_time, latest_incoming_http_);
+    const auto http_elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_http);
+
+    LOKI_LOG(debug, "Last reset or pinged via http: {}s", http_elapsed.count());
+
+    if (http_elapsed > MAX_TIME_WITHOUT_PING) {
+
+        if (latest_incoming_http_.time_since_epoch() == 0s) {
+            LOKI_LOG(warn, "Have NEVER received http pings!");
+        } else {
+            LOKI_LOG(
+                warn,
+                "Have not received http pings for a long time! Last time was: "
+                "{} mins ago.",
+                std::chrono::duration_cast<std::chrono::minutes>(http_elapsed).count());
+        }
+
+        this->http_ok = false;
+        LOKI_LOG(warn, "Please check your http port. Not being reachable over http may result in a deregistration!");
+    } else if (!this->http_ok) {
+        this->http_ok = true;
+        LOKI_LOG(info, "Http port is back to OK");
+    }
+
+    const auto last_lmq = std::max(reset_time, latest_incoming_lmq_);
+    const auto lmq_elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_lmq);
+
+    LOKI_LOG(debug, "Last reset or pinged via lmq: {}s", lmq_elapsed.count());
+
+    if (lmq_elapsed > MAX_TIME_WITHOUT_PING) {
+        if (latest_incoming_lmq_.time_since_epoch() == 0s) {
+            LOKI_LOG(warn, "Have NEVER received lmq pings!");
+        } else {
+            LOKI_LOG(warn,
+                     "Have not received lmq pings for a long time! Last time "
+                     "was: {} mins ago",
+                     std::chrono::duration_cast<std::chrono::minutes>(lmq_elapsed).count());
+        }
+
+        this->lmq_ok = false;
+        LOKI_LOG(warn, "Please check your lmq port. Not being reachable over lmq may result in a deregistration!");
+    } else if (!this->lmq_ok) {
+        this->lmq_ok = true;
+        LOKI_LOG(info, "Lmq port is back to OK");
+    }
+}
+
 void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType type, bool val) {
 
     LOKI_LOG(trace, "record_reachable");
