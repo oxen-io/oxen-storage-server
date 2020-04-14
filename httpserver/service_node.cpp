@@ -795,6 +795,11 @@ void ServiceNode::ping_peers_tick() {
         return;
     }
 
+    if (!this->swarm_->is_valid()) {
+        LOKI_LOG(debug, "Skipping this round of peer testing (decommissioned)");
+        return;
+    }
+
     /// We always test one node already known to be offline
     /// plus one random other node (could even be the same node)
 
