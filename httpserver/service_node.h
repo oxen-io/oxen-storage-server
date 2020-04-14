@@ -253,6 +253,8 @@ class ServiceNode {
 
     ~ServiceNode();
 
+    // Record the time of our last being tested over lmq/http
+    void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later
