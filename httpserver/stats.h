@@ -1,7 +1,6 @@
 #pragma once
 
 #include "loki_common.h"
-#include <ctime>
 #include <deque>
 #include <unordered_map>
 #include <atomic>
@@ -70,7 +69,7 @@ class all_stats_t {
     uint64_t previous_period_onion_requests = 0;
     std::atomic<uint64_t> recent_onion_requests{0};
 
-    time_t reset_time_ = time(nullptr);
+    time_point_t reset_time_ = std::chrono::steady_clock::now();
     // =============================
 
     /// update period moving recent request counters to
@@ -164,7 +163,7 @@ class all_stats_t {
         return previous_period_retrieve_requests;
     }
 
-    time_t get_reset_time() const { return reset_time_; }
+    time_point_t get_reset_time() const { return reset_time_; }
 };
 
 } // namespace loki

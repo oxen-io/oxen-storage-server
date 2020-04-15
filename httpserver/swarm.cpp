@@ -174,6 +174,8 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
 
 void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
 
+    LOKI_LOG(trace, "Applying swarm changes");
+
     all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
 }
 

@@ -2,8 +2,7 @@ if (TARGET utils)
     return()
 endif()
 
-set(SOURCES
-    include/utils.hpp
+add_library(utils STATIC
     src/utils.cpp
 )
 
@@ -11,8 +10,6 @@ find_package(Boost
     REQUIRED
     filesystem
 )
-
-add_library(utils STATIC ${SOURCES})
 
 set_property(TARGET utils PROPERTY CXX_STANDARD 14)
 

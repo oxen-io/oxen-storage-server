@@ -347,7 +347,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
         return;
     }
 
-    read_request();
+    this->read_request();
 }
 
 void connection_t::clean_up() { this->do_close(); }
@@ -502,7 +502,8 @@ void connection_t::process_storage_test_req(uint64_t height,
         this->body_stream_ << json_res.dump();
         response_.result(http::status::ok);
     } else {
-        LOKI_LOG(error, "Failed storage test, tried {} times.",
+        // Promote this to `error` once we enforce storage testing
+        LOKI_LOG(debug, "Failed storage test, tried {} times.",
                  repetition_count_);
         nlohmann::json json_res;
         json_res["status"] = "other";
@@ -880,6 +881,7 @@ void connection_t::process_swarm_req(boost::string_view target) {
 
     } else if (target == "/swarms/ping_test/v1") {
         LOKI_LOG(trace, "Received ping_test");
+        service_node_.update_last_ping(ReachType::HTTP);
         response_.result(http::status::ok);
     }
 }
@@ -1080,6 +1082,8 @@ constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
 /// Decouple responding from http
 
 void connection_t::process_client_req_rate_limited() {
+
+    LOKI_LOG(trace, "process_client_req_rate_limited");
 
     const request_t& req = this->request_.get();
     std::string plain_text = req.body();

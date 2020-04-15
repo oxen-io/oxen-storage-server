@@ -4,26 +4,7 @@ add_definitions(-DDISABLE_ENCRYPTION)
 
 project(httpserver)
 
-set(HEADER_FILES
-    http_connection.h
-    swarm.h
-    service_node.h
-    serialization.h
-    rate_limiter.h
-    ../external/json.hpp
-    https_client.h
-    server_certificates.h
-    stats.h
-    security.h
-    command_line.h
-    net_stats.h
-    dns_text_records.h
-    reachability_testing.h
-    lmq_server.h
-    request_handler.h
-    )
-
-set(SRC_FILES
+add_library(httpserver_lib STATIC
     main.cpp
     http_connection.cpp
     swarm.cpp
@@ -39,8 +20,6 @@ set(SRC_FILES
     lmq_server.cpp
     request_handler.cpp
     )
-
-add_library(httpserver_lib STATIC ${HEADER_FILES} ${SRC_FILES})
 
 loki_add_subdirectory(../common common)
 loki_add_subdirectory(../storage storage)
