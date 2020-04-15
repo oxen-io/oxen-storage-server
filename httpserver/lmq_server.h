@@ -3,11 +3,10 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <lokimq/string_view.h>
 
 namespace lokimq {
 class LokiMQ;
-class simple_string_view;
-using string_view = simple_string_view;
 struct Allow;
 class Message;
 } // namespace lokimq
@@ -32,10 +31,6 @@ class LokimqServer {
     // Get nodes' address
     std::string peer_lookup(lokimq::string_view pubkey_bin) const;
 
-    // Check if the node is SN
-    lokimq::Allow auth_level_lookup(lokimq::string_view ip,
-                                    lokimq::string_view pubkey) const;
-
     // Handle Session data coming from peer SN
     void handle_sn_data(lokimq::Message& message);
 
@@ -56,9 +51,11 @@ class LokimqServer {
 
     uint16_t port() { return port_; }
 
-    // TODO: maybe we should separate LokiMQ and LokimqServer, so we don't have
-    // to do this: Get underlying LokiMQ instance
-    LokiMQ* lmq() { return lokimq_.get(); }
+    /// True if LokiMQ instance has been set
+    explicit operator bool() const { return (bool) lokimq_; }
+    /// Dereferencing via * or -> accesses the contained LokiMQ instance.
+    LokiMQ& operator*() const { return *lokimq_; }
+    LokiMQ* operator->() const { return lokimq_.get(); }
 };
 
 } // namespace loki

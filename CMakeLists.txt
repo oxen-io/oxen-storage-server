@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
-function(LOKI_ADD_SUBDIRECTORY SRC)
+function(loki_add_subdirectory SRC)
     get_filename_component(target ${SRC} NAME)
     if (TARGET ${target})
         return()
@@ -25,8 +25,10 @@ if (DISABLE_SNODE_SIGNATURE)
 endif()
 
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
-set(sodium_USE_STATIC_LIBS ON)
 find_package(sodium REQUIRED)
+if (sodium_VERSION VERSION_LESS 1.0.17)
+  message(FATAL_ERROR "sodium 1.0.17 or higher required; found ${sodium_VERSION}")
+endif()
 include_directories(${sodium_INCLUDE_DIR})
 
 loki_add_subdirectory(common)
