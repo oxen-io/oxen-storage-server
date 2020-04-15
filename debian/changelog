@@ -35,11 +35,6 @@ loki-storage-server (2.0.4-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
   * Rediff patches
-
- -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Apr 2020 22:41:36 -0300
-
-loki-storage-server (2.0.4-1) unstable; urgency=medium
-
   * update lokimq version
 
  -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Apr 2020 21:59:38 -0300
