@@ -1,3 +1,9 @@
+loki-storage-server (2.0.4-1~ubuntu1804) bionic; urgency=medium
+
+  * update lokimq version
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Apr 2020 21:59:56 -0300
+
 loki-storage-server (2.0.3-2~ubuntu1804) bionic; urgency=medium
 
   * Put boost back to 1.72
