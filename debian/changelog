@@ -1,5 +1,45 @@
 loki-storage-server (2.0.4-1~deb10) buster; urgency=medium
 
+  [ Jason Rhinelander ]
+  * Update to lmq 1.0.5 & fix compilation
+
+  [ Maxim Shishmarev ]
+  * potentially fix throw on json parsing
+  * minor fix
+  * flush on trace
+  * Disable lmq testing for now
+  * Disable http testing for now
+
+  [ Jason Rhinelander ]
+  * Don't use libsodium internal functions
+  * Add version check on libsodium
+
+  [ Maxim Shishmarev ]
+  * Revert temp changes
+  * Remove stale http code
+
+  [ Jason Rhinelander ]
+  * Simplify lmq_server_ interface
+  * Remove headers from cmake add_library
+  * Update for LMQ 1.1.0 SN list compatibility
+
+  [ Maxim Shishmarev ]
+  * Fix decommiossioned nodes testing peers
+  * Notify operator when their node seems unreachable
+
+  [ Jason Rhinelander ]
+  * Update lmq submodule
+
+  [ Maxim Shishmarev ]
+  * Bump version to 2.0.4
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Apr 2020 22:41:45 -0300
+
+loki-storage-server (2.0.4-1~deb10) buster; urgency=medium
+
   * update lokimq version
 
  -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Apr 2020 21:59:42 -0300
