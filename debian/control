@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11), cmake, g++, libboost-dev (>= 1.58), libboost-filesystem-dev,
     libboost-thread-dev, libboost-chrono-dev, libboost-program-options-dev, libsodium-dev (>= 1.0.17), libssl-dev, libsqlite3-dev, libspdlog-dev,
-    libsystemd-dev, pkg-config, liblokimq-dev (>= 1.0.5)
+    libsystemd-dev, pkg-config, liblokimq-dev (>= 1.1.0)
 Standards-Version: 4.1.3
 Homepage: https://loki.network
 
