@@ -2,17 +2,10 @@ cmake_minimum_required(VERSION 3.1)
 
 add_definitions(-DSPDLOG_COMPILED_LIB)
 
-set(SRC_FILES
+add_library(common STATIC
     src/loki_logger.cpp
 )
 
-set(HEADER_FILES
-    include/loki_common.h
-    include/loki_logger.h
-    include/dev_sink.h
-)
-
-add_library(common STATIC ${HEADER_FILES} ${SRC_FILES})
 
 find_package(Boost
     REQUIRED

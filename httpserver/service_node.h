@@ -162,9 +162,9 @@ class ServiceNode {
     // Save items to the database, notifying listeners as necessary
     void save_bulk(const std::vector<storage::Item>& items);
 
-    void on_bootstrap_update(const block_update_t& bu);
+    void on_bootstrap_update(block_update_t&& bu);
 
-    void on_swarm_update(const block_update_t& bu);
+    void on_swarm_update(block_update_t&& bu);
 
     void bootstrap_data();
 
@@ -253,6 +253,8 @@ class ServiceNode {
 
     ~ServiceNode();
 
+    // Record the time of our last being tested over lmq/http
+    void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later
