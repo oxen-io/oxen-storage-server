@@ -340,7 +340,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
     LOKI_LOG(trace, "Open https socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
     if (ec) {
-        LOKI_LOG(warn, "ssl handshake failed: ec: {} ({})", ec.value(),
+        LOKI_LOG(debug, "ssl handshake failed: ec: {} ({})", ec.value(),
                  ec.message());
         this->clean_up();
         deadline_.cancel();
