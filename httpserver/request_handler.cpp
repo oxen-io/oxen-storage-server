@@ -646,7 +646,6 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
         LOKI_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *sn, counter++);
 
-        // Note: we shouldn't use http here
         service_node_.send_onion_to_sn(*sn, payload, ekey, on_response);
 
     } catch (std::exception& e) {
