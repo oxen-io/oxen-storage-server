@@ -14,7 +14,7 @@ storage server needs boost 1.66+
  7 files changed, 7 insertions(+), 36 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index eea7c0a..b6429d9 100644
+index 24767b3..ed80962 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -19,6 +19,7 @@ if (INTEGRATION_TEST)
@@ -26,12 +26,12 @@ index eea7c0a..b6429d9 100644
  if (DISABLE_SNODE_SIGNATURE)
      add_definitions(-DDISABLE_SNODE_SIGNATURE)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 014d61e..12c830e 100644
+index c827a19..19b8cda 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -14,10 +14,7 @@ set(HEADER_FILES
+@@ -7,10 +7,7 @@ add_library(common STATIC
+ )
  
- add_library(common STATIC ${HEADER_FILES} ${SRC_FILES})
  
 -find_package(Boost
 -    REQUIRED
@@ -57,10 +57,10 @@ index a0d3a55..ffc4888 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 3a3c46b..dde1c6d 100644
+index 2706529..9b69c80 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -49,13 +49,7 @@ loki_add_subdirectory(../pow pow)
+@@ -28,13 +28,7 @@ loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
  find_package(OpenSSL REQUIRED)
  
@@ -76,10 +76,10 @@ index 3a3c46b..dde1c6d 100644
  target_link_libraries(httpserver_lib PUBLIC common)
  target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 diff --git a/pow/CMakeLists.txt b/pow/CMakeLists.txt
-index 127b817..136c5a5 100644
+index 1781c0c..3fd5a82 100644
 --- a/pow/CMakeLists.txt
 +++ b/pow/CMakeLists.txt
-@@ -17,13 +17,7 @@ target_include_directories(pow
+@@ -15,13 +15,7 @@ target_include_directories(pow
      ${CMAKE_CURRENT_LIST_DIR}/include
  )
  
@@ -95,10 +95,10 @@ index 127b817..136c5a5 100644
  target_include_directories(pow PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(pow PRIVATE ${Boost_LIBRARIES})
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
-index ee7c7a1..f7b534b 100644
+index a4e79d8..e3d2662 100644
 --- a/storage/CMakeLists.txt
 +++ b/storage/CMakeLists.txt
-@@ -25,13 +25,7 @@ find_library(SQLITE3_LIBRARY sqlite3)
+@@ -21,13 +21,7 @@ find_library(SQLITE3_LIBRARY sqlite3)
  target_link_libraries(storage PRIVATE ${SQLITE3_LIBRARY})
  
  

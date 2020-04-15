@@ -7,10 +7,10 @@ Subject: local boost update
  1 file changed, 5 deletions(-)
 
 diff --git a/utils/CMakeLists.txt b/utils/CMakeLists.txt
-index ba17877..2f1d30c 100644
+index d7f39b7..9e29d7f 100644
 --- a/utils/CMakeLists.txt
 +++ b/utils/CMakeLists.txt
-@@ -7,11 +7,6 @@ set(SOURCES
+@@ -6,11 +6,6 @@ add_library(utils STATIC
      src/utils.cpp
  )
  
@@ -19,6 +19,6 @@ index ba17877..2f1d30c 100644
 -    filesystem
 -)
 -
- add_library(utils STATIC ${SOURCES})
- 
  set_property(TARGET utils PROPERTY CXX_STANDARD 14)
+ 
+ target_include_directories(utils
