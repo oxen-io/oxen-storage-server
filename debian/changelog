@@ -1,3 +1,10 @@
+loki-storage-server (2.0.4-2~ubuntu2004) focal; urgency=medium
+
+  * Rebuild with lokimq 1.1.1 prerelease
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 18 Apr 2020 01:28:27 -0300
+
 loki-storage-server (2.0.4-1~ubuntu2004) focal; urgency=medium
 
   [ Jason Rhinelander ]
