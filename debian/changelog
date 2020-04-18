@@ -1,3 +1,10 @@
+loki-storage-server (2.0.4-2~deb10) buster; urgency=medium
+
+  * Rebuild with lokimq 1.1.1 prerelease
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sat, 18 Apr 2020 01:28:18 -0300
+
 loki-storage-server (2.0.4-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
