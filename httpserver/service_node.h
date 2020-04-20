@@ -97,6 +97,8 @@ class FailedRequestHandler
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
+enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
+
 /// All service node logic that is not network-specific
 class ServiceNode {
     using pub_key_t = std::string;
@@ -118,6 +120,8 @@ class ServiceNode {
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
+
+    SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
     sn_record_t our_address_;
 

@@ -168,7 +168,7 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
         }
     }
 
-    LOKI_LOG(info, "Updated {} entries from seed", updates_count);
+    LOKI_LOG(debug, "Updated {} entries from lokid", updates_count);
     return result_swarms;
 }
 
