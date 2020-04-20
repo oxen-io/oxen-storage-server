@@ -67,7 +67,7 @@ ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
 RUN cd loki-storage-server \
     && mkdir -p build \
     && cd build \
-    && cmake .. -DBOOST_ROOT=$BOOST_ROOT \
+    && cmake .. -DBOOST_ROOT=$BOOST_ROOT -Dsodium_USE_STATIC_LIBS=ON \
     && cmake --build . -- -j8
 
 RUN loki-storage-server/build/httpserver/loki-storage --version 
