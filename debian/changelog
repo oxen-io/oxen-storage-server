@@ -1,3 +1,13 @@
+loki-storage-server (2.0.5-1~ubuntu1804) bionic; urgency=medium
+
+  [ Maxim Shishmarev ]
+  * Clean up log messages
+  * Update lokimq
+  * Bump version to 2.0.5
+  * Less frequent reachability warnings
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 20 Apr 2020 00:15:41 -0300
+
 loki-storage-server (2.0.4-3~ubuntu1804) bionic; urgency=medium
 
   * Rebuild with lokimq 1.1.1 prerelease 2
