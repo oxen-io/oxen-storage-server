@@ -564,6 +564,44 @@ void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
         lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 }
 
+template <typename OStream>
+OStream& operator<<(OStream& os, const SnodeStatus& status) {
+    switch (status) {
+    case SnodeStatus::UNSTAKED:
+        return os << "Unstaked";
+    case SnodeStatus::DECOMMISSIONED:
+        return os << "Decommissioned";
+    case SnodeStatus::ACTIVE:
+        return os << "Active";
+    default:
+        return os << "Unknown";
+    }
+}
+
+static SnodeStatus derive_snode_status(const block_update_t& bu, const sn_record_t& our_address) {
+
+    // TODO: try not to do this again in `derive_swarm_events`
+    const auto our_swarm_it = std::find_if(
+        bu.swarms.begin(), bu.swarms.end(), [&our_address](const SwarmInfo& swarm_info) {
+            const auto& snodes = swarm_info.snodes;
+            return std::find(snodes.begin(), snodes.end(), our_address) !=
+                   snodes.end();
+        });
+
+    if (our_swarm_it != bu.swarms.end()) {
+        return SnodeStatus::ACTIVE;
+    }
+
+    if (std::find(bu.decommissioned_nodes.begin(), bu.decommissioned_nodes.end(), our_address) != bu.decommissioned_nodes.end()) {
+        return SnodeStatus::DECOMMISSIONED;
+    }
+
+    return SnodeStatus::UNSTAKED;
+
+}
+
+
+
 void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
@@ -615,6 +653,15 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
         lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 
     const SwarmEvents events = swarm_->derive_swarm_events(bu.swarms);
+
+    // TODO: check our node's state
+
+    const auto status = derive_snode_status(bu, our_address_);
+
+    if (this->status_ != status) {
+        LOKI_LOG(info, "Node status updated: {}", status);
+        this->status_ = status;
+    }
 
     swarm_->set_swarm_id(events.our_swarm_id);
 
@@ -800,10 +847,17 @@ void ServiceNode::ping_peers_tick() {
     this->peer_ping_timer_.async_wait(
         std::bind(&ServiceNode::ping_peers_tick, this));
 
+    // TODO: Don't do anything until we are fully funded
+
+    if (this->status_ == SnodeStatus::UNSTAKED || this->status_ == SnodeStatus::UNKNOWN) {
+        LOKI_LOG(debug, "Skipping this round of peer testing (unstaked)");
+        return;
+    }
+
     // Check if we've been tested (reached) recently ourselves
     reach_records_.check_incoming_tests(all_stats_.get_reset_time());
 
-    if (!this->swarm_->is_valid()) {
+    if (this->status_ == SnodeStatus::DECOMMISSIONED) {
         LOKI_LOG(debug, "Skipping this round of peer testing (decommissioned)");
         return;
     }

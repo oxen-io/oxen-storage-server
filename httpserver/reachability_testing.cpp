@@ -72,51 +72,75 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
 
 void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
 
+    using std::chrono::duration_cast;
+
     constexpr auto MAX_TIME_WITHOUT_PING = PING_PEERS_INTERVAL * 18;
 
     const auto now = std::chrono::steady_clock::now();
 
     const auto last_http = std::max(reset_time, latest_incoming_http_);
-    const auto http_elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_http);
+    const auto http_elapsed = duration_cast<std::chrono::seconds>(now - last_http);
+
+    // We don't want to print this once every 10 seconds:
+    static time_point_t last_warning_tp{};
+    const auto last_warning_elapsed = now - last_warning_tp;
+    const bool would_warn = static_cast<bool>(last_warning_elapsed > 120s);
 
     LOKI_LOG(debug, "Last reset or pinged via http: {}s", http_elapsed.count());
 
     if (http_elapsed > MAX_TIME_WITHOUT_PING) {
 
-        if (latest_incoming_http_.time_since_epoch() == 0s) {
-            LOKI_LOG(warn, "Have NEVER received http pings!");
-        } else {
-            LOKI_LOG(
-                warn,
-                "Have not received http pings for a long time! Last time was: "
-                "{} mins ago.",
-                std::chrono::duration_cast<std::chrono::minutes>(http_elapsed).count());
+        if (would_warn) {
+            if (latest_incoming_http_.time_since_epoch() == 0s) {
+                LOKI_LOG(warn, "Have NEVER received http pings!");
+            } else {
+                LOKI_LOG(warn,
+                         "Have not received http pings for a long time! Last "
+                         "time was: "
+                         "{} mins ago.",
+                         std::chrono::duration_cast<std::chrono::minutes>(
+                             http_elapsed)
+                             .count());
+            }
+
+            LOKI_LOG(warn, "Please check your http port. Not being reachable "
+                           "over http may result in a deregistration!");
+            last_warning_tp = now;
         }
 
         this->http_ok = false;
-        LOKI_LOG(warn, "Please check your http port. Not being reachable over http may result in a deregistration!");
     } else if (!this->http_ok) {
         this->http_ok = true;
         LOKI_LOG(info, "Http port is back to OK");
     }
 
     const auto last_lmq = std::max(reset_time, latest_incoming_lmq_);
-    const auto lmq_elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_lmq);
+    const auto lmq_elapsed =
+        duration_cast<std::chrono::seconds>(now - last_lmq);
 
     LOKI_LOG(debug, "Last reset or pinged via lmq: {}s", lmq_elapsed.count());
 
     if (lmq_elapsed > MAX_TIME_WITHOUT_PING) {
-        if (latest_incoming_lmq_.time_since_epoch() == 0s) {
-            LOKI_LOG(warn, "Have NEVER received lmq pings!");
-        } else {
-            LOKI_LOG(warn,
-                     "Have not received lmq pings for a long time! Last time "
-                     "was: {} mins ago",
-                     std::chrono::duration_cast<std::chrono::minutes>(lmq_elapsed).count());
+
+        if (would_warn) {
+
+            if (latest_incoming_lmq_.time_since_epoch() == 0s) {
+                LOKI_LOG(warn, "Have NEVER received lmq pings!");
+            } else {
+                LOKI_LOG(
+                    warn,
+                    "Have not received lmq pings for a long time! Last time "
+                    "was: {} mins ago",
+                    duration_cast<std::chrono::minutes>(lmq_elapsed).count());
+            }
+
+            LOKI_LOG(warn, "Please check your lmq port. Not being reachable "
+                           "over lmq may result in a deregistration!");
+            last_warning_tp = now;
         }
 
         this->lmq_ok = false;
-        LOKI_LOG(warn, "Please check your lmq port. Not being reachable over lmq may result in a deregistration!");
+        
     } else if (!this->lmq_ok) {
         this->lmq_ok = true;
         LOKI_LOG(info, "Lmq port is back to OK");
