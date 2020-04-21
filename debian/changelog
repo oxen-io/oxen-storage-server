@@ -1,3 +1,9 @@
+loki-storage-server (2.0.5-2~deb10) buster; urgency=medium
+
+  * Rebuild for lokimq 1.1.2
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 21 Apr 2020 17:20:54 -0300
+
 loki-storage-server (2.0.5-1~deb10) buster; urgency=medium
 
   [ Maxim Shishmarev ]
