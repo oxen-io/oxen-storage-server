@@ -1,3 +1,9 @@
+loki-storage-server (2.0.5-2~ubuntu1804) bionic; urgency=medium
+
+  * Rebuild for lokimq 1.1.2
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 21 Apr 2020 17:21:05 -0300
+
 loki-storage-server (2.0.5-1~ubuntu1804) bionic; urgency=medium
 
   [ Maxim Shishmarev ]
