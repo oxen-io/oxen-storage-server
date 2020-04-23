@@ -72,6 +72,11 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    if (options.print_version) {
+        std::cout << version_info();
+        return EXIT_SUCCESS;
+    }
+
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
             if (options.testnet) {
@@ -105,9 +110,6 @@ int main(int argc, char* argv[]) {
 
     // Always print version for the logs
     print_version();
-    if (options.print_version) {
-        return EXIT_SUCCESS;
-    }
 
     if (options.ip == "127.0.0.1") {
         LOKI_LOG(critical,
