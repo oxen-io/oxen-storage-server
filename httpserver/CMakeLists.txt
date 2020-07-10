@@ -43,9 +43,15 @@ target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver_lib PUBLIC storage)
 target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
-target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
 target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
+
+# libresolv is needed on linux, but not on BSDs, so only link it if we can find it
+find_library(RESOLV resolv)
+if(RESOLV)
+    target_link_libraries(httpserver_lib PUBLIC ${RESOLV})
+endif()
+
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
