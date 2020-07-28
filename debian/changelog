@@ -1,3 +1,9 @@
+loki-storage-server (2.0.6-2~ubuntu1804) bionic; urgency=medium
+
+  * Rebuild to update deps
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 28 Jul 2020 00:04:45 -0300
+
 loki-storage-server (2.0.6-1~ubuntu1804) bionic; urgency=medium
 
   [ Maxim Shishmarev ]
