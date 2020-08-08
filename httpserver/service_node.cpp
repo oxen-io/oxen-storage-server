@@ -32,8 +32,6 @@ using namespace std::chrono_literals;
 namespace loki {
 using http_server::connection_t;
 
-using LockGuard = std::lock_guard<std::recursive_mutex>;
-
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
     1s, 5s, 10s, 20s, 40s, 80s, 160s, 320s};
 
@@ -320,7 +318,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
 void ServiceNode::bootstrap_data() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(trace, "Bootstrapping peer data");
 
@@ -402,7 +400,7 @@ void ServiceNode::bootstrap_data() {
 
 bool ServiceNode::snode_ready(std::string* reason) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     bool ready = true;
     std::string buf;
@@ -446,7 +444,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
                              ss_client::Request req,
                              ss_client::Callback cb) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     switch (method) {
     case ss_client::ReqMethod::DATA: {
@@ -509,7 +507,7 @@ void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
@@ -532,7 +530,7 @@ bool ServiceNode::process_store(const message_t& msg) {
 
 void ServiceNode::save_if_new(const message_t& msg) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
                    msg.nonce)) {
@@ -542,7 +540,7 @@ void ServiceNode::save_if_new(const message_t& msg) {
 
 void ServiceNode::save_bulk(const std::vector<Item>& items) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (!db_->bulk_store(items)) {
         LOKI_LOG(error, "failed to save batch to the database");
@@ -555,7 +553,7 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
 void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     swarm_->apply_swarm_changes(bu.swarms);
     target_height_ = std::max(target_height_, bu.height);
@@ -605,7 +603,7 @@ static SnodeStatus derive_snode_status(const block_update_t& bu, const sn_record
 void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (this->hardfork_ != bu.hardfork) {
         LOKI_LOG(debug, "New hardfork: {}", bu.hardfork);
@@ -708,7 +706,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
 void ServiceNode::relay_buffered_messages() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     // Should we wait for the response first?
     relay_timer_.expires_after(RELAY_INTERVAL);
@@ -747,7 +745,7 @@ void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
 
 void ServiceNode::swarm_timer_tick() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(trace, "Swarm timer tick");
 
@@ -811,7 +809,7 @@ void ServiceNode::swarm_timer_tick() {
 
 void ServiceNode::cleanup_timer_tick() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     all_stats_.cleanup();
 
@@ -841,7 +839,7 @@ void ServiceNode::update_last_ping(ReachType type) {
 void ServiceNode::ping_peers_tick() {
 
     // Used as a callback to needs a mutex even if it is private
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     this->peer_ping_timer_.expires_after(PING_PEERS_INTERVAL);
     this->peer_ping_timer_.async_wait(
@@ -903,7 +901,7 @@ void ServiceNode::ping_peers_tick() {
 
 void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     // TODO: investigate why we are not signing headers
     const auto hash = hash_data(req->body());
@@ -913,7 +911,7 @@ void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
 
@@ -949,7 +947,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
 void ServiceNode::lokid_ping_timer_tick() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     /// TODO: Note that this is not actually an SN response! (but Lokid)
     auto cb = [](const sn_response_t&& res) {
@@ -1012,7 +1010,7 @@ void ServiceNode::perform_blockchain_test(
     bc_test_params_t test_params,
     std::function<void(blockchain_test_answer_t)>&& cb) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(debug, "Delegating blockchain test to Lokid");
 
@@ -1075,7 +1073,7 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
                                                 uint64_t test_height,
                                                 sn_response_t&& res) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (res.error_code != SNodeError::NO_ERROR) {
         // TODO: retry here, otherwise tests sometimes fail (when SN not
@@ -1140,7 +1138,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         const Item& item) {
 
     // Used as a callback to needs a mutex even if it is private
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     nlohmann::json json_body;
 
@@ -1165,7 +1163,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
                                            blockchain_test_answer_t answer) {
 
     // Used as a callback to needs a mutex even if it is private
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     nlohmann::json json_body;
 
@@ -1186,7 +1184,7 @@ void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
 void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
                                            bool reachable) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     const auto sn = swarm_->get_node_by_pk(sn_pk);
 
@@ -1204,7 +1202,7 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     /// updated to "true".
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
-        LockGuard guard(this->sn_mutex_);
+        std::lock_guard guard(this->sn_mutex_);
 
         if (res.error_code != SNodeError::NO_ERROR) {
             LOKI_LOG(warn, "Could not report node status");
@@ -1254,7 +1252,7 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
 void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk,
                                             ReachType type, bool success) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (success) {
 
@@ -1285,7 +1283,7 @@ void ServiceNode::process_blockchain_test_response(
     sn_response_t&& res, blockchain_test_answer_t our_answer,
     sn_record_t testee, uint64_t bc_height) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(debug,
              "Processing blockchain test response from: {} at height: {}",
@@ -1324,7 +1322,7 @@ void ServiceNode::process_blockchain_test_response(
 bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
                                        sn_record_t& testee) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     std::vector<sn_record_t> members = swarm_->other_nodes();
     members.push_back(our_address_);
@@ -1389,7 +1387,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     uint64_t blk_height, const std::string& tester_pk,
     const std::string& msg_hash, std::string& answer) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     // 1. Check height, retry if we are behind
     std::string block_hash;
@@ -1460,7 +1458,7 @@ bool ServiceNode::select_random_message(Item& item) {
 
 void ServiceNode::initiate_peer_test() {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     // 1. Select the tester/testee pair
     sn_record_t tester, testee;
@@ -1569,7 +1567,7 @@ std::string vec_to_string(const std::vector<T>& vec) {
 void ServiceNode::bootstrap_swarms(
     const std::vector<swarm_id_t>& swarms) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (swarms.empty()) {
         LOKI_LOG(info, "Bootstrapping all swarms");
@@ -1676,7 +1674,7 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                            const std::string& last_hash,
                            std::vector<Item>& items) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     all_stats_.bump_retrieve_requests();
 
@@ -1687,7 +1685,7 @@ bool ServiceNode::retrieve(const std::string& pubKey,
 void ServiceNode::set_difficulty_history(
     const std::vector<pow_difficulty_t>& new_history) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     pow_history_ = new_history;
     for (const auto& difficulty : pow_history_) {
@@ -1738,7 +1736,7 @@ static nlohmann::json to_json(const all_stats_t& stats) {
 
 std::string ServiceNode::get_stats() const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     auto val = to_json(all_stats_);
 
@@ -1768,7 +1766,7 @@ std::string ServiceNode::get_status_line() const {
     // status message has to be fairly short: has to fit on one line, and if
     // it's too long systemd just truncates it when displaying it.
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
@@ -1801,14 +1799,14 @@ std::string ServiceNode::get_status_line() const {
 
 int ServiceNode::get_curr_pow_difficulty() const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     return curr_pow_difficulty_.difficulty;
 }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     LOKI_LOG(trace, "Get all messages");
 
@@ -1817,7 +1815,7 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
 void ServiceNode::process_push_batch(const std::string& blob) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (blob.empty())
         return;
@@ -1861,7 +1859,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
 bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
@@ -1873,7 +1871,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
 std::vector<sn_record_t>
 ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
         LOKI_LOG(error, "Swarm data missing");
@@ -1899,7 +1897,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
 bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     // TODO: need more robust handling of uninitialized swarm_
     if (!swarm_) {
@@ -1913,7 +1911,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 std::optional<sn_record_t>
 ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (swarm_) {
         return swarm_->find_node_by_x25519_bin(pk);
@@ -1925,7 +1923,7 @@ ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
 std::optional<sn_record_t>
 ServiceNode::find_node_by_ed25519_pk(const std::string& pk) const {
 
-    LockGuard guard(sn_mutex_);
+    std::lock_guard guard(sn_mutex_);
 
     if (swarm_) {
         return swarm_->find_node_by_ed25519_pk(pk);
