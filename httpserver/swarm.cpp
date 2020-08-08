@@ -229,10 +229,10 @@ void Swarm::update_state(const all_swarms_t& swarms,
     }
 }
 
-boost::optional<sn_record_t> Swarm::choose_funded_node() const {
+std::optional<sn_record_t> Swarm::choose_funded_node() const {
 
     if (all_funded_nodes_.empty())
-        return boost::none;
+        return std::nullopt;
 
     const auto idx =
         util::uniform_distribution_portable(all_funded_nodes_.size());
@@ -241,7 +241,7 @@ boost::optional<sn_record_t> Swarm::choose_funded_node() const {
     return all_funded_nodes_[idx];
 }
 
-boost::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
+std::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
 
     for (const auto &sn : all_funded_nodes_) {
         if (sn.port() == port) {
@@ -249,10 +249,10 @@ boost::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
         }
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
-boost::optional<sn_record_t>
+std::optional<sn_record_t>
 Swarm::find_node_by_ed25519_pk(const std::string& pk) const {
 
     for (const auto& sn : all_funded_nodes_) {
@@ -261,10 +261,10 @@ Swarm::find_node_by_ed25519_pk(const std::string& pk) const {
         }
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
-boost::optional<sn_record_t>
+std::optional<sn_record_t>
 Swarm::find_node_by_x25519_bin(const std::string& pk) const {
 
     for (const auto& sn : all_funded_nodes_) {
@@ -273,10 +273,10 @@ Swarm::find_node_by_x25519_bin(const std::string& pk) const {
         }
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
-boost::optional<sn_record_t>
+std::optional<sn_record_t>
 Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
 
     for (const auto& sn : all_funded_nodes_) {
@@ -285,7 +285,7 @@ Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
         }
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
 static uint64_t hex_to_u64(const user_pubkey_t& pk) {

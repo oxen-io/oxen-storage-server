@@ -9,14 +9,16 @@
 
 #include <lokimq/lokimq.h>
 
+#include <optional>
+
 namespace loki {
 
-std::string LokimqServer::peer_lookup(lokimq::string_view pubkey_bin) const {
+std::string LokimqServer::peer_lookup(std::string_view pubkey_bin) const {
 
     LOKI_LOG(trace, "[LMQ] Peer Lookup");
 
     // TODO: don't create a new string here
-    boost::optional<sn_record_t> sn =
+    std::optional<sn_record_t> sn =
         this->service_node_->find_node_by_x25519_bin(std::string(pubkey_bin));
 
     if (sn) {
@@ -130,7 +132,6 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                         const lokid_key_pair_t& keypair) {
 
     using lokimq::Allow;
-    using lokimq::string_view;
 
     service_node_ = sn;
     request_handler_ = rh;

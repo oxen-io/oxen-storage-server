@@ -2,7 +2,6 @@
 #include "loki_logger.h"
 
 #include <boost/filesystem.hpp>
-#include <boost/optional.hpp>
 
 #include <iostream>
 

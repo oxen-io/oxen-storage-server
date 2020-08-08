@@ -292,7 +292,7 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
       stream_(socket_, ssl_ctx_), service_node_(sn), request_handler_(rh),
       rate_limiter_(rate_limiter), repeat_timer_(ioc),
-      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{boost::none},
+      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt},
       security_(security) {
 
     static uint64_t instance_counter = 0;
@@ -352,7 +352,7 @@ void connection_t::on_handshake(boost::system::error_code ec) {
 
 void connection_t::clean_up() { this->do_close(); }
 
-void connection_t::notify(boost::optional<const message_t&> msg) {
+void connection_t::notify(const message_t* msg) {
 
     if (!notification_ctx_) {
         LOKI_LOG(error,
@@ -363,7 +363,7 @@ void connection_t::notify(boost::optional<const message_t&> msg) {
     if (msg) {
         LOKI_LOG(trace, "Processing message notification: {}", msg->data);
         // save messages, so we can access them once the timer event happens
-        notification_ctx_->message = msg;
+        notification_ctx_->message = *msg;
     }
     // the timer callback will be called once we complete the current callback
     notification_ctx_->timer.cancel();
@@ -939,7 +939,7 @@ void connection_t::process_request() {
             this->process_swarm_req(target);
             break;
         }
-        if (!service_node_.snode_ready(reason)) {
+        if (!service_node_.snode_ready(&reason)) {
             LOKI_LOG(debug,
                      "Ignoring post request; storage server not ready: {}",
                      reason);
@@ -1041,7 +1041,7 @@ void connection_t::write_response() {
 
     // Our last change to change the response before we start sending
     if (this->response_modifier_) {
-        (*this->response_modifier_)(response_);
+        this->response_modifier_(response_);
     }
 
     response_.set(http::field::content_length, response_.body().size());
@@ -1361,7 +1361,7 @@ void HttpClientSession::start() {
 void HttpClientSession::trigger_callback(SNodeError error,
                                          std::shared_ptr<std::string>&& body) {
     LOKI_LOG(trace, "Trigger callback");
-    ioc_.post(std::bind(callback_, sn_response_t{error, body, boost::none}));
+    ioc_.post(std::bind(callback_, sn_response_t{error, body, std::nullopt}));
     used_callback_ = true;
     deadline_timer_.cancel();
 }

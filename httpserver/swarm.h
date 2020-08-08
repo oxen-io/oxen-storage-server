@@ -104,18 +104,18 @@ class Swarm {
 
     // Select a node from all existing nodes (excluding us); throws if there is
     // no other nodes
-    boost::optional<sn_record_t> choose_funded_node() const;
+    std::optional<sn_record_t> choose_funded_node() const;
 
     // TEMPORARY (TODO: change to finding by x25519 PK)
-    boost::optional<sn_record_t> find_node_by_port(uint16_t port) const;
+    std::optional<sn_record_t> find_node_by_port(uint16_t port) const;
 
     // Get the node with public key `pk` if exists
-    boost::optional<sn_record_t> get_node_by_pk(const sn_pub_key_t& pk) const;
+    std::optional<sn_record_t> get_node_by_pk(const sn_pub_key_t& pk) const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_ed25519_pk(const sn_pub_key_t& address) const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_x25519_bin(const sn_pub_key_t& address) const;
 };
 

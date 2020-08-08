@@ -76,7 +76,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), req, std::move(cb), boost::none);
+            ioc, ctx, std::move(resolve_results), req, std::move(cb), nullptr);
 
         session->start();
     };
@@ -111,10 +111,10 @@ HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results,
     const std::shared_ptr<request_t>& req, http_callback_t&& cb,
-    boost::optional<const std::string&> sn_pubkey_b32z)
+    std::optional<std::string> sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
-      server_pub_key_b32z_(sn_pubkey_b32z) {
+      server_pub_key_b32z_(std::move(sn_pubkey_b32z)) {
 
     get_net_stats().https_connections_out++;
 
@@ -195,7 +195,7 @@ void HttpsClientSession::on_connect() {
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
         LOKI_LOG(error, "Failed to perform a handshake with {}: {}",
-                 server_pub_key_b32z_ ? *server_pub_key_b32z_ : "(not snode)", ec.message());
+                 server_pub_key_b32z_.value_or("(not snode)"), ec.message());
 
         return;
     }
@@ -286,7 +286,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
 void HttpsClientSession::trigger_callback(
     SNodeError error, std::shared_ptr<std::string>&& body,
-    boost::optional<response_t> raw_response) {
+    std::optional<response_t> raw_response) {
     ioc_.post(std::bind(callback_, sn_response_t{error, body, raw_response}));
     used_callback_ = true;
     deadline_timer_.cancel();

@@ -50,7 +50,7 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
 FailedRequestHandler::FailedRequestHandler(
     boost::asio::io_context& ioc, const sn_record_t& sn,
     std::shared_ptr<request_t> req,
-    boost::optional<std::function<void()>>&& give_up_cb)
+    std::function<void()> give_up_cb)
     : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)),
       give_up_callback_(std::move(give_up_cb)) {}
 
@@ -60,7 +60,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
     if (attempt_count_ > RETRY_INTERVALS.size()) {
         LOKI_LOG(debug, "Gave up after {} attempts", attempt_count_);
         if (give_up_callback_)
-            (*give_up_callback_)();
+            give_up_callback_();
         return;
     }
 
@@ -400,7 +400,7 @@ void ServiceNode::bootstrap_data() {
     }
 }
 
-bool ServiceNode::snode_ready(boost::optional<std::string&> reason) {
+bool ServiceNode::snode_ready(std::string* reason) {
 
     LockGuard guard(sn_mutex_);
 
@@ -666,7 +666,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     swarm_->set_swarm_id(events.our_swarm_id);
 
     std::string reason;
-    if (!this->snode_ready(boost::optional<std::string&>(reason))) {
+    if (!this->snode_ready(&reason)) {
         LOKI_LOG(warn, "Storage server is still not ready: {}", reason);
         swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
@@ -887,7 +887,7 @@ void ServiceNode::ping_peers_tick() {
     const auto offline_node = reach_records_.next_to_test();
 
     if (offline_node) {
-        const boost::optional<sn_record_t> sn =
+        const std::optional<sn_record_t> sn =
             swarm_->get_node_by_pk(*offline_node);
         LOKI_LOG(debug, "No offline nodes to test for reachability yet");
         if (sn) {
@@ -1910,7 +1910,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
     return swarm_->is_fully_funded_node(sn_address);
 }
 
-boost::optional<sn_record_t>
+std::optional<sn_record_t>
 ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
 
     LockGuard guard(sn_mutex_);
@@ -1919,10 +1919,10 @@ ServiceNode::find_node_by_x25519_bin(const sn_pub_key_t& pk) const {
         return swarm_->find_node_by_x25519_bin(pk);
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
-boost::optional<sn_record_t>
+std::optional<sn_record_t>
 ServiceNode::find_node_by_ed25519_pk(const std::string& pk) const {
 
     LockGuard guard(sn_mutex_);
@@ -1931,7 +1931,7 @@ ServiceNode::find_node_by_ed25519_pk(const std::string& pk) const {
         return swarm_->find_node_by_ed25519_pk(pk);
     }
 
-    return boost::none;
+    return std::nullopt;
 }
 
 } // namespace loki

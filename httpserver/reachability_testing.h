@@ -80,7 +80,7 @@ class reachability_records_t {
     void set_reported(const sn_pub_key_t& sn);
 
     // Retrun the least recently tested node
-    boost::optional<sn_pub_key_t> next_to_test();
+    std::optional<sn_pub_key_t> next_to_test();
 };
 
 } // namespace loki

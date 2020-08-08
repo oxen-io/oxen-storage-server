@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <lokimq/string_view.h>
+#include <string_view>
 
 namespace lokimq {
 class LokiMQ;
@@ -29,7 +29,7 @@ class LokimqServer {
     RequestHandler* request_handler_;
 
     // Get nodes' address
-    std::string peer_lookup(lokimq::string_view pubkey_bin) const;
+    std::string peer_lookup(std::string_view pubkey_bin) const;
 
     // Handle Session data coming from peer SN
     void handle_sn_data(lokimq::Message& message);

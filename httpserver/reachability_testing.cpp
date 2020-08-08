@@ -225,7 +225,7 @@ void reachability_records_t::set_reported(const sn_pub_key_t& sn) {
     }
 }
 
-boost::optional<sn_pub_key_t> reachability_records_t::next_to_test() {
+std::optional<sn_pub_key_t> reachability_records_t::next_to_test() {
 
     const auto it = std::min_element(
         offline_nodes_.begin(), offline_nodes_.end(),
@@ -234,7 +234,7 @@ boost::optional<sn_pub_key_t> reachability_records_t::next_to_test() {
         });
 
     if (it == offline_nodes_.end()) {
-        return boost::none;
+        return std::nullopt;
     } else {
 
         LOKI_LOG(debug, "Selecting to be re-tested: {}", it->first);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "http_connection.h"
+#include <optional>
 #include <functional>
 
 namespace loki {
@@ -41,7 +42,7 @@ class HttpsClientSession
     response_t res_;
 
     // Snode's pub key (none if signature verification is not used / not a snode)
-    boost::optional<std::string> server_pub_key_b32z_;
+    std::optional<std::string> server_pub_key_b32z_;
 
     bool used_callback_ = false;
 
@@ -53,7 +54,7 @@ class HttpsClientSession
 
     void
     trigger_callback(SNodeError error, std::shared_ptr<std::string>&& body,
-                     boost::optional<response_t> raw_response = boost::none);
+                     std::optional<response_t> raw_response = std::nullopt);
 
     void on_handshake(boost::system::error_code ec);
     bool verify_signature();
@@ -67,7 +68,7 @@ class HttpsClientSession
                        tcp::resolver::results_type resolve_results,
                        const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb,
-                       boost::optional<const std::string&> sn_pubkey_b32z);
+                       std::optional<std::string> sn_pubkey_b32z);
 
     // initiate the client connection
     void start();
