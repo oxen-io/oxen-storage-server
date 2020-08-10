@@ -581,7 +581,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
             const auto& host = inner_json.at("host").get_ref<const std::string&>();
             const auto& target = inner_json.at("target").get_ref<const std::string&>();
-            LOKI_LOG(trace, "We are to forward the request to url: {}{}", host, target);
+            LOKI_LOG(debug, "We are to forward the request to url: {}{}", host, target);
 
             // Forward the request to url but only if it ends in `/lsrpc`
             if ((target.rfind("/lsrpc") == target.size() - 6) && (target.find('?') == std::string::npos)) {

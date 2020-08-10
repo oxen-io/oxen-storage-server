@@ -924,6 +924,8 @@ void connection_t::process_request() {
 
     const auto target = req.target();
 
+    LOKI_LOG(debug, "target: {}", target);
+
     const bool is_swarm_req = (target.find("/swarms/") == 0);
 
     if (is_swarm_req) {

@@ -226,7 +226,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
 bool HttpsClientSession::verify_signature() {
 
-    if (server_pub_key_b32z_)
+    if (!server_pub_key_b32z_)
         return true;
 
     const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
