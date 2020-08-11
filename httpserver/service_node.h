@@ -6,11 +6,11 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <optional>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
 #include "loki_common.h"
@@ -77,7 +77,7 @@ class FailedRequestHandler
     uint32_t attempt_count_ = 0;
 
     /// Call this if we give up re-transmitting
-    boost::optional<std::function<void()>> give_up_callback_;
+    std::function<void()> give_up_callback_;
 
     void retry(std::shared_ptr<FailedRequestHandler>&& self);
 
@@ -85,7 +85,7 @@ class FailedRequestHandler
     FailedRequestHandler(
         boost::asio::io_context& ioc, const sn_record_t& sn,
         std::shared_ptr<request_t> req,
-        boost::optional<std::function<void()>>&& give_up_cb = boost::none);
+        std::function<void()> give_up_cb = nullptr);
 
     ~FailedRequestHandler();
     /// Initiates the timer for retrying (which cannot be done directly in
@@ -96,6 +96,8 @@ class FailedRequestHandler
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
+
+enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
@@ -118,6 +120,8 @@ class ServiceNode {
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
+
+    SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
     sn_record_t our_address_;
 
@@ -162,9 +166,9 @@ class ServiceNode {
     // Save items to the database, notifying listeners as necessary
     void save_bulk(const std::vector<storage::Item>& items);
 
-    void on_bootstrap_update(const block_update_t& bu);
+    void on_bootstrap_update(block_update_t&& bu);
 
-    void on_swarm_update(const block_update_t& bu);
+    void on_swarm_update(block_update_t&& bu);
 
     void bootstrap_data();
 
@@ -253,6 +257,8 @@ class ServiceNode {
 
     ~ServiceNode();
 
+    // Record the time of our last being tested over lmq/http
+    void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later
@@ -271,7 +277,7 @@ class ServiceNode {
                     ss_client::Request req, ss_client::Callback cb) const;
 
     // Return true if the service node is ready to start running
-    bool snode_ready(boost::optional<std::string&> reason);
+    bool snode_ready(std::string* reason = nullptr);
 
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
@@ -312,10 +318,10 @@ class ServiceNode {
 
     std::string get_status_line() const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_x25519_bin(const sn_pub_key_t& address) const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_ed25519_pk(const std::string& pk) const;
 };
 

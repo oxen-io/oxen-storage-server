@@ -4,26 +4,7 @@ add_definitions(-DDISABLE_ENCRYPTION)
 
 project(httpserver)
 
-set(HEADER_FILES
-    http_connection.h
-    swarm.h
-    service_node.h
-    serialization.h
-    rate_limiter.h
-    ../external/json.hpp
-    https_client.h
-    server_certificates.h
-    stats.h
-    security.h
-    command_line.h
-    net_stats.h
-    dns_text_records.h
-    reachability_testing.h
-    lmq_server.h
-    request_handler.h
-    )
-
-set(SRC_FILES
+add_library(httpserver_lib STATIC
     main.cpp
     http_connection.cpp
     swarm.cpp
@@ -39,8 +20,6 @@ set(SRC_FILES
     lmq_server.cpp
     request_handler.cpp
     )
-
-add_library(httpserver_lib STATIC ${HEADER_FILES} ${SRC_FILES})
 
 loki_add_subdirectory(../common common)
 loki_add_subdirectory(../storage storage)
@@ -68,7 +47,8 @@ target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
 target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
 
-set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
+set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 17)
+set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
@@ -77,7 +57,8 @@ set(BIN_NAME loki-storage)
 
 add_executable(httpserver main.cpp)
 set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
-set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+set_property(TARGET httpserver PROPERTY CXX_STANDARD 17)
+set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
 target_link_libraries(httpserver PRIVATE httpserver_lib)
 install(TARGETS httpserver DESTINATION bin)
 # Build Info

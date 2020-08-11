@@ -6,11 +6,14 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include <boost/optional.hpp>
 
 // TODO: this should be a proper struct w/o heap allocation!
 using sn_pub_key_t = std::string;
+
+using time_point_t = std::chrono::time_point<std::chrono::steady_clock>;
 
 struct sn_record_t {
 

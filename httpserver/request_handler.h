@@ -1,14 +1,13 @@
 #pragma once
 
 #include <string>
-#include <string>
+#include <string_view>
 #include "loki_common.h"
 
 #include <boost/asio.hpp>
 
 // TODO: can I avoid including this in the header?
 #include "../external/json.hpp"
-#include <lokimq/string_view.h>
 
 // TODO: move ChannelEncryption to ::loki
 template <typename T>
@@ -103,7 +102,7 @@ class RequestHandler {
                             const std::string& payload,
                             std::function<void(loki::Response)> cb);
 
-    void process_lns_request(lokimq::string_view name_hash,
+    void process_lns_request(std::string name_hash,
                              std::function<void(loki::Response)> cb);
 
     // ===================================

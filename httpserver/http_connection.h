@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 
 #include "../external/json.hpp"
 #include <boost/asio.hpp>
@@ -14,6 +15,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
+#include "loki_common.h"
 #include "lokid_key.h"
 #include "swarm.h"
 
@@ -39,7 +41,6 @@ namespace loki {
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data);
 
-struct message_t;
 struct Security;
 
 class RequestHandler;
@@ -56,7 +57,7 @@ enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 struct sn_response_t {
     SNodeError error_code;
     std::shared_ptr<std::string> body;
-    boost::optional<response_t> raw_response;
+    std::optional<response_t> raw_response;
 };
 
 template <typename OStream>
@@ -222,16 +223,16 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
         boost::asio::steady_timer timer;
         // the message is stored here momentarily; needed because
         // we can't pass it using current notification mechanism
-        boost::optional<message_t> message;
+        std::optional<message_t> message;
         // Messenger public key that this connection is registered for
         std::string pubkey;
     };
 
-    boost::optional<notification_context_t> notification_ctx_;
+    std::optional<notification_context_t> notification_ctx_;
 
     // If present, this function will be called just before
     // writing the response
-    boost::optional<std::function<void(response_t&)>> response_modifier_;
+    std::function<void(response_t&)> response_modifier_;
 
   public:
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
@@ -246,7 +247,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Initiate the asynchronous operations associated with the connection.
     void start();
 
-    void notify(boost::optional<const message_t&> msg);
+    void notify(const message_t* msg);
 
   private:
     void do_handshake();

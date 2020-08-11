@@ -4,15 +4,16 @@
 #include <chrono>
 #include <unordered_map>
 
+using namespace std::chrono_literals;
+
+constexpr std::chrono::seconds PING_PEERS_INTERVAL = 10s;
+
 namespace loki {
 
 namespace detail {
 
 /// TODO: make this class "private"?
 class reach_record_t {
-
-
-    using time_point_t = std::chrono::time_point<std::chrono::steady_clock>;
 
   public:
     // The time the node failed for the first time
@@ -52,9 +53,18 @@ class reachability_records_t {
     std::unordered_map<sn_pub_key_t, detail::reach_record_t> offline_nodes_;
 
   public:
-    // Return nodes that should be tested first: decommissioned nodes
-    // and those that failed our earlier tests (but not reported yet)
-    // std::vector<> priority_nodes() const;
+
+    // The time we were last tested and reached by some other node over lmq
+    time_point_t latest_incoming_lmq_;
+    // The time we were last tested and reached by some other node over http
+    time_point_t latest_incoming_http_;
+
+    // These will be set to `false` if we stop receiving lmq/http pings
+    bool lmq_ok = true;
+    bool http_ok = true;
+
+    // Check whether we received incoming pings recently
+    void check_incoming_tests(time_point_t reset_time);
 
     // Records node as reachable/unreachable according to `val`
     void record_reachable(const sn_pub_key_t& sn, ReachType type, bool val);
@@ -70,7 +80,7 @@ class reachability_records_t {
     void set_reported(const sn_pub_key_t& sn);
 
     // Retrun the least recently tested node
-    boost::optional<sn_pub_key_t> next_to_test();
+    std::optional<sn_pub_key_t> next_to_test();
 };
 
 } // namespace loki

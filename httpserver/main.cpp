@@ -28,16 +28,16 @@ extern "C" {
 
 namespace fs = boost::filesystem;
 
-static boost::optional<fs::path> get_home_dir() {
+static std::optional<fs::path> get_home_dir() {
 
     /// TODO: support default dir for Windows
 #ifdef WIN32
-    return boost::none;
+    return std::nullopt;
 #endif
 
     char* pszHome = getenv("HOME");
     if (pszHome == NULL || strlen(pszHome) == 0)
-        return boost::none;
+        return std::nullopt;
 
     return fs::path(pszHome);
 }
@@ -76,10 +76,10 @@ int main(int argc, char* argv[]) {
         if (auto home_dir = get_home_dir()) {
             if (options.testnet) {
                 options.data_dir =
-                    (home_dir.get() / ".loki" / "testnet" / "storage").string();
+                    (*home_dir / ".loki" / "testnet" / "storage").string();
             } else {
                 options.data_dir =
-                    (home_dir.get() / ".loki" / "storage").string();
+                    (*home_dir / ".loki" / "storage").string();
             }
         }
     }

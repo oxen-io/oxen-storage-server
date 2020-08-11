@@ -370,13 +370,13 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
 }
 
 void RequestHandler::process_lns_request(
-    lokimq::string_view name_hash, std::function<void(loki::Response)> cb) {
+    std::string name_hash, std::function<void(loki::Response)> cb) {
 
     json params;
     json array = json::array();
     json entry;
 
-    entry["name_hash"] = name_hash;
+    entry["name_hash"] = std::move(name_hash);
 
     json types = json::array();
     types.push_back(0);
@@ -414,7 +414,7 @@ RequestHandler::process_onion_exit(const std::string& eph_key,
 
     std::string body;
 
-    if (!service_node_.snode_ready(boost::none)) {
+    if (!service_node_.snode_ready()) {
         cb({Status::SERVICE_UNAVAILABLE, "Snode not ready"});
         return;
     }
@@ -440,7 +440,7 @@ void RequestHandler::process_proxy_exit(
     const std::string& client_key, const std::string& payload,
     std::function<void(loki::Response)> cb) {
 
-    if (!service_node_.snode_ready(boost::none)) {
+    if (!service_node_.snode_ready()) {
         auto res = Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"};
         cb(wrap_proxy_response(res, client_key, false));
         return;
@@ -537,7 +537,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        const std::string& ephem_key,
                                        std::function<void(loki::Response)> cb) {
 
-    if (!service_node_.snode_ready(boost::none)) {
+    if (!service_node_.snode_ready()) {
         cb(loki::Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"});
         return;
     }
@@ -646,7 +646,6 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
         LOKI_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *sn, counter++);
 
-        // Note: we shouldn't use http here
         service_node_.send_onion_to_sn(*sn, payload, ekey, on_response);
 
     } catch (std::exception& e) {

@@ -1,13 +1,12 @@
-set(SOURCES
-    include/pow.hpp
+add_library(pow STATIC
     src/pow.cpp
 )
 
-add_library(pow STATIC ${SOURCES})
 
 loki_add_subdirectory(../utils utils)
 
-set_property(TARGET pow PROPERTY CXX_STANDARD 14)
+set_property(TARGET pow PROPERTY CXX_STANDARD 17)
+set_property(TARGET pow PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
 find_package(OpenSSL REQUIRED)
 target_link_libraries(pow PRIVATE OpenSSL::SSL)

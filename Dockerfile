@@ -43,16 +43,6 @@ RUN set -ex \
     && make check \
     && make install
 
-ADD https://api.github.com/repos/loki-project/loki-storage-server/git/refs/heads/master version.json
-
-RUN rm -rf loki-storage-server
-
-RUN git clone https://github.com/loki-project/loki-storage-server.git --depth=1
-
-RUN cd loki-storage-server && git submodule update --init --recursive
-
-ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
-
 RUN apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget
 RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | apt-key add -
 RUN apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main'
@@ -64,10 +54,20 @@ RUN apt-key --keyring /etc/apt/trusted.gpg del C1F34CDD40CD72DA
 
 RUN apt-get install -y cmake
 
+ADD https://api.github.com/repos/loki-project/loki-storage-server/git/refs/heads/master version.json
+
+RUN rm -rf loki-storage-server
+
+RUN git clone https://github.com/loki-project/loki-storage-server.git --depth=1
+
+RUN cd loki-storage-server && git submodule update --init --recursive
+
+ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
+
 RUN cd loki-storage-server \
     && mkdir -p build \
     && cd build \
-    && cmake .. -DBOOST_ROOT=$BOOST_ROOT \
-    && cmake --build .
+    && cmake .. -DBOOST_ROOT=$BOOST_ROOT -Dsodium_USE_STATIC_LIBS=ON \
+    && cmake --build . -- -j8
 
 RUN loki-storage-server/build/httpserver/loki-storage --version 
