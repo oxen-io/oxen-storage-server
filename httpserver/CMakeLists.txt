@@ -27,7 +27,7 @@ loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../crypto crypto)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
-loki_add_subdirectory(../vendors/loki-mq loki-mq)
+loki_add_subdirectory(../vendors/loki-mq loki-mq EXCLUDE_FROM_ALL)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
