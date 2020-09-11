@@ -39,7 +39,16 @@ class LokimqServer {
 
     void handle_onion_request(lokimq::Message& message);
 
+    void handle_notify_add_pubkey(lokimq::Message& message);
+
+    void handle_notify_get_subscriber_count(lokimq::Message& message);
+
+    bool check_pn_server_pubkey(const std::string& pk) const;
+
     uint16_t port_ = 0;
+
+    // binary stored in a string
+    std::string pn_server_key_;
 
   public:
     LokimqServer(uint16_t port);

@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.1)
 
 add_definitions(-DDISABLE_ENCRYPTION)
 
+# Stop compiling post first error
+add_definitions(-Wfatal-errors)
+
 project(httpserver)
 
 add_library(httpserver_lib STATIC
@@ -19,6 +22,7 @@ add_library(httpserver_lib STATIC
     reachability_testing.cpp
     lmq_server.cpp
     request_handler.cpp
+    notifier.cpp
     )
 
 loki_add_subdirectory(../common common)

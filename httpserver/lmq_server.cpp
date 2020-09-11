@@ -8,6 +8,7 @@
 #include "utils.hpp"
 
 #include <lokimq/lokimq.h>
+#include <lokimq/hex.h>
 
 #include <optional>
 
@@ -128,6 +129,38 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
     request_handler_->process_onion_req(std::string(ciphertext), std::string(eph_key), on_response);
 }
 
+bool LokimqServer::check_pn_server_pubkey(const std::string& pk) const {
+    return pk == this->pn_server_key_;
+}
+
+void LokimqServer::handle_notify_add_pubkey(lokimq::Message& message) {
+
+    if (!check_pn_server_pubkey(message.conn.pubkey())) {
+        LOKI_LOG(debug, "Attempt to use notify endpoint by unauthorised pubkey");
+        return;
+    }
+
+    for (const auto &pubkey : message.data) {
+        service_node_->add_notify_pubkey(message.conn, pubkey);
+    }
+
+    lokimq_->send(message.conn, "OK");
+
+}
+
+void LokimqServer::handle_notify_get_subscriber_count(lokimq::Message& message) {
+
+    if (!check_pn_server_pubkey(message.conn.pubkey())) {
+        LOKI_LOG(debug, "Attempt to use notify endpoint by unauthorised pubkey");
+        return;
+    }
+
+    const auto count = service_node_->get_notify_subscriber_count();
+
+    lokimq_->send(message.conn, "COUNT", std::to_string(count));
+
+}
+
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                         const lokid_key_pair_t& keypair) {
 
@@ -135,6 +168,8 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     service_node_ = sn;
     request_handler_ = rh;
+
+    pn_server_key_ = lokimq::from_hex("BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
 
     auto pubkey = key_to_string(keypair.public_key);
     auto seckey = key_to_string(keypair.private_key);
@@ -170,15 +205,15 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     lokimq_->log_level(lokimq::LogLevel::info);
 
-    // ============= COMMANDS - BEGIN =============
-    //
     lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
         .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m); })
         ;
 
-    // +============= COMMANDS - END ==============
+    lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
+        .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
+        .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
 
     lokimq_->set_general_threads(1);
 
@@ -189,7 +224,8 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     lokimq_->start();
 }
 
-LokimqServer::LokimqServer(uint16_t port) : port_(port){};
+LokimqServer::LokimqServer(uint16_t port) : port_(port){
+};
 LokimqServer::~LokimqServer() = default;
 
 } // namespace loki

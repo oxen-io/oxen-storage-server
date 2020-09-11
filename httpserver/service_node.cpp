@@ -27,6 +27,7 @@
 
 using json = nlohmann::json;
 using loki::storage::Item;
+using lokimq::string_view;
 using namespace std::chrono_literals;
 
 namespace loki {
@@ -156,7 +157,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
       lmq_server_(lmq_server), lokid_client_(lokid_client),
-      force_start_(force_start) {
+      force_start_(force_start), notifier_(lmq_server) {
 
     char buf[64] = {0};
     if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
@@ -186,9 +187,9 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     lokid_ping_timer_tick();
     cleanup_timer_tick();
 
-// #ifndef INTEGRATION_TEST
+#ifndef INTEGRATION_TEST
     ping_peers_tick();
-// #endif
+#endif
 
     worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -300,7 +301,8 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
                 swarm_map[swarm_id].push_back(sn);
 
                 if (pubkey_x25519_bin.size() == 32)
-                    bu.active_x25519_pubkeys.insert(std::move(pubkey_x25519_bin));
+                    bu.active_x25519_pubkeys.insert(
+                        std::move(pubkey_x25519_bin));
             }
         }
 
@@ -434,9 +436,9 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
                                    const std::string& eph_key,
                                    ss_client::Callback cb) const {
 
-    lmq_server_->request(
-        sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
-        lokimq::send_option::request_timeout{10s}, eph_key, payload);
+    lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
+                         lokimq::send_option::request_timeout{10s}, eph_key,
+                         payload);
 }
 
 // Calls callback on success only?
@@ -450,8 +452,8 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::DATA: {
         LOKI_LOG(debug, "Sending sn.data request to {}",
                  util::as_hex(sn.pubkey_x25519_bin()));
-        lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data",
-                                   std::move(cb), req.body);
+        lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
+                             req.body);
         break;
     }
     case ss_client::ReqMethod::PROXY_EXIT: {
@@ -463,8 +465,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
             LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
                      util::as_hex(sn.pubkey_x25519_bin()));
             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
-                                       std::move(cb), client_key->second,
-                                       req.body);
+                                 std::move(cb), client_key->second, req.body);
         } else {
             LOKI_LOG(debug, "Developer error: no {} passed in headers",
                      LOKI_SENDER_KEY_HEADER);
@@ -504,6 +505,15 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
+void ServiceNode::add_notify_pubkey(const lokimq::ConnectionID& cid,
+                                    string_view pubkey) {
+    this->notifier_.add_pubkey(cid, pubkey);
+}
+
+size_t ServiceNode::get_notify_subscriber_count() const {
+    return this->notifier_.subscriber_count();
+}
+
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
@@ -520,6 +530,8 @@ bool ServiceNode::process_store(const message_t& msg) {
 
     /// store in the database
     this->save_if_new(msg);
+
+    this->notifier_.maybe_notify(msg);
 
     // Instead of sending the messages immediatly, store them in a buffer
     // and periodically send all messages from there as batches
@@ -541,6 +553,11 @@ void ServiceNode::save_if_new(const message_t& msg) {
 void ServiceNode::save_bulk(const std::vector<Item>& items) {
 
     std::lock_guard guard(sn_mutex_);
+
+    // TODO: Should we notify in bulk?
+    for (const auto& item : items) {
+        this->notifier_.maybe_notify(item);
+    }
 
     if (!db_->bulk_store(items)) {
         LOKI_LOG(error, "failed to save batch to the database");
@@ -576,29 +593,30 @@ OStream& operator<<(OStream& os, const SnodeStatus& status) {
     }
 }
 
-static SnodeStatus derive_snode_status(const block_update_t& bu, const sn_record_t& our_address) {
+static SnodeStatus derive_snode_status(const block_update_t& bu,
+                                       const sn_record_t& our_address) {
 
     // TODO: try not to do this again in `derive_swarm_events`
-    const auto our_swarm_it = std::find_if(
-        bu.swarms.begin(), bu.swarms.end(), [&our_address](const SwarmInfo& swarm_info) {
-            const auto& snodes = swarm_info.snodes;
-            return std::find(snodes.begin(), snodes.end(), our_address) !=
-                   snodes.end();
-        });
+    const auto our_swarm_it =
+        std::find_if(bu.swarms.begin(), bu.swarms.end(),
+                     [&our_address](const SwarmInfo& swarm_info) {
+                         const auto& snodes = swarm_info.snodes;
+                         return std::find(snodes.begin(), snodes.end(),
+                                          our_address) != snodes.end();
+                     });
 
     if (our_swarm_it != bu.swarms.end()) {
         return SnodeStatus::ACTIVE;
     }
 
-    if (std::find(bu.decommissioned_nodes.begin(), bu.decommissioned_nodes.end(), our_address) != bu.decommissioned_nodes.end()) {
+    if (std::find(bu.decommissioned_nodes.begin(),
+                  bu.decommissioned_nodes.end(),
+                  our_address) != bu.decommissioned_nodes.end()) {
         return SnodeStatus::DECOMMISSIONED;
     }
 
     return SnodeStatus::UNSTAKED;
-
 }
-
-
 
 void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
@@ -821,18 +839,18 @@ void ServiceNode::cleanup_timer_tick() {
 void ServiceNode::update_last_ping(ReachType type) {
 
     switch (type) {
-        case ReachType::HTTP: {
-            reach_records_.latest_incoming_http_ = std::chrono::steady_clock::now();
-            break;
-        }
-        case ReachType::ZMQ: {
-            reach_records_.latest_incoming_lmq_ = std::chrono::steady_clock::now();
-            break;
-        }
-        default:
-            LOKI_LOG(error, "Connection type not supported");
-            assert(false);
-            break;
+    case ReachType::HTTP: {
+        reach_records_.latest_incoming_http_ = std::chrono::steady_clock::now();
+        break;
+    }
+    case ReachType::ZMQ: {
+        reach_records_.latest_incoming_lmq_ = std::chrono::steady_clock::now();
+        break;
+    }
+    default:
+        LOKI_LOG(error, "Connection type not supported");
+        assert(false);
+        break;
     }
 }
 
@@ -847,7 +865,8 @@ void ServiceNode::ping_peers_tick() {
 
     // TODO: Don't do anything until we are fully funded
 
-    if (this->status_ == SnodeStatus::UNSTAKED || this->status_ == SnodeStatus::UNKNOWN) {
+    if (this->status_ == SnodeStatus::UNSTAKED ||
+        this->status_ == SnodeStatus::UNKNOWN) {
         LOKI_LOG(debug, "Skipping this round of peer testing (unstaked)");
         return;
     }
@@ -932,17 +951,17 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
-    lmq_server_->request(
-        sn.pubkey_x25519_bin(), "sn.onion_req",
-        [this, sn](bool success, const auto&) {
-            LOKI_LOG(debug, "Got success={} testing response from {}", success,
-                     sn.pubkey_x25519_hex());
-            this->process_reach_test_result(sn.pub_key_base32z(),
-                                            ReachType::ZMQ, success);
-        },
-        "ping",
-        // Only use an existing (or new) outgoing connection:
-        lokimq::send_option::outgoing{});
+    lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req",
+                         [this, sn](bool success, const auto&) {
+                             LOKI_LOG(debug,
+                                      "Got success={} testing response from {}",
+                                      success, sn.pubkey_x25519_hex());
+                             this->process_reach_test_result(
+                                 sn.pub_key_base32z(), ReachType::ZMQ, success);
+                         },
+                         "ping",
+                         // Only use an existing (or new) outgoing connection:
+                         lokimq::send_option::outgoing{});
 }
 
 void ServiceNode::lokid_ping_timer_tick() {

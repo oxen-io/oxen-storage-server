@@ -19,6 +19,8 @@
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
+#include "notifier.h"
+#include <lokimq/string_view.h>
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
@@ -29,6 +31,10 @@ class Database;
 
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
+
+namespace lokimq {
+    struct ConnectionID;
+}
 
 namespace loki {
 
@@ -108,7 +114,9 @@ class ServiceNode {
     boost::asio::io_context& worker_ioc_;
     boost::thread worker_thread_;
 
-    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
+    // We set the default difficulty to some low value, so that we don't reject
+    // clients unnecessarily before we get the DNS record
+    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 1};
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
     bool force_start_ = false;
@@ -156,6 +164,8 @@ class ServiceNode {
     /// Container for recently received messages directly from
     /// clients;
     std::vector<message_t> relay_buffer_;
+
+    Notifier notifier_;
 
     mutable all_stats_t all_stats_;
 
@@ -264,6 +274,11 @@ class ServiceNode {
     // might move it out later
     void record_proxy_request();
     void record_onion_request();
+
+    // Add `pubkey` to the list of pubkeys to notify
+    void add_notify_pubkey(const lokimq::ConnectionID& cid, lokimq::string_view pubkey);
+
+    size_t get_notify_subscriber_count() const;
 
     // This is new, so it does not need to support http, thus new (if temp)
     // method
