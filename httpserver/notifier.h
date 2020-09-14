@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include "loki_common.h"
 #include <lokimq/lokimq.h>
+#include <string_view>
 
 namespace loki {
 
@@ -20,7 +21,7 @@ class Notifier {
   public:
     Notifier(LokimqServer& lmq);
 
-    void add_pubkey(const lokimq::ConnectionID& cid, lokimq::string_view pubkey);
+    void add_pubkey(const lokimq::ConnectionID& cid, std::string_view pubkey);
 
     size_t subscriber_count() const;
 

@@ -276,7 +276,7 @@ class ServiceNode {
     void record_onion_request();
 
     // Add `pubkey` to the list of pubkeys to notify
-    void add_notify_pubkey(const lokimq::ConnectionID& cid, lokimq::string_view pubkey);
+    void add_notify_pubkey(const lokimq::ConnectionID& cid, std::string_view pubkey);
 
     size_t get_notify_subscriber_count() const;
 

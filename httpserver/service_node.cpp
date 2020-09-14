@@ -22,12 +22,13 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <string_view>
 
 #include <boost/bind.hpp>
 
 using json = nlohmann::json;
 using loki::storage::Item;
-using lokimq::string_view;
+using std::string_view;
 using namespace std::chrono_literals;
 
 namespace loki {
