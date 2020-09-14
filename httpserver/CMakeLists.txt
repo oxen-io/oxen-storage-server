@@ -47,12 +47,17 @@ target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver_lib PUBLIC storage)
 target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
-target_link_libraries(httpserver_lib PUBLIC resolv)
 target_link_libraries(httpserver_lib PUBLIC crypto)
 target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
 
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 17)
 set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
+
+# libresolv is needed on linux, but not on BSDs, so only link it if we can find it
+find_library(RESOLV resolv)
+if(RESOLV)
+    target_link_libraries(httpserver_lib PUBLIC ${RESOLV})
+endif()
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
@@ -62,7 +67,7 @@ set(BIN_NAME loki-storage)
 add_executable(httpserver main.cpp)
 set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 17)
-set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
+set_property(TARGET httpserver PROPERTY CXX_STANDARD_REQUIRED TRUE)
 target_link_libraries(httpserver PRIVATE httpserver_lib)
 install(TARGETS httpserver DESTINATION bin)
 # Build Info
