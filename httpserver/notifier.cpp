@@ -5,9 +5,10 @@
 
 #include "Item.hpp"
 
+#include <string_view>
+
 #include "../external/json.hpp"
 
-using lokimq::string_view;
 using nlohmann::json;
 
 namespace loki {
@@ -15,7 +16,7 @@ namespace loki {
 Notifier::Notifier(LokimqServer& lmq) : lmq_(lmq) {}
 
 void Notifier::add_pubkey(const lokimq::ConnectionID& cid,
-                             string_view pubkey) {
+                             std::string_view pubkey) {
 
     cid_ = cid;
 
@@ -32,7 +33,7 @@ void Notifier::maybe_notify(const Message& msg) {
     LOKI_LOG(trace, "[notify] Maybe notify for pubkey: {}", msg.pub_key);
 
     if (!cid_) {
-        LOKI_LOG(warn, "[notify] Notification connection is missing");
+        LOKI_LOG(debug, "[notify] Notification connection is missing");
         return;
     }
 
