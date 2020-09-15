@@ -141,7 +141,7 @@ void LokimqServer::handle_notify_add_pubkey(lokimq::Message& message) {
     }
 
     for (const auto &pubkey : message.data) {
-        service_node_->add_notify_pubkey(message.conn, pubkey);
+        service_node_->add_notify_pubkey(message.conn, std::string(pubkey));
     }
 
     lokimq_->send(message.conn, "OK");
