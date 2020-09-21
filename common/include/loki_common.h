@@ -22,16 +22,16 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
+    // Required by LokiMQ
+    uint16_t lmq_port_;
     // TODO: create separate types for different encodings of pubkeys,
     // so if we confuse them, it will be a compiler error
     std::string sn_address_; // Snode address (pubkey plus .snode, was used for lokinet)
     std::string pub_key_base_32z_; // We don't need this! (esp. since it is legacy key)
-    std::string pubkey_x25519_hex_;
-    std::string pubkey_ed25519_hex_;
     std::string pub_key_hex_; // Monero legacy key
-    // Required by LokiMQ
-    uint16_t lmq_port_;
+    std::string pubkey_x25519_hex_;
     std::string pubkey_x25519_bin_;
+    std::string pubkey_ed25519_hex_;
     std::string ip_; // Snode ip
 
 
@@ -185,6 +185,7 @@ inline bool operator<(const sn_record_t& lhs, const sn_record_t& rhs) {
     return lhs.pub_key_hex() < rhs.pub_key_hex();
 }
 
+[[maybe_unused]]
 static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
     return os << sn.port();
@@ -198,6 +199,7 @@ static bool operator==(const sn_record_t& lhs, const sn_record_t& rhs) {
     return lhs.pub_key_hex() == rhs.pub_key_hex();
 }
 
+[[maybe_unused]]
 static bool operator!=(const sn_record_t& lhs, const sn_record_t& rhs) {
     return !operator==(lhs, rhs);
 }

@@ -79,6 +79,7 @@ static size_t decode_size(size_t sz) {
     return b * d.quot;
 }
 
+[[maybe_unused]]
 static size_t base32_decode_size(size_t sz) { return decode_size<5, 8>(sz); }
 
 template <typename Stack, typename V>

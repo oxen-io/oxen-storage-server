@@ -17,6 +17,7 @@
 
 #include "request_handler.h"
 
+#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -541,9 +542,67 @@ static void print_headers(const request_t& req) {
     }
 }
 
-void connection_t::process_onion_req() {
+void connection_t::process_onion_req_v2() {
 
-    LOKI_LOG(debug, "Processing an onion request");
+    LOKI_LOG(debug, "Processing an onion request from client (v2)");
+
+    const request_t& req = this->request_.get();
+
+    // Need to make sure we are not blocking waiting for the response
+    delay_response_ = true;
+
+    auto on_response = [wself = std::weak_ptr<connection_t>{
+                            shared_from_this()}](loki::Response res) {
+        LOKI_LOG(debug, "Got an onion response as guard node");
+
+        auto self = wself.lock();
+        if (!self) {
+            LOKI_LOG(debug,
+                     "Connection is no longer valid, dropping onion response");
+            return;
+        }
+
+        self->body_stream_ << res.message();
+
+        if (res.status() == Status::OK) {
+            self->response_.result(http::status::ok);
+
+            // OK here simply means that the response we got is
+            // coming from the target node as opposed to any other
+            // node on the path. The encrypted body will contain
+            // its own response status.
+        } else {
+            self->response_.result(static_cast<int>(res.status()));
+        }
+
+        self->write_response();
+    };
+
+    try {
+
+        auto res = parse_combined_payload(req.body());
+
+        const json json_req = json::parse(res.json, nullptr, true);
+        // hex
+        const auto& ephem_key =
+            json_req.at("ephemeral_key").get_ref<const std::string&>();
+
+        service_node_.record_onion_request();
+        request_handler_.process_onion_req(res.ciphertext, ephem_key, on_response, true);
+
+    } catch (const std::exception& e) {
+        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
+                               e.what());
+        LOKI_LOG(error, "{}", msg);
+        response_.result(http::status::bad_request);
+        this->body_stream_ << std::move(msg);
+        this->write_response();
+    }
+}
+
+void connection_t::process_onion_req_v1() {
+
+    LOKI_LOG(debug, "Processing an onion request from client (v1)");
 
     const request_t& req = this->request_.get();
 
@@ -982,7 +1041,9 @@ void connection_t::process_request() {
         } else if (target == "/proxy") {
             this->process_proxy_req();
         } else if (target == "/onion_req") {
-            this->process_onion_req();
+            this->process_onion_req_v1();
+        } else if (target == "/onion_req/v2") {
+            this->process_onion_req_v2();
         } else if (target == "/file_proxy") {
             this->process_file_proxy_req();
         }
@@ -1437,6 +1498,43 @@ HttpClientSession::~HttpClientSession() {
     get_net_stats().http_connections_out--;
 
     this->clean_up();
+}
+
+/// We are expecting a payload of the following shape:
+/// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
+auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson {
+
+    LOKI_LOG(trace, "Parsing payload of length: {}", payload.size());
+
+    auto it = payload.begin();
+
+    /// First 4 bytes as number
+    if (payload.size() < 4) {
+        LOKI_LOG(warn, "Unexpected payload size");
+        throw std::exception();
+    }
+
+    const auto b1 = reinterpret_cast<const uint32_t&>(*it);
+    const auto n = boost::endian::little_to_native(b1);
+
+    LOKI_LOG(trace, "Ciphertext length: {}", n);
+
+    if (payload.size() < 4 + n) {
+        LOKI_LOG(warn, "Unexpected payload size");
+        throw std::exception();
+    }
+
+    it += sizeof(uint32_t);
+
+    const auto ciphertext = std::string(it, it + n);
+
+    LOKI_LOG(debug, "ciphertext length: {}", ciphertext.size());
+
+    const auto json_blob = std::string(it + n, payload.end());
+
+    LOKI_LOG(debug, "json blob: (len: {})", json_blob.size());
+
+    return CiphertextPlusJson{ciphertext, json_blob};
 }
 
 } // namespace loki

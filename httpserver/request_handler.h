@@ -1,8 +1,8 @@
 #pragma once
 
+#include "loki_common.h"
 #include <string>
 #include <string_view>
-#include "loki_common.h"
 
 #include <boost/asio.hpp>
 
@@ -15,8 +15,8 @@ class ChannelEncryption;
 
 namespace loki {
 
-    class ServiceNode;
-    class LokidClient;
+class ServiceNode;
+class LokidClient;
 
 enum class Status {
     OK = 200,
@@ -39,20 +39,20 @@ enum class ContentType {
 namespace ss_client {
 
 enum class ReqMethod {
-    DATA, // Database entries
+    DATA,       // Database entries
     PROXY_EXIT, // A session client request coming through a proxy
     ONION_REQUEST,
 };
 
 class Request {
 
-public:
+  public:
     std::string body;
     // Might change this to a vector later
     std::map<std::string, std::string> headers;
 };
 
-};
+}; // namespace ss_client
 
 class Response {
 
@@ -89,7 +89,8 @@ class RequestHandler {
 
     // ===== Session Client Requests =====
 
-    // Similar to `handle_wrong_swarm`; but used when the swarm is requested explicitly
+    // Similar to `handle_wrong_swarm`; but used when the swarm is requested
+    // explicitly
     Response process_snodes_by_pk(const nlohmann::json& params) const;
 
     // Save the message and relay the swarm
@@ -107,32 +108,33 @@ class RequestHandler {
 
     // ===================================
 
+  public:
+    RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
+                   const LokidClient& lokid_client,
+                   const ChannelEncryption<std::string>& ce);
 
-public:
-  RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                 const LokidClient& lokid_client,
-                 const ChannelEncryption<std::string>& ce);
+    // Process all Session client requests
+    void process_client_req(const std::string& req_json,
+                            std::function<void(loki::Response)> cb);
 
-  // Process all Session client requests
-  void process_client_req(const std::string& req_json,
-                          std::function<void(loki::Response)> cb);
+    // Test only: retrieve all db entires
+    Response process_retrieve_all();
 
-  // Test only: retrieve all db entires
-  Response process_retrieve_all();
+    // Handle a Session client reqeust sent via SN proxy
+    void process_proxy_exit(const std::string& client_key,
+                            const std::string& payload,
+                            std::function<void(loki::Response)> cb);
 
-  // Handle a Session client reqeust sent via SN proxy
-  void process_proxy_exit(const std::string& client_key,
-                          const std::string& payload,
-                          std::function<void(loki::Response)> cb);
+    void process_onion_to_url(const std::string& host,
+                              const std::string& target,
+                              const std::string& payload,
+                              std::function<void(loki::Response)> cb);
 
-  Response process_onion_to_url(const std::string& host,
-                                const std::string& target,
-                                const std::string& payload,
-                                std::function<void(loki::Response)> cb);
-
-  // The result will arrive asynchronously, so it needs a callback handler
-  void process_onion_req(const std::string& ciphertext,
-                         const std::string& ephem_key,
-                         std::function<void(loki::Response)> cb);
-    };
-}
+    // The result will arrive asynchronously, so it needs a callback handler
+    void process_onion_req(const std::string& ciphertext,
+                           const std::string& ephem_key,
+                           std::function<void(loki::Response)> cb,
+                           // Whether to use the new v2 protocol
+                           bool v2 = false);
+};
+} // namespace loki

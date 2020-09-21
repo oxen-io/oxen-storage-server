@@ -5,8 +5,8 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <unordered_map>
 #include <optional>
+#include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
@@ -15,12 +15,11 @@
 
 #include "loki_common.h"
 #include "lokid_key.h"
+#include "notifier.h"
 #include "pow.hpp"
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
-#include "notifier.h"
-#include <lokimq/string_view.h>
 
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
@@ -33,7 +32,7 @@ namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
 
 namespace lokimq {
-    struct ConnectionID;
+struct ConnectionID;
 }
 
 namespace loki {
@@ -88,10 +87,9 @@ class FailedRequestHandler
     void retry(std::shared_ptr<FailedRequestHandler>&& self);
 
   public:
-    FailedRequestHandler(
-        boost::asio::io_context& ioc, const sn_record_t& sn,
-        std::shared_ptr<request_t> req,
-        std::function<void()> give_up_cb = nullptr);
+    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
+                         std::shared_ptr<request_t> req,
+                         std::function<void()> give_up_cb = nullptr);
 
     ~FailedRequestHandler();
     /// Initiates the timer for retrying (which cannot be done directly in
@@ -182,7 +180,8 @@ class ServiceNode {
 
     void bootstrap_data();
 
-    void bootstrap_peers(const std::vector<sn_record_t>& peers) const; // mutex not needed
+    void bootstrap_peers(
+        const std::vector<sn_record_t>& peers) const; // mutex not needed
 
     void bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const;
 
@@ -194,12 +193,14 @@ class ServiceNode {
                           const signature& sig) const; // mutex not needed
 
     /// Reliably push message/batch to a service node
-    void relay_data_reliable(const std::string& blob,
-                             const sn_record_t& address) const; // mutex not needed
+    void
+    relay_data_reliable(const std::string& blob,
+                        const sn_record_t& address) const; // mutex not needed
 
     template <typename Message>
-    void relay_messages(const std::vector<Message>& messages,
-                        const std::vector<sn_record_t>& snodes) const; // mutex not needed
+    void relay_messages(
+        const std::vector<Message>& messages,
+        const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
@@ -211,9 +212,10 @@ class ServiceNode {
     void relay_buffered_messages();
 
     /// Check the latest version from DNS text record
-    void check_version_timer_tick();  // mutex not needed
+    void check_version_timer_tick(); // mutex not needed
     /// Update PoW difficulty from DNS text record
-    void pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
+    void
+    pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
 
     /// Ping the storage server periodically as required for uptime proofs
     void lokid_ping_timer_tick();
@@ -238,7 +240,8 @@ class ServiceNode {
                                        uint64_t test_height,
                                        sn_response_t&& res);
 
-    void process_reach_test_result(const sn_pub_key_t& pk, ReachType type, bool success);
+    void process_reach_test_result(const sn_pub_key_t& pk, ReachType type,
+                                   bool success);
 
     /// From a peer
     void process_blockchain_test_response(sn_response_t&& res,
@@ -276,15 +279,21 @@ class ServiceNode {
     void record_onion_request();
 
     // Add `pubkey` to the list of pubkeys to notify
-    void add_notify_pubkey(const lokimq::ConnectionID& cid, std::string_view pubkey);
+    void add_notify_pubkey(const lokimq::ConnectionID& cid,
+                           std::string_view pubkey);
 
     size_t get_notify_subscriber_count() const;
 
     // This is new, so it does not need to support http, thus new (if temp)
     // method
-    void send_onion_to_sn(const sn_record_t& sn, const std::string& payload,
-                          const std::string& eph_key,
-                          ss_client::Callback cb) const;
+    void send_onion_to_sn_v1(const sn_record_t& sn, const std::string& payload,
+                             const std::string& eph_key,
+                             ss_client::Callback cb) const;
+
+    /// Same as v1, but using the new protocol (ciphertext as binary)
+    void send_onion_to_sn_v2(const sn_record_t& sn, const std::string& payload,
+                             const std::string& eph_key,
+                             ss_client::Callback cb) const;
 
     // TODO: move this eventually out of SN
     // Send by either http or lmq

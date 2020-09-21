@@ -47,10 +47,10 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                        std::move(cb));
 }
 
-FailedRequestHandler::FailedRequestHandler(
-    boost::asio::io_context& ioc, const sn_record_t& sn,
-    std::shared_ptr<request_t> req,
-    std::function<void()> give_up_cb)
+FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
+                                           const sn_record_t& sn,
+                                           std::shared_ptr<request_t> req,
+                                           std::function<void()> give_up_cb)
     : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)),
       give_up_callback_(std::move(give_up_cb)) {}
 
@@ -69,7 +69,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
              RETRY_INTERVALS[attempt_count_ - 1].count());
 
     retry_timer_.async_wait(
-        [self = std::move(self)](const boost::system::error_code& ec) mutable {
+        [self = std::move(self)](const boost::system::error_code&) mutable {
             /// Save some references before possibly moved out of `self`
             const auto& sn = self->sn_;
             auto& ioc = self->ioc_;
@@ -432,14 +432,24 @@ ServiceNode::~ServiceNode() {
     worker_thread_.join();
 };
 
-void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
-                                   const std::string& payload,
-                                   const std::string& eph_key,
-                                   ss_client::Callback cb) const {
+void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
+                                      const std::string& payload,
+                                      const std::string& eph_key,
+                                      ss_client::Callback cb) const {
 
     lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
                          lokimq::send_option::request_timeout{10s}, eph_key,
                          payload);
+}
+
+void ServiceNode::send_onion_to_sn_v2(const sn_record_t& sn,
+                                      const std::string& payload,
+                                      const std::string& eph_key,
+                                      ss_client::Callback cb) const {
+
+    lmq_server_->request(
+        sn.pubkey_x25519_bin(), "sn.onion_req_v2", std::move(cb),
+        lokimq::send_option::request_timeout{10s}, eph_key, payload);
 }
 
 // Calls callback on success only?

@@ -279,7 +279,11 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void process_swarm_req(std::string_view target);
 
-    void process_onion_req();
+    /// Process onion request from the client (json)
+    void process_onion_req_v1();
+
+    /// Process onion request from the client (binary)
+    void process_onion_req_v2();
 
     void process_proxy_req();
 
@@ -327,6 +331,14 @@ constexpr const char* error_string(SNodeError err) {
         return "[UNKNOWN]";
     }
 }
+
+struct CiphertextPlusJson {
+    std::string ciphertext;
+    std::string json;
+};
+
+// TODO: move this from http_connection.h after refactoring
+auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
 
 } // namespace loki
 
