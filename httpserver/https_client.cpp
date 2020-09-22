@@ -3,8 +3,8 @@
 #include "net_stats.h"
 #include "signature.h"
 
-#include <openssl/x509.h>
 #include <boost/algorithm/string/erase.hpp>
+#include <openssl/x509.h>
 
 namespace loki {
 
@@ -25,7 +25,7 @@ void make_https_request(boost::asio::io_context& ioc,
 
     if (sn_address == "0.0.0.0") {
         LOKI_LOG(debug, "Could not initiate request to snode (we don't know "
-                       "their IP yet).");
+                        "their IP yet).");
 
         cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
@@ -64,11 +64,13 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         query.erase(0, sizeof(prefix) - 1);
     }
 
-    auto resolve_handler = [&ioc, req, query, cb = std::move(cb)] (
+    auto resolve_handler = [&ioc, req, query, cb = std::move(cb)](
                                const boost::system::error_code& ec,
-                               boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
+                               boost::asio::ip::tcp::resolver::results_type
+                                   resolve_results) mutable {
         if (ec) {
-            LOKI_LOG(error, "DNS resolution error for {}: {}", query, ec.message());
+            LOKI_LOG(error, "DNS resolution error for {}: {}", query,
+                     ec.message());
             cb({SNodeError::ERROR_OTHER});
             return;
         }
@@ -76,16 +78,18 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), req, std::move(cb), std::nullopt);
+            ioc, ctx, std::move(resolve_results), req, std::move(cb),
+            std::nullopt);
 
         session->start();
     };
 
     constexpr char https_port[] = "443";
 
-    resolver.async_resolve(query, https_port,
-                           boost::asio::ip::tcp::resolver::query::numeric_service,
-                           resolve_handler);
+    resolver.async_resolve(
+        query, https_port,
+        boost::asio::ip::tcp::resolver::query::numeric_service,
+        resolve_handler);
 }
 
 static std::string x509_to_string(X509* x509) {

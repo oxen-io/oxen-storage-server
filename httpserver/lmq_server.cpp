@@ -3,12 +3,12 @@
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
-#include "service_node.h"
 #include "request_handler.h"
+#include "service_node.h"
 #include "utils.hpp"
 
-#include <lokimq/lokimq.h>
 #include <lokimq/hex.h>
+#include <lokimq/lokimq.h>
 
 #include <optional>
 
@@ -68,8 +68,8 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
     const auto& client_key = message.data[0];
     const auto& payload = message.data[1];
 
-    auto &reply_tag = message.reply_tag;
-    auto &origin_pk = message.conn.pubkey();
+    auto& reply_tag = message.reply_tag;
+    auto& origin_pk = message.conn.pubkey();
 
     // TODO: accept string_view?
     request_handler_->process_proxy_exit(
@@ -87,7 +87,8 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
                 this->lokimq_->send(origin_pk, "REPLY", reply_tag,
                                     fmt::format("{}", res.status()),
                                     res.message());
-                LOKI_LOG(debug, "Error: status is not OK for proxy_exit: {}", res.status());
+                LOKI_LOG(debug, "Error: status is not OK for proxy_exit: {}",
+                         res.status());
             }
         });
 }
@@ -96,21 +97,24 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
 
     LOKI_LOG(debug, "Got an onion request over LOKIMQ");
 
-    auto &reply_tag = message.reply_tag;
-    auto &origin_pk = message.conn.pubkey();
+    auto& reply_tag = message.reply_tag;
+    auto& origin_pk = message.conn.pubkey();
 
-    auto on_response = [this, origin_pk, reply_tag](loki::Response res) mutable {
+    auto on_response = [this, origin_pk,
+                        reply_tag](loki::Response res) mutable {
         LOKI_LOG(trace, "on response: {}", to_string(res));
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
-        lokimq_->send(origin_pk, "REPLY", reply_tag, std::move(status), res.message());
+        lokimq_->send(origin_pk, "REPLY", reply_tag, std::move(status),
+                      res.message());
     };
 
     if (message.data.size() == 1 && message.data[0] == "ping") {
-        // Before 2.0.3 we reply with a bad request, below, but reply here to avoid putting the
-        // error message in the log on 2.0.3+ nodes. (the reply code here doesn't actually matter;
-        // the ping test only requires that we provide *some* response).
+        // Before 2.0.3 we reply with a bad request, below, but reply here to
+        // avoid putting the error message in the log on 2.0.3+ nodes. (the
+        // reply code here doesn't actually matter; the ping test only requires
+        // that we provide *some* response).
         LOKI_LOG(debug, "Remote pinged me");
         service_node_->update_last_ping(ReachType::ZMQ);
         on_response(loki::Response{Status::OK, "pong"});
@@ -118,8 +122,10 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
     }
 
     if (message.data.size() != 2) {
-        LOKI_LOG(error, "Expected 2 message parts, got {}", message.data.size());
-        on_response(loki::Response{Status::BAD_REQUEST, "Incorrect number of messages"});
+        LOKI_LOG(error, "Expected 2 message parts, got {}",
+                 message.data.size());
+        on_response(loki::Response{Status::BAD_REQUEST,
+                                   "Incorrect number of messages"});
         return;
     }
 
@@ -137,29 +143,30 @@ bool LokimqServer::check_pn_server_pubkey(const std::string& pk) const {
 void LokimqServer::handle_notify_add_pubkey(lokimq::Message& message) {
 
     if (!check_pn_server_pubkey(message.conn.pubkey())) {
-        LOKI_LOG(debug, "Attempt to use notify endpoint by unauthorised pubkey");
+        LOKI_LOG(debug,
+                 "Attempt to use notify endpoint by unauthorised pubkey");
         return;
     }
 
-    for (const auto &pubkey : message.data) {
+    for (const auto& pubkey : message.data) {
         service_node_->add_notify_pubkey(message.conn, std::string(pubkey));
     }
 
     lokimq_->send(message.conn, "OK");
-
 }
 
-void LokimqServer::handle_notify_get_subscriber_count(lokimq::Message& message) {
+void LokimqServer::handle_notify_get_subscriber_count(
+    lokimq::Message& message) {
 
     if (!check_pn_server_pubkey(message.conn.pubkey())) {
-        LOKI_LOG(debug, "Attempt to use notify endpoint by unauthorised pubkey");
+        LOKI_LOG(debug,
+                 "Attempt to use notify endpoint by unauthorised pubkey");
         return;
     }
 
     const auto count = service_node_->get_notify_subscriber_count();
 
     lokimq_->send(message.conn, "COUNT", std::to_string(count));
-
 }
 
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
@@ -170,42 +177,39 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     service_node_ = sn;
     request_handler_ = rh;
 
-    pn_server_key_ = lokimq::from_hex("BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
+    pn_server_key_ = lokimq::from_hex(
+        "BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
 
     auto pubkey = key_to_string(keypair.public_key);
     auto seckey = key_to_string(keypair.private_key);
 
     auto logger = [](lokimq::LogLevel level, const char* file, int line,
                      std::string message) {
-#define LMQ_LOG_MAP(LMQ_LVL, SS_LVL) \
-        case lokimq::LogLevel::LMQ_LVL: \
-            LOKI_LOG(SS_LVL, "[{}:{}]: {}", file, line, message); \
-            break;
-
-        switch(level) {
+#define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
+    case lokimq::LogLevel::LMQ_LVL:                                            \
+        LOKI_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
+        break;
+        switch (level) {
             LMQ_LOG_MAP(fatal, critical);
             LMQ_LOG_MAP(error, error);
             LMQ_LOG_MAP(warn, warn);
             LMQ_LOG_MAP(info, info);
             LMQ_LOG_MAP(trace, trace);
-            default:
-                LOKI_LOG(debug, "[{}:{}]: {}", file, line, message);
+        default:
+            LOKI_LOG(debug, "[{}:{}]: {}", file, line, message);
         };
 #undef LMQ_LOG_MAP
     };
 
     auto lookup_fn = [this](auto pk) { return this->peer_lookup(pk); };
 
-    lokimq_.reset(new LokiMQ{pubkey,
-                             seckey,
-                             true /* is service node */,
-                             lookup_fn,
-                             logger});
+    lokimq_.reset(new LokiMQ{pubkey, seckey, true /* is service node */,
+                             lookup_fn, logger});
 
     LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
 
     lokimq_->log_level(lokimq::LogLevel::info);
-// clang-format off
+    // clang-format off
     lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
@@ -216,18 +220,18 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
         .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
-// clang-format on
+    // clang-format on
     lokimq_->set_general_threads(1);
 
     lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_));
 
-    lokimq_->MAX_MSG_SIZE = 10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+    lokimq_->MAX_MSG_SIZE =
+        10 * 1024 * 1024; // 10 MB (needed by the fileserver)
 
     lokimq_->start();
 }
 
-LokimqServer::LokimqServer(uint16_t port) : port_(port){
-};
+LokimqServer::LokimqServer(uint16_t port) : port_(port){};
 LokimqServer::~LokimqServer() = default;
 
 } // namespace loki

@@ -17,6 +17,7 @@ uint64_t get_time_ms() {
         .count();
 }
 
+// clang-format off
 constexpr uint8_t hex_to_nibble(const char& ch) {
     return
         (ch >= '0' && ch <= '9') ? ch - '0' :
@@ -24,16 +25,17 @@ constexpr uint8_t hex_to_nibble(const char& ch) {
         (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 :
         0;
 }
+// clang-format on
 
 constexpr uint8_t hexpair_to_byte(const char& hi, const char& lo) {
     return hex_to_nibble(hi) << 4 | hex_to_nibble(lo);
 }
 
-std::string hex_to_bytes(const std::string &hex) {
+std::string hex_to_bytes(const std::string& hex) {
     std::string result;
     result.reserve(hex.size() / 2);
     for (size_t i = 0, end = hex.size() & ~1; i < end; i += 2)
-        result.push_back(hexpair_to_byte(hex[i], hex[i+1]));
+        result.push_back(hexpair_to_byte(hex[i], hex[i + 1]));
     return result;
 }
 

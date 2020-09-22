@@ -18,7 +18,7 @@ struct command_line_options {
     std::string log_level = "info";
     std::string data_dir;
     std::string lokid_key; // test only (but needed for backwards compatibility)
-    std::string lokid_x25519_key; // test only
+    std::string lokid_x25519_key;  // test only
     std::string lokid_ed25519_key; // test only
 };
 

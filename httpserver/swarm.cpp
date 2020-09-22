@@ -4,9 +4,9 @@
 
 #include "service_node.h"
 
+#include <ostream>
 #include <stdlib.h>
 #include <unordered_map>
-#include <ostream>
 
 #include "utils.hpp"
 
@@ -30,7 +30,7 @@ void debug_print(std::ostream& os, const block_update_t& bu) {
     os << "     hardfork: " << bu.hardfork << '\n';
     os << "     swarms: [\n";
 
-    for (const SwarmInfo &swarm : bu.swarms) {
+    for (const SwarmInfo& swarm : bu.swarms) {
         os << "         {\n";
         os << "             id: " << swarm.swarm_id << '\n';
         os << "         }\n";
@@ -210,9 +210,11 @@ void Swarm::update_state(const all_swarms_t& swarms,
         swarm_peers_.clear();
         swarm_peers_.reserve(members.size() - 1);
 
-        std::copy_if(
-            members.begin(), members.end(), std::back_inserter(swarm_peers_),
-            [this](const sn_record_t& record) { return record != our_address_; });
+        std::copy_if(members.begin(), members.end(),
+                     std::back_inserter(swarm_peers_),
+                     [this](const sn_record_t& record) {
+                         return record != our_address_;
+                     });
     }
 
     // Store a copy of every node in a separate data structure
@@ -243,7 +245,7 @@ std::optional<sn_record_t> Swarm::choose_funded_node() const {
 
 std::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
 
-    for (const auto &sn : all_funded_nodes_) {
+    for (const auto& sn : all_funded_nodes_) {
         if (sn.port() == port) {
             return sn;
         }
@@ -276,8 +278,7 @@ Swarm::find_node_by_x25519_bin(const std::string& pk) const {
     return std::nullopt;
 }
 
-std::optional<sn_record_t>
-Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
+std::optional<sn_record_t> Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
 
     for (const auto& sn : all_funded_nodes_) {
         if (sn.pub_key_base32z() == pk) {

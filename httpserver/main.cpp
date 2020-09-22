@@ -43,11 +43,14 @@ static std::optional<fs::path> get_home_dir() {
 }
 
 #ifdef ENABLE_SYSTEMD
-static void systemd_watchdog_tick(boost::asio::steady_timer &timer, const loki::ServiceNode& sn) {
+static void systemd_watchdog_tick(boost::asio::steady_timer& timer,
+                                  const loki::ServiceNode& sn) {
     using namespace std::literals;
     sd_notify(0, ("WATCHDOG=1\nSTATUS=" + sn.get_status_line()).c_str());
     timer.expires_after(10s);
-    timer.async_wait([&](const boost::system::error_code&) { systemd_watchdog_tick(timer, sn); });
+    timer.async_wait([&](const boost::system::error_code&) {
+        systemd_watchdog_tick(timer, sn);
+    });
 }
 #endif
 
@@ -83,8 +86,7 @@ int main(int argc, char* argv[]) {
                 options.data_dir =
                     (*home_dir / ".loki" / "testnet" / "storage").string();
             } else {
-                options.data_dir =
-                    (*home_dir / ".loki" / "storage").string();
+                options.data_dir = (*home_dir / ".loki" / "storage").string();
             }
         }
     }
@@ -207,7 +209,6 @@ int main(int argc, char* argv[]) {
 
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
-
 
         // We pass port early because we want to send it in the first ping to
         // Lokid (in ServiceNode's constructor), but don't want to initialize

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "http_connection.h"
-#include <optional>
 #include <functional>
+#include <optional>
 
 namespace loki {
 using http_callback_t = std::function<void(sn_response_t)>;
@@ -41,7 +41,8 @@ class HttpsClientSession
     std::shared_ptr<request_t> req_;
     response_t res_;
 
-    // Snode's pub key (none if signature verification is not used / not a snode)
+    // Snode's pub key (none if signature verification is not used / not a
+    // snode)
     std::optional<std::string> server_pub_key_b32z_;
 
     bool used_callback_ = false;
