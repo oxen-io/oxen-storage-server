@@ -32,15 +32,9 @@ class reach_record_t {
 };
 } // namespace detail
 
-enum class ReachType {
-  HTTP,
-  ZMQ
-};
+enum class ReachType { HTTP, ZMQ };
 
-enum class ReportType {
-  GOOD,
-  BAD
-};
+enum class ReportType { GOOD, BAD };
 
 class reachability_records_t {
 
@@ -53,7 +47,6 @@ class reachability_records_t {
     std::unordered_map<sn_pub_key_t, detail::reach_record_t> offline_nodes_;
 
   public:
-
     // The time we were last tested and reached by some other node over lmq
     time_point_t latest_incoming_lmq_;
     // The time we were last tested and reached by some other node over http

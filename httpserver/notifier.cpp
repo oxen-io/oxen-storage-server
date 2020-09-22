@@ -16,16 +16,14 @@ namespace loki {
 Notifier::Notifier(LokimqServer& lmq) : lmq_(lmq) {}
 
 void Notifier::add_pubkey(const lokimq::ConnectionID& cid,
-                             std::string_view pubkey) {
+                          std::string_view pubkey) {
 
     cid_ = cid;
 
     this->pubkeys_.insert(pubkey.data());
 }
 
-size_t Notifier::subscriber_count() const {
-    return this->pubkeys_.size();
-}
+size_t Notifier::subscriber_count() const { return this->pubkeys_.size(); }
 
 template <typename Message>
 void Notifier::maybe_notify(const Message& msg) {

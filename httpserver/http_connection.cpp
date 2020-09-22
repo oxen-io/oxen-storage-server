@@ -588,7 +588,8 @@ void connection_t::process_onion_req_v2() {
             json_req.at("ephemeral_key").get_ref<const std::string&>();
 
         service_node_.record_onion_request();
-        request_handler_.process_onion_req(res.ciphertext, ephem_key, on_response, true);
+        request_handler_.process_onion_req(res.ciphertext, ephem_key,
+                                           on_response, true);
 
     } catch (const std::exception& e) {
         auto msg = fmt::format("Error parsing outer JSON in onion request: {}",

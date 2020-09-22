@@ -79,7 +79,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     }
 
     if (!vm.count("lmq-port")) {
-        throw std::runtime_error("lmq-port command line option is not specified");
+        throw std::runtime_error(
+            "lmq-port command line option is not specified");
     }
 
     if (!vm.count("ip") || !vm.count("port")) {

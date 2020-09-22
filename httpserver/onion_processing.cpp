@@ -48,7 +48,6 @@ enum class ProcessCiphertextError {
 using ParsedInfo = std::variant<RelayToNodeInfo, RelayToServerInfo,
                                 FinalDesitnationInfo, ProcessCiphertextError>;
 
-
 static auto
 process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
                       const std::string& ciphertext,

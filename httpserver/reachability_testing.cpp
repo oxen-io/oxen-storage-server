@@ -19,7 +19,8 @@ reach_record_t::reach_record_t() {
 /// How long to wait until reporting unreachable nodes to Lokid
 constexpr std::chrono::minutes UNREACH_GRACE_PERIOD = 120min;
 
-bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType type) {
+bool reachability_records_t::should_report_as(const sn_pub_key_t& sn,
+                                              ReportType type) {
 
     LOKI_LOG(trace, "should_report_as");
 
@@ -51,7 +52,8 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
 
         const auto elapsed = record.last_failure - record.first_failure;
         const auto elapsed_min = duration_cast<minutes>(elapsed).count();
-        LOKI_LOG(debug, "[reach] First time failed {} minutes ago", elapsed_min);
+        LOKI_LOG(debug, "[reach] First time failed {} minutes ago",
+                 elapsed_min);
 
         if (it->second.reported) {
             LOKI_LOG(debug, "[reach]  Already reported node: {}", sn);
@@ -65,9 +67,7 @@ bool reachability_records_t::should_report_as(const sn_pub_key_t& sn, ReportType
             // No need to report yet
             return false;
         }
-
     }
-
 }
 
 void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
@@ -79,7 +79,8 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
     const auto now = std::chrono::steady_clock::now();
 
     const auto last_http = std::max(reset_time, latest_incoming_http_);
-    const auto http_elapsed = duration_cast<std::chrono::seconds>(now - last_http);
+    const auto http_elapsed =
+        duration_cast<std::chrono::seconds>(now - last_http);
 
     // We don't want to print this once every 10 seconds:
     static time_point_t last_warning_tp{};
@@ -140,14 +141,15 @@ void reachability_records_t::check_incoming_tests(time_point_t reset_time) {
         }
 
         this->lmq_ok = false;
-        
+
     } else if (!this->lmq_ok) {
         this->lmq_ok = true;
         LOKI_LOG(info, "Lmq port is back to OK");
     }
 }
 
-void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType type, bool val) {
+void reachability_records_t::record_reachable(const sn_pub_key_t& sn,
+                                              ReachType type, bool val) {
 
     LOKI_LOG(trace, "record_reachable");
 
@@ -166,10 +168,15 @@ void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType 
             detail::reach_record_t record;
 
             if (type == ReachType::HTTP) {
-                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via HTTP: {}", sn);
+                LOKI_LOG(
+                    debug,
+                    "[reach] Adding a new node to UNREACHABLE via HTTP: {}",
+                    sn);
                 record.http_ok = false;
             } else if (type == ReachType::ZMQ) {
-                LOKI_LOG(debug, "[reach] Adding a new node to UNREACHABLE via ZMQ: {}", sn);
+                LOKI_LOG(debug,
+                         "[reach] Adding a new node to UNREACHABLE via ZMQ: {}",
+                         sn);
                 record.zmq_ok = false;
             }
 
@@ -180,13 +187,16 @@ void reachability_records_t::record_reachable(const sn_pub_key_t& sn, ReachType 
         auto& record = it->second;
 
         const bool reachable_before = record.http_ok && record.zmq_ok;
-        // Sometimes we might still have this entry even if the node has become reachable again
+        // Sometimes we might still have this entry even if the node has become
+        // reachable again
 
         if (type == ReachType::HTTP) {
-            LOKI_LOG(debug, "[reach] node {} is {} via HTTP", sn, val ? "OK" : "UNREACHABLE");
+            LOKI_LOG(debug, "[reach] node {} is {} via HTTP", sn,
+                     val ? "OK" : "UNREACHABLE");
             record.http_ok = val;
         } else if (type == ReachType::ZMQ) {
-            LOKI_LOG(debug, "[reach] node {} is {} via ZMQ", sn, val ? "OK" : "UNREACHABLE");
+            LOKI_LOG(debug, "[reach] node {} is {} via ZMQ", sn,
+                     val ? "OK" : "UNREACHABLE");
             record.zmq_ok = val;
         }
 

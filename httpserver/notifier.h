@@ -1,9 +1,9 @@
 #pragma once
 
-#include <unordered_set>
 #include "loki_common.h"
 #include <lokimq/lokimq.h>
 #include <string_view>
+#include <unordered_set>
 
 namespace loki {
 
@@ -25,9 +25,8 @@ class Notifier {
 
     size_t subscriber_count() const;
 
-    template<typename Message>
+    template <typename Message>
     void maybe_notify(const Message& msg);
 };
-
 
 } // namespace loki

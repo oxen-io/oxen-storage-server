@@ -1,9 +1,9 @@
 #pragma once
 
 #include <iostream>
+#include <lokimq/auth.h>
 #include <string>
 #include <vector>
-#include <lokimq/auth.h>
 
 #include "loki_common.h"
 
@@ -33,7 +33,6 @@ struct block_update_t {
     int hardfork;
     bool unchanged = false;
 };
-
 
 void debug_print(std::ostream& os, const block_update_t& bu);
 

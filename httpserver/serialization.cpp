@@ -95,7 +95,7 @@ struct string_view {
 };
 
 static std::optional<std::string> deserialize_string(string_view& slice,
-                                                       size_t len) {
+                                                     size_t len) {
 
     if (slice.size() < len) {
         return std::nullopt;
