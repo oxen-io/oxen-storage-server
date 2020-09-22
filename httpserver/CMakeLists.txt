@@ -22,6 +22,7 @@ add_library(httpserver_lib STATIC
     reachability_testing.cpp
     lmq_server.cpp
     request_handler.cpp
+    onion_processing.cpp
     notifier.cpp
     )
 
@@ -41,6 +42,9 @@ find_package(Boost
     filesystem
     program_options
 )
+
+# TODO: enable more warnings!
+target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
 
 target_link_libraries(httpserver_lib PUBLIC common)
 target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
@@ -65,6 +69,7 @@ target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 set(BIN_NAME loki-storage)
 
 add_executable(httpserver main.cpp)
+target_compile_options(httpserver PRIVATE -Wall -Wextra -Werror)
 set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
 set_property(TARGET httpserver PROPERTY CXX_STANDARD 17)
 set_property(TARGET httpserver PROPERTY CXX_STANDARD_REQUIRED TRUE)

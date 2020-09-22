@@ -17,6 +17,7 @@
 
 #include "request_handler.h"
 
+#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -60,17 +61,15 @@ std::shared_ptr<request_t> build_post_request(const char* target,
     return req;
 }
 
-void make_http_request(boost::asio::io_context& ioc,
-                       const std::string& address, uint16_t port,
-                       const std::shared_ptr<request_t>& req,
+void make_http_request(boost::asio::io_context& ioc, const std::string& address,
+                       uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb) {
 
     error_code ec;
     tcp::endpoint endpoint;
     tcp::resolver resolver(ioc);
 
-    tcp::resolver::iterator destination =
-        resolver.resolve(address, "http", ec);
+    tcp::resolver::iterator destination = resolver.resolve(address, "http", ec);
 
     if (ec) {
         LOKI_LOG(error,
@@ -99,7 +98,7 @@ LokidClient::LokidClient(boost::asio::io_context& ioc, std::string ip,
                          uint16_t port)
     : ioc_(ioc), lokid_rpc_ip_(std::move(ip)), lokid_rpc_port_(port) {}
 
-void LokidClient::make_lokid_request(boost::string_view method,
+void LokidClient::make_lokid_request(std::string_view method,
                                      const nlohmann::json& params,
                                      http_callback_t&& cb) const {
 
@@ -109,7 +108,7 @@ void LokidClient::make_lokid_request(boost::string_view method,
 
 void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
                                             const uint16_t daemon_port,
-                                            boost::string_view method,
+                                            std::string_view method,
                                             const nlohmann::json& params,
                                             http_callback_t&& cb) const {
 
@@ -128,7 +127,7 @@ void LokidClient::make_custom_lokid_request(const std::string& daemon_ip,
     req->target(target);
     req->prepare_payload();
 
-    LOKI_LOG(trace, "Making lokid request, method: {}", method.to_string());
+    LOKI_LOG(trace, "Making lokid request, method: {}", std::string(method));
 
     make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
 }
@@ -543,9 +542,67 @@ static void print_headers(const request_t& req) {
     }
 }
 
-void connection_t::process_onion_req() {
+void connection_t::process_onion_req_v2() {
 
-    LOKI_LOG(debug, "Processing an onion request");
+    LOKI_LOG(debug, "Processing an onion request from client (v2)");
+
+    const request_t& req = this->request_.get();
+
+    // Need to make sure we are not blocking waiting for the response
+    delay_response_ = true;
+
+    auto on_response = [wself = std::weak_ptr<connection_t>{
+                            shared_from_this()}](loki::Response res) {
+        LOKI_LOG(debug, "Got an onion response as guard node");
+
+        auto self = wself.lock();
+        if (!self) {
+            LOKI_LOG(debug,
+                     "Connection is no longer valid, dropping onion response");
+            return;
+        }
+
+        self->body_stream_ << res.message();
+
+        if (res.status() == Status::OK) {
+            self->response_.result(http::status::ok);
+
+            // OK here simply means that the response we got is
+            // coming from the target node as opposed to any other
+            // node on the path. The encrypted body will contain
+            // its own response status.
+        } else {
+            self->response_.result(static_cast<int>(res.status()));
+        }
+
+        self->write_response();
+    };
+
+    try {
+
+        auto res = parse_combined_payload(req.body());
+
+        const json json_req = json::parse(res.json, nullptr, true);
+        // hex
+        const auto& ephem_key =
+            json_req.at("ephemeral_key").get_ref<const std::string&>();
+
+        service_node_.record_onion_request();
+        request_handler_.process_onion_req(res.ciphertext, ephem_key, on_response, true);
+
+    } catch (const std::exception& e) {
+        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
+                               e.what());
+        LOKI_LOG(error, "{}", msg);
+        response_.result(http::status::bad_request);
+        this->body_stream_ << std::move(msg);
+        this->write_response();
+    }
+}
+
+void connection_t::process_onion_req_v1() {
+
+    LOKI_LOG(debug, "Processing an onion request from client (v1)");
 
     const request_t& req = this->request_.get();
 
@@ -554,12 +611,14 @@ void connection_t::process_onion_req() {
     // Need to make sure we are not blocking waiting for the response
     delay_response_ = true;
 
-    auto on_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}](loki::Response res) {
+    auto on_response = [wself = std::weak_ptr<connection_t>{
+                            shared_from_this()}](loki::Response res) {
         LOKI_LOG(debug, "Got an onion response as guard node");
 
         auto self = wself.lock();
         if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping onion response");
+            LOKI_LOG(debug,
+                     "Connection is no longer valid, dropping onion response");
             return;
         }
 
@@ -633,44 +692,50 @@ void connection_t::process_proxy_req() {
     auto sn = service_node_.find_node_by_ed25519_pk(target_snode_key);
 
     // TODO: make an https response out of what we got back
-    auto on_proxy_response = [wself = std::weak_ptr<connection_t>{shared_from_this()}, req_idx](
-            bool success, std::vector<std::string> data) {
-        LOKI_LOG(debug, "on proxy response: {}",
-                 success ? "success" : "failure");
+    auto on_proxy_response =
+        [wself = std::weak_ptr<connection_t>{shared_from_this()},
+         req_idx](bool success, std::vector<std::string> data) {
+            LOKI_LOG(debug, "on proxy response: {}",
+                     success ? "success" : "failure");
 
-        auto self = wself.lock();
-        if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
-            return;
-        }
-
-        if (!success) {
-            LOKI_LOG(debug, "Proxy response FAILED (timeout), idx: {}", req_idx);
-            self->response_.result(http::status::gateway_timeout);
-        } else if (data.size() == 2) {
-            LOKI_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
-
-            try {
-                int status = std::stoi(data[0]);
-                self->response_.result(status);
-                self->body_stream_ << data[1];
-            } catch (const std::exception&) {
-                self->response_.result(http::status::internal_server_error);
+            auto self = wself.lock();
+            if (!self) {
+                LOKI_LOG(
+                    debug,
+                    "Connection is no longer valid, dropping proxy response");
+                return;
             }
 
-        } else if (data.size() != 1) {
-            LOKI_LOG(debug, "Proxy response FAILED (wrong data size), idx: {}", req_idx);
-            self->response_.result(http::status::internal_server_error);
-        } else {
-            LOKI_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
-            self->body_stream_ << data[0];
-            self->response_.result(http::status::ok);
-        }
+            if (!success) {
+                LOKI_LOG(debug, "Proxy response FAILED (timeout), idx: {}",
+                         req_idx);
+                self->response_.result(http::status::gateway_timeout);
+            } else if (data.size() == 2) {
+                LOKI_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
 
-        // This will return an empty, but failed response to the client
-        // if the raw_response is empty (we should provide better errors)
-        self->write_response();
-    };
+                try {
+                    int status = std::stoi(data[0]);
+                    self->response_.result(status);
+                    self->body_stream_ << data[1];
+                } catch (const std::exception&) {
+                    self->response_.result(http::status::internal_server_error);
+                }
+
+            } else if (data.size() != 1) {
+                LOKI_LOG(debug,
+                         "Proxy response FAILED (wrong data size), idx: {}",
+                         req_idx);
+                self->response_.result(http::status::internal_server_error);
+            } else {
+                LOKI_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
+                self->body_stream_ << data[0];
+                self->response_.result(http::status::ok);
+            }
+
+            // This will return an empty, but failed response to the client
+            // if the raw_response is empty (we should provide better errors)
+            self->write_response();
+        };
 
     if (!sn) {
         LOKI_LOG(debug, "Could not find target snode for proxy: {}",
@@ -760,12 +825,14 @@ void connection_t::process_file_proxy_req() {
         req->insert(el.key(), el.value());
     }
 
-    auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](sn_response_t res) {
+    auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
+                  sn_response_t res) {
         LOKI_LOG(trace, "Successful file proxy request!");
 
         auto self = wself.lock();
         if (!self) {
-            LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+            LOKI_LOG(debug,
+                     "Connection is no longer valid, dropping proxy response");
             return;
         }
 
@@ -782,7 +849,7 @@ void connection_t::process_file_proxy_req() {
     make_https_request(ioc_, "https://file.lokinet.org", req, cb);
 }
 
-void connection_t::process_swarm_req(boost::string_view target) {
+void connection_t::process_swarm_req(std::string_view target) {
 
     const request_t& req = this->request_.get();
 
@@ -922,7 +989,9 @@ void connection_t::process_request() {
 
     response_.result(http::status::internal_server_error);
 
-    const auto target = req.target();
+    const boost::string_view target0 = req.target();
+    const std::string_view target =
+        std::string_view(target0.data(), target0.size());
 
     LOKI_LOG(debug, "target: {}", target);
 
@@ -972,7 +1041,9 @@ void connection_t::process_request() {
         } else if (target == "/proxy") {
             this->process_proxy_req();
         } else if (target == "/onion_req") {
-            this->process_onion_req();
+            this->process_onion_req_v1();
+        } else if (target == "/onion_req/v2") {
+            this->process_onion_req_v2();
         } else if (target == "/file_proxy") {
             this->process_file_proxy_req();
         }
@@ -998,9 +1069,9 @@ void connection_t::process_request() {
         }
 #endif
         else {
-            LOKI_LOG(debug, "unknown target for POST: {}", target.to_string());
-            this->body_stream_ << fmt::format("unknown target for POST: {}",
-                                              target.to_string());
+            LOKI_LOG(debug, "unknown target for POST: {}", target);
+            this->body_stream_
+                << fmt::format("unknown target for POST: {}", target);
             response_.result(http::status::not_found);
         }
         break;
@@ -1012,9 +1083,9 @@ void connection_t::process_request() {
         } else if (target == "/get_logs/v1") {
             this->on_get_logs();
         } else {
-            this->body_stream_ << fmt::format("unknown target for GET: {}",
-                                              target.to_string());
-            LOKI_LOG(debug, "unknown target for GET: {}", target.to_string());
+            this->body_stream_
+                << fmt::format("unknown target for GET: {}", target);
+            LOKI_LOG(debug, "unknown target for GET: {}", target);
             response_.result(http::status::not_found);
         }
         break;
@@ -1107,7 +1178,8 @@ void connection_t::process_client_req_rate_limited() {
             req.at(LOKI_LONG_POLL_HEADER).to_string();
     }
 
-    const bool lp_requested = header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
+    const bool lp_requested =
+        header_.find(LOKI_LONG_POLL_HEADER) != header_.end();
 
     // Annoyingly, we might still have old clients that expect long-polling
     // to work, spamming us with "retrieve" requests. The workaround for now
@@ -1123,32 +1195,36 @@ void connection_t::process_client_req_rate_limited() {
         auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
 
         delay_timer->expires_after(std::chrono::seconds(2));
-        delay_timer->async_wait([self = shared_from_this(), delay_timer, plaintext = std::move(plain_text)](const error_code& ec) {
+        delay_timer->async_wait([self = shared_from_this(), delay_timer,
+                                 plaintext = std::move(plain_text)](
+                                    const error_code& ec) {
+            self->request_handler_.process_client_req(
+                plaintext, [wself = std::weak_ptr<connection_t>{self}](
+                               loki::Response res) {
+                    auto self = wself.lock();
+                    if (!self) {
+                        LOKI_LOG(
+                            debug,
+                            "Connection is no longer valid, dropping response");
+                        return;
+                    }
 
-            self->request_handler_.process_client_req(plaintext, [wself = std::weak_ptr<connection_t>{self}](loki::Response res) {
-
-                auto self = wself.lock();
-                if (!self) {
-                    LOKI_LOG(debug, "Connection is no longer valid, dropping response");
-                    return;
-                }
-
-                LOKI_LOG(debug, "Respond to a long-polling client");
-                self->set_response(res);
-                self->write_response();
-            });
+                    LOKI_LOG(debug, "Respond to a long-polling client");
+                    self->set_response(res);
+                    self->write_response();
+                });
         });
-
 
     } else {
         request_handler_.process_client_req(
-            plain_text,
-            [wself = std::weak_ptr<connection_t>{shared_from_this()}](loki::Response res) {
-
-                // // A connection could have been destroyed by the deadline timer
+            plain_text, [wself = std::weak_ptr<connection_t>{
+                             shared_from_this()}](loki::Response res) {
+                // // A connection could have been destroyed by the deadline
+                // timer
                 auto self = wself.lock();
                 if (!self) {
-                    LOKI_LOG(debug, "Connection is no longer valid, dropping proxy response");
+                    LOKI_LOG(debug, "Connection is no longer valid, dropping "
+                                    "proxy response");
                     return;
                 }
 
@@ -1157,7 +1233,6 @@ void connection_t::process_client_req_rate_limited() {
                 self->write_response();
             });
     }
-
 }
 
 void connection_t::register_deadline() {
@@ -1180,7 +1255,8 @@ void connection_t::register_deadline() {
                      ec.message());
         }
 
-        LOKI_LOG(debug, "[{}] Closing [connection_t] socket due to timeout", self->conn_idx);
+        LOKI_LOG(debug, "[{}] Closing [connection_t] socket due to timeout",
+                 self->conn_idx);
         self->clean_up();
     });
 }
@@ -1422,6 +1498,43 @@ HttpClientSession::~HttpClientSession() {
     get_net_stats().http_connections_out--;
 
     this->clean_up();
+}
+
+/// We are expecting a payload of the following shape:
+/// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
+auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson {
+
+    LOKI_LOG(trace, "Parsing payload of length: {}", payload.size());
+
+    auto it = payload.begin();
+
+    /// First 4 bytes as number
+    if (payload.size() < 4) {
+        LOKI_LOG(warn, "Unexpected payload size");
+        throw std::exception();
+    }
+
+    const auto b1 = reinterpret_cast<const uint32_t&>(*it);
+    const auto n = boost::endian::little_to_native(b1);
+
+    LOKI_LOG(trace, "Ciphertext length: {}", n);
+
+    if (payload.size() < 4 + n) {
+        LOKI_LOG(warn, "Unexpected payload size");
+        throw std::exception();
+    }
+
+    it += sizeof(uint32_t);
+
+    const auto ciphertext = std::string(it, it + n);
+
+    LOKI_LOG(debug, "ciphertext length: {}", ciphertext.size());
+
+    const auto json_blob = std::string(it + n, payload.end());
+
+    LOKI_LOG(debug, "json blob: (len: {})", json_blob.size());
+
+    return CiphertextPlusJson{ciphertext, json_blob};
 }
 
 } // namespace loki

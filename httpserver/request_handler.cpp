@@ -1,9 +1,9 @@
-#include "loki_logger.h"
 #include "request_handler.h"
-#include "service_node.h"
-#include "http_connection.h"
-#include "utils.hpp"
 #include "channel_encryption.hpp"
+#include "http_connection.h"
+#include "loki_logger.h"
+#include "service_node.h"
+#include "utils.hpp"
 
 #include "https_client.h"
 
@@ -18,11 +18,13 @@ std::string to_string(const Response& res) {
     std::stringstream ss;
 
     ss << "Status: " << static_cast<int>(res.status()) << ", ";
-    ss << "ContentType: " << ((res.content_type() == ContentType::plaintext) ? "plaintext" : "json") << ", ";
+    ss << "ContentType: "
+       << ((res.content_type() == ContentType::plaintext) ? "plaintext"
+                                                          : "json")
+       << ", ";
     ss << "Body: <" << res.message() << ">";
 
     return ss.str();
-
 }
 
 RequestHandler::RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
@@ -67,7 +69,8 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
 
     LOKI_LOG(trace, "Got client request to a wrong swarm");
 
-    return Response{Status::MISDIRECTED_REQUEST, res_body.dump(), ContentType::json};
+    return Response{Status::MISDIRECTED_REQUEST, res_body.dump(),
+                    ContentType::json};
 }
 
 Response RequestHandler::process_store(const json& params) {
@@ -79,13 +82,16 @@ Response RequestHandler::process_store(const json& params) {
         if (!params.contains(field)) {
 
             LOKI_LOG(debug, "Bad client request: no `{}` field", field);
-            return Response{Status::BAD_REQUEST, fmt::format("invalid json: no `{}` field\n", field)};
+            return Response{
+                Status::BAD_REQUEST,
+                fmt::format("invalid json: no `{}` field\n", field)};
         }
     }
 
     const auto& ttl = params.at("ttl").get_ref<const std::string&>();
     const auto& nonce = params.at("nonce").get_ref<const std::string&>();
-    const auto& timestamp = params.at("timestamp").get_ref<const std::string&>();
+    const auto& timestamp =
+        params.at("timestamp").get_ref<const std::string&>();
     const auto& data = params.at("data").get_ref<const std::string&>();
 
     LOKI_LOG(trace, "Storing message: {}", data);
@@ -96,7 +102,7 @@ Response RequestHandler::process_store(const json& params) {
 
     if (!created) {
         auto msg = fmt::format("Pubkey must be {} characters long\n",
-                                  get_user_pubkey_size());
+                               get_user_pubkey_size());
         LOKI_LOG(debug, "{}", msg);
         return Response{Status::BAD_REQUEST, std::move(msg)};
     }
@@ -104,7 +110,8 @@ Response RequestHandler::process_store(const json& params) {
     if (data.size() > MAX_MESSAGE_BODY) {
         LOKI_LOG(debug, "Message body too long: {}", data.size());
 
-        auto msg = fmt::format("Message body exceeds maximum allowed length of {}\n",
+        auto msg =
+            fmt::format("Message body exceeds maximum allowed length of {}\n",
                         MAX_MESSAGE_BODY);
         return Response{Status::BAD_REQUEST, std::move(msg)};
     }
@@ -122,7 +129,8 @@ Response RequestHandler::process_store(const json& params) {
     uint64_t timestampInt;
     if (!util::parseTimestamp(timestamp, ttlInt, timestampInt)) {
         LOKI_LOG(debug, "Forbidden. Invalid Timestamp: {}", timestamp);
-        return Response{Status::NOT_ACCEPTABLE, "Timestamp error: check your clock\n"};
+        return Response{Status::NOT_ACCEPTABLE,
+                        "Timestamp error: check your clock\n"};
     }
 
     // Do not store message if the PoW provided is invalid
@@ -138,7 +146,8 @@ Response RequestHandler::process_store(const json& params) {
         json res_body;
         res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
 
-        return Response{Status::INVALID_POW, res_body.dump(), ContentType::json};
+        return Response{Status::INVALID_POW, res_body.dump(),
+                        ContentType::json};
     }
 #endif
 
@@ -158,7 +167,8 @@ Response RequestHandler::process_store(const json& params) {
     if (!success) {
 
         LOKI_LOG(warn, "Service node is initializing");
-        return Response{Status::SERVICE_UNAVAILABLE, "Service node is initializing\n"};
+        return Response{Status::SERVICE_UNAVAILABLE,
+                        "Service node is initializing\n"};
     }
 
     LOKI_LOG(trace, "Successfully stored message for {}",
@@ -177,7 +187,8 @@ Response RequestHandler::process_retrieve_all() {
     bool res = service_node_.get_all_messages(all_entries);
 
     if (!res) {
-        return Response{Status::INTERNAL_SERVER_ERROR, "could not retrieve all entries\n"};
+        return Response{Status::INTERNAL_SERVER_ERROR,
+                        "could not retrieve all entries\n"};
     }
 
     json messages = json::array();
@@ -199,7 +210,8 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
 
     if (!params.contains("pubKey")) {
         LOKI_LOG(debug, "Bad client request: no `pubKey` field");
-        return Response{Status::BAD_REQUEST, "invalid json: no `pubKey` field\n"};
+        return Response{Status::BAD_REQUEST,
+                        "invalid json: no `pubKey` field\n"};
     }
 
     bool success;
@@ -252,7 +264,8 @@ Response RequestHandler::process_retrieve(const json& params) {
         return this->handle_wrong_swarm(pk);
     }
 
-    const std::string& last_hash = params.at("lastHash").get_ref<const std::string&>();
+    const std::string& last_hash =
+        params.at("lastHash").get_ref<const std::string&>();
 
     // Note: We removed long-polling
 
@@ -290,7 +303,8 @@ Response RequestHandler::process_retrieve(const json& params) {
     return Response{Status::OK, res_body.dump(), ContentType::json};
 }
 
-void RequestHandler::process_client_req(const std::string& req_json, std::function<void(loki::Response)> cb) {
+void RequestHandler::process_client_req(
+    const std::string& req_json, std::function<void(loki::Response)> cb) {
 
     LOKI_LOG(trace, "process_client_req str <{}>", req_json);
 
@@ -325,8 +339,8 @@ void RequestHandler::process_client_req(const std::string& req_json, std::functi
     } else if (method_name == "retrieve") {
         LOKI_LOG(debug, "Process client request: retrieve");
         cb(this->process_retrieve(*params_it));
-        // TODO: maybe we should check if (some old) clients requests long-polling and
-        // then wait before responding to prevent spam
+        // TODO: maybe we should check if (some old) clients requests
+        // long-polling and then wait before responding to prevent spam
 
     } else if (method_name == "get_snodes_for_pubkey") {
         LOKI_LOG(debug, "Process client request: snodes for pubkey");
@@ -342,7 +356,8 @@ void RequestHandler::process_client_req(const std::string& req_json, std::functi
 
     } else {
         LOKI_LOG(debug, "Bad client request: unknown method '{}'", method_name);
-        cb(Response{Status::BAD_REQUEST, fmt::format("no method {}", method_name)});
+        cb(Response{Status::BAD_REQUEST,
+                    fmt::format("no method {}", method_name)});
     }
 }
 
@@ -360,9 +375,11 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
     std::string ciphertext;
 
     if (use_gcm) {
-        ciphertext = util::base64_encode(channel_cipher_.encrypt_gcm(res_body, client_key));
+        ciphertext = util::base64_encode(
+            channel_cipher_.encrypt_gcm(res_body, client_key));
     } else {
-        ciphertext = util::base64_encode(channel_cipher_.encrypt_cbc(res_body, client_key));
+        ciphertext = util::base64_encode(
+            channel_cipher_.encrypt_cbc(res_body, client_key));
     }
 
     // why does this have to be json???
@@ -397,39 +414,22 @@ void RequestHandler::process_lns_request(
 #ifdef INTEGRATION_TEST
     // use mainnet seed
     lokid_client_.make_custom_lokid_request("public.loki.foundation", 22023,
-                                                "lns_names_to_owners", params,
-                                                std::move(on_lokid_res));
+                                            "lns_names_to_owners", params,
+                                            std::move(on_lokid_res));
 #else
-    lokid_client_.make_lokid_request("lns_names_to_owners", params, std::move(on_lokid_res));
+    lokid_client_.make_lokid_request("lns_names_to_owners", params,
+                                     std::move(on_lokid_res));
 #endif
-
 }
 
-void
-RequestHandler::process_onion_exit(const std::string& eph_key,
-                                   const std::string& payload,
-                                   std::function<void(loki::Response)> cb) {
+void RequestHandler::process_onion_exit(
+    const std::string& eph_key, const std::string& body,
+    std::function<void(loki::Response)> cb) {
 
     LOKI_LOG(debug, "Processing onion exit!");
 
-    std::string body;
-
     if (!service_node_.snode_ready()) {
         cb({Status::SERVICE_UNAVAILABLE, "Snode not ready"});
-        return;
-    }
-
-    try {
-        const json req = json::parse(payload, nullptr, true);
-        body = req.at("body").get<std::string>();
-
-        // TODO: check if the client requested long-polling and see if we want
-        // to do anything about it.
-        LOKI_LOG(debug, "CLIENT HEADERS: \n\t{}", req.at("headers").dump(2));
-    } catch (std::exception& e) {
-        auto msg = fmt::format("JSON parsing error: {}", e.what());
-        LOKI_LOG(error, "{}", msg);
-        cb({Status::BAD_REQUEST, msg});
         return;
     }
 
@@ -467,7 +467,6 @@ void RequestHandler::process_proxy_exit(
         return;
     }
 
-
     std::string body;
 
     bool lp_used = false;
@@ -477,8 +476,10 @@ void RequestHandler::process_proxy_exit(
         body = req.at("body").get<std::string>();
 
         if (req.find("headers") != req.end()) {
-            if (req.at("headers").find(LOKI_LONG_POLL_HEADER) != req.at("headers").end()) {
-                lp_used = req.at("headers").at(LOKI_LONG_POLL_HEADER).get<bool>();
+            if (req.at("headers").find(LOKI_LONG_POLL_HEADER) !=
+                req.at("headers").end()) {
+                lp_used =
+                    req.at("headers").at(LOKI_LONG_POLL_HEADER).get<bool>();
             }
         }
 
@@ -494,16 +495,16 @@ void RequestHandler::process_proxy_exit(
         LOKI_LOG(debug, "Long polling requested over a proxy request");
     }
 
-    this->process_client_req(body, [this, cb = std::move(cb), client_key,
-                                    idx](loki::Response res) {
-        LOKI_LOG(debug, "[{}] proxy about to respond with: {}", idx,
-                 res.status());
+    this->process_client_req(
+        body, [this, cb = std::move(cb), client_key, idx](loki::Response res) {
+            LOKI_LOG(debug, "[{}] proxy about to respond with: {}", idx,
+                     res.status());
 
-        cb(wrap_proxy_response(res, client_key, false /* use cbc */));
-    });
+            cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+        });
 }
 
-Response RequestHandler::process_onion_to_url(
+void RequestHandler::process_onion_to_url(
     const std::string& host, const std::string& target,
     const std::string& payload, std::function<void(loki::Response)> cb) {
 
@@ -519,7 +520,6 @@ Response RequestHandler::process_onion_to_url(
 
     // `cb` needs to be adapted for http request
     auto http_cb = [cb = std::move(cb)](sn_response_t res) {
-
         if (res.error_code == SNodeError::NO_ERROR) {
             cb(loki::Response{Status::OK, *res.body});
         } else {
@@ -529,134 +529,6 @@ Response RequestHandler::process_onion_to_url(
     };
 
     make_https_request(ioc_, host, req, http_cb);
-
-    return Response{Status::OK, ""};
-}
-
-void RequestHandler::process_onion_req(const std::string& ciphertext,
-                                       const std::string& ephem_key,
-                                       std::function<void(loki::Response)> cb) {
-
-    if (!service_node_.snode_ready()) {
-        cb(loki::Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"});
-        return;
-    }
-
-    std::string plaintext;
-
-    static int counter = 0;
-
-    try {
-        const std::string ciphertext_bin = util::base64_decode(ciphertext);
-
-        plaintext = channel_cipher_.decrypt_gcm(ciphertext_bin, ephem_key);
-    } catch (const std::exception& e) {
-        LOKI_LOG(debug, "Error decrypting an onion request: {}", e.what());
-        // Should this error be propagated back to the client? (No, if we
-        // couldn't decrypt, we probably won't be able to encrypt either.)
-        cb(loki::Response{Status::BAD_REQUEST, "Invalid ciphertext"});
-        return;
-    }
-
-    LOKI_LOG(trace, "onion request decrypted: <{}>", plaintext);
-
-    try {
-
-        const json inner_json = json::parse(plaintext, nullptr, true);
-
-        if (inner_json.find("body") != inner_json.end()) {
-            LOKI_LOG(debug,
-                     "We are the final destination in the onion request!");
-
-            this->process_onion_exit(
-                ephem_key, plaintext,
-                [this, ephem_key, cb = std::move(cb)](loki::Response res) {
-                    auto wrapped_res = this->wrap_proxy_response(
-                        res, ephem_key, true /* use aes gcm */);
-                    cb(std::move(wrapped_res));
-                });
-
-            return;
-        } else if (inner_json.find("host") != inner_json.end()) {
-
-            const auto& host = inner_json.at("host").get_ref<const std::string&>();
-            const auto& target = inner_json.at("target").get_ref<const std::string&>();
-            LOKI_LOG(debug, "We are to forward the request to url: {}{}", host, target);
-
-            // Forward the request to url but only if it ends in `/lsrpc`
-            if ((target.rfind("/lsrpc") == target.size() - 6) && (target.find('?') == std::string::npos)) {
-                this->process_onion_to_url(host, target, plaintext, std::move(cb));
-            } else {
-
-                auto res = loki::Response{Status::BAD_REQUEST, "Invalid url"};
-                auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-                cb(std::move(wrapped_res));
-            }
-
-            return;
-        }
-
-        const auto& payload = inner_json.at("ciphertext").get_ref<const std::string&>();
-        const auto& dest = inner_json.at("destination").get_ref<const std::string&>();
-        const auto& ekey = inner_json.at("ephemeral_key").get_ref<const std::string&>();
-
-        auto sn = service_node_.find_node_by_ed25519_pk(dest);
-
-        if (!sn) {
-            auto msg = fmt::format("Next node not found: {}", dest);
-            LOKI_LOG(warn, "{}", msg);
-            auto res = loki::Response{Status::BAD_GATEWAY, std::move(msg)};
-            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-            cb(std::move(res));
-            return;
-        }
-
-        nlohmann::json req_body;
-
-        req_body["ciphertext"] = payload;
-        req_body["ephemeral_key"] = ekey;
-
-        auto on_response = [cb, counter_copy = counter](bool success, std::vector<std::string> data) {
-
-            // Processing the result we got from upstream
-
-            if (!success) {
-                LOKI_LOG(debug, "[Onion request] Request time out");
-                cb(loki::Response{Status::GATEWAY_TIMEOUT, "Request time out"});
-                return;
-            }
-
-            // We only expect a two-part message
-            if (data.size() != 2) {
-                LOKI_LOG(debug, "[Onion request] Incorrect number of messages: {}", data.size());
-                cb(loki::Response{Status::BAD_REQUEST, "Incorrect number of messages"});
-                return;
-            }
-
-            /// We use http status codes (for now)
-            if (data[0] == "200") {
-                cb(loki::Response{Status::OK, std::move(data[1])});
-            } else {
-                LOKI_LOG(debug, "Onion request relay failed with: {}", data[1]);
-                // When do we ever get this??
-                cb(loki::Response{Status::SERVICE_UNAVAILABLE, ""});
-            }
-
-        };
-
-        LOKI_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *sn, counter++);
-
-        service_node_.send_onion_to_sn(*sn, payload, ekey, on_response);
-
-    } catch (std::exception& e) {
-        LOKI_LOG(debug, "Error parsing inner JSON in onion request: {}", e.what());
-
-        auto res = loki::Response{Status::BAD_REQUEST, "Invalid json"};
-
-        auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-
-        cb(std::move(wrapped_res));
-    }
 }
 
 } // namespace loki

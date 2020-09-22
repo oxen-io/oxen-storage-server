@@ -92,7 +92,7 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
         });
 }
 
-void LokimqServer::handle_onion_request(lokimq::Message& message) {
+void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
 
     LOKI_LOG(debug, "Got an onion request over LOKIMQ");
 
@@ -126,7 +126,8 @@ void LokimqServer::handle_onion_request(lokimq::Message& message) {
     const auto& eph_key = message.data[0];
     const auto& ciphertext = message.data[1];
 
-    request_handler_->process_onion_req(std::string(ciphertext), std::string(eph_key), on_response);
+    request_handler_->process_onion_req(std::string(ciphertext),
+                                        std::string(eph_key), on_response, v2);
 }
 
 bool LokimqServer::check_pn_server_pubkey(const std::string& pk) const {
@@ -141,7 +142,7 @@ void LokimqServer::handle_notify_add_pubkey(lokimq::Message& message) {
     }
 
     for (const auto &pubkey : message.data) {
-        service_node_->add_notify_pubkey(message.conn, pubkey);
+        service_node_->add_notify_pubkey(message.conn, std::string(pubkey));
     }
 
     lokimq_->send(message.conn, "OK");
@@ -204,17 +205,18 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
 
     lokimq_->log_level(lokimq::LogLevel::info);
-
+// clang-format off
     lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
-        .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m); })
+        .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m, false); })
+        .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
 
     lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
         .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
-
+// clang-format on
     lokimq_->set_general_threads(1);
 
     lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_));

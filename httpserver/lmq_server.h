@@ -37,7 +37,8 @@ class LokimqServer {
     // Handle Session client requests arrived via proxy
     void handle_sn_proxy_exit(lokimq::Message& message);
 
-    void handle_onion_request(lokimq::Message& message);
+    // v2 indicates whether to use the new (v2) protocol
+    void handle_onion_request(lokimq::Message& message, bool v2);
 
     void handle_notify_add_pubkey(lokimq::Message& message);
 
@@ -61,7 +62,7 @@ class LokimqServer {
     uint16_t port() { return port_; }
 
     /// True if LokiMQ instance has been set
-    explicit operator bool() const { return (bool) lokimq_; }
+    explicit operator bool() const { return (bool)lokimq_; }
     /// Dereferencing via * or -> accesses the contained LokiMQ instance.
     LokiMQ& operator*() const { return *lokimq_; }
     LokiMQ* operator->() const { return lokimq_.get(); }
