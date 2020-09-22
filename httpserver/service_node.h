@@ -265,10 +265,13 @@ class ServiceNode {
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 LokimqServer& lmq_server,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, LokidClient& lokid_client,
-                const bool force_start);
+                const std::string& ed25519hex, const std::string& db_location,
+                LokidClient& lokid_client, const bool force_start);
 
     ~ServiceNode();
+
+    // Return info about this node as it is advertised to other nodes
+    const sn_record_t& own_address() { return our_address_; }
 
     // Record the time of our last being tested over lmq/http
     void update_last_ping(ReachType type);

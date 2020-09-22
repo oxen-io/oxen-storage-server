@@ -149,6 +149,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          LokimqServer& lmq_server,
                          const lokid_key_pair_t& lokid_key_pair,
+                         const std::string& ed25519hex,
                          const std::string& db_location,
                          LokidClient& lokid_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
@@ -172,7 +173,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
     // TODO: get rid of "unused" fields
     our_address_ = sn_record_t(port, lmq_server.port(), addr, pk_hex, "unused",
-                               "unused", "unused", "1.1.1.1");
+                               "unused", ed25519hex, "1.1.1.1");
 
     // TODO: fail hard if we can't encode our public key
     LOKI_LOG(info, "Read our snode address: {}", our_address_);

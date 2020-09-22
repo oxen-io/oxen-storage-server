@@ -204,8 +204,9 @@ int main(int argc, char* argv[]) {
         const auto public_key_ed25519 =
             loki::derive_pubkey_ed25519(private_key_ed25519);
 
-        LOKI_LOG(info, "SN ed25519 pubkey is: {}",
-                 util::as_hex(public_key_ed25519));
+        const std::string pubkey_ed25519_hex = util::as_hex(public_key_ed25519);
+
+        LOKI_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
 
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
@@ -216,9 +217,10 @@ int main(int argc, char* argv[]) {
         loki::LokimqServer lokimq_server(options.lmq_port);
 
         // TODO: SN doesn't need lokimq_server, just the lmq components
-        loki::ServiceNode service_node(
-            ioc, worker_ioc, options.port, lokimq_server, lokid_key_pair,
-            options.data_dir, lokid_client, options.force_start);
+        loki::ServiceNode service_node(ioc, worker_ioc, options.port,
+                                       lokimq_server, lokid_key_pair,
+                                       pubkey_ed25519_hex, options.data_dir,
+                                       lokid_client, options.force_start);
 
         loki::RequestHandler request_handler(ioc, service_node, lokid_client,
                                              channel_encryption);
