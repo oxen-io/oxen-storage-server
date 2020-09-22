@@ -563,17 +563,7 @@ void connection_t::process_onion_req_v2() {
         }
 
         self->body_stream_ << res.message();
-
-        if (res.status() == Status::OK) {
-            self->response_.result(http::status::ok);
-
-            // OK here simply means that the response we got is
-            // coming from the target node as opposed to any other
-            // node on the path. The encrypted body will contain
-            // its own response status.
-        } else {
-            self->response_.result(static_cast<int>(res.status()));
-        }
+        self->response_.result(static_cast<int>(res.status()));
 
         self->write_response();
     };
@@ -624,17 +614,7 @@ void connection_t::process_onion_req_v1() {
         }
 
         self->body_stream_ << res.message();
-
-        if (res.status() == Status::OK) {
-            self->response_.result(http::status::ok);
-
-            // OK here simply means that the response we got is
-            // coming from the target node as opposed to any other
-            // node on the path. The encrypted body will contain
-            // its own response status.
-        } else {
-            self->response_.result(static_cast<int>(res.status()));
-        }
+        self->response_.result(static_cast<int>(res.status()));
 
         self->write_response();
     };
