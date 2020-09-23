@@ -46,10 +46,15 @@ class LokimqServer {
 
     bool check_pn_server_pubkey(const std::string& pk) const;
 
+    void handle_get_stats(lokimq::Message& message);
+
     uint16_t port_ = 0;
 
     // binary stored in a string
     std::string pn_server_key_;
+
+    // Access key for `get_stats` as binary
+    std::string stats_access_key;
 
   public:
     LokimqServer(uint16_t port);
@@ -57,7 +62,8 @@ class LokimqServer {
 
     // Initialize lokimq
     void init(ServiceNode* sn, RequestHandler* rh,
-              const lokid_key_pair_t& keypair);
+              const lokid_key_pair_t& keypair,
+              const std::string& stats_access_key);
 
     uint16_t port() { return port_; }
 

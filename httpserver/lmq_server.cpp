@@ -169,16 +169,45 @@ void LokimqServer::handle_notify_get_subscriber_count(
     lokimq_->send(message.conn, "COUNT", std::to_string(count));
 }
 
+void LokimqServer::handle_get_stats(lokimq::Message& message) {
+
+    LOKI_LOG(debug, "Received get_stats request via LMQ");
+
+    bool access_granted = false;
+
+    if (this->stats_access_key.empty()) {
+        LOKI_LOG(debug, "Access denied: stats-access-key is not specified");
+    } else if (message.conn.pubkey() != this->stats_access_key) {
+        LOKI_LOG(debug, "Access denied: unauthorised key");
+    } else {
+        access_granted = true;
+    }
+
+    if (access_granted) {
+
+        auto payload = service_node_->get_stats();
+
+        lokimq_->send(message.conn, payload);
+
+    } else {
+        lokimq_->send(message.conn, "Access denied");
+    }
+}
+
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
-                        const lokid_key_pair_t& keypair) {
+                        const lokid_key_pair_t& keypair,
+                        const std::string& stats_access_key) {
 
     using lokimq::Allow;
 
     service_node_ = sn;
     request_handler_ = rh;
 
-    pn_server_key_ = lokimq::from_hex(
+    // Push notification server's key
+    this->pn_server_key_ = lokimq::from_hex(
         "BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
+
+    this->stats_access_key = lokimq::from_hex(stats_access_key);
 
     auto pubkey = key_to_string(keypair.public_key);
     auto seckey = key_to_string(keypair.private_key);
@@ -220,6 +249,11 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
         .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
+
+
+    lokimq_->add_category("stats", lokimq::Access{lokimq::AuthLevel::none, false, false})
+        .add_command("get_stats", [this](auto& m) { this->handle_get_stats(m); });
+
     // clang-format on
     lokimq_->set_general_threads(1);
 
