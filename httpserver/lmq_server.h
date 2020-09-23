@@ -46,6 +46,11 @@ class LokimqServer {
 
     bool check_pn_server_pubkey(const std::string& pk) const;
 
+    // Check that stats key is valid
+    bool check_stats_key(const std::string& pk) const;
+
+    void handle_get_logs(lokimq::Message& message);
+
     void handle_get_stats(lokimq::Message& message);
 
     uint16_t port_ = 0;

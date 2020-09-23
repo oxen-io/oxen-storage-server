@@ -1,5 +1,6 @@
 #include "lmq_server.h"
 
+#include "dev_sink.h"
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
@@ -169,29 +170,73 @@ void LokimqServer::handle_notify_get_subscriber_count(
     lokimq_->send(message.conn, "COUNT", std::to_string(count));
 }
 
+bool LokimqServer::check_stats_key(const std::string& pk) const {
+
+    bool valid = false;
+
+    if (this->stats_access_key.empty()) {
+        LOKI_LOG(debug, "Access denied: stats-access-key is not specified");
+    } else if (pk != this->stats_access_key) {
+        LOKI_LOG(debug, "Access denied: unauthorised key");
+    } else {
+        valid = true;
+    }
+
+    return valid;
+}
+
+void LokimqServer::handle_get_logs(lokimq::Message& message) {
+
+    LOKI_LOG(debug, "Received get_logs request via LMQ");
+
+    if (!this->check_stats_key(message.conn.pubkey())) {
+        lokimq_->send(message.conn, "Access denied");
+        return;
+    }
+
+    /// Limit this call to 1 request per second
+    static time_t last_req_time = 0;
+    const time_t now = time(nullptr);
+    constexpr time_t PERIOD = 1;
+
+    const char* err_msg = nullptr;
+
+    if (now - last_req_time < PERIOD) {
+        err_msg = "Too many request, try again later.";
+    }
+
+    last_req_time = now;
+
+    auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
+        spdlog::get("loki_logger")->sinks()[2].get());
+
+    if (dev_sink == nullptr) {
+        LOKI_LOG(critical, "Sink #3 should be dev sink");
+        assert(false);
+        err_msg = "Developer error: sink #3 is not a dev sink.";
+    }
+
+    if (err_msg) {
+        lokimq_->send(message.conn, err_msg);
+    } else {
+        nlohmann::json val;
+        val["entries"] = dev_sink->peek();
+        lokimq_->send(message.conn, val.dump(4));
+    }
+}
+
 void LokimqServer::handle_get_stats(lokimq::Message& message) {
 
     LOKI_LOG(debug, "Received get_stats request via LMQ");
 
-    bool access_granted = false;
-
-    if (this->stats_access_key.empty()) {
-        LOKI_LOG(debug, "Access denied: stats-access-key is not specified");
-    } else if (message.conn.pubkey() != this->stats_access_key) {
-        LOKI_LOG(debug, "Access denied: unauthorised key");
-    } else {
-        access_granted = true;
-    }
-
-    if (access_granted) {
-
-        auto payload = service_node_->get_stats();
-
-        lokimq_->send(message.conn, payload);
-
-    } else {
+    if (!this->check_stats_key(message.conn.pubkey())) {
         lokimq_->send(message.conn, "Access denied");
+        return;
     }
+
+    auto payload = service_node_->get_stats();
+
+    lokimq_->send(message.conn, payload);
 }
 
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
@@ -251,8 +296,9 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
 
 
-    lokimq_->add_category("stats", lokimq::Access{lokimq::AuthLevel::none, false, false})
-        .add_command("get_stats", [this](auto& m) { this->handle_get_stats(m); });
+    lokimq_->add_category("service", lokimq::Access{lokimq::AuthLevel::none, false, false})
+        .add_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
+        .add_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
 
     // clang-format on
     lokimq_->set_general_threads(1);

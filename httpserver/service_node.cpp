@@ -1746,6 +1746,9 @@ static nlohmann::json to_json(const all_stats_t& stats) {
     json["previous_period_retrieve_requests"] =
         stats.get_previous_period_retrieve_requests();
 
+    json["previous_period_onion_requests"] =
+        stats.get_previous_period_onion_requests();
+
     json["reset_time"] = std::chrono::duration_cast<std::chrono::seconds>(
                              stats.get_reset_time().time_since_epoch())
                              .count();
@@ -1763,6 +1766,16 @@ static nlohmann::json to_json(const all_stats_t& stats) {
 
     json["peers"] = peers;
     return json;
+}
+
+std::string ServiceNode::get_stats_for_session_client() const {
+
+    nlohmann::json res;
+    res["version"] = STORAGE_SERVER_VERSION_STRING;
+
+    constexpr bool PRETTY = true;
+    constexpr int indent = PRETTY ? 4 : 0;
+    return res.dump(indent);
 }
 
 std::string ServiceNode::get_stats() const {
@@ -1783,7 +1796,6 @@ std::string ServiceNode::get_stats() const {
     val["connections_in"] = get_net_stats().connections_in.load();
     val["http_connections_out"] = get_net_stats().http_connections_out.load();
     val["https_connections_out"] = get_net_stats().https_connections_out.load();
-    // val["open_socket_count"] = get_net_stats().open_fds.size();
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;
