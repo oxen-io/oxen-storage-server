@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lokimq {
 class LokiMQ;
@@ -46,10 +47,17 @@ class LokimqServer {
 
     bool check_pn_server_pubkey(const std::string& pk) const;
 
+    void handle_get_logs(lokimq::Message& message);
+
+    void handle_get_stats(lokimq::Message& message);
+
     uint16_t port_ = 0;
 
     // binary stored in a string
     std::string pn_server_key_;
+
+    // Access keys for the 'service' category as binary
+    std::vector<std::string> stats_access_keys;
 
   public:
     LokimqServer(uint16_t port);
@@ -57,7 +65,8 @@ class LokimqServer {
 
     // Initialize lokimq
     void init(ServiceNode* sn, RequestHandler* rh,
-              const lokid_key_pair_t& keypair);
+              const lokid_key_pair_t& keypair,
+              const std::vector<std::string>& stats_access_key);
 
     uint16_t port() { return port_; }
 

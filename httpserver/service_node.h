@@ -341,6 +341,9 @@ class ServiceNode {
     void
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
+    // Stats for session clients that want to know the version number
+    std::string get_stats_for_session_client() const;
+
     std::string get_stats() const;
 
     std::string get_status_line() const;

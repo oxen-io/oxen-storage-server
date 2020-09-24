@@ -1,5 +1,6 @@
 #include "lmq_server.h"
 
+#include "dev_sink.h"
 #include "loki_common.h"
 #include "loki_logger.h"
 #include "lokid_key.h"
@@ -169,16 +170,50 @@ void LokimqServer::handle_notify_get_subscriber_count(
     lokimq_->send(message.conn, "COUNT", std::to_string(count));
 }
 
+void LokimqServer::handle_get_logs(lokimq::Message& message) {
+
+    LOKI_LOG(debug, "Received get_logs request via LMQ");
+
+    auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
+        spdlog::get("loki_logger")->sinks()[2].get());
+
+    if (dev_sink == nullptr) {
+        LOKI_LOG(critical, "Sink #3 should be dev sink");
+        assert(false);
+        auto err_msg = "Developer error: sink #3 is not a dev sink.";
+        message.send_reply(err_msg);
+    }
+
+    nlohmann::json val;
+    val["entries"] = dev_sink->peek();
+    message.send_reply(val.dump(4));
+}
+
+void LokimqServer::handle_get_stats(lokimq::Message& message) {
+
+    LOKI_LOG(debug, "Received get_stats request via LMQ");
+
+    auto payload = service_node_->get_stats();
+
+    message.send_reply(payload);
+}
+
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
-                        const lokid_key_pair_t& keypair) {
+                        const lokid_key_pair_t& keypair,
+                        const std::vector<std::string>& stats_access_keys) {
 
     using lokimq::Allow;
 
     service_node_ = sn;
     request_handler_ = rh;
 
-    pn_server_key_ = lokimq::from_hex(
+    // Push notification server's key
+    this->pn_server_key_ = lokimq::from_hex(
         "BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
+
+    for (const auto& key : stats_access_keys) {
+        this->stats_access_keys.push_back(lokimq::from_hex(key));
+    }
 
     auto pubkey = key_to_string(keypair.public_key);
     auto seckey = key_to_string(keypair.private_key);
@@ -217,13 +252,26 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
 
-    lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
+    lokimq_->add_category("notify", lokimq::AuthLevel::none)
         .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
+
+
+    lokimq_->add_category("service", lokimq::AuthLevel::admin)
+        .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
+        .add_request_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
+
     // clang-format on
     lokimq_->set_general_threads(1);
 
-    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_));
+    lokimq_->listen_curve(
+        fmt::format("tcp://0.0.0.0:{}", port_),
+        [this](std::string_view /*ip*/, std::string_view pk, bool /*sn*/) {
+            const auto& keys = this->stats_access_keys;
+            const auto it = std::find(keys.begin(), keys.end(), pk);
+            return it == keys.end() ? lokimq::AuthLevel::none
+                                    : lokimq::AuthLevel::admin;
+        });
 
     lokimq_->MAX_MSG_SIZE =
         10 * 1024 * 1024; // 10 MB (needed by the fileserver)

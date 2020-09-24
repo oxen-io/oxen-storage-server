@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <mutex>
 #include <spdlog/sinks/base_sink.h>
 #include <vector>
 // A sink used to store most important logs for developers
