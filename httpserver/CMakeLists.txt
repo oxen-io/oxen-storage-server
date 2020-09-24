@@ -23,7 +23,6 @@ add_library(httpserver_lib STATIC
     lmq_server.cpp
     request_handler.cpp
     onion_processing.cpp
-    notifier.cpp
     )
 
 loki_add_subdirectory(../common common)
