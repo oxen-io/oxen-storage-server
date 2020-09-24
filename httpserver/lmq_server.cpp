@@ -137,39 +137,6 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
                                         std::string(eph_key), on_response, v2);
 }
 
-bool LokimqServer::check_pn_server_pubkey(const std::string& pk) const {
-    return pk == this->pn_server_key_;
-}
-
-void LokimqServer::handle_notify_add_pubkey(lokimq::Message& message) {
-
-    if (!check_pn_server_pubkey(message.conn.pubkey())) {
-        LOKI_LOG(debug,
-                 "Attempt to use notify endpoint by unauthorised pubkey");
-        return;
-    }
-
-    for (const auto& pubkey : message.data) {
-        service_node_->add_notify_pubkey(message.conn, std::string(pubkey));
-    }
-
-    lokimq_->send(message.conn, "OK");
-}
-
-void LokimqServer::handle_notify_get_subscriber_count(
-    lokimq::Message& message) {
-
-    if (!check_pn_server_pubkey(message.conn.pubkey())) {
-        LOKI_LOG(debug,
-                 "Attempt to use notify endpoint by unauthorised pubkey");
-        return;
-    }
-
-    const auto count = service_node_->get_notify_subscriber_count();
-
-    lokimq_->send(message.conn, "COUNT", std::to_string(count));
-}
-
 void LokimqServer::handle_get_logs(lokimq::Message& message) {
 
     LOKI_LOG(debug, "Received get_logs request via LMQ");
@@ -206,10 +173,6 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 
     service_node_ = sn;
     request_handler_ = rh;
-
-    // Push notification server's key
-    this->pn_server_key_ = lokimq::from_hex(
-        "BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
 
     for (const auto& key : stats_access_keys) {
         this->stats_access_keys.push_back(lokimq::from_hex(key));
@@ -251,11 +214,6 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
         .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m, false); })
         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
-
-    lokimq_->add_category("notify", lokimq::AuthLevel::none)
-        .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
-        .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
-
 
     lokimq_->add_category("service", lokimq::AuthLevel::admin)
         .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })

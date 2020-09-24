@@ -41,20 +41,11 @@ class LokimqServer {
     // v2 indicates whether to use the new (v2) protocol
     void handle_onion_request(lokimq::Message& message, bool v2);
 
-    void handle_notify_add_pubkey(lokimq::Message& message);
-
-    void handle_notify_get_subscriber_count(lokimq::Message& message);
-
-    bool check_pn_server_pubkey(const std::string& pk) const;
-
     void handle_get_logs(lokimq::Message& message);
 
     void handle_get_stats(lokimq::Message& message);
 
     uint16_t port_ = 0;
-
-    // binary stored in a string
-    std::string pn_server_key_;
 
     // Access keys for the 'service' category as binary
     std::vector<std::string> stats_access_keys;

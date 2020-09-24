@@ -15,7 +15,6 @@
 
 #include "loki_common.h"
 #include "lokid_key.h"
-#include "notifier.h"
 #include "pow.hpp"
 #include "reachability_testing.h"
 #include "stats.h"
@@ -163,8 +162,6 @@ class ServiceNode {
     /// clients;
     std::vector<message_t> relay_buffer_;
 
-    Notifier notifier_;
-
     mutable all_stats_t all_stats_;
 
     mutable std::recursive_mutex sn_mutex_;
@@ -280,12 +277,6 @@ class ServiceNode {
     // might move it out later
     void record_proxy_request();
     void record_onion_request();
-
-    // Add `pubkey` to the list of pubkeys to notify
-    void add_notify_pubkey(const lokimq::ConnectionID& cid,
-                           std::string_view pubkey);
-
-    size_t get_notify_subscriber_count() const;
 
     // This is new, so it does not need to support http, thus new (if temp)
     // method

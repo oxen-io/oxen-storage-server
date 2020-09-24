@@ -159,7 +159,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
       lmq_server_(lmq_server), lokid_client_(lokid_client),
-      force_start_(force_start), notifier_(lmq_server) {
+      force_start_(force_start) {
 
     char buf[64] = {0};
     if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
@@ -517,15 +517,6 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
-void ServiceNode::add_notify_pubkey(const lokimq::ConnectionID& cid,
-                                    string_view pubkey) {
-    this->notifier_.add_pubkey(cid, pubkey);
-}
-
-size_t ServiceNode::get_notify_subscriber_count() const {
-    return this->notifier_.subscriber_count();
-}
-
 /// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
@@ -542,8 +533,6 @@ bool ServiceNode::process_store(const message_t& msg) {
 
     /// store in the database
     this->save_if_new(msg);
-
-    this->notifier_.maybe_notify(msg);
 
     // Instead of sending the messages immediatly, store them in a buffer
     // and periodically send all messages from there as batches
@@ -565,11 +554,6 @@ void ServiceNode::save_if_new(const message_t& msg) {
 void ServiceNode::save_bulk(const std::vector<Item>& items) {
 
     std::lock_guard guard(sn_mutex_);
-
-    // TODO: Should we notify in bulk?
-    for (const auto& item : items) {
-        this->notifier_.maybe_notify(item);
-    }
 
     if (!db_->bulk_store(items)) {
         LOKI_LOG(error, "failed to save batch to the database");
