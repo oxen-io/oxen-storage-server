@@ -170,42 +170,9 @@ void LokimqServer::handle_notify_get_subscriber_count(
     lokimq_->send(message.conn, "COUNT", std::to_string(count));
 }
 
-bool LokimqServer::check_stats_key(const std::string& pk) const {
-
-    bool valid = false;
-
-    if (this->stats_access_key.empty()) {
-        LOKI_LOG(debug, "Access denied: stats-access-key is not specified");
-    } else if (pk != this->stats_access_key) {
-        LOKI_LOG(debug, "Access denied: unauthorised key");
-    } else {
-        valid = true;
-    }
-
-    return valid;
-}
-
 void LokimqServer::handle_get_logs(lokimq::Message& message) {
 
     LOKI_LOG(debug, "Received get_logs request via LMQ");
-
-    if (!this->check_stats_key(message.conn.pubkey())) {
-        lokimq_->send(message.conn, "Access denied");
-        return;
-    }
-
-    /// Limit this call to 1 request per second
-    static time_t last_req_time = 0;
-    const time_t now = time(nullptr);
-    constexpr time_t PERIOD = 1;
-
-    const char* err_msg = nullptr;
-
-    if (now - last_req_time < PERIOD) {
-        err_msg = "Too many request, try again later.";
-    }
-
-    last_req_time = now;
 
     auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
         spdlog::get("loki_logger")->sinks()[2].get());
@@ -213,35 +180,27 @@ void LokimqServer::handle_get_logs(lokimq::Message& message) {
     if (dev_sink == nullptr) {
         LOKI_LOG(critical, "Sink #3 should be dev sink");
         assert(false);
-        err_msg = "Developer error: sink #3 is not a dev sink.";
+        auto err_msg = "Developer error: sink #3 is not a dev sink.";
+        message.send_reply(err_msg);
     }
 
-    if (err_msg) {
-        lokimq_->send(message.conn, err_msg);
-    } else {
-        nlohmann::json val;
-        val["entries"] = dev_sink->peek();
-        lokimq_->send(message.conn, val.dump(4));
-    }
+    nlohmann::json val;
+    val["entries"] = dev_sink->peek();
+    message.send_reply(val.dump(4));
 }
 
 void LokimqServer::handle_get_stats(lokimq::Message& message) {
 
     LOKI_LOG(debug, "Received get_stats request via LMQ");
 
-    if (!this->check_stats_key(message.conn.pubkey())) {
-        lokimq_->send(message.conn, "Access denied");
-        return;
-    }
-
     auto payload = service_node_->get_stats();
 
-    lokimq_->send(message.conn, payload);
+    message.send_reply(payload);
 }
 
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                         const lokid_key_pair_t& keypair,
-                        const std::string& stats_access_key) {
+                        const std::vector<std::string>& stats_access_keys) {
 
     using lokimq::Allow;
 
@@ -252,7 +211,9 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     this->pn_server_key_ = lokimq::from_hex(
         "BB88471D65E2659B30C55A5321CEBB5AAB2B70A398645C26DCA2B2FCB43FC518");
 
-    this->stats_access_key = lokimq::from_hex(stats_access_key);
+    for (const auto& key : stats_access_keys) {
+        this->stats_access_keys.push_back(lokimq::from_hex(key));
+    }
 
     auto pubkey = key_to_string(keypair.public_key);
     auto seckey = key_to_string(keypair.private_key);
@@ -291,19 +252,26 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
 
-    lokimq_->add_category("notify", lokimq::Access{lokimq::AuthLevel::none, false, false})
+    lokimq_->add_category("notify", lokimq::AuthLevel::none)
         .add_command("add_pubkey", [this](auto& m) { this->handle_notify_add_pubkey(m); })
         .add_command("get_subscriber_count", [this](auto& m) { this->handle_notify_get_subscriber_count(m); });
 
 
-    lokimq_->add_category("service", lokimq::Access{lokimq::AuthLevel::none, false, false})
-        .add_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
-        .add_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
+    lokimq_->add_category("service", lokimq::AuthLevel::admin)
+        .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
+        .add_request_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
 
     // clang-format on
     lokimq_->set_general_threads(1);
 
-    lokimq_->listen_curve(fmt::format("tcp://0.0.0.0:{}", port_));
+    lokimq_->listen_curve(
+        fmt::format("tcp://0.0.0.0:{}", port_),
+        [this](std::string_view /*ip*/, std::string_view pk, bool /*sn*/) {
+            const auto& keys = this->stats_access_keys;
+            const auto it = std::find(keys.begin(), keys.end(), pk);
+            return it == keys.end() ? lokimq::AuthLevel::none
+                                    : lokimq::AuthLevel::admin;
+        });
 
     lokimq_->MAX_MSG_SIZE =
         10 * 1024 * 1024; // 10 MB (needed by the fileserver)

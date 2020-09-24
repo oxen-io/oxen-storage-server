@@ -211,7 +211,9 @@ int main(int argc, char* argv[]) {
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
 
-        LOKI_LOG(info, "Stats access key: {}", options.stats_access_key);
+        for (const auto& key : options.stats_access_keys) {
+            LOKI_LOG(info, "Stats access key: {}", key);
+        }
 
         // We pass port early because we want to send it in the first ping to
         // Lokid (in ServiceNode's constructor), but don't want to initialize
@@ -228,7 +230,7 @@ int main(int argc, char* argv[]) {
                                              channel_encryption);
 
         lokimq_server.init(&service_node, &request_handler,
-                           lokid_key_pair_x25519, options.stats_access_key);
+                           lokid_key_pair_x25519, options.stats_access_keys);
 
         RateLimiter rate_limiter;
 

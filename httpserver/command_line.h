@@ -21,7 +21,7 @@ struct command_line_options {
     std::string lokid_x25519_key;  // test only
     std::string lokid_ed25519_key; // test only
     // x25519 key that will be given access to get_stats lmq endpoint
-    std::string stats_access_key;
+    std::vector<std::string> stats_access_keys;
 };
 
 class command_line_parser {
