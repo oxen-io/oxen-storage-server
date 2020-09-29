@@ -12,7 +12,8 @@ find_package(Boost
     filesystem
 )
 
-set_property(TARGET common PROPERTY CXX_STANDARD 14)
+set_property(TARGET common PROPERTY CXX_STANDARD 17)
+set_property(TARGET common PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
 loki_add_subdirectory(../vendors/spdlog spdlog)
 

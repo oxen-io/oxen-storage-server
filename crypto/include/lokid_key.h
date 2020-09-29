@@ -16,7 +16,6 @@ struct private_key_ed25519_t {
     static private_key_ed25519_t from_hex(const std::string& sc_hex);
 };
 
-
 struct lokid_key_pair_t {
     private_key_t private_key;
     public_key_t public_key;

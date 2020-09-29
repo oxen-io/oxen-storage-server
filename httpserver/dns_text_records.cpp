@@ -2,6 +2,7 @@
 #include "../external/json.hpp"
 #include "pow.hpp"
 #include "version.h"
+#include <netinet/in.h>
 #include <resolv.h>
 
 #include <boost/algorithm/string.hpp>

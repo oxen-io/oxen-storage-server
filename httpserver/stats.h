@@ -1,9 +1,9 @@
 #pragma once
 
 #include "loki_common.h"
+#include <atomic>
 #include <deque>
 #include <unordered_map>
-#include <atomic>
 
 namespace loki {
 
@@ -111,13 +111,9 @@ class all_stats_t {
     // remove old test entries and reset counters, update reset time
     void cleanup();
 
-    void bump_proxy_requests() {
-        recent_proxy_requests++;
-    }
+    void bump_proxy_requests() { recent_proxy_requests++; }
 
-    void bump_onion_requests() {
-        recent_proxy_requests++;
-    }
+    void bump_onion_requests() { recent_proxy_requests++; }
 
     void bump_store_requests() {
         total_client_store_requests++;

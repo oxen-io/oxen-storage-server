@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 
 #include "../external/json.hpp"
 #include <boost/asio.hpp>
@@ -14,6 +15,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
+#include "loki_common.h"
 #include "lokid_key.h"
 #include "swarm.h"
 
@@ -39,7 +41,6 @@ namespace loki {
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data);
 
-struct message_t;
 struct Security;
 
 class RequestHandler;
@@ -56,7 +57,7 @@ enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 struct sn_response_t {
     SNodeError error_code;
     std::shared_ptr<std::string> body;
-    boost::optional<response_t> raw_response;
+    std::optional<response_t> raw_response;
 };
 
 template <typename OStream>
@@ -99,12 +100,12 @@ class LokidClient {
 
   public:
     LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
-    void make_lokid_request(boost::string_view method,
+    void make_lokid_request(std::string_view method,
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
     void make_custom_lokid_request(const std::string& daemon_ip,
                                    const uint16_t daemon_port,
-                                   boost::string_view method,
+                                   std::string_view method,
                                    const nlohmann::json& params,
                                    http_callback_t&& cb) const;
     // Synchronously fetches the private key from lokid.  Designed to be called
@@ -222,16 +223,16 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
         boost::asio::steady_timer timer;
         // the message is stored here momentarily; needed because
         // we can't pass it using current notification mechanism
-        boost::optional<message_t> message;
+        std::optional<message_t> message;
         // Messenger public key that this connection is registered for
         std::string pubkey;
     };
 
-    boost::optional<notification_context_t> notification_ctx_;
+    std::optional<notification_context_t> notification_ctx_;
 
     // If present, this function will be called just before
     // writing the response
-    boost::optional<std::function<void(response_t&)>> response_modifier_;
+    std::function<void(response_t&)> response_modifier_;
 
   public:
     connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
@@ -246,7 +247,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Initiate the asynchronous operations associated with the connection.
     void start();
 
-    void notify(boost::optional<const message_t&> msg);
+    void notify(const message_t* msg);
 
   private:
     void do_handshake();
@@ -259,9 +260,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     /// process GET /get_stats/v1
     void on_get_stats();
-
-    /// process GET /get_logs/v1; only returns errors atm
-    void on_get_logs();
 
     /// Determine what needs to be done with the request message
     /// (synchronously).
@@ -276,9 +274,13 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     /// Syncronously (?) process client store/load requests
     void process_client_req_rate_limited();
 
-    void process_swarm_req(boost::string_view target);
+    void process_swarm_req(std::string_view target);
 
-    void process_onion_req();
+    /// Process onion request from the client (json)
+    void process_onion_req_v1();
+
+    /// Process onion request from the client (binary)
+    void process_onion_req_v2();
 
     void process_proxy_req();
 
@@ -326,6 +328,14 @@ constexpr const char* error_string(SNodeError err) {
         return "[UNKNOWN]";
     }
 }
+
+struct CiphertextPlusJson {
+    std::string ciphertext;
+    std::string json;
+};
+
+// TODO: move this from http_connection.h after refactoring
+auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
 
 } // namespace loki
 

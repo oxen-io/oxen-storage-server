@@ -1,7 +1,7 @@
 #pragma once
 
-#include <set>
 #include "loki_logger.h"
+#include <set>
 
 struct net_stats_t {
 
