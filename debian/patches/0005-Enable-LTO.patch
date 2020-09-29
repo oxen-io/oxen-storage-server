@@ -51,7 +51,7 @@ index c05baec..ee4a73a 100644
  project(crypto)
  
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index f07be11..f8a38d5 100644
+index 3a93b1c..2a869fd 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
 @@ -1,4 +1,4 @@
@@ -71,7 +71,7 @@ index df2a9e6..d8c685e 100644
  add_library(storage STATIC
      src/Database.cpp
 diff --git a/unit_test/CMakeLists.txt b/unit_test/CMakeLists.txt
-index 028af23..85c6904 100644
+index 7132307..0884dd3 100644
 --- a/unit_test/CMakeLists.txt
 +++ b/unit_test/CMakeLists.txt
 @@ -1,4 +1,4 @@

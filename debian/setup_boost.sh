@@ -20,7 +20,6 @@ export CC=gcc-8 CXX=g++-8
         --with-program_options \
         --with-filesystem \
         --with-system \
-        --with-chrono \
         --with-thread \
         --with-log \
         --with-test \

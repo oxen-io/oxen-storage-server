@@ -1,6 +1,6 @@
 From: Jason Rhinelander <jason@imaginary.ca>
 Date: Thu, 18 Jul 2019 01:22:17 -0300
-Subject: build static boost 1.70
+Subject: build static boost 1.74
 
 storage server needs boost 1.66+
 ---
@@ -57,7 +57,7 @@ index 45cc507..c05baec 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index b86f8bf..f07be11 100644
+index b86f8bf..3a93b1c 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
 @@ -32,13 +32,7 @@ loki_add_subdirectory(../pow pow)
@@ -71,7 +71,7 @@ index b86f8bf..f07be11 100644
 -    filesystem
 -    program_options
 -)
-+set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_program_options.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_chrono.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_date_time.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
++set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_program_options.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
  
  # TODO: enable more warnings!
  target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
@@ -114,7 +114,7 @@ index b29440d..df2a9e6 100644
  target_include_directories(storage PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(storage PRIVATE ${Boost_LIBRARIES})
 diff --git a/unit_test/CMakeLists.txt b/unit_test/CMakeLists.txt
-index 504b089..028af23 100644
+index 504b089..7132307 100644
 --- a/unit_test/CMakeLists.txt
 +++ b/unit_test/CMakeLists.txt
 @@ -21,14 +21,7 @@ loki_add_subdirectory(../httpserver httpserver)
@@ -129,7 +129,7 @@ index 504b089..028af23 100644
 -    thread
 -    unit_test_framework
 -)
-+set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_chrono.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_unit_test_framework.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_date_time.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
++set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_unit_test_framework.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
  
  set_property(TARGET Test PROPERTY CXX_STANDARD 17)
  set_property(TARGET Test PROPERTY CXX_STANDARD_REQUIRED TRUE)
