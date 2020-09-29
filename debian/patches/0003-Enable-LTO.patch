@@ -12,7 +12,7 @@ Subject: Enable LTO
  6 files changed, 8 insertions(+), 6 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 29299b0..578a645 100644
+index badc2c9..4b3cab0 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,4 +1,4 @@
@@ -31,7 +31,7 @@ index 29299b0..578a645 100644
  
  option(INTEGRATION_TEST "build for integration test" OFF)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index 115ea47..0be4948 100644
+index 57c7ef9..414f7ae 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
 @@ -1,4 +1,4 @@
@@ -51,7 +51,7 @@ index 45cc507..2425021 100644
  project(crypto)
  
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index d2888e1..fe75a13 100644
+index b86f8bf..49f9bb9 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
 @@ -1,4 +1,4 @@
