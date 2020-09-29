@@ -3,8 +3,8 @@
 #include "net_stats.h"
 #include "signature.h"
 
-#include <openssl/x509.h>
 #include <boost/algorithm/string/erase.hpp>
+#include <openssl/x509.h>
 
 namespace loki {
 
@@ -25,7 +25,7 @@ void make_https_request(boost::asio::io_context& ioc,
 
     if (sn_address == "0.0.0.0") {
         LOKI_LOG(debug, "Could not initiate request to snode (we don't know "
-                       "their IP yet).");
+                        "their IP yet).");
 
         cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
@@ -64,11 +64,13 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         query.erase(0, sizeof(prefix) - 1);
     }
 
-    auto resolve_handler = [&ioc, req, query, cb = std::move(cb)] (
+    auto resolve_handler = [&ioc, req, query, cb = std::move(cb)](
                                const boost::system::error_code& ec,
-                               boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
+                               boost::asio::ip::tcp::resolver::results_type
+                                   resolve_results) mutable {
         if (ec) {
-            LOKI_LOG(error, "DNS resolution error for {}: {}", query, ec.message());
+            LOKI_LOG(error, "DNS resolution error for {}: {}", query,
+                     ec.message());
             cb({SNodeError::ERROR_OTHER});
             return;
         }
@@ -76,16 +78,18 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), req, std::move(cb), boost::none);
+            ioc, ctx, std::move(resolve_results), req, std::move(cb),
+            std::nullopt);
 
         session->start();
     };
 
     constexpr char https_port[] = "443";
 
-    resolver.async_resolve(query, https_port,
-                           boost::asio::ip::tcp::resolver::query::numeric_service,
-                           resolve_handler);
+    resolver.async_resolve(
+        query, https_port,
+        boost::asio::ip::tcp::resolver::query::numeric_service,
+        resolve_handler);
 }
 
 static std::string x509_to_string(X509* x509) {
@@ -111,10 +115,10 @@ HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results,
     const std::shared_ptr<request_t>& req, http_callback_t&& cb,
-    boost::optional<const std::string&> sn_pubkey_b32z)
+    std::optional<std::string> sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
-      server_pub_key_b32z_(sn_pubkey_b32z) {
+      server_pub_key_b32z_(std::move(sn_pubkey_b32z)) {
 
     get_net_stats().https_connections_out++;
 
@@ -195,7 +199,7 @@ void HttpsClientSession::on_connect() {
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
         LOKI_LOG(error, "Failed to perform a handshake with {}: {}",
-                 server_pub_key_b32z_ ? *server_pub_key_b32z_ : "(not snode)", ec.message());
+                 server_pub_key_b32z_.value_or("(not snode)"), ec.message());
 
         return;
     }
@@ -226,7 +230,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
 bool HttpsClientSession::verify_signature() {
 
-    if (server_pub_key_b32z_)
+    if (!server_pub_key_b32z_)
         return true;
 
     const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
@@ -286,7 +290,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
 void HttpsClientSession::trigger_callback(
     SNodeError error, std::shared_ptr<std::string>&& body,
-    boost::optional<response_t> raw_response) {
+    std::optional<response_t> raw_response) {
     ioc_.post(std::bind(callback_, sn_response_t{error, body, raw_response}));
     used_callback_ = true;
     deadline_timer_.cancel();
