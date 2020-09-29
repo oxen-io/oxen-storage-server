@@ -1,3 +1,30 @@
+loki-storage-server (2.0.7-1~deb10) buster; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Make --version print without initializing logger
+  * Update lokimq (for freebsd header fix)
+  * Only link -lresolv if available
+  * Add missing required header for resolv funcs
+  * Switch to C++17
+  * Remove LockGuard typedef
+  * Remove lokimq from 'all'
+
+  [ Maxim Shishmarev ]
+  * Add lmq endpoint for the notification server
+  * Limit db size to 3.5 GB
+  * Some more C++17 changes
+  * Add semi-binary protocol for onion requests
+  * run clang-format
+  * Better propagation of errors for onion requests
+  * Add LMQ endpoint for get_stats
+  * Limit http get_stats to return version number only
+  * Use reply/request endpoints; delegate authentication to lokimq
+  * Remove unused push notification endpoints
+  * Bump version to 2.0.7
+  * Update dockerfile
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 29 Sep 2020 13:27:09 -0300
+
 loki-storage-server (2.0.6-2~deb10) buster; urgency=medium
 
   * Rebuild to update deps
