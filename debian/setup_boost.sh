@@ -12,6 +12,8 @@ curl -L https://builds.lokinet.dev/deps/boost_1_74_0.tar.bz2 | tar xj
 
 cd boost_1_74_0
 
+export CC=gcc-8 CXX=g++-8
+
 ./bootstrap.sh
 
 ./b2 -a --prefix=${PWD}/../boost link=static variant=release install \

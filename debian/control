@@ -2,7 +2,7 @@ Source: loki-storage-server
 Section: net
 Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
-Build-Depends: debhelper (>= 11), cmake, g++, libsodium-dev (>= 1.0.17), libssl-dev, libsqlite3-dev, curl, ca-certificates,
+Build-Depends: debhelper (>= 11), cmake, g++-8, libsodium-dev (>= 1.0.17), libssl-dev, libsqlite3-dev, curl, ca-certificates,
     libsystemd-dev, pkg-config, liblokimq-dev (>= 1.1.0)
 Standards-Version: 4.1.3
 Homepage: https://loki.network

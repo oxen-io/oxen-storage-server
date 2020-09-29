@@ -31,7 +31,7 @@ local deb_pipeline(image, buildarch='amd64', debarch='amd64', jobs=6) = {
                 apt_get_quiet + ' update',
                 apt_get_quiet + ' install -y eatmydata',
                 'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
-                'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git-buildpackage devscripts equivs g++ ccache openssh-client',
+                'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git-buildpackage devscripts equivs g++-8 ccache openssh-client',
                 'eatmydata dpkg-reconfigure ccache',
                 'cd debian',
                 'eatmydata mk-build-deps -i -r --tool="' + apt_get_quiet + ' -o Debug::pkgProblemResolver=yes --no-install-recommends -y" control',

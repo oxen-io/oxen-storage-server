@@ -24,6 +24,7 @@ override_dh_auto_configure:
 	./debian/setup_boost.sh
 	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release \
 		$(DEB_CMAKE_ARCH_OPTIONS) \
+		-DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8 \
 		-DLOKISS_VERSION_TAG=$(call dpkg_late_eval,LOKISS_VERSION_TAG,echo '$(DEB_VERSION)' | sed -e 's/.*-//')
 
 override_dh_strip:
