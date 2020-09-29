@@ -3,3 +3,4 @@
 0003-local-boost-update.patch
 0004-Add-check-for-latomic-needed-for-armhf-build.patch
 0005-Enable-LTO.patch
+0006-boost-1.73-compatibility-without-deprecation-warning.patch
