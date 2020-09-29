@@ -24,6 +24,7 @@ local deb_pipeline(image, buildarch='amd64', debarch='amd64', jobs=6) = {
             image: image,
             environment: { SSH_KEY: { from_secret: "SSH_KEY" } },
             commands: [
+                'echo $DRONE_STAGE_MACHINE',
                 'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
                 'cp debian/deb.loki.network.gpg /etc/apt/trusted.gpg.d/deb.loki.network.gpg',
                 'echo deb http://deb.loki.network' + repo_suffix + ' ' + distro + ' main >/etc/apt/sources.list.d/loki.list',
