@@ -22,7 +22,8 @@ template <typename T>
 ChannelEncryption<T>::ChannelEncryption(const std::vector<uint8_t>& private_key)
     : private_key_(private_key) {}
 
-// Derive shared secret from our (ephemeral) `seckey` and the other party's `pubkey`
+// Derive shared secret from our (ephemeral) `seckey` and the other party's
+// `pubkey`
 static std::vector<uint8_t>
 calculate_shared_secret(const std::vector<uint8_t>& seckey,
                         const std::vector<uint8_t>& pubkey) {
@@ -43,7 +44,8 @@ static std::vector<uint8_t>
 derive_symmetric_key(const std::vector<uint8_t>& seckey,
                      const std::vector<uint8_t>& pubkey) {
 
-    const std::vector<uint8_t> sharedKey = calculate_shared_secret(seckey, pubkey);
+    const std::vector<uint8_t> sharedKey =
+        calculate_shared_secret(seckey, pubkey);
 
     std::vector<uint8_t> derived_key(32);
 
@@ -120,7 +122,8 @@ template <typename T>
 T ChannelEncryption<T>::encrypt_gcm(const T& plaintext,
                                     const std::string& pubKey) const {
     const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubKey);
-    const std::vector<uint8_t> derived_key = derive_symmetric_key(this->private_key_, pubKeyBytes);
+    const std::vector<uint8_t> derived_key =
+        derive_symmetric_key(this->private_key_, pubKeyBytes);
 
     T ciphertext;
     // Ciphertext should always be the length of plaintext plus tag
@@ -130,14 +133,15 @@ T ChannelEncryption<T>::encrypt_gcm(const T& plaintext,
 
     unsigned long long ciphertext_len;
 
-    const auto plaintext_ptr = reinterpret_cast<const unsigned char*>(&plaintext[0]);
+    const auto plaintext_ptr =
+        reinterpret_cast<const unsigned char*>(&plaintext[0]);
 
     unsigned char nonce[crypto_aead_aes256gcm_NPUBBYTES];
     randombytes_buf(nonce, sizeof(nonce));
 
-    crypto_aead_aes256gcm_encrypt(ciphertext_ptr, &ciphertext_len, plaintext_ptr,
-                                  plaintext.size(), NULL, 0, NULL, nonce,
-                                  derived_key.data());
+    crypto_aead_aes256gcm_encrypt(ciphertext_ptr, &ciphertext_len,
+                                  plaintext_ptr, plaintext.size(), NULL, 0,
+                                  NULL, nonce, derived_key.data());
 
     ciphertext.resize(ciphertext_len);
 
@@ -151,7 +155,8 @@ template <typename T>
 T ChannelEncryption<T>::decrypt_gcm(const T& iv_ciphertext_tag,
                                     const std::string& pubKey) const {
     const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubKey);
-    const std::vector<uint8_t> derived_key = derive_symmetric_key(this->private_key_, pubKeyBytes);
+    const std::vector<uint8_t> derived_key =
+        derive_symmetric_key(this->private_key_, pubKeyBytes);
 
     T output;
 
@@ -163,8 +168,8 @@ T ChannelEncryption<T>::decrypt_gcm(const T& iv_ciphertext_tag,
     unsigned long long decrypted_len;
 
     constexpr auto NONCE_SIZE = 12;
-    const auto ciphertext =
-        reinterpret_cast<const unsigned char*>(&iv_ciphertext_tag[0] + NONCE_SIZE);
+    const auto ciphertext = reinterpret_cast<const unsigned char*>(
+        &iv_ciphertext_tag[0] + NONCE_SIZE);
 
     const auto nonce =
         reinterpret_cast<const unsigned char*>(&iv_ciphertext_tag[0]);
@@ -186,7 +191,8 @@ template <typename T>
 T ChannelEncryption<T>::decrypt_cbc(const T& ciphertextAndIV,
                                     const std::string& pubKey) const {
     const std::vector<uint8_t> pubKeyBytes = hexToBytes(pubKey);
-    const std::vector<uint8_t> sharedKey = calculate_shared_secret(this->private_key_, pubKeyBytes);
+    const std::vector<uint8_t> sharedKey =
+        calculate_shared_secret(this->private_key_, pubKeyBytes);
 
     // Initialise cipher
     const EVP_CIPHER* cipher = EVP_aes_256_cbc();

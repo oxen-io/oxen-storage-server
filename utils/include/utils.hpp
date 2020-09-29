@@ -1,12 +1,12 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <random>
 #include <stdint.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <array>
 
 namespace util {
 
@@ -79,7 +79,9 @@ static size_t decode_size(size_t sz) {
     return b * d.quot;
 }
 
-static size_t base32_decode_size(size_t sz) { return decode_size<5, 8>(sz); }
+[[maybe_unused]] static size_t base32_decode_size(size_t sz) {
+    return decode_size<5, 8>(sz);
+}
 
 template <typename Stack, typename V>
 bool base32z_decode(const Stack& stack, V& value) {
@@ -113,12 +115,14 @@ bool base32z_decode(const Stack& stack, V& value) {
 
 std::string hex_to_base32z(const std::string& src);
 
-std::string hex_to_bytes(const std::string &hex);
+std::string hex_to_bytes(const std::string& hex);
 
 // Creates a hex string from a character sequence.
 template <typename It>
 std::string as_hex(It begin, It end) {
-    constexpr std::array<char, 16> lut{{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}};
+    constexpr std::array<char, 16> lut{{'0', '1', '2', '3', '4', '5', '6', '7',
+                                        '8', '9', 'a', 'b', 'c', 'd', 'e',
+                                        'f'}};
     std::string hex;
     using std::distance;
     hex.reserve(distance(begin, end) * 2);
@@ -132,7 +136,7 @@ std::string as_hex(It begin, It end) {
 }
 
 template <typename String>
-inline std::string as_hex(const String &s) {
+inline std::string as_hex(const String& s) {
     using std::begin;
     using std::end;
     return as_hex(begin(s), end(s));

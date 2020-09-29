@@ -30,7 +30,8 @@ find_package(Boost REQUIRED
     unit_test_framework
 )
 
-set_property(TARGET Test PROPERTY CXX_STANDARD 14)
+set_property(TARGET Test PROPERTY CXX_STANDARD 17)
+set_property(TARGET Test PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
 target_include_directories(Test PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(Test PRIVATE ${Boost_LIBRARIES})

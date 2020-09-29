@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.1)
 
 add_definitions(-DDISABLE_ENCRYPTION)
 
+# Stop compiling post first error
+add_definitions(-Wfatal-errors)
+
 project(httpserver)
 
 add_library(httpserver_lib STATIC
@@ -19,6 +22,7 @@ add_library(httpserver_lib STATIC
     reachability_testing.cpp
     lmq_server.cpp
     request_handler.cpp
+    onion_processing.cpp
     )
 
 loki_add_subdirectory(../common common)
@@ -27,7 +31,7 @@ loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../crypto crypto)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
-loki_add_subdirectory(../vendors/loki-mq loki-mq)
+loki_add_subdirectory(../vendors/loki-mq loki-mq EXCLUDE_FROM_ALL)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
@@ -38,6 +42,9 @@ find_package(Boost
     program_options
 )
 
+# TODO: enable more warnings!
+target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+
 target_link_libraries(httpserver_lib PUBLIC common)
 target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(httpserver_lib PUBLIC storage)
@@ -46,14 +53,14 @@ target_link_libraries(httpserver_lib PUBLIC pow)
 target_link_libraries(httpserver_lib PUBLIC crypto)
 target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
 
+set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 17)
+set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
+
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
 find_library(RESOLV resolv)
 if(RESOLV)
     target_link_libraries(httpserver_lib PUBLIC ${RESOLV})
 endif()
-
-
-set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
 
 target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
@@ -61,8 +68,10 @@ target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
 set(BIN_NAME loki-storage)
 
 add_executable(httpserver main.cpp)
+target_compile_options(httpserver PRIVATE -Wall -Wextra -Werror)
 set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
-set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+set_property(TARGET httpserver PROPERTY CXX_STANDARD 17)
+set_property(TARGET httpserver PROPERTY CXX_STANDARD_REQUIRED TRUE)
 target_link_libraries(httpserver PRIVATE httpserver_lib)
 install(TARGETS httpserver DESTINATION bin)
 # Build Info
