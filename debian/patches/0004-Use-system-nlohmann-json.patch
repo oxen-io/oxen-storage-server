@@ -1,0 +1,59 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 29 Sep 2020 14:28:19 -0300
+Subject: Use system nlohmann-json
+
+---
+ httpserver/dns_text_records.cpp | 2 +-
+ httpserver/http_connection.h    | 2 +-
+ httpserver/request_handler.h    | 2 +-
+ httpserver/stats.cpp            | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/httpserver/dns_text_records.cpp b/httpserver/dns_text_records.cpp
+index 89b643b..5a20b5c 100644
+--- a/httpserver/dns_text_records.cpp
++++ b/httpserver/dns_text_records.cpp
+@@ -1,5 +1,5 @@
+ #include "dns_text_records.h"
+-#include "../external/json.hpp"
++#include <nlohmann/json.hpp>
+ #include "pow.hpp"
+ #include "version.h"
+ #include <netinet/in.h>
+diff --git a/httpserver/http_connection.h b/httpserver/http_connection.h
+index 24fccac..66e8515 100644
+--- a/httpserver/http_connection.h
++++ b/httpserver/http_connection.h
+@@ -6,7 +6,7 @@
+ #include <memory>
+ #include <optional>
+ 
+-#include "../external/json.hpp"
++#include <nlohmann/json.hpp>
+ #include <boost/asio.hpp>
+ #include <boost/asio/ssl/stream.hpp>
+ #include <boost/beast/core.hpp>
+diff --git a/httpserver/request_handler.h b/httpserver/request_handler.h
+index cfe559c..4fcbc8a 100644
+--- a/httpserver/request_handler.h
++++ b/httpserver/request_handler.h
+@@ -7,7 +7,7 @@
+ #include <boost/asio.hpp>
+ 
+ // TODO: can I avoid including this in the header?
+-#include "../external/json.hpp"
++#include <nlohmann/json.hpp>
+ 
+ // TODO: move ChannelEncryption to ::loki
+ template <typename T>
+diff --git a/httpserver/stats.cpp b/httpserver/stats.cpp
+index c185585..ae1844c 100644
+--- a/httpserver/stats.cpp
++++ b/httpserver/stats.cpp
+@@ -1,5 +1,5 @@
+ #include "stats.h"
+-#include "../external/json.hpp"
++#include <nlohmann/json.hpp>
+ #include <algorithm>
+ #include <chrono>
+ #include <iostream>
