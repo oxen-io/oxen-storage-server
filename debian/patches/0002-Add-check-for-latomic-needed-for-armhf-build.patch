@@ -4,8 +4,8 @@ Subject: Add check for -latomic (needed for armhf build)
 
 ---
  CMakeLists.txt           |  3 +++
- cmake/check_atomic.cmake | 39 +++++++++++++++++++++++++++++++++++++++
- 2 files changed, 42 insertions(+)
+ cmake/check_atomic.cmake | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 43 insertions(+)
  create mode 100644 cmake/check_atomic.cmake
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
@@ -24,10 +24,11 @@ index 652dab9..badc2c9 100644
  loki_add_subdirectory(crypto)
 diff --git a/cmake/check_atomic.cmake b/cmake/check_atomic.cmake
 new file mode 100644
-index 0000000..ab309aa
+index 0000000..b1d8442
 --- /dev/null
 +++ b/cmake/check_atomic.cmake
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,40 @@
++include(CheckCXXSourceCompiles)
 +
 +function(check_working_cxx_atomics64 varname)
 +  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
