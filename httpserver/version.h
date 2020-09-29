@@ -6,7 +6,7 @@
 
 #define VERSION_MAJOR 2
 #define VERSION_MINOR 0
-#define VERSION_PATCH 6
+#define VERSION_PATCH 7
 
 #define LOKI_STRINGIFY2(val) #val
 #define LOKI_STRINGIFY(val) LOKI_STRINGIFY2(val)
@@ -28,9 +28,10 @@
 #define STORAGE_SERVER_BUILD_TIME "?"
 #endif
 
-static void print_version() {
-    LOKI_LOG(info,
-             "Loki Storage Server v{}\n git commit hash: {}\n build time: {}",
-             STORAGE_SERVER_VERSION_STRING, STORAGE_SERVER_GIT_HASH_STRING,
-             STORAGE_SERVER_BUILD_TIME);
+inline std::string version_info() {
+    return fmt::format(
+        "Loki Storage Server v{}\n git commit hash: {}\n build time: {}\n",
+        STORAGE_SERVER_VERSION_STRING, STORAGE_SERVER_GIT_HASH_STRING,
+        STORAGE_SERVER_BUILD_TIME);
 }
+inline void print_version() { LOKI_LOG(info, "{}", version_info()); }

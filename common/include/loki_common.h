@@ -2,11 +2,11 @@
 
 #include "spdlog/fmt/ostr.h" // for operator<< overload
 
+#include <chrono>
 #include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
-#include <chrono>
 
 #include <boost/optional.hpp>
 
@@ -22,18 +22,19 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    // TODO: create separate types for different encodings of pubkeys,
-    // so if we confuse them, it will be a compiler error
-    std::string sn_address_; // Snode address (pubkey plus .snode, was used for lokinet)
-    std::string pub_key_base_32z_; // We don't need this! (esp. since it is legacy key)
-    std::string pubkey_x25519_hex_;
-    std::string pubkey_ed25519_hex_;
-    std::string pub_key_hex_; // Monero legacy key
     // Required by LokiMQ
     uint16_t lmq_port_;
+    // TODO: create separate types for different encodings of pubkeys,
+    // so if we confuse them, it will be a compiler error
+    // Snode address (pubkey plus .snode, was used for lokinet)
+    std::string sn_address_;
+    // We don't need this! (esp. since it is legacy key)
+    std::string pub_key_base_32z_;
+    std::string pub_key_hex_; // Monero legacy key
+    std::string pubkey_x25519_hex_;
     std::string pubkey_x25519_bin_;
+    std::string pubkey_ed25519_hex_;
     std::string ip_; // Snode ip
-
 
     /// Set service node's public key in base32z (without .snode part)
     void set_address(const std::string& addr) {
@@ -51,9 +52,9 @@ struct sn_record_t {
                 const std::string& pk_hex, const std::string& pk_x25519,
                 const std::string& pk_x25519_bin, const std::string& pk_ed25519,
                 const std::string& ip)
-        : port_(port), lmq_port_(lmq_port), pub_key_hex_(pk_hex), pubkey_x25519_hex_(pk_x25519),
-          pubkey_x25519_bin_(pk_x25519_bin), pubkey_ed25519_hex_(pk_ed25519),
-          ip_(ip) {
+        : port_(port), lmq_port_(lmq_port), pub_key_hex_(pk_hex),
+          pubkey_x25519_hex_(pk_x25519), pubkey_x25519_bin_(pk_x25519_bin),
+          pubkey_ed25519_hex_(pk_ed25519), ip_(ip) {
         set_address(address);
     }
 
@@ -68,7 +69,9 @@ struct sn_record_t {
     const std::string& pub_key_base32z() const { return pub_key_base_32z_; }
     const std::string& pub_key_hex() const { return pub_key_hex_; }
     const std::string& pubkey_x25519_hex() const { return pubkey_x25519_hex_; }
-    const std::string& pubkey_ed25519_hex() const { return pubkey_ed25519_hex_; }
+    const std::string& pubkey_ed25519_hex() const {
+        return pubkey_ed25519_hex_;
+    }
     const std::string& pubkey_x25519_bin() const { return pubkey_x25519_bin_; }
     const std::string& ip() const { return ip_; }
 
@@ -102,13 +105,9 @@ struct net_type_t {
     net_type_t() = default;
 };
 
-inline bool is_mainnet() {
-    return net_type_t::get_instance().is_mainnet();
-}
+inline bool is_mainnet() { return net_type_t::get_instance().is_mainnet(); }
 
-inline void set_testnet() {
-    net_type_t::get_instance().set_testnet();
-}
+inline void set_testnet() { net_type_t::get_instance().set_testnet(); }
 
 inline size_t get_user_pubkey_size() {
     /// TODO: eliminate the need to check condition every time
@@ -185,7 +184,8 @@ inline bool operator<(const sn_record_t& lhs, const sn_record_t& rhs) {
     return lhs.pub_key_hex() < rhs.pub_key_hex();
 }
 
-static std::ostream& operator<<(std::ostream& os, const sn_record_t& sn) {
+[[maybe_unused]] static std::ostream& operator<<(std::ostream& os,
+                                                 const sn_record_t& sn) {
 #ifdef INTEGRATION_TEST
     return os << sn.port();
 #else
@@ -198,7 +198,8 @@ static bool operator==(const sn_record_t& lhs, const sn_record_t& rhs) {
     return lhs.pub_key_hex() == rhs.pub_key_hex();
 }
 
-static bool operator!=(const sn_record_t& lhs, const sn_record_t& rhs) {
+[[maybe_unused]] static bool operator!=(const sn_record_t& lhs,
+                                        const sn_record_t& rhs) {
     return !operator==(lhs, rhs);
 }
 

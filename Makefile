@@ -57,14 +57,13 @@ clean-all:
 	rm -rf build
 
 format:
-	clang-format -style=file -i \
-		pow/**/*.{cpp,hpp} \
-		crypto/**/*.{cpp,hpp} \
-		storage/**/*.{cpp,hpp} \
-		utils/**/*.{cpp,hpp} \
-		httpserver/*.{cpp,h} \
-		unit_test/*.cpp \
-		common/**/*.{cpp,h}
-
+	clang-format -style=file -i --verbose \
+	httpserver/*.cpp httpserver/*.h \
+	crypto/**/*.cpp crypto/**/*.hpp crypto/**/*.h \
+	pow/**/*.cpp pow/**/*.hpp \
+	storage/**/*.cpp storage/**/*.hpp \
+	utils/**/*.cpp utils/**/*.hpp \
+	unit_test/*.cpp \
+	common/**/*.cpp common/**/*.h \
 
 .PHONY: all clean format rebuild

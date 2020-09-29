@@ -11,7 +11,8 @@ find_package(Boost
     filesystem
 )
 
-set_property(TARGET utils PROPERTY CXX_STANDARD 14)
+set_property(TARGET utils PROPERTY CXX_STANDARD 17)
+set_property(TARGET utils PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
 target_include_directories(utils
     PUBLIC

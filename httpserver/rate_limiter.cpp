@@ -35,7 +35,8 @@ void RateLimiter::fill_bucket(TokenBucket& bucket,
     // (simplifies overlow checking)
     elapsed_us = std::min(elapsed_us, FILL_EMPTY_BUCKET_US);
 
-    const auto token_period = service_node ? TOKEN_PERIOD_SN_US : TOKEN_PERIOD_US;
+    const auto token_period =
+        service_node ? TOKEN_PERIOD_SN_US : TOKEN_PERIOD_US;
 
     const uint32_t token_added = elapsed_us.count() / token_period.count();
     // clamp tokens to bucket size
