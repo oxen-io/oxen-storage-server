@@ -22,12 +22,12 @@ index 24767b3..652dab9 100644
  if (BUILD_TESTS)
      loki_add_subdirectory(unit_test)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index c827a19..2978f73 100644
+index 115ea47..57c7ef9 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
-@@ -14,7 +14,7 @@ find_package(Boost
- 
- set_property(TARGET common PROPERTY CXX_STANDARD 14)
+@@ -15,7 +15,7 @@ find_package(Boost
+ set_property(TARGET common PROPERTY CXX_STANDARD 17)
+ set_property(TARGET common PROPERTY CXX_STANDARD_REQUIRED TRUE)
  
 -loki_add_subdirectory(../vendors/spdlog spdlog)
 +find_package(spdlog)
@@ -35,27 +35,27 @@ index c827a19..2978f73 100644
  target_link_libraries(common PUBLIC spdlog::spdlog ${Boost_LIBRARIES})
  target_include_directories(common PUBLIC
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 48ff679..ad13c54 100644
+index bdff45e..8d8f845 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -26,8 +26,6 @@ loki_add_subdirectory(../storage storage)
+@@ -30,8 +30,6 @@ loki_add_subdirectory(../storage storage)
  loki_add_subdirectory(../utils utils)
  loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
 -set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
--loki_add_subdirectory(../vendors/loki-mq loki-mq)
+-loki_add_subdirectory(../vendors/loki-mq loki-mq EXCLUDE_FROM_ALL)
  find_package(OpenSSL REQUIRED)
  
  find_package(Boost
-@@ -45,7 +43,6 @@ target_link_libraries(httpserver_lib PUBLIC utils)
+@@ -51,7 +49,6 @@ target_link_libraries(httpserver_lib PUBLIC storage)
+ target_link_libraries(httpserver_lib PUBLIC utils)
  target_link_libraries(httpserver_lib PUBLIC pow)
- target_link_libraries(httpserver_lib PUBLIC resolv)
  target_link_libraries(httpserver_lib PUBLIC crypto)
 -target_link_libraries(httpserver_lib PUBLIC lokimq::lokimq)
  
- set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 14)
- 
-@@ -60,19 +57,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD 14)
+ set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD 17)
+ set_property(TARGET httpserver_lib PROPERTY CXX_STANDARD_REQUIRED TRUE)
+@@ -75,19 +72,17 @@ set_property(TARGET httpserver PROPERTY CXX_STANDARD_REQUIRED TRUE)
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
@@ -74,7 +74,7 @@ index 48ff679..ad13c54 100644
  
  find_package(PkgConfig QUIET)
 +
-+pkg_check_modules(LOKIMQ REQUIRED liblokimq>=1.0.0)
++pkg_check_modules(LOKIMQ REQUIRED liblokimq>=1.2.0)
 +target_link_libraries(httpserver PUBLIC ${LOKIMQ_LIBRARIES})
 +target_include_directories(httpserver PUBLIC ${LOKIMQ_INCLUDE_DIRS}/lokimq)
 +
@@ -82,10 +82,10 @@ index 48ff679..ad13c54 100644
      pkg_check_modules(SYSTEMD libsystemd)
      # Default ENABLE_SYSTEMD to true if we found it
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
-index 694702e..a4e79d8 100644
+index 75ac612..b29440d 100644
 --- a/storage/CMakeLists.txt
 +++ b/storage/CMakeLists.txt
-@@ -17,8 +17,8 @@ loki_add_subdirectory(../common common)
+@@ -18,8 +18,8 @@ loki_add_subdirectory(../common common)
  target_link_libraries(storage PRIVATE common)
  loki_add_subdirectory(../utils utils)
  target_link_libraries(storage PRIVATE utils)

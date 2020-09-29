@@ -2,19 +2,31 @@ Source: loki-storage-server
 Section: net
 Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
-Build-Depends: debhelper (>= 11), cmake, g++, libboost-dev (>= 1.58), libboost-filesystem-dev,
-    libboost-thread-dev, libboost-chrono-dev, libboost-program-options-dev, libsodium-dev (>= 1.0.17), libssl-dev, libsqlite3-dev, libspdlog-dev,
-    libsystemd-dev, pkg-config, liblokimq-dev (>= 1.1.0)
+Build-Depends: debhelper (>= 11),
+    cmake,
+    g++,
+    libloki-core-dev (>= 8),
+    liblokimq-dev (>= 1.2.0~),
+    libboost-dev (>= 1.58),
+    libboost-filesystem-dev,
+    libboost-thread-dev,
+    libboost-program-options-dev,
+    libsodium-dev (>= 1.0.17),
+    libssl-dev,
+    libsqlite3-dev,
+    libspdlog-dev,
+    libsystemd-dev,
+    pkg-config
 Standards-Version: 4.1.3
 Homepage: https://loki.network
 
 Package: loki-storage-server
 Architecture: any
-Depends: lokid (>= 7.1.3), ${shlibs:Depends}, ${misc:Depends}
+Depends: lokid (>= 8.0.0), ${shlibs:Depends}, ${misc:Depends}
 Suggests: loki-service-node
 Description: Loki storage server
  This package contains the Loki storage server component of a Loki service
  node.  This package requires a running lokid configured as a service node; the
  default configuration is suitable for the lokid configuration set up by the
  loki-service-node package, but it is possible to configure manually via the
- /etc/loki/*.conf files.
+ /etc/loki/storage.conf file.
