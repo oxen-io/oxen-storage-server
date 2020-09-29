@@ -5,12 +5,12 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 
 #include "loki_common.h"
@@ -29,6 +29,10 @@ class Database;
 
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
+
+namespace lokimq {
+struct ConnectionID;
+}
 
 namespace loki {
 
@@ -77,15 +81,14 @@ class FailedRequestHandler
     uint32_t attempt_count_ = 0;
 
     /// Call this if we give up re-transmitting
-    boost::optional<std::function<void()>> give_up_callback_;
+    std::function<void()> give_up_callback_;
 
     void retry(std::shared_ptr<FailedRequestHandler>&& self);
 
   public:
-    FailedRequestHandler(
-        boost::asio::io_context& ioc, const sn_record_t& sn,
-        std::shared_ptr<request_t> req,
-        boost::optional<std::function<void()>>&& give_up_cb = boost::none);
+    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
+                         std::shared_ptr<request_t> req,
+                         std::function<void()> give_up_cb = nullptr);
 
     ~FailedRequestHandler();
     /// Initiates the timer for retrying (which cannot be done directly in
@@ -108,7 +111,9 @@ class ServiceNode {
     boost::asio::io_context& worker_ioc_;
     boost::thread worker_thread_;
 
-    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 100};
+    // We set the default difficulty to some low value, so that we don't reject
+    // clients unnecessarily before we get the DNS record
+    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 1};
     std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
 
     bool force_start_ = false;
@@ -172,7 +177,8 @@ class ServiceNode {
 
     void bootstrap_data();
 
-    void bootstrap_peers(const std::vector<sn_record_t>& peers) const; // mutex not needed
+    void bootstrap_peers(
+        const std::vector<sn_record_t>& peers) const; // mutex not needed
 
     void bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const;
 
@@ -184,12 +190,14 @@ class ServiceNode {
                           const signature& sig) const; // mutex not needed
 
     /// Reliably push message/batch to a service node
-    void relay_data_reliable(const std::string& blob,
-                             const sn_record_t& address) const; // mutex not needed
+    void
+    relay_data_reliable(const std::string& blob,
+                        const sn_record_t& address) const; // mutex not needed
 
     template <typename Message>
-    void relay_messages(const std::vector<Message>& messages,
-                        const std::vector<sn_record_t>& snodes) const; // mutex not needed
+    void relay_messages(
+        const std::vector<Message>& messages,
+        const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
     /// Request swarm structure from the deamon and reset the timer
     void swarm_timer_tick();
@@ -201,9 +209,10 @@ class ServiceNode {
     void relay_buffered_messages();
 
     /// Check the latest version from DNS text record
-    void check_version_timer_tick();  // mutex not needed
+    void check_version_timer_tick(); // mutex not needed
     /// Update PoW difficulty from DNS text record
-    void pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
+    void
+    pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
 
     /// Ping the storage server periodically as required for uptime proofs
     void lokid_ping_timer_tick();
@@ -228,7 +237,8 @@ class ServiceNode {
                                        uint64_t test_height,
                                        sn_response_t&& res);
 
-    void process_reach_test_result(const sn_pub_key_t& pk, ReachType type, bool success);
+    void process_reach_test_result(const sn_pub_key_t& pk, ReachType type,
+                                   bool success);
 
     /// From a peer
     void process_blockchain_test_response(sn_response_t&& res,
@@ -252,10 +262,13 @@ class ServiceNode {
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 LokimqServer& lmq_server,
                 const loki::lokid_key_pair_t& key_pair,
-                const std::string& db_location, LokidClient& lokid_client,
-                const bool force_start);
+                const std::string& ed25519hex, const std::string& db_location,
+                LokidClient& lokid_client, const bool force_start);
 
     ~ServiceNode();
+
+    // Return info about this node as it is advertised to other nodes
+    const sn_record_t& own_address() { return our_address_; }
 
     // Record the time of our last being tested over lmq/http
     void update_last_ping(ReachType type);
@@ -267,9 +280,14 @@ class ServiceNode {
 
     // This is new, so it does not need to support http, thus new (if temp)
     // method
-    void send_onion_to_sn(const sn_record_t& sn, const std::string& payload,
-                          const std::string& eph_key,
-                          ss_client::Callback cb) const;
+    void send_onion_to_sn_v1(const sn_record_t& sn, const std::string& payload,
+                             const std::string& eph_key,
+                             ss_client::Callback cb) const;
+
+    /// Same as v1, but using the new protocol (ciphertext as binary)
+    void send_onion_to_sn_v2(const sn_record_t& sn, const std::string& payload,
+                             const std::string& eph_key,
+                             ss_client::Callback cb) const;
 
     // TODO: move this eventually out of SN
     // Send by either http or lmq
@@ -277,7 +295,7 @@ class ServiceNode {
                     ss_client::Request req, ss_client::Callback cb) const;
 
     // Return true if the service node is ready to start running
-    bool snode_ready(boost::optional<std::string&> reason);
+    bool snode_ready(std::string* reason = nullptr);
 
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
@@ -314,14 +332,17 @@ class ServiceNode {
     void
     set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
+    // Stats for session clients that want to know the version number
+    std::string get_stats_for_session_client() const;
+
     std::string get_stats() const;
 
     std::string get_status_line() const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_x25519_bin(const sn_pub_key_t& address) const;
 
-    boost::optional<sn_record_t>
+    std::optional<sn_record_t>
     find_node_by_ed25519_pk(const std::string& pk) const;
 };
 

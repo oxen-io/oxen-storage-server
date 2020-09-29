@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <lokimq/string_view.h>
+#include <string_view>
+#include <vector>
 
 namespace lokimq {
 class LokiMQ;
@@ -29,7 +30,7 @@ class LokimqServer {
     RequestHandler* request_handler_;
 
     // Get nodes' address
-    std::string peer_lookup(lokimq::string_view pubkey_bin) const;
+    std::string peer_lookup(std::string_view pubkey_bin) const;
 
     // Handle Session data coming from peer SN
     void handle_sn_data(lokimq::Message& message);
@@ -37,9 +38,17 @@ class LokimqServer {
     // Handle Session client requests arrived via proxy
     void handle_sn_proxy_exit(lokimq::Message& message);
 
-    void handle_onion_request(lokimq::Message& message);
+    // v2 indicates whether to use the new (v2) protocol
+    void handle_onion_request(lokimq::Message& message, bool v2);
+
+    void handle_get_logs(lokimq::Message& message);
+
+    void handle_get_stats(lokimq::Message& message);
 
     uint16_t port_ = 0;
+
+    // Access keys for the 'service' category as binary
+    std::vector<std::string> stats_access_keys;
 
   public:
     LokimqServer(uint16_t port);
@@ -47,12 +56,13 @@ class LokimqServer {
 
     // Initialize lokimq
     void init(ServiceNode* sn, RequestHandler* rh,
-              const lokid_key_pair_t& keypair);
+              const lokid_key_pair_t& keypair,
+              const std::vector<std::string>& stats_access_key);
 
     uint16_t port() { return port_; }
 
     /// True if LokiMQ instance has been set
-    explicit operator bool() const { return (bool) lokimq_; }
+    explicit operator bool() const { return (bool)lokimq_; }
     /// Dereferencing via * or -> accesses the contained LokiMQ instance.
     LokiMQ& operator*() const { return *lokimq_; }
     LokiMQ* operator->() const { return lokimq_.get(); }

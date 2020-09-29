@@ -28,26 +28,29 @@ extern "C" {
 
 namespace fs = boost::filesystem;
 
-static boost::optional<fs::path> get_home_dir() {
+static std::optional<fs::path> get_home_dir() {
 
     /// TODO: support default dir for Windows
 #ifdef WIN32
-    return boost::none;
+    return std::nullopt;
 #endif
 
     char* pszHome = getenv("HOME");
     if (pszHome == NULL || strlen(pszHome) == 0)
-        return boost::none;
+        return std::nullopt;
 
     return fs::path(pszHome);
 }
 
 #ifdef ENABLE_SYSTEMD
-static void systemd_watchdog_tick(boost::asio::steady_timer &timer, const loki::ServiceNode& sn) {
+static void systemd_watchdog_tick(boost::asio::steady_timer& timer,
+                                  const loki::ServiceNode& sn) {
     using namespace std::literals;
     sd_notify(0, ("WATCHDOG=1\nSTATUS=" + sn.get_status_line()).c_str());
     timer.expires_after(10s);
-    timer.async_wait([&](const boost::system::error_code&) { systemd_watchdog_tick(timer, sn); });
+    timer.async_wait([&](const boost::system::error_code&) {
+        systemd_watchdog_tick(timer, sn);
+    });
 }
 #endif
 
@@ -72,14 +75,18 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    if (options.print_version) {
+        std::cout << version_info();
+        return EXIT_SUCCESS;
+    }
+
     if (options.data_dir.empty()) {
         if (auto home_dir = get_home_dir()) {
             if (options.testnet) {
                 options.data_dir =
-                    (home_dir.get() / ".loki" / "testnet" / "storage").string();
+                    (*home_dir / ".loki" / "testnet" / "storage").string();
             } else {
-                options.data_dir =
-                    (home_dir.get() / ".loki" / "storage").string();
+                options.data_dir = (*home_dir / ".loki" / "storage").string();
             }
         }
     }
@@ -105,9 +112,6 @@ int main(int argc, char* argv[]) {
 
     // Always print version for the logs
     print_version();
-    if (options.print_version) {
-        return EXIT_SUCCESS;
-    }
 
     if (options.ip == "127.0.0.1") {
         LOKI_LOG(critical,
@@ -200,12 +204,16 @@ int main(int argc, char* argv[]) {
         const auto public_key_ed25519 =
             loki::derive_pubkey_ed25519(private_key_ed25519);
 
-        LOKI_LOG(info, "SN ed25519 pubkey is: {}",
-                 util::as_hex(public_key_ed25519));
+        const std::string pubkey_ed25519_hex = util::as_hex(public_key_ed25519);
+
+        LOKI_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
 
         loki::lokid_key_pair_t lokid_key_pair_x25519{private_key_x25519,
                                                      public_key_x25519};
 
+        for (const auto& key : options.stats_access_keys) {
+            LOKI_LOG(info, "Stats access key: {}", key);
+        }
 
         // We pass port early because we want to send it in the first ping to
         // Lokid (in ServiceNode's constructor), but don't want to initialize
@@ -213,15 +221,16 @@ int main(int argc, char* argv[]) {
         loki::LokimqServer lokimq_server(options.lmq_port);
 
         // TODO: SN doesn't need lokimq_server, just the lmq components
-        loki::ServiceNode service_node(
-            ioc, worker_ioc, options.port, lokimq_server, lokid_key_pair,
-            options.data_dir, lokid_client, options.force_start);
+        loki::ServiceNode service_node(ioc, worker_ioc, options.port,
+                                       lokimq_server, lokid_key_pair,
+                                       pubkey_ed25519_hex, options.data_dir,
+                                       lokid_client, options.force_start);
 
         loki::RequestHandler request_handler(ioc, service_node, lokid_client,
                                              channel_encryption);
 
         lokimq_server.init(&service_node, &request_handler,
-                           lokid_key_pair_x25519);
+                           lokid_key_pair_x25519, options.stats_access_keys);
 
         RateLimiter rate_limiter;
 

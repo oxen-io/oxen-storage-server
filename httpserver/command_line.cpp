@@ -2,7 +2,6 @@
 #include "loki_logger.h"
 
 #include <boost/filesystem.hpp>
-#include <boost/optional.hpp>
 
 #include <iostream>
 
@@ -30,7 +29,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
         ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
         ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
-        ("help", po::bool_switch(&options_.print_help),"Shows this help message");
+        ("help", po::bool_switch(&options_.print_help),"Shows this help message")
+        ("stats-access-key", po::value(&options_.stats_access_keys)->multitoken(), "A public key (x25519) that will be given access to the `get_stats` lmq endpoint");
         // Add hidden ip and port options.  You technically can use the `--ip=` and `--port=` with
         // these here, but they are meant to be positional.  More usefully, you can specify `ip=`
         // and `port=` in the config file to specify them.
@@ -80,7 +80,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     }
 
     if (!vm.count("lmq-port")) {
-        throw std::runtime_error("lmq-port command line option is not specified");
+        throw std::runtime_error(
+            "lmq-port command line option is not specified");
     }
 
     if (!vm.count("ip") || !vm.count("port")) {

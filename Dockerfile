@@ -1,6 +1,6 @@
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 
-RUN apt update && apt install -y build-essential curl git cmake libssl-dev libsodium-dev wget pkg-config autoconf libtool
+RUN apt update && apt install -y build-essential curl git cmake libssl-dev libsodium-dev wget pkg-config autoconf libtool g++-8
 WORKDIR /usr/src/app
 
 ## Boost
@@ -63,6 +63,8 @@ RUN git clone https://github.com/loki-project/loki-storage-server.git --depth=1
 RUN cd loki-storage-server && git submodule update --init --recursive
 
 ENV BOOST_ROOT /usr/src/app/boost_${BOOST_VERSION}
+
+ENV CC=gcc-8 CXX=g++-8
 
 RUN cd loki-storage-server \
     && mkdir -p build \
