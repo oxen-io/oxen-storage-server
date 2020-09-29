@@ -5,11 +5,12 @@ bash -i
 set -e
 set -x
 
-# Boost ran out of download bandwidth; temporarily switch to a local mirror
-#curl -L https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.bz2 | tar xj
-curl -L https://deb.imaginary.stream/boost_1_72_0.tar.bz2 | tar xj
+#curl -L https://dl.bintray.com/boostorg/release/1.74.0/source/boost_1_74_0.tar.bz2 | tar xj
+#curl -L https://deb.imaginary.stream/boost_1_72_0.tar.bz2 | tar xj
 
-cd boost_1_72_0
+curl -L https://builds.lokinet.dev/deps/boost_1_74_0.tar.bz2 | tar xj
+
+cd boost_1_74_0
 
 ./bootstrap.sh
 
@@ -20,6 +21,7 @@ cd boost_1_72_0
         --with-chrono \
         --with-thread \
         --with-log \
-        --with-test
+        --with-test \
+        --lto
 
 
