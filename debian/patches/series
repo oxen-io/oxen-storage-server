@@ -1,1 +1,2 @@
 0001-Devendor-loki-storage-server.patch
+0002-Add-check-for-latomic-needed-for-armhf-build.patch
