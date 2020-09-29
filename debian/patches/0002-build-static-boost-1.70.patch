@@ -26,7 +26,7 @@ index 24767b3..ed80962 100644
  if (DISABLE_SNODE_SIGNATURE)
      add_definitions(-DDISABLE_SNODE_SIGNATURE)
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index c827a19..19b8cda 100644
+index 115ea47..e6b4373 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
 @@ -7,10 +7,7 @@ add_library(common STATIC
@@ -39,10 +39,10 @@ index c827a19..19b8cda 100644
 -)
 +set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a")
  
- set_property(TARGET common PROPERTY CXX_STANDARD 14)
- 
+ set_property(TARGET common PROPERTY CXX_STANDARD 17)
+ set_property(TARGET common PROPERTY CXX_STANDARD_REQUIRED TRUE)
 diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
-index a0d3a55..ffc4888 100644
+index 45cc507..c05baec 100644
 --- a/crypto/CMakeLists.txt
 +++ b/crypto/CMakeLists.txt
 @@ -41,9 +41,7 @@ loki_add_subdirectory(../utils utils)
@@ -57,10 +57,10 @@ index a0d3a55..ffc4888 100644
  target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 2706529..9b69c80 100644
+index b86f8bf..f07be11 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -28,13 +28,7 @@ loki_add_subdirectory(../pow pow)
+@@ -32,13 +32,7 @@ loki_add_subdirectory(../pow pow)
  loki_add_subdirectory(../crypto crypto)
  find_package(OpenSSL REQUIRED)
  
@@ -73,13 +73,13 @@ index 2706529..9b69c80 100644
 -)
 +set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_program_options.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_chrono.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_date_time.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
  
- target_link_libraries(httpserver_lib PUBLIC common)
- target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+ # TODO: enable more warnings!
+ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
 diff --git a/pow/CMakeLists.txt b/pow/CMakeLists.txt
-index 1781c0c..3fd5a82 100644
+index f919ad0..2dce01f 100644
 --- a/pow/CMakeLists.txt
 +++ b/pow/CMakeLists.txt
-@@ -15,13 +15,7 @@ target_include_directories(pow
+@@ -16,13 +16,7 @@ target_include_directories(pow
      ${CMAKE_CURRENT_LIST_DIR}/include
  )
  
@@ -95,10 +95,10 @@ index 1781c0c..3fd5a82 100644
  target_include_directories(pow PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(pow PRIVATE ${Boost_LIBRARIES})
 diff --git a/storage/CMakeLists.txt b/storage/CMakeLists.txt
-index a4e79d8..e3d2662 100644
+index b29440d..df2a9e6 100644
 --- a/storage/CMakeLists.txt
 +++ b/storage/CMakeLists.txt
-@@ -21,13 +21,7 @@ find_library(SQLITE3_LIBRARY sqlite3)
+@@ -22,13 +22,7 @@ find_library(SQLITE3_LIBRARY sqlite3)
  target_link_libraries(storage PRIVATE ${SQLITE3_LIBRARY})
  
  
@@ -114,7 +114,7 @@ index a4e79d8..e3d2662 100644
  target_include_directories(storage PRIVATE ${Boost_INCLUDE_DIRS})
  target_link_libraries(storage PRIVATE ${Boost_LIBRARIES})
 diff --git a/unit_test/CMakeLists.txt b/unit_test/CMakeLists.txt
-index 0cefe8c..7cabd72 100644
+index 504b089..028af23 100644
 --- a/unit_test/CMakeLists.txt
 +++ b/unit_test/CMakeLists.txt
 @@ -21,14 +21,7 @@ loki_add_subdirectory(../httpserver httpserver)
@@ -131,5 +131,5 @@ index 0cefe8c..7cabd72 100644
 -)
 +set(Boost_LIBRARIES "${CMAKE_SOURCE_DIR}/boost/lib/libboost_filesystem.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_chrono.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_thread.a;-lpthread;${CMAKE_SOURCE_DIR}/boost/lib/libboost_unit_test_framework.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_date_time.a;${CMAKE_SOURCE_DIR}/boost/lib/libboost_atomic.a")
  
- set_property(TARGET Test PROPERTY CXX_STANDARD 14)
- 
+ set_property(TARGET Test PROPERTY CXX_STANDARD 17)
+ set_property(TARGET Test PROPERTY CXX_STANDARD_REQUIRED TRUE)
