@@ -15,6 +15,7 @@ Build-Depends: debhelper (>= 11),
     libssl-dev,
     libsqlite3-dev,
     libspdlog-dev,
+    nlohmann-json3-dev,
     libsystemd-dev,
     pkg-config
 Standards-Version: 4.1.3
