@@ -1,0 +1,21 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 29 Sep 2020 15:57:03 -0300
+Subject: boost::beast 1.74 compatibility
+
+---
+ httpserver/http_connection.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/httpserver/http_connection.cpp b/httpserver/http_connection.cpp
+index 99a10be..76546f1 100644
+--- a/httpserver/http_connection.cpp
++++ b/httpserver/http_connection.cpp
+@@ -1095,7 +1095,7 @@ void connection_t::write_response() {
+         this->response_modifier_(response_);
+     }
+ 
+-    response_.set(http::field::content_length, response_.body().size());
++    response_.set(http::field::content_length, std::to_string(response_.body().size()));
+ 
+     /// This attempts to write all data to a stream
+     /// TODO: handle the case when we are trying to send too much
