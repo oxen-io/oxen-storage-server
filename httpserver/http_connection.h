@@ -41,7 +41,7 @@ namespace loki {
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data);
 
-struct Security;
+class Security;
 
 class RequestHandler;
 class Response;
