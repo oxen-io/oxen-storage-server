@@ -24,7 +24,7 @@
 #include <fstream>
 #include <string_view>
 
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 
 using json = nlohmann::json;
 using loki::storage::Item;

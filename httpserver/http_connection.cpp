@@ -1095,7 +1095,7 @@ void connection_t::write_response() {
         this->response_modifier_(response_);
     }
 
-    response_.set(http::field::content_length, response_.body().size());
+    response_.set(http::field::content_length, std::to_string(response_.body().size()));
 
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much
