@@ -39,7 +39,8 @@ class HttpsClientSession
     /// it is very common for the same request to be
     /// sent to multiple snodes
     std::shared_ptr<request_t> req_;
-    response_t res_;
+
+    http::response_parser<http::string_body> response_;
 
     // Snode's pub key (none if signature verification is not used / not a
     // snode)
