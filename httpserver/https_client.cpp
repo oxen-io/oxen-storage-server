@@ -122,6 +122,8 @@ HttpsClientSession::HttpsClientSession(
 
     get_net_stats().https_connections_out++;
 
+    response_.body_limit(1024 * 1024 * 10); // 10 mb
+
     static uint64_t connection_count = 0;
     this->connection_idx = connection_count++;
 }
@@ -223,7 +225,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
     LOKI_LOG(trace, "Successfully transferred {} bytes.", bytes_transferred);
 
     // Receive the HTTP response
-    http::async_read(stream_, buffer_, res_,
+    http::async_read(stream_, buffer_, response_,
                      std::bind(&HttpsClientSession::on_read, shared_from_this(),
                                std::placeholders::_1, std::placeholders::_2));
 }
@@ -233,8 +235,10 @@ bool HttpsClientSession::verify_signature() {
     if (!server_pub_key_b32z_)
         return true;
 
-    const auto it = res_.find(LOKI_SNODE_SIGNATURE_HEADER);
-    if (it == res_.end()) {
+    const auto& response = response_.get();
+
+    const auto it = response.find(LOKI_SNODE_SIGNATURE_HEADER);
+    if (it == response.end()) {
         LOKI_LOG(warn, "no signature found in header from {}",
                  *server_pub_key_b32z_);
         return false;
@@ -249,21 +253,24 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
+    auto response = response_.release();
+
     if (!ec || (ec == http::error::end_of_stream)) {
 
-        if (http::to_status_class(res_.result_int()) ==
+        if (http::to_status_class(response.result_int()) ==
             http::status_class::successful) {
 
             if (server_pub_key_b32z_ && !verify_signature()) {
                 LOKI_LOG(debug, "Bad signature from {}", *server_pub_key_b32z_);
-                trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
+                trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
             } else {
-                auto body = std::make_shared<std::string>(res_.body());
-                trigger_callback(SNodeError::NO_ERROR, std::move(body), res_);
+                auto body = std::make_shared<std::string>(response.body());
+                trigger_callback(SNodeError::NO_ERROR, std::move(body), response);
             }
 
         } else {
-            trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
+            LOKI_LOG(debug, "ERROR OTHER: [{}] {}", response.result_int(), response.body());
+            trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
         }
 
     } else {
@@ -272,7 +279,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
         /// deadline timer)?
         LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
                  ec.message());
-        trigger_callback(SNodeError::ERROR_OTHER, nullptr, res_);
+        trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
     }
 
     // Gracefully close the socket
