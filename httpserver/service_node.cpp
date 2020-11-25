@@ -439,7 +439,7 @@ void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
                                       ss_client::Callback cb) const {
 
     lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
-                         lokimq::send_option::request_timeout{10s}, eph_key,
+                         lokimq::send_option::request_timeout{30s}, eph_key,
                          payload);
 }
 
@@ -450,7 +450,7 @@ void ServiceNode::send_onion_to_sn_v2(const sn_record_t& sn,
 
     lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req_v2", std::move(cb),
-        lokimq::send_option::request_timeout{10s}, eph_key, payload);
+        lokimq::send_option::request_timeout{30s}, eph_key, payload);
 }
 
 // Calls callback on success only?
