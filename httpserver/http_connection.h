@@ -115,7 +115,7 @@ class LokidClient {
     wait_for_privkey();
 };
 
-constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(30);
+constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(60);
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,

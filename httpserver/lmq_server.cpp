@@ -103,7 +103,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
 
     auto on_response = [this, origin_pk,
                         reply_tag](loki::Response res) mutable {
-        LOKI_LOG(trace, "on response: {}", to_string(res));
+        LOKI_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
