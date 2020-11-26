@@ -253,7 +253,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
-    auto response = response_.release();
+    const auto &response = response_.get();
 
     if (!ec || (ec == http::error::end_of_stream)) {
 
