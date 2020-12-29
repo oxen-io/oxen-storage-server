@@ -1,0 +1,21 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 29 Sep 2020 15:06:17 -0300
+Subject: boost 1.73+ compatibility without deprecation warning
+
+---
+ httpserver/service_node.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/httpserver/service_node.cpp b/httpserver/service_node.cpp
+index 495de1e..0466adc 100644
+--- a/httpserver/service_node.cpp
++++ b/httpserver/service_node.cpp
+@@ -24,7 +24,7 @@
+ #include <fstream>
+ #include <string_view>
+ 
+-#include <boost/bind.hpp>
++#include <boost/bind/bind.hpp>
+ 
+ using json = nlohmann::json;
+ using loki::storage::Item;
