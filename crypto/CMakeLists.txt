@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 add_library(crypto STATIC
-    src/lokid_key.cpp
+    src/oxend_key.cpp
     src/channel_encryption.cpp
     src/signature.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/loki/crypto-ops/crypto-ops.c

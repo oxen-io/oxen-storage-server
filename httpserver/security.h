@@ -4,13 +4,13 @@
 
 #include <filesystem>
 
-namespace loki {
+namespace oxen {
 
-struct lokid_key_pair_t;
+struct oxend_key_pair_t;
 
 class Security {
   public:
-    Security(const lokid_key_pair_t& key_pair,
+    Security(const oxend_key_pair_t& key_pair,
              const std::filesystem::path& base_path);
 
     std::string base64_sign(const std::string& body);
@@ -18,8 +18,8 @@ class Security {
     std::string get_cert_signature() const;
 
   private:
-    const lokid_key_pair_t& key_pair_;
+    const oxend_key_pair_t& key_pair_;
     std::string cert_signature_;
     std::filesystem::path base_path_;
 };
-} // namespace loki
+} // namespace oxen

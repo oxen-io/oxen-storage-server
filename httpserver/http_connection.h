@@ -15,15 +15,15 @@
 #include <boost/beast/version.hpp>
 #include <boost/format.hpp>
 
-#include "loki_common.h"
-#include "lokid_key.h"
+#include "oxen_common.h"
+#include "oxend_key.h"
 #include "swarm.h"
 
-constexpr auto LOKI_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
-constexpr auto LOKI_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
-constexpr auto LOKI_SENDER_KEY_HEADER = "X-Sender-Public-Key";
-constexpr auto LOKI_TARGET_SNODE_KEY = "X-Target-Snode-Key";
-constexpr auto LOKI_LONG_POLL_HEADER = "X-Loki-Long-Poll";
+constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Oxen-Snode-PubKey";
+constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Oxen-Snode-Signature";
+constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
+constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
+constexpr auto OXEN_LONG_POLL_HEADER = "X-Oxen-Long-Poll";
 
 template <typename T>
 class ChannelEncryption;
@@ -36,7 +36,7 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-namespace loki {
+namespace oxen {
 
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data);
@@ -92,23 +92,23 @@ struct bc_test_params_t {
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
-class LokidClient {
+class OxendClient {
 
     boost::asio::io_context& ioc_;
-    std::string lokid_rpc_ip_;
-    const uint16_t lokid_rpc_port_;
+    std::string oxend_rpc_ip_;
+    const uint16_t oxend_rpc_port_;
 
   public:
-    LokidClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
-    void make_lokid_request(std::string_view method,
+    OxendClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
+    void make_oxend_request(std::string_view method,
                             const nlohmann::json& params,
                             http_callback_t&& cb) const;
-    void make_custom_lokid_request(const std::string& daemon_ip,
+    void make_custom_oxend_request(const std::string& daemon_ip,
                                    const uint16_t daemon_port,
                                    std::string_view method,
                                    const nlohmann::json& params,
                                    http_callback_t&& cb) const;
-    // Synchronously fetches the private key from lokid.  Designed to be called
+    // Synchronously fetches the private key from oxend.  Designed to be called
     // *before* the io_context has been started (this runs it, waits for a
     // successful fetch, then restarts it when finished).
     std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
@@ -316,13 +316,13 @@ void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
 
 constexpr const char* error_string(SNodeError err) {
     switch (err) {
-    case loki::SNodeError::NO_ERROR:
+    case oxen::SNodeError::NO_ERROR:
         return "NO_ERROR";
-    case loki::SNodeError::ERROR_OTHER:
+    case oxen::SNodeError::ERROR_OTHER:
         return "ERROR_OTHER";
-    case loki::SNodeError::NO_REACH:
+    case oxen::SNodeError::NO_REACH:
         return "NO_REACH";
-    case loki::SNodeError::HTTP_ERROR:
+    case oxen::SNodeError::HTTP_ERROR:
         return "HTTP_ERROR";
     default:
         return "[UNKNOWN]";
@@ -337,12 +337,12 @@ struct CiphertextPlusJson {
 // TODO: move this from http_connection.h after refactoring
 auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
 
-} // namespace loki
+} // namespace oxen
 
 namespace fmt {
 
 template <>
-struct formatter<loki::SNodeError> {
+struct formatter<oxen::SNodeError> {
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -350,7 +350,7 @@ struct formatter<loki::SNodeError> {
     }
 
     template <typename FormatContext>
-    auto format(const loki::SNodeError& err, FormatContext& ctx) {
+    auto format(const oxen::SNodeError& err, FormatContext& ctx) {
         return format_to(ctx.out(), error_string(err));
     }
 };

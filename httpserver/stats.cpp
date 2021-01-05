@@ -5,7 +5,7 @@
 
 using namespace std::chrono_literals;
 
-namespace loki {
+namespace oxen {
 
 static void cleanup_old(std::deque<test_result_t>& tests, time_t cutoff_time) {
 
@@ -38,4 +38,4 @@ void all_stats_t::cleanup() {
     this->next_period();
 }
 
-} // namespace loki
+} // namespace oxen

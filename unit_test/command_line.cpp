@@ -7,7 +7,7 @@
 BOOST_AUTO_TEST_SUITE(server_command_line)
 
 BOOST_AUTO_TEST_CASE(it_throws_when_no_args) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver"};
     BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                         const_cast<char**>(argv)),
@@ -15,7 +15,7 @@ BOOST_AUTO_TEST_CASE(it_throws_when_no_args) {
 }
 
 BOOST_AUTO_TEST_CASE(it_throws_when_no_port) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "0.0.0.0"};
     BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                         const_cast<char**>(argv)),
@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE(it_throws_when_no_port) {
 }
 
 BOOST_AUTO_TEST_CASE(it_throws_when_no_port_with_flag) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "--force-start", "0.0.0.0"};
     BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                         const_cast<char**>(argv)),
@@ -31,7 +31,7 @@ BOOST_AUTO_TEST_CASE(it_throws_when_no_port_with_flag) {
 }
 
 BOOST_AUTO_TEST_CASE(it_throws_unknown_arg) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "0.0.0.0", "80", "--covfefe"};
     BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                         const_cast<char**>(argv)),
@@ -39,7 +39,7 @@ BOOST_AUTO_TEST_CASE(it_throws_unknown_arg) {
 }
 
 BOOST_AUTO_TEST_CASE(it_parses_help) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "--help"};
     BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                            const_cast<char**>(argv)));
@@ -48,7 +48,7 @@ BOOST_AUTO_TEST_CASE(it_parses_help) {
 }
 
 BOOST_AUTO_TEST_CASE(it_parses_version) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "--version"};
     BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                            const_cast<char**>(argv)));
@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(it_parses_ip_and_port) {
 }
 
 BOOST_AUTO_TEST_CASE(it_throw_with_invalid_port) {
-    loki::command_line_parser parser;
+    oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "0.0.0.0",
                           "8O", // notice the O instead of 0
                           "--lmq-port", "123"};
@@ -87,12 +87,12 @@ BOOST_AUTO_TEST_CASE(it_throw_with_invalid_port) {
 
 BOOST_AUTO_TEST_CASE(it_parses_lokid_rpc_port) {
     loki::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123", "--lokid-rpc-port",
+    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123", "--oxend-rpc-port",
                           "12345"};
     BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
                                            const_cast<char**>(argv)));
     const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.lokid_rpc_port, 12345);
+    BOOST_CHECK_EQUAL(options.oxend_rpc_port, 12345);
 }
 
 BOOST_AUTO_TEST_CASE(it_parses_data_dir) {

@@ -4,7 +4,7 @@
 #include <functional>
 #include <optional>
 
-namespace loki {
+namespace oxen {
 using http_callback_t = std::function<void(sn_response_t)>;
 
 void make_https_request(boost::asio::io_context& ioc, const std::string& ip,
@@ -77,4 +77,4 @@ class HttpsClientSession
 
     ~HttpsClientSession();
 };
-} // namespace loki
+} // namespace oxen

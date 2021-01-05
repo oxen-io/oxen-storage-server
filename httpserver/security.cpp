@@ -1,5 +1,5 @@
 #include "security.h"
-#include "lokid_key.h"
+#include "oxend_key.h"
 #include "signature.h"
 
 #include <lokimq/base64.h>
@@ -7,9 +7,15 @@
 #include <filesystem>
 #include <fstream>
 
+<<<<<<< HEAD
 namespace loki {
 Security::Security(const lokid_key_pair_t& key_pair,
                    const std::filesystem::path& base_path)
+=======
+namespace oxen {
+Security::Security(const oxend_key_pair_t& key_pair,
+                   const boost::filesystem::path& base_path)
+>>>>>>> initial rebrand
     : key_pair_(key_pair), base_path_(base_path) {}
 
 std::string Security::base64_sign(const std::string& body) {
@@ -40,4 +46,4 @@ void Security::generate_cert_signature() {
 }
 
 std::string Security::get_cert_signature() const { return cert_signature_; }
-} // namespace loki
+} // namespace oxen

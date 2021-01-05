@@ -9,9 +9,9 @@
 
 #include <boost/test/unit_test.hpp>
 
-using loki::storage::Item;
+using oxen::storage::Item;
 
-using namespace loki;
+using namespace oxen;
 
 using namespace std::literals;
 

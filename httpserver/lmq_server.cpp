@@ -1,9 +1,9 @@
 #include "lmq_server.h"
 
 #include "dev_sink.h"
-#include "loki_common.h"
-#include "loki_logger.h"
-#include "lokid_key.h"
+#include "oxen_common.h"
+#include "oxen_logger.h"
+#include "oxend_key.h"
 #include "request_handler.h"
 #include "service_node.h"
 
@@ -13,11 +13,11 @@
 
 #include <optional>
 
-namespace loki {
+namespace oxen {
 
 std::string LokimqServer::peer_lookup(std::string_view pubkey_bin) const {
 
-    LOKI_LOG(trace, "[LMQ] Peer Lookup");
+    OXEN_LOG(trace, "[LMQ] Peer Lookup");
 
     // TODO: don't create a new string here
     std::optional<sn_record_t> sn =
@@ -26,16 +26,16 @@ std::string LokimqServer::peer_lookup(std::string_view pubkey_bin) const {
     if (sn) {
         return fmt::format("tcp://{}:{}", sn->ip(), sn->lmq_port());
     } else {
-        LOKI_LOG(debug, "[LMQ] peer node not found {}!", pubkey_bin);
+        OXEN_LOG(debug, "[LMQ] peer node not found {}!", pubkey_bin);
         return "";
     }
 }
 
 void LokimqServer::handle_sn_data(lokimq::Message& message) {
 
-    LOKI_LOG(debug, "[LMQ] handle_sn_data");
-    LOKI_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    LOKI_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
+    OXEN_LOG(debug, "[LMQ] handle_sn_data");
+    OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
+    OXEN_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
 
     std::stringstream ss;
 
@@ -47,7 +47,7 @@ void LokimqServer::handle_sn_data(lokimq::Message& message) {
     // TODO: proces push batch should move to "Request handler"
     service_node_->process_push_batch(ss.str());
 
-    LOKI_LOG(debug, "[LMQ] send reply");
+    OXEN_LOG(debug, "[LMQ] send reply");
 
     // TODO: Investigate if the above could fail and whether we should report
     // that to the sending SN
@@ -56,12 +56,12 @@ void LokimqServer::handle_sn_data(lokimq::Message& message) {
 
 void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
 
-    LOKI_LOG(debug, "[LMQ] handle_sn_proxy_exit");
-    LOKI_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    LOKI_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
+    OXEN_LOG(debug, "[LMQ] handle_sn_proxy_exit");
+    OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
+    OXEN_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
 
     if (message.data.size() != 2) {
-        LOKI_LOG(debug, "Expected 2 message parts, got {}",
+        OXEN_LOG(debug, "Expected 2 message parts, got {}",
                  message.data.size());
         return;
     }
@@ -75,8 +75,8 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
     // TODO: accept string_view?
     request_handler_->process_proxy_exit(
         std::string(client_key), std::string(payload),
-        [this, origin_pk, reply_tag](loki::Response res) {
-            LOKI_LOG(debug, "    Proxy exit status: {}", res.status());
+        [this, origin_pk, reply_tag](oxen::Response res) {
+            OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
 
             if (res.status() == Status::OK) {
                 this->lokimq_->send(origin_pk, "REPLY", reply_tag,
@@ -88,7 +88,7 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
                 this->lokimq_->send(origin_pk, "REPLY", reply_tag,
                                     fmt::format("{}", res.status()),
                                     res.message());
-                LOKI_LOG(debug, "Error: status is not OK for proxy_exit: {}",
+                OXEN_LOG(debug, "Error: status is not OK for proxy_exit: {}",
                          res.status());
             }
         });
@@ -96,14 +96,14 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
 
 void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
 
-    LOKI_LOG(debug, "Got an onion request over LOKIMQ");
+    OXEN_LOG(debug, "Got an onion request over OXENMQ");
 
     auto& reply_tag = message.reply_tag;
     auto& origin_pk = message.conn.pubkey();
 
     auto on_response = [this, origin_pk,
-                        reply_tag](loki::Response res) mutable {
-        LOKI_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
+                        reply_tag](oxen::Response res) mutable {
+        OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
@@ -116,16 +116,16 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
         // avoid putting the error message in the log on 2.0.3+ nodes. (the
         // reply code here doesn't actually matter; the ping test only requires
         // that we provide *some* response).
-        LOKI_LOG(debug, "Remote pinged me");
+        OXEN_LOG(debug, "Remote pinged me");
         service_node_->update_last_ping(ReachType::ZMQ);
-        on_response(loki::Response{Status::OK, "pong"});
+        on_response(oxen::Response{Status::OK, "pong"});
         return;
     }
 
     if (message.data.size() != 2) {
-        LOKI_LOG(error, "Expected 2 message parts, got {}",
+        OXEN_LOG(error, "Expected 2 message parts, got {}",
                  message.data.size());
-        on_response(loki::Response{Status::BAD_REQUEST,
+        on_response(oxen::Response{Status::BAD_REQUEST,
                                    "Incorrect number of messages"});
         return;
     }
@@ -139,13 +139,13 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
 
 void LokimqServer::handle_get_logs(lokimq::Message& message) {
 
-    LOKI_LOG(debug, "Received get_logs request via LMQ");
+    OXEN_LOG(debug, "Received get_logs request via LMQ");
 
-    auto dev_sink = dynamic_cast<loki::dev_sink_mt*>(
-        spdlog::get("loki_logger")->sinks()[2].get());
+    auto dev_sink = dynamic_cast<oxen::dev_sink_mt*>(
+        spdlog::get("oxen_logger")->sinks()[2].get());
 
     if (dev_sink == nullptr) {
-        LOKI_LOG(critical, "Sink #3 should be dev sink");
+        OXEN_LOG(critical, "Sink #3 should be dev sink");
         assert(false);
         auto err_msg = "Developer error: sink #3 is not a dev sink.";
         message.send_reply(err_msg);
@@ -158,7 +158,7 @@ void LokimqServer::handle_get_logs(lokimq::Message& message) {
 
 void LokimqServer::handle_get_stats(lokimq::Message& message) {
 
-    LOKI_LOG(debug, "Received get_stats request via LMQ");
+    OXEN_LOG(debug, "Received get_stats request via LMQ");
 
     auto payload = service_node_->get_stats();
 
@@ -166,7 +166,7 @@ void LokimqServer::handle_get_stats(lokimq::Message& message) {
 }
 
 void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
-                        const lokid_key_pair_t& keypair,
+                        const oxend_key_pair_t& keypair,
                         const std::vector<std::string>& stats_access_keys) {
 
     using lokimq::Allow;
@@ -185,7 +185,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
                      std::string message) {
 #define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
     case lokimq::LogLevel::LMQ_LVL:                                            \
-        LOKI_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
+        OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
         break;
         switch (level) {
             LMQ_LOG_MAP(fatal, critical);
@@ -194,7 +194,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
             LMQ_LOG_MAP(info, info);
             LMQ_LOG_MAP(trace, trace);
         default:
-            LOKI_LOG(debug, "[{}:{}]: {}", file, line, message);
+            OXEN_LOG(debug, "[{}:{}]: {}", file, line, message);
         };
 #undef LMQ_LOG_MAP
     };
@@ -204,7 +204,7 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
     lokimq_.reset(new LokiMQ{pubkey, seckey, true /* is service node */,
                              lookup_fn, logger});
 
-    LOKI_LOG(info, "LokiMQ is listenting on port {}", port_);
+    OXEN_LOG(info, "LokiMQ is listenting on port {}", port_);
 
     lokimq_->log_level(lokimq::LogLevel::info);
     // clang-format off
@@ -240,4 +240,4 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
 LokimqServer::LokimqServer(uint16_t port) : port_(port){};
 LokimqServer::~LokimqServer() = default;
 
-} // namespace loki
+} // namespace oxen
