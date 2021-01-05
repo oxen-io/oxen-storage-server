@@ -10,7 +10,7 @@ if(CCACHE_PROGRAM)
   endforeach()
 endif()
 
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 
 project(storage_server)
 
@@ -21,6 +21,23 @@ option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode c
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS FALSE)
+
+cmake_policy(SET CMP0069 NEW) # Do LTO properly
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+option(USE_LTO "Use Link-Time Optimization" ON)
+if(USE_LTO AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT IPO_ENABLED OUTPUT ipo_error)
+  if(IPO_ENABLED)
+    message(STATUS "LTO enabled")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+  else()
+    message(WARNING "LTO not supported by compiler: ${ipo_error}")
+  endif()
+else()
+  message(STATUS "LTO disabled")
+  set(IPO_ENABLED OFF)
+endif()
 
 if (INTEGRATION_TEST)
     add_definitions(-DDISABLE_POW)
