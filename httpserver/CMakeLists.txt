@@ -34,12 +34,12 @@ find_package(Boost
 # TODO: enable more warnings!
 target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
 
-target_link_libraries(httpserver_lib PUBLIC common)
-target_link_libraries(httpserver_lib PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries(httpserver_lib PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(httpserver_lib PUBLIC storage utils pow crypto)
-target_link_libraries(httpserver_lib PRIVATE lokimq::lokimq)
-target_link_libraries(httpserver_lib PRIVATE Boost::system Boost::program_options)
+target_link_libraries(httpserver_lib PUBLIC
+    common storage utils pow crypto
+    OpenSSL::SSL OpenSSL::Crypto
+    nlohmann_json::nlohmann_json
+    lokimq::lokimq
+    Boost::system Boost::program_options)
 
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
 find_library(RESOLV resolv)
