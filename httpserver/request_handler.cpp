@@ -7,6 +7,8 @@
 
 #include "https_client.h"
 
+#include <nlohmann/json.hpp>
+
 using nlohmann::json;
 
 namespace loki {

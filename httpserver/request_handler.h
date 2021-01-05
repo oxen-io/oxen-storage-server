@@ -6,8 +6,7 @@
 
 #include <boost/asio.hpp>
 
-// TODO: can I avoid including this in the header?
-#include "../external/json.hpp"
+#include <nlohmann/json_fwd.hpp>
 
 // TODO: move ChannelEncryption to ::loki
 template <typename T>

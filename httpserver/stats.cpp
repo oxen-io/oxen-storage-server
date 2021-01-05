@@ -1,5 +1,4 @@
 #include "stats.h"
-#include "../external/json.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>

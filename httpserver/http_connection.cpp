@@ -17,6 +17,7 @@
 #include "request_handler.h"
 
 #include <boost/endian/conversion.hpp>
+#include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>

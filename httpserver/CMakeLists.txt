@@ -30,6 +30,8 @@ loki_add_subdirectory(../storage storage)
 loki_add_subdirectory(../utils utils)
 loki_add_subdirectory(../pow pow)
 loki_add_subdirectory(../crypto crypto)
+set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+loki_add_subdirectory(../vendors/nlohmann_json nlohmann_json)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 loki_add_subdirectory(../vendors/loki-mq loki-mq EXCLUDE_FROM_ALL)
 find_package(OpenSSL REQUIRED)
@@ -47,6 +49,7 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
 
 target_link_libraries(httpserver_lib PUBLIC common)
 target_link_libraries(httpserver_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(httpserver_lib PUBLIC nlohmann_json::nlohmann_json)
 target_link_libraries(httpserver_lib PUBLIC storage)
 target_link_libraries(httpserver_lib PUBLIC utils)
 target_link_libraries(httpserver_lib PUBLIC pow)
