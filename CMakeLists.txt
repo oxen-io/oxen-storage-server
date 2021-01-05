@@ -12,14 +12,6 @@ endif()
 
 cmake_minimum_required(VERSION 3.8)
 
-function(loki_add_subdirectory SRC)
-    get_filename_component(target ${SRC} NAME)
-    if (TARGET ${target})
-        return()
-    endif ()
-    add_subdirectory(${SRC} ${ARGN})
-endfunction()
-
 project(storage_server)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
@@ -51,14 +43,16 @@ include(contrib/check_for_std_filesystem.cmake)
 
 find_package(Boost REQUIRED)
 
-loki_add_subdirectory(common)
-loki_add_subdirectory(utils)
-loki_add_subdirectory(crypto)
-loki_add_subdirectory(pow)
-loki_add_subdirectory(storage)
-loki_add_subdirectory(httpserver)
-loki_add_subdirectory(vendors/spdlog)
+add_subdirectory(common)
+add_subdirectory(utils)
+add_subdirectory(crypto)
+add_subdirectory(pow)
+add_subdirectory(storage)
+add_subdirectory(httpserver)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
+add_subdirectory(vendors/loki-mq)
 
+option(BUILD_TESTS "build storage server unit tests" OFF)
 if (BUILD_TESTS)
-    loki_add_subdirectory(unit_test)
+    add_subdirectory(unit_test)
 endif ()

@@ -1,14 +1,5 @@
-if (TARGET utils)
-    return()
-endif()
-
 add_library(utils STATIC
     src/utils.cpp
 )
 
-target_include_directories(utils
-    PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}/include
-    PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/src
-)
+target_include_directories(utils PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)

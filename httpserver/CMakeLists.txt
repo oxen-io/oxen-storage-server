@@ -21,15 +21,8 @@ add_library(httpserver_lib STATIC
     onion_processing.cpp
     )
 
-loki_add_subdirectory(../common common)
-loki_add_subdirectory(../storage storage)
-loki_add_subdirectory(../utils utils)
-loki_add_subdirectory(../pow pow)
-loki_add_subdirectory(../crypto crypto)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-loki_add_subdirectory(../vendors/nlohmann_json nlohmann_json)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
-loki_add_subdirectory(../vendors/loki-mq loki-mq EXCLUDE_FROM_ALL)
+add_subdirectory(../vendors/nlohmann_json nlohmann_json)
 find_package(OpenSSL REQUIRED)
 
 find_package(Boost
