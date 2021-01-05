@@ -2,7 +2,7 @@
 #include "loki_logger.h"
 #include "request_handler.h"
 #include "service_node.h"
-#include "utils.hpp"
+#include <lokimq/base64.h>
 #include <nlohmann/json.hpp>
 
 /// This is only included because of `parse_combined_payload`,
@@ -58,7 +58,9 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
     std::string plaintext;
 
     try {
-        const std::string ciphertext_bin = util::base64_decode(ciphertext);
+        if (!lokimq::is_base64(ciphertext))
+            throw std::runtime_error{"cipher text is not base64 encoded"};
+        const std::string ciphertext_bin = lokimq::from_base64(ciphertext);
 
         plaintext = decryptor.decrypt_gcm(ciphertext_bin, ephem_key);
     } catch (const std::exception& e) {

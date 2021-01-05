@@ -9,7 +9,6 @@
 #include "server_certificates.h"
 #include "service_node.h"
 #include "signature.h"
-#include "utils.hpp"
 
 // needed for proxy requests
 #include "https_client.h"

@@ -14,6 +14,7 @@
 #include "request_handler.h"
 
 #include <sodium.h>
+#include <lokimq/hex.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -186,7 +187,7 @@ int main(int argc, char* argv[]) {
 
         const auto public_key = loki::derive_pubkey_legacy(private_key);
         LOKI_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
-                 util::as_hex(public_key));
+                 lokimq::to_hex(public_key.begin(), public_key.end()));
 
         // TODO: avoid conversion to vector
         const std::vector<uint8_t> priv(private_key_x25519.begin(),
@@ -198,13 +199,14 @@ int main(int argc, char* argv[]) {
         const auto public_key_x25519 =
             loki::derive_pubkey_x25519(private_key_x25519);
 
-        LOKI_LOG(info, "SN x25519 pubkey is: {}",
-                 util::as_hex(public_key_x25519));
+        LOKI_LOG(info, "SN x25519 pubkey is: {}", lokimq::to_hex(
+                    public_key_x25519.begin(), public_key_x25519.end()));
 
         const auto public_key_ed25519 =
             loki::derive_pubkey_ed25519(private_key_ed25519);
 
-        const std::string pubkey_ed25519_hex = util::as_hex(public_key_ed25519);
+        const std::string pubkey_ed25519_hex = lokimq::to_hex(
+                public_key_ed25519.begin(), public_key_ed25519.end());
 
         LOKI_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
 
