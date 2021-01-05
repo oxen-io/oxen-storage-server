@@ -19,5 +19,5 @@ target_include_directories(utils
     ${CMAKE_CURRENT_LIST_DIR}/include
     PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
-    ${Boost_INCLUDE_DIRS}
 )
+target_link_libraries(utils PRIVATE Boost::filesystem)

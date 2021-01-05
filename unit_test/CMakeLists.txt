@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.1)
+cmake_minimum_required (VERSION 3.5)
 
 add_executable (Test
     main.cpp
@@ -33,5 +33,4 @@ find_package(Boost REQUIRED
 set_property(TARGET Test PROPERTY CXX_STANDARD 17)
 set_property(TARGET Test PROPERTY CXX_STANDARD_REQUIRED TRUE)
 
-target_include_directories(Test PRIVATE ${Boost_INCLUDE_DIRS})
-target_link_libraries(Test PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(Test PRIVATE Boost::unit_test_framework Boost::system Boost::filesystem Boost::chrono Boost::thread)

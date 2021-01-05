@@ -45,8 +45,7 @@ if (NOT Boost_FOUND)
     find_package(Boost REQUIRED system filesystem)
 endif()
 
-target_include_directories(crypto PRIVATE ${Boost_INCLUDE_DIRS})
-target_link_libraries(crypto PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(crypto PRIVATE Boost::system Boost::filesystem)
 
 add_executable(crypto_test src/test_main.cpp)
 target_link_libraries(crypto_test PRIVATE crypto)

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 add_library(storage STATIC
     src/Database.cpp
@@ -30,5 +30,4 @@ if(NOT Boost_FOUND)
     )
 endif()
 
-target_include_directories(storage PRIVATE ${Boost_INCLUDE_DIRS})
-target_link_libraries(storage PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(storage PRIVATE Boost::system Boost::filesystem)

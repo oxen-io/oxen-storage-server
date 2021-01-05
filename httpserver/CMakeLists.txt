@@ -65,8 +65,7 @@ if(RESOLV)
     target_link_libraries(httpserver_lib PUBLIC ${RESOLV})
 endif()
 
-target_include_directories(httpserver_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
-target_link_libraries(httpserver_lib PUBLIC ${Boost_LIBRARIES})
+target_link_libraries(httpserver_lib PUBLIC Boost::thread Boost::system Boost::filesystem Boost::program_options)
 
 set(BIN_NAME loki-storage)
 

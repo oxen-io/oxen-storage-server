@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 function(loki_add_subdirectory SRC)
     get_filename_component(target ${SRC} NAME)
@@ -30,6 +30,8 @@ if (sodium_VERSION VERSION_LESS 1.0.17)
   message(FATAL_ERROR "sodium 1.0.17 or higher required; found ${sodium_VERSION}")
 endif()
 include_directories(${sodium_INCLUDE_DIR})
+
+find_package(Boost REQUIRED)
 
 loki_add_subdirectory(common)
 loki_add_subdirectory(utils)
