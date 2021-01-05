@@ -1,16 +1,11 @@
 #include "lokid_key.h"
 #include "utils.hpp"
 
-#include <boost/filesystem.hpp>
-#include <boost/format.hpp>
-
 #include <sodium.h>
 
 #include <exception>
 #include <fstream>
 #include <iterator>
-
-namespace fs = boost::filesystem;
 
 namespace loki {
 

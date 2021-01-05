@@ -41,17 +41,15 @@ loki_add_subdirectory(../utils utils)
 
 target_link_libraries(crypto PUBLIC utils)
 
-if (NOT Boost_FOUND)
-    find_package(Boost REQUIRED system filesystem)
-endif()
-
-target_link_libraries(crypto PRIVATE Boost::system Boost::filesystem)
-
 add_executable(crypto_test src/test_main.cpp)
 target_link_libraries(crypto_test PRIVATE crypto)
 
-target_link_libraries(crypto PUBLIC sodium)
 
 if (UNIX AND NOT APPLE)
     target_link_libraries(crypto PUBLIC pthread dl)
 endif ()
+target_link_libraries(crypto PRIVATE
+    sodium
+    Boost::boost
+    lokimq::lokimq
+    filesystem)

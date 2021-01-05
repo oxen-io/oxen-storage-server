@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.8)
 
 function(loki_add_subdirectory SRC)
     get_filename_component(target ${SRC} NAME)
@@ -13,6 +13,10 @@ project(storage_server)
 option(INTEGRATION_TEST "build for integration test" OFF)
 option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
     OFF)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS FALSE)
 
 if (INTEGRATION_TEST)
     add_definitions(-DDISABLE_POW)
@@ -30,6 +34,8 @@ if (sodium_VERSION VERSION_LESS 1.0.17)
   message(FATAL_ERROR "sodium 1.0.17 or higher required; found ${sodium_VERSION}")
 endif()
 include_directories(${sodium_INCLUDE_DIR})
+
+include(contrib/check_for_std_filesystem.cmake)
 
 find_package(Boost REQUIRED)
 

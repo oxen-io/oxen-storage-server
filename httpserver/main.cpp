@@ -13,10 +13,10 @@
 #include "lmq_server.h"
 #include "request_handler.h"
 
-#include <boost/filesystem.hpp>
 #include <sodium.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <vector>
 
@@ -26,7 +26,7 @@ extern "C" {
 }
 #endif
 
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 static std::optional<fs::path> get_home_dir() {
 
@@ -39,7 +39,7 @@ static std::optional<fs::path> get_home_dir() {
     if (pszHome == NULL || strlen(pszHome) == 0)
         return std::nullopt;
 
-    return fs::path(pszHome);
+    return fs::u8path(pszHome);
 }
 
 #ifdef ENABLE_SYSTEMD

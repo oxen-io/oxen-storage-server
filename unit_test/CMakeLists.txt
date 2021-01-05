@@ -22,15 +22,6 @@ loki_add_subdirectory(../httpserver httpserver)
 target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)
 
 # boost
-find_package(Boost REQUIRED
-    system
-    filesystem
-    chrono
-    thread
-    unit_test_framework
-)
+find_package(Boost REQUIRED unit_test_framework)
 
-set_property(TARGET Test PROPERTY CXX_STANDARD 17)
-set_property(TARGET Test PROPERTY CXX_STANDARD_REQUIRED TRUE)
-
-target_link_libraries(Test PRIVATE Boost::unit_test_framework Boost::system Boost::filesystem Boost::chrono Boost::thread)
+target_link_libraries(Test PRIVATE Boost::unit_test_framework)

@@ -192,7 +192,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
     ping_peers_tick();
 
-    worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
+    worker_thread_ = std::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
         pow_difficulty_timer_tick(std::bind(
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));

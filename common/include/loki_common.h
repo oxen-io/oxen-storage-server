@@ -8,8 +8,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 // TODO: this should be a proper struct w/o heap allocation!
 using sn_pub_key_t = std::string;
 
