@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
         OXEN_LOG(info, "ed25519 SECRET KEY: {}", options.oxend_ed25519_key);
 #endif
 
-        const auto public_key = loki::derive_pubkey_legacy(private_key);
+        const auto public_key = oxen::derive_pubkey_legacy(private_key);
         OXEN_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
                  lokimq::to_hex(public_key.begin(), public_key.end()));
 

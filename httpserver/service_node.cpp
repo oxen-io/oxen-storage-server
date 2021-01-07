@@ -251,7 +251,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const auto& pubkey =
                 sn_json.at("service_node_pubkey").get_ref<const std::string&>();
             if (!lokimq::is_hex(pubkey)) {
-                LOKI_LOG(warn, "service_node_pubkey is not valid hex");
+                OXEN_LOG(warn, "service_node_pubkey is not valid hex");
                 continue;
             }
             std::string snode_address =
@@ -469,7 +469,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     switch (method) {
     case ss_client::ReqMethod::DATA: {
         OXEN_LOG(debug, "Sending sn.data request to {}",
-                 lokimq::as_hex(sn.pubkey_x25519_bin()));
+                 lokimq::to_hex(sn.pubkey_x25519_bin()));
         lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
                              req.body);
         break;
@@ -481,7 +481,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         // parameters...
         if (client_key != req.headers.end()) {
             OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
-                     lokimq::as_hex(sn.pubkey_x25519_bin()));
+                     lokimq::to_hex(sn.pubkey_x25519_bin()));
             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                  std::move(cb), client_key->second, req.body);
         } else {
@@ -1075,7 +1075,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
-    const std::string sig_b64 = lokimq::base64_encode(raw_sig);
+    const std::string sig_b64 = lokimq::to_base64(raw_sig);
     request->set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
 
     request->set(OXEN_SENDER_SNODE_PUBKEY_HEADER,

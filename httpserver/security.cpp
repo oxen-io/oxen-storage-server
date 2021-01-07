@@ -7,15 +7,9 @@
 #include <filesystem>
 #include <fstream>
 
-<<<<<<< HEAD
-namespace loki {
-Security::Security(const lokid_key_pair_t& key_pair,
-                   const std::filesystem::path& base_path)
-=======
 namespace oxen {
 Security::Security(const oxend_key_pair_t& key_pair,
-                   const boost::filesystem::path& base_path)
->>>>>>> initial rebrand
+                   const std::filesystem::path& base_path)
     : key_pair_(key_pair), base_path_(base_path) {}
 
 std::string Security::base64_sign(const std::string& body) {
