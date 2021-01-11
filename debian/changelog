@@ -1,3 +1,13 @@
+loki-storage-server (2.0.7-3~deb10) buster; urgency=medium
+
+  * Refresh patches
+  * Add check for -latomic (needed for armhf build)
+  * Rediff patches
+  * Rediff patches
+  * Enable LTO
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 11 Jan 2021 15:36:48 -0400
+
 loki-storage-server (2.0.7-1~deb10) buster; urgency=medium
 
   [ Jason Rhinelander ]
