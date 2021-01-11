@@ -1,3 +1,13 @@
+loki-storage-server (2.0.7-3~ubuntu1804) bionic; urgency=medium
+
+  * boost 1.73+ compatibility without deprecation warning
+  * Bionic: use gcc 8
+  * boost::beast 1.74 compatibility
+  * Update boost deps for boost 1.74
+  * Add missing upload script
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 11 Jan 2021 15:46:13 -0400
+
 loki-storage-server (2.0.7-1~ubuntu1804) bionic; urgency=medium
 
   [ Jason Rhinelander ]
