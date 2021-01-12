@@ -416,7 +416,7 @@ void RequestHandler::process_lns_request(
 
 #ifdef INTEGRATION_TEST
     // use mainnet seed
-    oxend_client_.make_custom_oxend_request("public.oxen.foundation", 22023,
+    oxend_client_.make_custom_oxend_request("public.loki.foundation", 22023,
                                             "lns_names_to_owners", params,
                                             std::move(on_oxend_res));
 #else
