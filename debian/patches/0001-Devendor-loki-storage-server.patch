@@ -3,23 +3,25 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  5 +++--
+ CMakeLists.txt            |  7 +++++--
  common/CMakeLists.txt     |  2 +-
  httpserver/CMakeLists.txt | 17 +++++------------
  httpserver/lmq_server.cpp |  2 ++
  storage/CMakeLists.txt    |  4 ++--
- 5 files changed, 13 insertions(+), 17 deletions(-)
+ 5 files changed, 15 insertions(+), 17 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 03aceb4..5451c54 100644
+index 03aceb4..51421fe 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -60,14 +60,15 @@ include(contrib/check_for_std_filesystem.cmake)
+@@ -60,14 +60,17 @@ include(contrib/check_for_std_filesystem.cmake)
  
  find_package(Boost REQUIRED)
  
 +pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2)
-+add_library(lokimq::lokimq ALIAS PkgConfig::LOKIMQ)
++add_library(lokimq INTERFACE)
++target_link_libraries(lokimq INTERFACE PkgConfig::LOKIMQ)
++add_library(lokimq::lokimq ALIAS lokimq)
 +
  add_subdirectory(common)
  add_subdirectory(utils)
