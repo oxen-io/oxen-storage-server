@@ -4,6 +4,7 @@
 #include "version.h"
 #include <netinet/in.h>
 #include <resolv.h>
+#include <charconv>
 
 #include <boost/algorithm/string.hpp>
 
@@ -99,59 +100,20 @@ static std::string query_latest_version() {
     return version_str;
 }
 
-struct version_t {
-    int major;
-    int minor;
-    int patch;
-};
-
-static bool is_old_version(version_t latest) {
-
-    if (VERSION_MAJOR > latest.major) {
-        return false;
-    }
-
-    if (VERSION_MAJOR < latest.major) {
-        return true;
-    }
-
-    // === the same major version ===
-
-    if (VERSION_MINOR > latest.minor) {
-        return false;
-    }
-
-    if (VERSION_MINOR < latest.minor) {
-        return true;
-    }
-
-    // === the same minor version ===
-
-    if (VERSION_PATCH >= latest.patch) {
-        return false;
-    } else {
-        return true;
-    }
-}
+using version_t = std::array<uint16_t, 3>;
 
 static bool parse_version(const std::string& str, version_t& version_out) {
     std::vector<std::string> strs;
     strs.reserve(3);
     boost::split(strs, str, boost::is_any_of("."));
-    if (strs.size() != 3) {
-        OXEN_LOG(warn, "Invalid format for the Storage Server version!");
+    if (strs.size() != 3)
         return false;
-    }
 
-    try {
-        version_out.major = std::stoi(strs[0]);
-        version_out.minor = std::stoi(strs[1]);
-        version_out.patch = std::stoi(strs[2]);
-    } catch (const std::exception& e) {
-        OXEN_LOG(warn,
-                 "Invalid format for the Storage Server version! Error: {}",
-                 e.what());
-        return false;
+    for (size_t i = 0; i < 3; i++) {
+        auto* end = strs[i].data() + strs[i].size();
+        auto [p, ec] = std::from_chars(strs[i].data(), end, version_out[i]);
+        if (ec != std::errc() || p != end)
+            return false;
     }
 
     return true;
@@ -174,7 +136,7 @@ void check_latest_version() {
         return;
     }
 
-    if (is_old_version(latest_version)) {
+    if (STORAGE_SERVER_VERSION < latest_version) {
         OXEN_LOG(warn,
                  "You are using an outdated version of the storage server "
                  "({}), please update to {}!",

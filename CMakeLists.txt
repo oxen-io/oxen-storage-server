@@ -12,7 +12,9 @@ endif()
 
 cmake_minimum_required(VERSION 3.10)
 
-project(storage_server)
+project(storage_server
+    VERSION 2.0.8
+    LANGUAGES CXX C)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
 option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"

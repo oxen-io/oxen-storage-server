@@ -48,17 +48,23 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
 target_link_libraries(httpserver PRIVATE httpserver_lib)
 install(TARGETS httpserver DESTINATION bin)
 # Build Info
-execute_process(
-    COMMAND
-        git rev-parse --short HEAD
-    OUTPUT_VARIABLE
-        SHORT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND
+            git rev-parse --short HEAD
+        OUTPUT_VARIABLE
+            SHORT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+else()
+    set(SHORT_HASH "unknown")
+endif()
 string(TIMESTAMP BUILD_TIME UTC)
 message(STATUS "using git commit hash ${SHORT_HASH}")
 message(STATUS "using UTC build time ${BUILD_TIME}")
-target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="${SHORT_HASH}")
-target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/version.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+target_sources(httpserver_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(NOT BUILD_STATIC_DEPS)
     find_package(PkgConfig QUIET)
