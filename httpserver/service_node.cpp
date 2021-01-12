@@ -13,6 +13,9 @@
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
+#include <lokimq/base32z.h>
+#include <lokimq/base64.h>
+#include <lokimq/hex.h>
 #include <lokimq/lokimq.h>
 #include <nlohmann/json.hpp>
 
@@ -162,15 +165,14 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       lmq_server_(lmq_server), lokid_client_(lokid_client),
       force_start_(force_start) {
 
-    char buf[64] = {0};
-    if (!util::base32z_encode(lokid_key_pair_.public_key, buf)) {
-        throw std::runtime_error("Could not encode our public key");
-    }
-
-    const std::string addr = buf;
+    const auto addr = lokimq::to_base32z(
+            lokid_key_pair_.public_key.begin(),
+            lokid_key_pair_.public_key.end());
     LOKI_LOG(info, "Our loki address: {}", addr);
 
-    const auto pk_hex = util::as_hex(lokid_key_pair_.public_key);
+    const auto pk_hex = lokimq::to_hex(
+            lokid_key_pair_.public_key.begin(),
+            lokid_key_pair_.public_key.end());
 
     // TODO: get rid of "unused" fields
     our_address_ = sn_record_t(port, lmq_server.port(), addr, pk_hex, "unused",
@@ -192,7 +194,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
 
     ping_peers_tick();
 
-    worker_thread_ = boost::thread([this]() { worker_ioc_.run(); });
+    worker_thread_ = std::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
         pow_difficulty_timer_tick(std::bind(
             &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
@@ -248,10 +250,15 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         for (const auto& sn_json : service_node_states) {
             const auto& pubkey =
                 sn_json.at("service_node_pubkey").get_ref<const std::string&>();
+            if (!lokimq::is_hex(pubkey)) {
+                LOKI_LOG(warn, "service_node_pubkey is not valid hex");
+                continue;
+            }
+            std::string snode_address =
+                lokimq::to_base32z(lokimq::from_hex(pubkey));
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
-            std::string snode_address = util::hex_to_base32z(pubkey);
 
             const uint16_t port = sn_json.at("storage_port").get<uint16_t>();
             const auto& snode_ip =
@@ -462,7 +469,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     switch (method) {
     case ss_client::ReqMethod::DATA: {
         LOKI_LOG(debug, "Sending sn.data request to {}",
-                 util::as_hex(sn.pubkey_x25519_bin()));
+                 lokimq::to_hex(sn.pubkey_x25519_bin()));
         lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
                              req.body);
         break;
@@ -474,7 +481,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         // parameters...
         if (client_key != req.headers.end()) {
             LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
-                     util::as_hex(sn.pubkey_x25519_bin()));
+                     lokimq::to_hex(sn.pubkey_x25519_bin()));
             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                  std::move(cb), client_key->second, req.body);
         } else {
@@ -1068,7 +1075,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
-    const std::string sig_b64 = util::base64_encode(raw_sig);
+    const std::string sig_b64 = lokimq::to_base64(raw_sig);
     request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
 
     request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER,

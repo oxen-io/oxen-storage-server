@@ -6,7 +6,6 @@
 #include "lokid_key.h"
 #include "request_handler.h"
 #include "service_node.h"
-#include "utils.hpp"
 
 #include <lokimq/hex.h>
 #include <lokimq/lokimq.h>
@@ -36,7 +35,7 @@ void LokimqServer::handle_sn_data(lokimq::Message& message) {
 
     LOKI_LOG(debug, "[LMQ] handle_sn_data");
     LOKI_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    LOKI_LOG(debug, "[LMQ]   from: {}", util::as_hex(message.conn.pubkey()));
+    LOKI_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
 
     std::stringstream ss;
 
@@ -59,7 +58,7 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
 
     LOKI_LOG(debug, "[LMQ] handle_sn_proxy_exit");
     LOKI_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    LOKI_LOG(debug, "[LMQ]   from: {}", util::as_hex(message.conn.pubkey()));
+    LOKI_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
 
     if (message.data.size() != 2) {
         LOKI_LOG(debug, "Expected 2 message parts, got {}",

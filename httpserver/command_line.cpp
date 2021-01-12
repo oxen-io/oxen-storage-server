@@ -1,14 +1,13 @@
 #include "command_line.h"
 #include "loki_logger.h"
 
-#include <boost/filesystem.hpp>
-
+#include <filesystem>
 #include <iostream>
 
 namespace loki {
 
 namespace po = boost::program_options;
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 const command_line_options& command_line_parser::get_options() const {
     return options_;
@@ -47,7 +46,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     pos_desc.add("ip", 1);
     pos_desc.add("port", 1);
 
-    binary_name_ = fs::basename(argv[0]);
+    binary_name_ = fs::u8path(argv[0]).filename().u8string();
 
     po::variables_map vm;
 
@@ -58,13 +57,12 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
               vm);
     po::notify(vm);
 
-    if (config_file.empty()) {
-        config_file =
-            (fs::path(options_.data_dir) / "storage-server.conf").string();
-    }
+    fs::path config_path{!config_file.empty()
+       ? fs::u8path(config_file)
+       : fs::u8path(options_.data_dir) / "storage-server.conf"};
 
-    if (fs::exists(config_file)) {
-        po::store(po::parse_config_file<char>(config_file.c_str(), all), vm);
+    if (fs::exists(config_path)) {
+        po::store(po::parse_config_file<char>(config_path.u8string().c_str(), all), vm);
         po::notify(vm);
     } else if (vm.count("config-file")) {
         throw std::runtime_error(

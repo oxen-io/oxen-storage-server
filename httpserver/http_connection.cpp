@@ -9,7 +9,6 @@
 #include "server_certificates.h"
 #include "service_node.h"
 #include "signature.h"
-#include "utils.hpp"
 
 // needed for proxy requests
 #include "https_client.h"
@@ -261,7 +260,7 @@ static void accept_connection(boost::asio::io_context& ioc,
 }
 
 void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const boost::filesystem::path& base_path, ServiceNode& sn,
+         const std::filesystem::path& base_path, ServiceNode& sn,
          RequestHandler& rh, RateLimiter& rate_limiter, Security& security) {
 
     LOKI_LOG(trace, "http server run");

@@ -6,12 +6,12 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
-#include <boost/thread/thread.hpp>
 
 #include "loki_common.h"
 #include "lokid_key.h"
@@ -109,7 +109,7 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
     boost::asio::io_context& worker_ioc_;
-    boost::thread worker_thread_;
+    std::thread worker_thread_;
 
     // We set the default difficulty to some low value, so that we don't reject
     // clients unnecessarily before we get the DNS record

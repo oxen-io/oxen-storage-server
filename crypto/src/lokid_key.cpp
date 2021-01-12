@@ -1,29 +1,24 @@
 #include "lokid_key.h"
 #include "utils.hpp"
 
-#include <boost/filesystem.hpp>
-#include <boost/format.hpp>
-
 #include <sodium.h>
+#include <lokimq/hex.h>
 
 #include <exception>
 #include <fstream>
 #include <iterator>
 
-namespace fs = boost::filesystem;
-
 namespace loki {
 
 private_key_t lokidKeyFromHex(const std::string& private_key_hex) {
-    if (private_key_hex.size() != KEY_LENGTH * 2)
+    if (!lokimq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
         throw std::runtime_error("Lokid key data is invalid: expected " +
-                                 std::to_string(KEY_LENGTH) + " bytes not " +
+                                 std::to_string(KEY_LENGTH) + " hex digits not " +
                                  std::to_string(private_key_hex.size()) +
                                  " bytes");
 
-    const auto bytes = util::hex_to_bytes(private_key_hex);
     private_key_t private_key;
-    std::copy(bytes.begin(), bytes.end(), private_key.begin());
+    lokimq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
 
     return private_key;
 }
@@ -33,13 +28,11 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
     if (sc_hex.size() != private_key_ed25519_t::LENGTH * 2)
         throw std::runtime_error("Lokid key data is invalid: expected " +
                                  std::to_string(private_key_ed25519_t::LENGTH) +
-                                 " bytes not " + std::to_string(sc_hex.size()) +
+                                 " hex digits not " + std::to_string(sc_hex.size()) +
                                  " bytes");
 
     private_key_ed25519_t key;
-
-    const auto bytes = util::hex_to_bytes(sc_hex);
-    std::copy(bytes.begin(), bytes.end(), key.data.begin());
+    lokimq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
 
     return key;
 }
