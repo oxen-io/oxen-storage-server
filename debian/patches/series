@@ -1,5 +1,2 @@
 0001-Devendor-loki-storage-server.patch
 0002-Add-check-for-latomic-needed-for-armhf-build.patch
-0003-Enable-LTO.patch
-0004-boost-1.73-compatibility-without-deprecation-warning.patch
-0005-boost-beast-1.74-compatibility.patch
