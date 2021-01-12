@@ -6,7 +6,7 @@
 
 #define VERSION_MAJOR 2
 #define VERSION_MINOR 0
-#define VERSION_PATCH 7
+#define VERSION_PATCH 8
 
 #define OXEN_STRINGIFY2(val) #val
 #define OXEN_STRINGIFY(val) OXEN_STRINGIFY2(val)
