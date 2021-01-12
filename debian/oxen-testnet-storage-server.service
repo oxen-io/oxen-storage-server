@@ -1,0 +1,19 @@
+[Unit]
+Description=Oxen storage server (testnet)
+After=network-online.target
+Wants=oxen-testnet-node.service
+After=oxen-testnet-node.service
+
+[Service]
+User=_loki
+Type=notify
+WatchdogSec=5min
+WorkingDirectory=/var/lib/oxen
+LimitNOFILE=16384
+Restart=always
+RestartSec=5s
+ExecStart=/usr/bin/oxen-storage --config-file /etc/oxen/storage-testnet.conf
+
+[Install]
+WantedBy=multi-user.target
+Alias=loki-testnet-storage-server.service
