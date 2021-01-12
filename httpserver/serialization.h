@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace loki {
+namespace oxen {
 
 namespace storage {
 struct Item;
@@ -19,4 +19,4 @@ std::vector<std::string> serialize_messages(const std::vector<T>& msgs);
 
 std::vector<message_t> deserialize_messages(const std::string& blob);
 
-} // namespace loki
+} // namespace oxen

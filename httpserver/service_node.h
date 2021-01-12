@@ -6,15 +6,15 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/circular_buffer.hpp>
-#include <boost/thread/thread.hpp>
 
-#include "loki_common.h"
-#include "lokid_key.h"
+#include "oxen_common.h"
+#include "oxend_key.h"
 #include "pow.hpp"
 #include "reachability_testing.h"
 #include "stats.h"
@@ -23,7 +23,7 @@
 static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 static constexpr int STORAGE_SERVER_HARDFORK = 12;
 static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
-static constexpr int LOKIMQ_ONION_HARDFORK = 15;
+static constexpr int OXENMQ_ONION_HARDFORK = 15;
 
 class Database;
 
@@ -34,7 +34,7 @@ namespace lokimq {
 struct ConnectionID;
 }
 
-namespace loki {
+namespace oxen {
 
 namespace storage {
 struct Item;
@@ -44,7 +44,7 @@ struct sn_response_t;
 struct blockchain_test_answer_t;
 struct bc_test_params_t;
 
-class LokidClient;
+class OxendClient;
 class LokimqServer;
 
 namespace ss_client {
@@ -58,7 +58,7 @@ namespace http_server {
 class connection_t;
 }
 
-struct lokid_key_pair_t;
+struct oxend_key_pair_t;
 
 using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
@@ -109,7 +109,7 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
     boost::asio::io_context& worker_ioc_;
-    boost::thread worker_thread_;
+    std::thread worker_thread_;
 
     // We set the default difficulty to some low value, so that we don't reject
     // clients unnecessarily before we get the DNS record
@@ -121,7 +121,7 @@ class ServiceNode {
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
-    const LokidClient& lokid_client_;
+    const OxendClient& oxend_client_;
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
@@ -140,7 +140,7 @@ class ServiceNode {
 
     boost::asio::steady_timer swarm_update_timer_;
 
-    boost::asio::steady_timer lokid_ping_timer_;
+    boost::asio::steady_timer oxend_ping_timer_;
 
     boost::asio::steady_timer stats_cleanup_timer_;
 
@@ -149,7 +149,7 @@ class ServiceNode {
     /// Used to periodially send messages from relay_buffer_
     boost::asio::steady_timer relay_timer_;
 
-    loki::lokid_key_pair_t lokid_key_pair_;
+    oxen::oxend_key_pair_t oxend_key_pair_;
 
     // Need to make sure we only use this to get lmq() object and
     // not call any method that would in turn call a method in SN
@@ -215,7 +215,7 @@ class ServiceNode {
     pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
 
     /// Ping the storage server periodically as required for uptime proofs
-    void lokid_ping_timer_tick();
+    void oxend_ping_timer_tick();
 
     /// Return tester/testee pair based on block_height
     bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
@@ -229,7 +229,7 @@ class ServiceNode {
                                   bc_test_params_t params, uint64_t test_height,
                                   blockchain_test_answer_t answer);
 
-    /// Report `sn` to Lokid as unreachable
+    /// Report `sn` to Oxend as unreachable
     void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
 
     void process_storage_test_response(const sn_record_t& testee,
@@ -261,9 +261,9 @@ class ServiceNode {
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
                 LokimqServer& lmq_server,
-                const loki::lokid_key_pair_t& key_pair,
+                const oxen::oxend_key_pair_t& key_pair,
                 const std::string& ed25519hex, const std::string& db_location,
-                LokidClient& lokid_client, const bool force_start);
+                OxendClient& oxend_client, const bool force_start);
 
     ~ServiceNode();
 
@@ -346,4 +346,4 @@ class ServiceNode {
     find_node_by_ed25519_pk(const std::string& pk) const;
 };
 
-} // namespace loki
+} // namespace oxen
