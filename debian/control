@@ -1,15 +1,13 @@
-Source: loki-storage-server
+Source: oxen-storage-server
 Section: net
 Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11),
     cmake,
     g++,
-    libloki-core-dev (>= 8),
     liblokimq-dev (>= 1.2.0~),
-    libboost-dev (>= 1.58),
-    libboost-filesystem-dev,
-    libboost-thread-dev,
+    libboost-dev (>= 1.66),
+    libboost-system-dev,
     libboost-program-options-dev,
     libsodium-dev (>= 1.0.17),
     libssl-dev,
@@ -19,15 +17,22 @@ Build-Depends: debhelper (>= 11),
     libsystemd-dev,
     pkg-config
 Standards-Version: 4.1.3
-Homepage: https://loki.network
+Homepage: https://oxen.io
+
+Package: oxen-storage-server
+Architecture: any
+Depends: oxend, ${shlibs:Depends}, ${misc:Depends}
+Suggests: oxen-service-node
+Description: Oxen storage server
+ This package contains the Oxen storage server component of a Oxen service
+ node.  This package requires a running oxend configured as a service node; the
+ default configuration is suitable for the oxend configuration set up by the
+ oxen-service-node package, but it is possible to configure manually via the
+ /etc/oxen/storage.conf file.
 
 Package: loki-storage-server
-Architecture: any
-Depends: lokid (>= 8.0.0), ${shlibs:Depends}, ${misc:Depends}
-Suggests: loki-service-node
-Description: Loki storage server
- This package contains the Loki storage server component of a Loki service
- node.  This package requires a running lokid configured as a service node; the
- default configuration is suitable for the lokid configuration set up by the
- loki-service-node package, but it is possible to configure manually via the
- /etc/loki/storage.conf file.
+Architecture: all
+Section: oldlibs
+Depends: oxen-storage-server, ${misc:Depends}
+Description: transitional package
+ This is a transitional package. It can safely be removed.
