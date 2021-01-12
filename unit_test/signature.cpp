@@ -1,6 +1,7 @@
 #include "signature.h"
-#include "utils.hpp"
 
+#include <lokimq/base32z.h>
+#include <lokimq/base64.h>
 #include <boost/test/unit_test.hpp>
 
 #include <vector>
@@ -8,7 +9,7 @@
 BOOST_AUTO_TEST_SUITE(signature_unit_test)
 
 BOOST_AUTO_TEST_CASE(it_generates_hashes) {
-    using namespace loki;
+    using namespace oxen;
 
     std::vector<hash> hashes;
 
@@ -29,7 +30,7 @@ BOOST_AUTO_TEST_CASE(it_generates_hashes) {
 }
 
 BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -40,14 +41,14 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     const auto sig = generate_signature(hash, key_pair);
     const bool verified = check_signature(sig, hash, public_key);
     BOOST_CHECK(verified);
 }
 
 BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -58,7 +59,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     const auto sig = generate_signature(hash, key_pair);
 
     // convert signature to base64 and public key to base32z
@@ -66,17 +67,16 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-    const std::string sig_b64 = util::base64_encode(raw_sig);
+    const std::string sig_b64 = lokimq::to_base64(raw_sig);
 
-    char buf[64] = {0};
-    const auto public_key_b32z = util::base32z_encode(public_key, buf);
+    const auto public_key_b32z = lokimq::to_base32z(public_key.begin(), public_key.end());
 
     bool verified = check_signature(sig_b64, hash, public_key_b32z);
     BOOST_CHECK(verified);
 }
 
 BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     auto sig = generate_signature(hash, key_pair);
 
     // amend signature

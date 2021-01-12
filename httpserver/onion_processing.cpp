@@ -1,8 +1,9 @@
 #include "channel_encryption.hpp"
-#include "loki_logger.h"
+#include "oxen_logger.h"
 #include "request_handler.h"
 #include "service_node.h"
-#include "utils.hpp"
+#include <lokimq/base64.h>
+#include <nlohmann/json.hpp>
 
 /// This is only included because of `parse_combined_payload`,
 /// in the future it will be moved
@@ -13,7 +14,7 @@
 
 using nlohmann::json;
 
-namespace loki {
+namespace oxen {
 
 /// The request is to be forwarded to another SS node
 struct RelayToNodeInfo {
@@ -57,15 +58,17 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
     std::string plaintext;
 
     try {
-        const std::string ciphertext_bin = util::base64_decode(ciphertext);
+        if (!lokimq::is_base64(ciphertext))
+            throw std::runtime_error{"cipher text is not base64 encoded"};
+        const std::string ciphertext_bin = lokimq::from_base64(ciphertext);
 
         plaintext = decryptor.decrypt_gcm(ciphertext_bin, ephem_key);
     } catch (const std::exception& e) {
-        LOKI_LOG(debug, "Error decrypting an onion request: {}", e.what());
+        OXEN_LOG(debug, "Error decrypting an onion request: {}", e.what());
         return ProcessCiphertextError::INVALID_CIPHERTEXT;
     }
 
-    LOKI_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
+    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
 
     try {
 
@@ -75,7 +78,7 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
 
             auto body = inner_json.at("body").get_ref<const std::string&>();
 
-            LOKI_LOG(debug, "Found body: <{}>", body);
+            OXEN_LOG(debug, "Found body: <{}>", body);
             return FinalDesitnationInfo{body};
         } else if (inner_json.find("host") != inner_json.end()) {
 
@@ -98,7 +101,7 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
         }
 
     } catch (std::exception& e) {
-        LOKI_LOG(debug, "Error parsing inner JSON in onion request: {}",
+        OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
                  e.what());
         return ProcessCiphertextError::INVALID_JSON;
     }
@@ -113,11 +116,11 @@ process_ciphertext_v2(const ChannelEncryption<std::string>& decryptor,
     try {
         plaintext = decryptor.decrypt_gcm(ciphertext, ephem_key);
     } catch (const std::exception& e) {
-        LOKI_LOG(debug, "Error decrypting an onion request: {}", e.what());
+        OXEN_LOG(debug, "Error decrypting an onion request: {}", e.what());
         return ProcessCiphertextError::INVALID_CIPHERTEXT;
     }
 
-    LOKI_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
+    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
 
     const auto parsed = parse_combined_payload(plaintext);
 
@@ -129,7 +132,7 @@ process_ciphertext_v2(const ChannelEncryption<std::string>& decryptor,
         /// to identify we are the final destination...
         if (inner_json.find("headers") != inner_json.end()) {
 
-            LOKI_LOG(trace, "Found body: <{}>", parsed.ciphertext);
+            OXEN_LOG(trace, "Found body: <{}>", parsed.ciphertext);
 
             /// In v2 the body is parsed.ciphertext
             return FinalDesitnationInfo{parsed.ciphertext};
@@ -152,17 +155,17 @@ process_ciphertext_v2(const ChannelEncryption<std::string>& decryptor,
         }
 
     } catch (std::exception& e) {
-        LOKI_LOG(debug, "Error parsing inner JSON in onion request: {}",
+        OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
                  e.what());
         return ProcessCiphertextError::INVALID_JSON;
     }
 }
 
-static auto gateway_timeout() -> loki::Response {
-    return loki::Response{Status::GATEWAY_TIMEOUT, "Request time out"};
+static auto gateway_timeout() -> oxen::Response {
+    return oxen::Response{Status::GATEWAY_TIMEOUT, "Request time out"};
 }
 
-static auto make_status(std::string_view status) -> loki::Status {
+static auto make_status(std::string_view status) -> oxen::Status {
 
     int code;
     auto res =
@@ -202,7 +205,7 @@ static auto make_status(std::string_view status) -> loki::Status {
 
 static void relay_to_node(const ServiceNode& service_node,
                           const RelayToNodeInfo& info,
-                          std::function<void(loki::Response)> cb, int req_idx,
+                          std::function<void(oxen::Response)> cb, int req_idx,
                           bool v2) {
 
     const auto& dest = info.next_node;
@@ -213,8 +216,8 @@ static void relay_to_node(const ServiceNode& service_node,
 
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
-        LOKI_LOG(warn, "{}", msg);
-        auto res = loki::Response{Status::BAD_GATEWAY, std::move(msg)};
+        OXEN_LOG(warn, "{}", msg);
+        auto res = oxen::Response{Status::BAD_GATEWAY, std::move(msg)};
         cb(std::move(res));
         return;
     }
@@ -229,28 +232,28 @@ static void relay_to_node(const ServiceNode& service_node,
         // Processing the result we got from upstream
 
         if (!success) {
-            LOKI_LOG(debug, "[Onion request] Request time out");
+            OXEN_LOG(debug, "[Onion request] Request time out");
             cb(gateway_timeout());
             return;
         }
 
         // We only expect a two-part message
         if (data.size() != 2) {
-            LOKI_LOG(debug, "[Onion request] Incorrect number of messages: {}",
+            OXEN_LOG(debug, "[Onion request] Incorrect number of messages: {}",
                      data.size());
-            cb(loki::Response{Status::INTERNAL_SERVER_ERROR,
+            cb(oxen::Response{Status::INTERNAL_SERVER_ERROR,
                               "Incorrect number of messages from gateway"});
             return;
         }
 
         /// We use http status codes (for now)
         if (data[0] != "200") {
-            LOKI_LOG(debug, "Onion request relay failed with: {}", data[1]);
+            OXEN_LOG(debug, "Onion request relay failed with: {}", data[1]);
         }
-        cb(loki::Response{make_status(data[0]), std::move(data[1])});
+        cb(oxen::Response{make_status(data[0]), std::move(data[1])});
     };
 
-    LOKI_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *dest_node, req_idx);
+    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *dest_node, req_idx);
 
     if (v2) {
         service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
@@ -263,17 +266,17 @@ static void relay_to_node(const ServiceNode& service_node,
 
 void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        const std::string& ephem_key,
-                                       std::function<void(loki::Response)> cb,
+                                       std::function<void(oxen::Response)> cb,
                                        bool v2) {
     if (!service_node_.snode_ready()) {
         auto msg =
             fmt::format("Snode not ready: {}",
                         service_node_.own_address().pubkey_ed25519_hex());
-        cb(loki::Response{Status::SERVICE_UNAVAILABLE, std::move(msg)});
+        cb(oxen::Response{Status::SERVICE_UNAVAILABLE, std::move(msg)});
         return;
     }
 
-    LOKI_LOG(debug, "process_onion_req, v2: {}", v2);
+    OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
 
     static int counter = 0;
 
@@ -289,11 +292,11 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
     if (const auto info = std::get_if<FinalDesitnationInfo>(&res)) {
 
-        LOKI_LOG(debug, "We are the final destination in the onion request!");
+        OXEN_LOG(debug, "We are the final destination in the onion request!");
 
         this->process_onion_exit(
             ephem_key, info->body,
-            [this, ephem_key, cb = std::move(cb)](loki::Response res) {
+            [this, ephem_key, cb = std::move(cb)](oxen::Response res) {
                 auto wrapped_res = this->wrap_proxy_response(
                     res, ephem_key, true /* use aes gcm */);
                 cb(std::move(wrapped_res));
@@ -306,7 +309,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         relay_to_node(this->service_node_, *info, std::move(cb), counter++, v2);
 
     } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
-        LOKI_LOG(debug, "We are to forward the request to url: {}{}",
+        OXEN_LOG(debug, "We are to forward the request to url: {}{}",
                  info->host, info->target);
 
         const auto& target = info->target;
@@ -319,7 +322,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
         } else {
 
-            auto res = loki::Response{Status::BAD_REQUEST, "Invalid url"};
+            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid url"};
             auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
             cb(std::move(wrapped_res));
         }
@@ -329,11 +332,11 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         case ProcessCiphertextError::INVALID_CIPHERTEXT: {
             // Should this error be propagated back to the client? (No, if we
             // couldn't decrypt, we probably won't be able to encrypt either.)
-            cb(loki::Response{Status::BAD_REQUEST, "Invalid ciphertext"});
+            cb(oxen::Response{Status::BAD_REQUEST, "Invalid ciphertext"});
             break;
         }
         case ProcessCiphertextError::INVALID_JSON: {
-            auto res = loki::Response{Status::BAD_REQUEST, "Invalid json"};
+            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid json"};
 
             auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
 
@@ -342,8 +345,8 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         }
         }
     } else {
-        LOKI_LOG(error, "UNKNOWN VARIANT");
+        OXEN_LOG(error, "UNKNOWN VARIANT");
     }
 }
 
-} // namespace loki
+} // namespace oxen
