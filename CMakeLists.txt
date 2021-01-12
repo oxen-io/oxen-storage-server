@@ -89,3 +89,5 @@ add_subdirectory(vendors/loki-mq)
 if (BUILD_TESTS)
     add_subdirectory(unit_test)
 endif ()
+
+include(cmake/archive.cmake)
