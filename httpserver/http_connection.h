@@ -6,7 +6,7 @@
 #include <memory>
 #include <optional>
 
-#include "../external/json.hpp"
+#include <nlohmann/json_fwd.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl/stream.hpp>
 #include <boost/beast/core.hpp>

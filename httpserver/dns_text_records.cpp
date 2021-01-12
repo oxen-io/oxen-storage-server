@@ -1,5 +1,5 @@
 #include "dns_text_records.h"
-#include "../external/json.hpp"
+#include <nlohmann/json.hpp>
 #include "pow.hpp"
 #include "version.h"
 #include <netinet/in.h>

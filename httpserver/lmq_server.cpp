@@ -10,6 +10,7 @@
 
 #include <lokimq/hex.h>
 #include <lokimq/lokimq.h>
+#include <nlohmann/json.hpp>
 
 #include <optional>
 

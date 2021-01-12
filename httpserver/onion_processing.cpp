@@ -3,6 +3,7 @@
 #include "request_handler.h"
 #include "service_node.h"
 #include "utils.hpp"
+#include <nlohmann/json.hpp>
 
 /// This is only included because of `parse_combined_payload`,
 /// in the future it will be moved

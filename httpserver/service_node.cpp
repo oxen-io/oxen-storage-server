@@ -14,6 +14,7 @@
 #include "utils.hpp"
 #include "version.h"
 #include <lokimq/lokimq.h>
+#include <nlohmann/json.hpp>
 
 #include "request_handler.h"
 

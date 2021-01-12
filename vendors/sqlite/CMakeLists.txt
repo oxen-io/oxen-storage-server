@@ -15,6 +15,8 @@ set(CMAKE_EXE_LINKER_FLAGS "-pie")
 
 project(sqlite)
 
+find_package(Threads)
+
 add_library(sqlite STATIC sqlite3.c)
 
 target_include_directories(sqlite PUBLIC
@@ -23,7 +25,6 @@ target_include_directories(sqlite PUBLIC
 
 # https://www.sqlite.org/compile.html#recommended_compile_time_options
 target_compile_definitions(sqlite PRIVATE
-    SQLITE_THREADSAFE=1 # single threaded
     SQLITE_DEFAULT_MEMSTATUS=0 # no need for runtime performance tracking
     SQLITE_LIKE_DOESNT_MATCH_BLOBS # no need to match blobs
     SQLITE_MAX_EXPR_DEPTH=0 # unlimited expression tree depth
@@ -32,10 +33,5 @@ target_compile_definitions(sqlite PRIVATE
     SQLITE_OMIT_PROGRESS_CALLBACK # no need for progress callback
 )
 
-if(UNIX AND NOT APPLE)
-    target_link_libraries(sqlite PUBLIC
-        pthread
-        dl
-    )
-    target_compile_options(sqlite PRIVATE "-fPIC")
-endif()
+target_link_libraries(sqlite PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+set_property(TARGET sqlite PROPERTY POSITION_INDEPENDENT_CODE ON)
