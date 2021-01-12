@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+
+# If this is a new install then see if we also have a loki-storage-server package installed: if so
+# then we have to deal with the service rename by copying the service enabled status into the
+# oxen-storage-server enabled status so that the new oxen-storage-server.service file ends up in the
+# right state (i.e. not enabled if the loki service wasn't enabled).
+if [ "$1" = configure ] && [ -z "$2" ] && [ -f /var/lib/dpkg/info/loki-storage-server.list ]; then
+    lokiss_restart=""
+    for s in storage-server.service testnet-storage-server.service; do
+        if deb-systemd-helper --quiet was-enabled "loki-$s"; then
+            deb-systemd-helper enable "oxen-$s"
+            lokiss_restart="$lokiss_restart oxen-$s"
+        else
+            deb-systemd-helper disable "oxen-$s"
+        fi
+    done
+fi
+
+#DEBHELPER#
+
+if [ -n "$lokiss_restart" ]; then
+    # The dh_installsystemd script above only tries a restart on upgrades, but since we are doing
+    # the loki -> oxen rename on the service, it isn't an upgrade on a new oxen package
+    # installation and so it only tries a start, rather than restart, but this is a no-op when the
+    # (old) loki service is already running, so force the restart here on such an upgrade.
+    echo "LOKI -> OXEN migration detected; restarting $lokiss_restart"
+    deb-systemd-invoke restart $lokiss_restart >/dev/null || true
+fi

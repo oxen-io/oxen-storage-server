@@ -1,0 +1,19 @@
+[Unit]
+Description=Oxen storage server
+After=network-online.target
+Wants=oxen-node.service
+After=oxen-node.service
+
+[Service]
+User=_loki
+Type=notify
+WatchdogSec=5min
+WorkingDirectory=/var/lib/oxen
+LimitNOFILE=16384
+Restart=always
+RestartSec=5s
+ExecStart=/usr/bin/oxen-storage --config-file /etc/oxen/storage.conf
+
+[Install]
+WantedBy=multi-user.target
+Alias=loki-storage-server.service
