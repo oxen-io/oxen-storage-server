@@ -9,8 +9,8 @@
 
 using json = nlohmann::json;
 
-static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.oxen.network";
-static constexpr char LATEST_VERSION_URL[] = "storage.version.oxen.network";
+static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
+static constexpr char LATEST_VERSION_URL[] = "storage.version.loki.network";
 
 namespace oxen {
 
