@@ -352,12 +352,12 @@ void ServiceNode::bootstrap_data() {
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
     if (oxen::is_mainnet()) {
         seed_nodes = {{{"public.loki.foundation", 22023},
-                       {"storage.seed1.oxen.network", 22023},
-                       {"storage.seed2.oxen.network", 22023},
+                       {"storage.seed1.loki.network", 22023},
+                       {"storage.seed2.loki.network", 22023},
                        {"imaginary.stream", 22023}}};
     } else {
         seed_nodes = {{{"public.loki.foundation", 38157},
-                       {"storage.testnetseed1.oxen.network", 38157}}};
+                       {"storage.testnetseed1.loki.network", 38157}}};
     }
 
     auto req_counter = std::make_shared<int>(0);
