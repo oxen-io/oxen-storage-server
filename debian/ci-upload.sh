@@ -28,10 +28,14 @@ base="deb-$distro-$(date --date=@$DRONE_BUILD_CREATED +%Y%m%dT%H%M%SZ)-${DRONE_C
 
 br="${DRONE_BRANCH// /_}"
 br="${br//\//-}"
-upload_to="builds.lokinet.dev/${DRONE_REPO// /_}/$br/$base"
+upload_to="oxen.rocks/${DRONE_REPO// /_}/$br/$base"
 
 put=
-for deb in *_${debarch}.deb; do
+debs=(*_${debarch}.deb)
+if [ "$debarch" = "amd64" ]; then
+    debs+=(*_all.deb)
+fi
+for deb in "${debs[@]}"; do
     put+=$'\n'"put $deb $upload_to"
 
     echo -e "\n\n\e[35;1m$deb contents:\e[0m"
@@ -50,7 +54,7 @@ for p in "${upload_dirs[@]}"; do
 -mkdir $dir_tmp"
 done
 
-sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@builds.lokinet.dev <<SFTP
+sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@oxen.rocks <<SFTP
 $mkdirs
 $put
 SFTP
