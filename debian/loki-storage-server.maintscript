@@ -1,0 +1,2 @@
+mv_conffile /etc/loki/storage.conf /etc/oxen/storage.conf 2.0.8-1~
+mv_conffile /etc/loki/storage-testnet.conf /etc/oxen/storage-testnet.conf 2.0.8-1~
