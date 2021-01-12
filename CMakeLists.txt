@@ -49,14 +49,14 @@ if (DISABLE_SNODE_SIGNATURE)
     add_definitions(-DDISABLE_SNODE_SIGNATURE)
 endif()
 
-list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
+list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 find_package(sodium REQUIRED)
 if (sodium_VERSION VERSION_LESS 1.0.17)
   message(FATAL_ERROR "sodium 1.0.17 or higher required; found ${sodium_VERSION}")
 endif()
 include_directories(${sodium_INCLUDE_DIR})
 
-include(contrib/check_for_std_filesystem.cmake)
+include(check_for_std_filesystem.cmake)
 
 find_package(Boost REQUIRED)
 
