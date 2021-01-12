@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "loki_common.h"
+#include "oxen_common.h"
 
 namespace boost {
 namespace asio {
@@ -13,7 +13,7 @@ class io_context;
 }
 } // namespace boost
 
-namespace loki {
+namespace oxen {
 
 class ServiceNode;
 
@@ -118,4 +118,4 @@ class Swarm {
     find_node_by_x25519_bin(const sn_pub_key_t& address) const;
 };
 
-} // namespace loki
+} // namespace oxen

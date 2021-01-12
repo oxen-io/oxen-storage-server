@@ -2,12 +2,9 @@
 #include "utils.hpp"
 
 #include <array>
-#include <boost/archive/iterators/base64_from_binary.hpp>
-#include <boost/archive/iterators/binary_from_base64.hpp>
-#include <boost/archive/iterators/remove_whitespace.hpp>
-#include <boost/archive/iterators/transform_width.hpp>
 #include <iomanip>
 #include <limits>
+#include <lokimq/base64.h>
 #include <openssl/sha.h>
 #include <sstream>
 #include <string.h>
@@ -118,7 +115,9 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
     // Initial hash
     SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
     // Convert nonce to binary
-    std::string decodedNonce = util::base64_decode(nonce);
+    if (!lokimq::is_base64(nonce))
+        return false;
+    std::string decodedNonce = lokimq::from_base64(nonce);
     // Convert decoded nonce string into uint8_t vector. Will have length 8
     std::vector<uint8_t> innerPayload;
     innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
