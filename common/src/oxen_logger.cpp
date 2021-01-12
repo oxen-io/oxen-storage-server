@@ -1,4 +1,4 @@
-#include "loki_logger.h"
+#include "oxen_logger.h"
 
 // clang-format off
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -11,7 +11,7 @@
 #include <fstream>
 #include <iostream>
 
-namespace loki {
+namespace oxen {
 
 namespace fs = std::filesystem;
 
@@ -63,13 +63,13 @@ void init_logging(const std::string& data_dir,
         log_location, LOG_FILE_SIZE_LIMIT, EXTRA_FILES, rotate_on_open);
     file_sink->set_level(log_level);
 
-    auto developer_sink = std::make_shared<loki::dev_sink_mt>();
+    auto developer_sink = std::make_shared<oxen::dev_sink_mt>();
 
     /// IMPORTANT: get_logs endpoint assumes that sink #3 is a dev sink
     std::vector<spdlog::sink_ptr> sinks = {console_sink, file_sink,
                                            developer_sink};
 
-    auto logger = std::make_shared<spdlog::logger>("loki_logger", sinks.begin(),
+    auto logger = std::make_shared<spdlog::logger>("oxen_logger", sinks.begin(),
                                                    sinks.end());
     logger->set_level(log_level);
     logger->flush_on(spdlog::level::err);
@@ -80,9 +80,9 @@ void init_logging(const std::string& data_dir,
 
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
-    LOKI_LOG(info,
+    OXEN_LOG(info,
              "\n**************************************************************"
              "\nOutputting logs to {}",
              log_location);
 }
-} // namespace loki
+} // namespace oxen

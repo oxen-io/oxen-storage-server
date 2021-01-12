@@ -83,7 +83,7 @@ struct sn_record_t {
     }
 };
 
-namespace loki {
+namespace oxen {
 
 constexpr size_t MAINNET_USER_PUBKEY_SIZE = 66;
 constexpr size_t TESTNET_USER_PUBKEY_SIZE = 64;
@@ -109,7 +109,7 @@ inline void set_testnet() { net_type_t::get_instance().set_testnet(); }
 
 inline size_t get_user_pubkey_size() {
     /// TODO: eliminate the need to check condition every time
-    if (loki::is_mainnet()) {
+    if (oxen::is_mainnet()) {
         return MAINNET_USER_PUBKEY_SIZE;
     } else {
         return TESTNET_USER_PUBKEY_SIZE;
@@ -165,7 +165,7 @@ struct message_t {
           nonce(nonce) {}
 };
 
-} // namespace loki
+} // namespace oxen
 
 namespace std {
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "loki_logger.h"
+#include "oxen_logger.h"
 #include <set>
 
 struct net_stats_t {
@@ -14,7 +14,7 @@ struct net_stats_t {
     void record_socket_open(int sockfd) {
 #ifdef INTEGRATION_TEST
         if (open_fds.find(sockfd) != open_fds.end()) {
-            LOKI_LOG(critical, "Already recorded as open: {}!", sockfd);
+            OXEN_LOG(critical, "Already recorded as open: {}!", sockfd);
         }
         open_fds.insert(sockfd);
 #endif
@@ -23,7 +23,7 @@ struct net_stats_t {
     void record_socket_close(int sockfd) {
 #ifdef INTEGRATION_TEST
         if (open_fds.find(sockfd) == open_fds.end()) {
-            LOKI_LOG(critical, "Socket is NOT recorded as open: {}", sockfd);
+            OXEN_LOG(critical, "Socket is NOT recorded as open: {}", sockfd);
         }
         open_fds.erase(sockfd);
 #endif

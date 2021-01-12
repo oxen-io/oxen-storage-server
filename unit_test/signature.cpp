@@ -9,7 +9,7 @@
 BOOST_AUTO_TEST_SUITE(signature_unit_test)
 
 BOOST_AUTO_TEST_CASE(it_generates_hashes) {
-    using namespace loki;
+    using namespace oxen;
 
     std::vector<hash> hashes;
 
@@ -30,7 +30,7 @@ BOOST_AUTO_TEST_CASE(it_generates_hashes) {
 }
 
 BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -41,14 +41,14 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     const auto sig = generate_signature(hash, key_pair);
     const bool verified = check_signature(sig, hash, public_key);
     BOOST_CHECK(verified);
 }
 
 BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     const auto sig = generate_signature(hash, key_pair);
 
     // convert signature to base64 and public key to base32z
@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
 }
 
 BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
-    using namespace loki;
+    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
                                    159, 138, 162, 227, 55,  77, 25,  181,
                                    50,  238, 207, 178, 176, 54, 126, 170,
                                    111, 112, 50,  121, 227, 78, 193, 2};
-    lokid_key_pair_t key_pair{secret_key, public_key};
+    oxend_key_pair_t key_pair{secret_key, public_key};
     auto sig = generate_signature(hash, key_pair);
 
     // amend signature

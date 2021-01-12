@@ -1,7 +1,7 @@
 #include "rate_limiter.h"
 
-#include "loki_common.h"
-#include "loki_logger.h"
+#include "oxen_common.h"
+#include "oxen_logger.h"
 
 #include <algorithm>
 #include <assert.h>
@@ -100,7 +100,7 @@ bool RateLimiter::should_rate_limit_client(
         }
         const TokenBucket bucket{BUCKET_SIZE - 1, now};
         if (!client_buckets_.insert({identifier, bucket}).second) {
-            LOKI_LOG(error, "Failed to insert new client rate limit bucket");
+            OXEN_LOG(error, "Failed to insert new client rate limit bucket");
         }
     }
 

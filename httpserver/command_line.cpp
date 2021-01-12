@@ -1,10 +1,10 @@
 #include "command_line.h"
-#include "loki_logger.h"
+#include "oxen_logger.h"
 
 #include <filesystem>
 #include <iostream>
 
-namespace loki {
+namespace oxen {
 
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
@@ -18,11 +18,11 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     po::options_description all, hidden;
     // clang-format off
     desc_.add_options()
-        ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.loki/storage)")
+        ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.oxen/storage)")
         ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
-        ("lokid-rpc-ip", po::value(&options_.lokid_rpc_port), "RPC IP on which the local Loki daemon is listening (usually localhost)")
-        ("lokid-rpc-port", po::value(&options_.lokid_rpc_port), "RPC port on which the local Loki daemon is listening")
+        ("oxend-rpc-ip", po::value(&options_.oxend_rpc_port), "RPC IP on which the local Oxen daemon is listening (usually localhost)")
+        ("oxend-rpc-port", po::value(&options_.oxend_rpc_port), "RPC port on which the local Oxen daemon is listening")
         ("lmq-port", po::value(&options_.lmq_port), "Port used by LokiMQ")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
@@ -36,9 +36,9 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     hidden.add_options()
         ("ip", po::value<std::string>(), "(unused)")
         ("port", po::value(&options_.port), "Port to listen on")
-        ("lokid-key", po::value(&options_.lokid_key), "Legacy secret key (test only)")
-        ("lokid-x25519-key", po::value(&options_.lokid_x25519_key), "x25519 secret key (test only)")
-        ("lokid-ed25519-key", po::value(&options_.lokid_ed25519_key), "ed25519 public key (test only)");
+        ("oxend-key", po::value(&options_.oxend_key), "Legacy secret key (test only)")
+        ("oxend-x25519-key", po::value(&options_.oxend_x25519_key), "x25519 secret key (test only)")
+        ("oxend-ed25519-key", po::value(&options_.oxend_ed25519_key), "ed25519 public key (test only)");
     // clang-format on
 
     all.add(desc_).add(hidden);
@@ -73,8 +73,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         return;
     }
 
-    if (options_.testnet && !vm.count("lokid-rpc-port")) {
-        options_.lokid_rpc_port = 38157;
+    if (options_.testnet && !vm.count("oxend-rpc-port")) {
+        options_.oxend_rpc_port = 38157;
     }
 
     if (!vm.count("lmq-port")) {
@@ -97,4 +97,4 @@ void command_line_parser::print_usage() const {
 
     print_log_levels();
 }
-} // namespace loki
+} // namespace oxen

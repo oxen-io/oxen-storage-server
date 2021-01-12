@@ -1,12 +1,12 @@
 #include "https_client.h"
-#include "loki_logger.h"
+#include "oxen_logger.h"
 #include "net_stats.h"
 #include "signature.h"
 
 #include <boost/algorithm/string/erase.hpp>
 #include <openssl/x509.h>
 
-namespace loki {
+namespace oxen {
 
 using error_code = boost::system::error_code;
 
@@ -24,7 +24,7 @@ void make_https_request(boost::asio::io_context& ioc,
 #else
 
     if (sn_address == "0.0.0.0") {
-        LOKI_LOG(debug, "Could not initiate request to snode (we don't know "
+        OXEN_LOG(debug, "Could not initiate request to snode (we don't know "
                         "their IP yet).");
 
         cb(sn_response_t{SNodeError::NO_REACH, nullptr});
@@ -35,7 +35,7 @@ void make_https_request(boost::asio::io_context& ioc,
         resolver.resolve(sn_address, std::to_string(port), ec);
 #endif
     if (ec) {
-        LOKI_LOG(error,
+        OXEN_LOG(error,
                  "https: Failed to parse the IP address. Error code = {}. "
                  "Message: {}",
                  ec.value(), ec.message());
@@ -69,7 +69,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
                                boost::asio::ip::tcp::resolver::results_type
                                    resolve_results) mutable {
         if (ec) {
-            LOKI_LOG(error, "DNS resolution error for {}: {}", query,
+            OXEN_LOG(error, "DNS resolution error for {}: {}", query,
                      ec.message());
             cb({SNodeError::ERROR_OTHER});
             return;
@@ -95,18 +95,18 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
 static std::string x509_to_string(X509* x509) {
     BIO* bio_out = BIO_new(BIO_s_mem());
     if (!bio_out) {
-        LOKI_LOG(critical, "Could not allocate openssl BIO");
+        OXEN_LOG(critical, "Could not allocate openssl BIO");
         return "";
     }
     if (!PEM_write_bio_X509(bio_out, x509)) {
-        LOKI_LOG(critical, "Could not write x509 cert to openssl BIO");
+        OXEN_LOG(critical, "Could not write x509 cert to openssl BIO");
         return "";
     }
     BUF_MEM* bio_buf;
     BIO_get_mem_ptr(bio_out, &bio_buf);
     std::string pem = std::string(bio_buf->data, bio_buf->length);
     if (!BIO_free(bio_out)) {
-        LOKI_LOG(critical, "Could not free openssl BIO");
+        OXEN_LOG(critical, "Could not free openssl BIO");
     }
     return pem;
 }
@@ -133,7 +133,7 @@ void HttpsClientSession::start() {
     if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
-        LOKI_LOG(critical, "{}", ec.message());
+        OXEN_LOG(critical, "{}", ec.message());
         return;
     }
     boost::asio::async_connect(
@@ -145,7 +145,7 @@ void HttpsClientSession::start() {
             if (ec) {
                 /// Don't forget to print the error from where we call this!
                 /// (similar to http)
-                LOKI_LOG(debug,
+                OXEN_LOG(debug,
                          "[https client]: could not connect to {}:{}, message: "
                          "{} ({})",
                          endpoint.address().to_string(), endpoint.port(),
@@ -162,23 +162,23 @@ void HttpsClientSession::start() {
         [self = shared_from_this()](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    LOKI_LOG(error,
+                    OXEN_LOG(error,
                              "Deadline timer failed in https client session "
                              "[{}: {}]",
                              ec.value(), ec.message());
                 }
             } else {
-                LOKI_LOG(debug, "client socket timed out");
+                OXEN_LOG(debug, "client socket timed out");
                 self->do_close();
             }
         });
 }
 
 void HttpsClientSession::on_connect() {
-    LOKI_LOG(trace, "on connect, connection idx: {}", this->connection_idx);
+    OXEN_LOG(trace, "on connect, connection idx: {}", this->connection_idx);
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(trace, "Open https client socket: {}", sockfd);
+    OXEN_LOG(trace, "Open https client socket: {}", sockfd);
     get_net_stats().record_socket_open(sockfd);
 
     stream_.set_verify_mode(ssl::verify_none);
@@ -200,7 +200,7 @@ void HttpsClientSession::on_connect() {
 
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
-        LOKI_LOG(error, "Failed to perform a handshake with {}: {}",
+        OXEN_LOG(error, "Failed to perform a handshake with {}: {}",
                  server_pub_key_b32z_.value_or("(not snode)"), ec.message());
 
         return;
@@ -214,15 +214,15 @@ void HttpsClientSession::on_handshake(boost::system::error_code ec) {
 
 void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
-    LOKI_LOG(trace, "on write");
+    OXEN_LOG(trace, "on write");
     if (ec) {
-        LOKI_LOG(error, "Https error on write, ec: {}. Message: {}", ec.value(),
+        OXEN_LOG(error, "Https error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
     }
 
-    LOKI_LOG(trace, "Successfully transferred {} bytes.", bytes_transferred);
+    OXEN_LOG(trace, "Successfully transferred {} bytes.", bytes_transferred);
 
     // Receive the HTTP response
     http::async_read(stream_, buffer_, response_,
@@ -237,9 +237,9 @@ bool HttpsClientSession::verify_signature() {
 
     const auto& response = response_.get();
 
-    const auto it = response.find(LOKI_SNODE_SIGNATURE_HEADER);
+    const auto it = response.find(OXEN_SNODE_SIGNATURE_HEADER);
     if (it == response.end()) {
-        LOKI_LOG(warn, "no signature found in header from {}",
+        OXEN_LOG(warn, "no signature found in header from {}",
                  *server_pub_key_b32z_);
         return false;
     }
@@ -251,7 +251,7 @@ bool HttpsClientSession::verify_signature() {
 
 void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
-    LOKI_LOG(trace, "Successfully received {} bytes", bytes_transferred);
+    OXEN_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
     const auto &response = response_.get();
 
@@ -261,7 +261,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
             http::status_class::successful) {
 
             if (server_pub_key_b32z_ && !verify_signature()) {
-                LOKI_LOG(debug, "Bad signature from {}", *server_pub_key_b32z_);
+                OXEN_LOG(debug, "Bad signature from {}", *server_pub_key_b32z_);
                 trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
             } else {
                 auto body = std::make_shared<std::string>(response.body());
@@ -269,7 +269,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
             }
 
         } else {
-            LOKI_LOG(debug, "ERROR OTHER: [{}] {}", response.result_int(), response.body());
+            OXEN_LOG(debug, "ERROR OTHER: [{}] {}", response.result_int(), response.body());
             trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
         }
 
@@ -277,7 +277,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
-        LOKI_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+        OXEN_LOG(error, "Error on read: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
     }
@@ -288,7 +288,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
 
-        LOKI_LOG(error, "ec: {}. Message: {}", ec.value(), ec.message());
+        OXEN_LOG(error, "ec: {}. Message: {}", ec.value(), ec.message());
         return;
     }
 
@@ -322,12 +322,12 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
         ec.assign(0, ec.category());
     } else if (ec) {
         // This one is too noisy, so demoted to debug:
-        LOKI_LOG(trace, "could not shutdown stream gracefully: {} ({})",
+        OXEN_LOG(trace, "could not shutdown stream gracefully: {} ({})",
                  ec.message(), ec.value());
     }
 
     const auto sockfd = stream_.lowest_layer().native_handle();
-    LOKI_LOG(trace, "Close https socket: {}", sockfd);
+    OXEN_LOG(trace, "Close https socket: {}", sockfd);
     get_net_stats().record_socket_close(sockfd);
 
     stream_.lowest_layer().close();
@@ -347,4 +347,4 @@ HttpsClientSession::~HttpsClientSession() {
 
     get_net_stats().https_connections_out--;
 }
-} // namespace loki
+} // namespace oxen

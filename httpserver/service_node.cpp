@@ -5,9 +5,9 @@
 #include "http_connection.h"
 #include "https_client.h"
 #include "lmq_server.h"
-#include "loki_common.h"
-#include "loki_logger.h"
-#include "lokid_key.h"
+#include "oxen_common.h"
+#include "oxen_logger.h"
+#include "oxend_key.h"
 #include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
@@ -31,11 +31,11 @@
 #include <boost/bind/bind.hpp>
 
 using json = nlohmann::json;
-using loki::storage::Item;
+using oxen::storage::Item;
 using std::string_view;
 using namespace std::chrono_literals;
 
-namespace loki {
+namespace oxen {
 using http_server::connection_t;
 
 constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
@@ -62,14 +62,14 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
 
     attempt_count_ += 1;
     if (attempt_count_ > RETRY_INTERVALS.size()) {
-        LOKI_LOG(debug, "Gave up after {} attempts", attempt_count_);
+        OXEN_LOG(debug, "Gave up after {} attempts", attempt_count_);
         if (give_up_callback_)
             give_up_callback_();
         return;
     }
 
     retry_timer_.expires_after(RETRY_INTERVALS[attempt_count_ - 1]);
-    LOKI_LOG(debug, "Will retry in {} secs",
+    OXEN_LOG(debug, "Will retry in {} secs",
              RETRY_INTERVALS[attempt_count_ - 1].count());
 
     retry_timer_.async_wait(
@@ -86,7 +86,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
                 ioc, sn, req,
                 [self = std::move(self)](sn_response_t&& res) mutable {
                     if (res.error_code != SNodeError::NO_ERROR) {
-                        LOKI_LOG(debug, "Could not relay one: {} (attempt #{})",
+                        OXEN_LOG(debug, "Could not relay one: {} (attempt #{})",
                                  self->sn_, self->attempt_count_);
                         self->retry(std::move(self));
                     }
@@ -95,7 +95,7 @@ void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
 }
 
 FailedRequestHandler::~FailedRequestHandler() {
-    LOKI_LOG(trace, "~FailedRequestHandler()");
+    OXEN_LOG(trace, "~FailedRequestHandler()");
 }
 
 void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
@@ -107,7 +107,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
-constexpr std::chrono::minutes LOKID_PING_INTERVAL = 5min;
+constexpr std::chrono::minutes OXEND_PING_INTERVAL = 5min;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
@@ -152,44 +152,44 @@ static bool verify_message(const message_t& msg,
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
                          LokimqServer& lmq_server,
-                         const lokid_key_pair_t& lokid_key_pair,
+                         const oxend_key_pair_t& oxend_key_pair,
                          const std::string& ed25519hex,
                          const std::string& db_location,
-                         LokidClient& lokid_client, const bool force_start)
+                         OxendClient& oxend_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
-      swarm_update_timer_(ioc), lokid_ping_timer_(ioc),
+      swarm_update_timer_(ioc), oxend_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
       check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
-      relay_timer_(ioc), lokid_key_pair_(lokid_key_pair),
-      lmq_server_(lmq_server), lokid_client_(lokid_client),
+      relay_timer_(ioc), oxend_key_pair_(oxend_key_pair),
+      lmq_server_(lmq_server), oxend_client_(oxend_client),
       force_start_(force_start) {
 
     const auto addr = lokimq::to_base32z(
-            lokid_key_pair_.public_key.begin(),
-            lokid_key_pair_.public_key.end());
-    LOKI_LOG(info, "Our loki address: {}", addr);
+            oxend_key_pair_.public_key.begin(),
+            oxend_key_pair_.public_key.end());
+    OXEN_LOG(info, "Our loki address: {}", addr);
 
     const auto pk_hex = lokimq::to_hex(
-            lokid_key_pair_.public_key.begin(),
-            lokid_key_pair_.public_key.end());
+            oxend_key_pair_.public_key.begin(),
+            oxend_key_pair_.public_key.end());
 
     // TODO: get rid of "unused" fields
     our_address_ = sn_record_t(port, lmq_server.port(), addr, pk_hex, "unused",
                                "unused", ed25519hex, "1.1.1.1");
 
     // TODO: fail hard if we can't encode our public key
-    LOKI_LOG(info, "Read our snode address: {}", our_address_);
+    OXEN_LOG(info, "Read our snode address: {}", our_address_);
     swarm_ = std::make_unique<Swarm>(our_address_);
 
-    LOKI_LOG(info, "Requesting initial swarm state");
+    OXEN_LOG(info, "Requesting initial swarm state");
 
 #ifdef INTEGRATION_TEST
     this->syncing_ = false;
 #endif
 
     swarm_timer_tick();
-    lokid_ping_timer_tick();
+    oxend_ping_timer_tick();
     cleanup_timer_tick();
 
     ping_peers_tick();
@@ -211,7 +211,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     delay_timer->async_wait([this,
                              delay_timer](const boost::system::error_code& ec) {
         if (this->syncing_) {
-            LOKI_LOG(
+            OXEN_LOG(
                 warn,
                 "Block syncing is taking too long, activating SS regardless");
             this->syncing_ = false;
@@ -223,14 +223,14 @@ static block_update_t
 parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
 
     if (!response_body) {
-        LOKI_LOG(critical, "Bad lokid rpc response: no response body");
+        OXEN_LOG(critical, "Bad oxend rpc response: no response body");
         throw std::runtime_error("Failed to parse swarm update");
     }
 
     std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
     block_update_t bu;
 
-    LOKI_LOG(trace, "swarm repsonse: <{}>", *response_body);
+    OXEN_LOG(trace, "swarm repsonse: <{}>", *response_body);
 
     try {
 
@@ -251,7 +251,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
             const auto& pubkey =
                 sn_json.at("service_node_pubkey").get_ref<const std::string&>();
             if (!lokimq::is_hex(pubkey)) {
-                LOKI_LOG(warn, "service_node_pubkey is not valid hex");
+                OXEN_LOG(warn, "service_node_pubkey is not valid hex");
                 continue;
             }
             std::string snode_address =
@@ -271,20 +271,20 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
                 sn_json.at("pubkey_x25519").get_ref<const std::string&>();
 
             if (pubkey_x25519_hex.empty()) {
-                LOKI_LOG(warn, "pubkey_x25519_hex is missing from sn info");
+                OXEN_LOG(warn, "pubkey_x25519_hex is missing from sn info");
                 continue;
             }
 
-            // lokidKeyFromHex works for pub keys too
+            // oxendKeyFromHex works for pub keys too
             const public_key_t pubkey_x25519 =
-                lokidKeyFromHex(pubkey_x25519_hex);
+                oxendKeyFromHex(pubkey_x25519_hex);
             std::string pubkey_x25519_bin = key_to_string(pubkey_x25519);
 
             const auto& pubkey_ed25519 =
                 sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
 
             if (pubkey_ed25519.empty()) {
-                LOKI_LOG(warn, "pubkey_ed25519 is missing from sn info");
+                OXEN_LOG(warn, "pubkey_ed25519 is missing from sn info");
                 continue;
             }
 
@@ -315,7 +315,7 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         }
 
     } catch (...) {
-        LOKI_LOG(critical, "Bad lokid rpc response: invalid json fields");
+        OXEN_LOG(critical, "Bad oxend rpc response: invalid json fields");
         throw std::runtime_error("Failed to parse swarm update");
     }
 
@@ -330,7 +330,7 @@ void ServiceNode::bootstrap_data() {
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(trace, "Bootstrapping peer data");
+    OXEN_LOG(trace, "Bootstrapping peer data");
 
     json params;
     json fields;
@@ -350,7 +350,7 @@ void ServiceNode::bootstrap_data() {
     params["fields"] = fields;
 
     std::vector<std::pair<std::string, uint16_t>> seed_nodes;
-    if (loki::is_mainnet()) {
+    if (oxen::is_mainnet()) {
         seed_nodes = {{{"public.loki.foundation", 22023},
                        {"storage.seed1.loki.network", 22023},
                        {"storage.seed2.loki.network", 22023},
@@ -363,12 +363,12 @@ void ServiceNode::bootstrap_data() {
     auto req_counter = std::make_shared<int>(0);
 
     for (auto seed_node : seed_nodes) {
-        lokid_client_.make_custom_lokid_request(
+        oxend_client_.make_custom_oxend_request(
             seed_node.first, seed_node.second, "get_n_service_nodes", params,
             [this, seed_node, req_counter,
              node_count = seed_nodes.size()](const sn_response_t&& res) {
                 if (res.error_code == SNodeError::NO_ERROR) {
-                    LOKI_LOG(info, "Parsing response from seed {}",
+                    OXEN_LOG(info, "Parsing response from seed {}",
                              seed_node.first);
                     try {
                         block_update_t bu = parse_swarm_update(res.body);
@@ -379,15 +379,15 @@ void ServiceNode::bootstrap_data() {
                             this->on_bootstrap_update(std::move(bu));
                         }
 
-                        LOKI_LOG(info, "Bootstrapped from {}", seed_node.first);
+                        OXEN_LOG(info, "Bootstrapped from {}", seed_node.first);
                     } catch (const std::exception& e) {
-                        LOKI_LOG(
+                        OXEN_LOG(
                             error,
                             "Exception caught while bootstrapping from {}: {}",
                             seed_node.first, e.what());
                     }
                 } else {
-                    LOKI_LOG(error, "Failed to contact bootstrap node {}",
+                    OXEN_LOG(error, "Failed to contact bootstrap node {}",
                              seed_node.first);
                 }
 
@@ -398,7 +398,7 @@ void ServiceNode::bootstrap_data() {
                     // (successfully or not) all seed nodes, just assume we have
                     // finished syncing. (Otherwise we will never get a chance
                     // to update syncing status.)
-                    LOKI_LOG(
+                    OXEN_LOG(
                         warn,
                         "Could not contact any of the seed nodes to get target "
                         "height. Going to assume our height is correct.");
@@ -468,25 +468,25 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
 
     switch (method) {
     case ss_client::ReqMethod::DATA: {
-        LOKI_LOG(debug, "Sending sn.data request to {}",
+        OXEN_LOG(debug, "Sending sn.data request to {}",
                  lokimq::to_hex(sn.pubkey_x25519_bin()));
         lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
                              req.body);
         break;
     }
     case ss_client::ReqMethod::PROXY_EXIT: {
-        auto client_key = req.headers.find(LOKI_SENDER_KEY_HEADER);
+        auto client_key = req.headers.find(OXEN_SENDER_KEY_HEADER);
 
         // I could just always assume that we are passing the right
         // parameters...
         if (client_key != req.headers.end()) {
-            LOKI_LOG(debug, "Sending sn.proxy_exit request to {}",
+            OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
                      lokimq::to_hex(sn.pubkey_x25519_bin()));
             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                  std::move(cb), client_key->second, req.body);
         } else {
-            LOKI_LOG(debug, "Developer error: no {} passed in headers",
-                     LOKI_SENDER_KEY_HEADER);
+            OXEN_LOG(debug, "Developer error: no {} passed in headers",
+                     OXEN_SENDER_KEY_HEADER);
             // TODO: call cb?
             assert(false);
         }
@@ -495,7 +495,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::ONION_REQUEST: {
         // Onion reqeusts always use lokimq, so they use it
         // directly, no need for the "send_to_sn" abstraction
-        LOKI_LOG(error, "Onion requests should not use this interface");
+        OXEN_LOG(error, "Onion requests should not use this interface");
         assert(false);
         break;
     }
@@ -507,11 +507,11 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
 
     auto reply_callback = [](bool success, std::vector<std::string> data) {
         if (!success) {
-            LOKI_LOG(error, "Failed to send batch data: time-out");
+            OXEN_LOG(error, "Failed to send batch data: time-out");
         }
     };
 
-    LOKI_LOG(debug, "Relaying data to: {}", sn);
+    OXEN_LOG(debug, "Relaying data to: {}", sn);
 
     auto req = ss_client::Request{blob, {}};
 
@@ -531,7 +531,7 @@ bool ServiceNode::process_store(const message_t& msg) {
     /// only accept a message if we are in a swarm
     if (!swarm_) {
         // This should never be printed now that we have "snode_ready"
-        LOKI_LOG(error, "error: my swarm in not initialized");
+        OXEN_LOG(error, "error: my swarm in not initialized");
         return false;
     }
 
@@ -553,7 +553,7 @@ void ServiceNode::save_if_new(const message_t& msg) {
 
     if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
                    msg.nonce)) {
-        LOKI_LOG(trace, "saved message: {}", msg.data);
+        OXEN_LOG(trace, "saved message: {}", msg.data);
     }
 }
 
@@ -562,11 +562,11 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     std::lock_guard guard(sn_mutex_);
 
     if (!db_->bulk_store(items)) {
-        LOKI_LOG(error, "failed to save batch to the database");
+        OXEN_LOG(error, "failed to save batch to the database");
         return;
     }
 
-    LOKI_LOG(trace, "saved messages count: {}", items.size());
+    OXEN_LOG(trace, "saved messages count: {}", items.size());
 }
 
 void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
@@ -626,7 +626,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     std::lock_guard guard(sn_mutex_);
 
     if (this->hardfork_ != bu.hardfork) {
-        LOKI_LOG(debug, "New hardfork: {}", bu.hardfork);
+        OXEN_LOG(debug, "New hardfork: {}", bu.hardfork);
         hardfork_ = bu.hardfork;
     }
 
@@ -636,24 +636,24 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     /// We don't have anything to do until we have synced
     if (syncing_) {
-        LOKI_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
+        OXEN_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
         // Note that because we are still syncing, we won't update our swarm id
         return;
     }
 
     if (bu.block_hash != block_hash_) {
 
-        LOKI_LOG(debug, "new block, height: {}, hash: {}", bu.height,
+        OXEN_LOG(debug, "new block, height: {}, hash: {}", bu.height,
                  bu.block_hash);
 
         if (bu.height > block_height_ + 1 && block_height_ != 0) {
-            LOKI_LOG(warn, "Skipped some block(s), old: {} new: {}",
+            OXEN_LOG(warn, "Skipped some block(s), old: {} new: {}",
                      block_height_, bu.height);
             /// TODO: if we skipped a block, should we try to run peer tests for
             /// them as well?
         } else if (bu.height <= block_height_) {
             // TODO: investigate how testing will be affected under reorg
-            LOKI_LOG(warn,
+            OXEN_LOG(warn,
                      "new block height is not higher than the current height");
         }
 
@@ -663,7 +663,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
         block_hashes_cache_.push_back(std::make_pair(bu.height, bu.block_hash));
 
     } else {
-        LOKI_LOG(trace, "already seen this block");
+        OXEN_LOG(trace, "already seen this block");
         return;
     }
 
@@ -677,7 +677,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     const auto status = derive_snode_status(bu, our_address_);
 
     if (this->status_ != status) {
-        LOKI_LOG(info, "Node status updated: {}", status);
+        OXEN_LOG(info, "Node status updated: {}", status);
         this->status_ = status;
     }
 
@@ -685,7 +685,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     std::string reason;
     if (!this->snode_ready(&reason)) {
-        LOKI_LOG(warn, "Storage server is still not ready: {}", reason);
+        OXEN_LOG(warn, "Storage server is still not ready: {}", reason);
         swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
     } else {
@@ -694,7 +694,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
             // NOTE: because we never reset `active` after we get
             // decommissioned, this code won't run when the node comes back
             // again
-            LOKI_LOG(info, "Storage server is now active!");
+            OXEN_LOG(info, "Storage server is now active!");
 
             relay_timer_.expires_after(RELAY_INTERVAL);
             relay_timer_.async_wait(
@@ -736,7 +736,7 @@ void ServiceNode::relay_buffered_messages() {
     if (relay_buffer_.empty())
         return;
 
-    LOKI_LOG(debug, "Relaying {} messages from buffer to {} nodes",
+    OXEN_LOG(debug, "Relaying {} messages from buffer to {} nodes",
              relay_buffer_.size(), swarm_->other_nodes().size());
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
@@ -767,7 +767,7 @@ void ServiceNode::swarm_timer_tick() {
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(trace, "Swarm timer tick");
+    OXEN_LOG(trace, "Swarm timer tick");
 
     json params;
     json fields;
@@ -791,19 +791,19 @@ void ServiceNode::swarm_timer_tick() {
 
     static bool got_first_response = false;
 
-    lokid_client_.make_lokid_request(
+    oxend_client_.make_oxend_request(
         "get_n_service_nodes", params, [this](const sn_response_t&& res) {
             if (res.error_code == SNodeError::NO_ERROR) {
                 try {
 
                     if (!got_first_response) {
-                        LOKI_LOG(
+                        OXEN_LOG(
                             info,
-                            "Got initial swarm information from local Lokid");
+                            "Got initial swarm information from local Oxend");
                         got_first_response = true;
 #ifndef INTEGRATION_TEST
                         // Only bootstrap (apply ips) once we have at least
-                        // some entries for snodes from lokid
+                        // some entries for snodes from oxend
                         this->bootstrap_data();
 #endif
                     }
@@ -812,11 +812,11 @@ void ServiceNode::swarm_timer_tick() {
                     if (!bu.unchanged)
                         on_swarm_update(std::move(bu));
                 } catch (const std::exception& e) {
-                    LOKI_LOG(error, "Exception caught on swarm update: {}",
+                    OXEN_LOG(error, "Exception caught on swarm update: {}",
                              e.what());
                 }
             } else {
-                LOKI_LOG(critical, "Failed to contact local Lokid");
+                OXEN_LOG(critical, "Failed to contact local Oxend");
             }
 
             // It would make more sense to wait the difference between the time
@@ -850,7 +850,7 @@ void ServiceNode::update_last_ping(ReachType type) {
         break;
     }
     default:
-        LOKI_LOG(error, "Connection type not supported");
+        OXEN_LOG(error, "Connection type not supported");
         assert(false);
         break;
     }
@@ -869,7 +869,7 @@ void ServiceNode::ping_peers_tick() {
 
     if (this->status_ == SnodeStatus::UNSTAKED ||
         this->status_ == SnodeStatus::UNKNOWN) {
-        LOKI_LOG(debug, "Skipping this round of peer testing (unstaked)");
+        OXEN_LOG(debug, "Skipping this round of peer testing (unstaked)");
         return;
     }
 
@@ -877,7 +877,7 @@ void ServiceNode::ping_peers_tick() {
     reach_records_.check_incoming_tests(all_stats_.get_reset_time());
 
     if (this->status_ == SnodeStatus::DECOMMISSIONED) {
-        LOKI_LOG(debug, "Skipping this round of peer testing (decommissioned)");
+        OXEN_LOG(debug, "Skipping this round of peer testing (decommissioned)");
         return;
     }
 
@@ -889,30 +889,30 @@ void ServiceNode::ping_peers_tick() {
     if (random_node) {
 
         if (random_node == our_address_) {
-            LOKI_LOG(trace, "Would test our own node, skipping");
+            OXEN_LOG(trace, "Would test our own node, skipping");
         } else {
-            LOKI_LOG(trace, "Selected random node for testing: {}",
+            OXEN_LOG(trace, "Selected random node for testing: {}",
                      (*random_node).pub_key_hex());
             test_reachability(*random_node);
         }
     } else {
-        LOKI_LOG(trace, "No nodes to test for reachability");
+        OXEN_LOG(trace, "No nodes to test for reachability");
     }
 
     // TODO: there is an edge case where SS reported some offending
     // nodes, but then restarted, so SS won't give priority to those
     // nodes. SS will still test them eventually (through random selection) and
-    // update Lokid, but this scenario could be made more robust.
+    // update Oxend, but this scenario could be made more robust.
     const auto offline_node = reach_records_.next_to_test();
 
     if (offline_node) {
         const std::optional<sn_record_t> sn =
             swarm_->get_node_by_pk(*offline_node);
-        LOKI_LOG(debug, "No offline nodes to test for reachability yet");
+        OXEN_LOG(debug, "No offline nodes to test for reachability yet");
         if (sn) {
             test_reachability(*sn);
         } else {
-            LOKI_LOG(debug, "Node does not seem to exist anymore: {}",
+            OXEN_LOG(debug, "Node does not seem to exist anymore: {}",
                      *offline_node);
             // delete its entry from test records as irrelevant
             reach_records_.expire(*offline_node);
@@ -926,7 +926,7 @@ void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
 
     // TODO: investigate why we are not signing headers
     const auto hash = hash_data(req->body());
-    const auto signature = generate_signature(hash, lokid_key_pair_);
+    const auto signature = generate_signature(hash, oxend_key_pair_);
     attach_signature(req, signature);
 }
 
@@ -934,10 +934,10 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
+    OXEN_LOG(debug, "Testing node for reachability over HTTP: {}", sn);
 
     auto callback = [this, sn](sn_response_t&& res) {
-        LOKI_LOG(debug, "Got response for HTTP peer test for: {}", sn);
+        OXEN_LOG(debug, "Got response for HTTP peer test for: {}", sn);
 
         const bool success = res.error_code == SNodeError::NO_ERROR;
         this->process_reach_test_result(sn.pub_key_base32z(), ReachType::HTTP,
@@ -950,12 +950,12 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
 
     make_sn_request(ioc_, sn, req, std::move(callback));
 
-    LOKI_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
+    OXEN_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
     lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req",
                          [this, sn](bool success, const auto&) {
-                             LOKI_LOG(debug,
+                             OXEN_LOG(debug,
                                       "Got success={} testing response from {}",
                                       success, sn.pubkey_x25519_hex());
                              this->process_reach_test_result(
@@ -966,16 +966,16 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
                          lokimq::send_option::outgoing{});
 }
 
-void ServiceNode::lokid_ping_timer_tick() {
+void ServiceNode::oxend_ping_timer_tick() {
 
     std::lock_guard guard(sn_mutex_);
 
-    /// TODO: Note that this is not actually an SN response! (but Lokid)
+    /// TODO: Note that this is not actually an SN response! (but Oxend)
     auto cb = [](const sn_response_t&& res) {
         if (res.error_code == SNodeError::NO_ERROR) {
 
             if (!res.body) {
-                LOKI_LOG(critical, "Empty body on Lokid ping");
+                OXEN_LOG(critical, "Empty body on Oxend ping");
                 return;
             }
 
@@ -986,18 +986,18 @@ void ServiceNode::lokid_ping_timer_tick() {
                     res_json.at("result").at("status").get<std::string>();
 
                 if (status == "OK") {
-                    LOKI_LOG(info, "Successfully pinged Lokid");
+                    OXEN_LOG(info, "Successfully pinged Oxend");
                 } else {
-                    LOKI_LOG(critical, "Could not ping Lokid. Status: {}",
+                    OXEN_LOG(critical, "Could not ping Oxend. Status: {}",
                              status);
                 }
             } catch (...) {
-                LOKI_LOG(critical,
-                         "Could not ping Lokid: bad json in response");
+                OXEN_LOG(critical,
+                         "Could not ping Oxend: bad json in response");
             }
 
         } else {
-            LOKI_LOG(critical, "Could not ping Lokid");
+            OXEN_LOG(critical, "Could not ping Oxend");
         }
     };
 
@@ -1007,12 +1007,12 @@ void ServiceNode::lokid_ping_timer_tick() {
     params["version_patch"] = VERSION_PATCH;
     params["storage_lmq_port"] = lmq_server_.port();
 
-    lokid_client_.make_lokid_request("storage_server_ping", params,
+    oxend_client_.make_oxend_request("storage_server_ping", params,
                                      std::move(cb));
 
-    lokid_ping_timer_.expires_after(LOKID_PING_INTERVAL);
-    lokid_ping_timer_.async_wait(
-        boost::bind(&ServiceNode::lokid_ping_timer_tick, this));
+    oxend_ping_timer_.expires_after(OXEND_PING_INTERVAL);
+    oxend_ping_timer_.async_wait(
+        boost::bind(&ServiceNode::oxend_ping_timer_tick, this));
 }
 
 static std::vector<std::shared_ptr<request_t>>
@@ -1033,7 +1033,7 @@ void ServiceNode::perform_blockchain_test(
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(debug, "Delegating blockchain test to Lokid");
+    OXEN_LOG(debug, "Delegating blockchain test to Oxend");
 
     nlohmann::json params;
 
@@ -1042,14 +1042,14 @@ void ServiceNode::perform_blockchain_test(
 
     auto on_resp = [cb = std::move(cb)](const sn_response_t& resp) {
         if (resp.error_code != SNodeError::NO_ERROR || !resp.body) {
-            LOKI_LOG(critical, "Could not send blockchain request to Lokid");
+            OXEN_LOG(critical, "Could not send blockchain request to Oxend");
             return;
         }
 
         const json body = json::parse(*resp.body, nullptr, false);
 
         if (body.is_discarded()) {
-            LOKI_LOG(critical, "Bad Lokid rpc response: invalid json");
+            OXEN_LOG(critical, "Bad Oxend rpc response: invalid json");
             return;
         }
 
@@ -1063,7 +1063,7 @@ void ServiceNode::perform_blockchain_test(
         }
     };
 
-    lokid_client_.make_lokid_request("perform_blockchain_test", params,
+    oxend_client_.make_oxend_request("perform_blockchain_test", params,
                                      std::move(on_resp));
 }
 
@@ -1076,15 +1076,15 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
     const std::string sig_b64 = lokimq::to_base64(raw_sig);
-    request->set(LOKI_SNODE_SIGNATURE_HEADER, sig_b64);
+    request->set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
 
-    request->set(LOKI_SENDER_SNODE_PUBKEY_HEADER,
+    request->set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
                  our_address_.pub_key_base32z());
 }
 
 void abort_if_integration_test() {
 #ifdef INTEGRATION_TEST
-    LOKI_LOG(critical, "ABORT in integration test");
+    OXEN_LOG(critical, "ABORT in integration test");
     abort();
 #endif
 }
@@ -1100,7 +1100,7 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
         // TODO: retry here, otherwise tests sometimes fail (when SN not
         // running yet)
         this->all_stats_.record_storage_test_result(testee, ResultType::OTHER);
-        LOKI_LOG(debug, "Failed to send a storage test request to snode: {}",
+        OXEN_LOG(debug, "Failed to send a storage test request to snode: {}",
                  testee);
         return;
     }
@@ -1109,7 +1109,7 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
     // status in response body and check the answer
     if (!res.body) {
         this->all_stats_.record_storage_test_result(testee, ResultType::OTHER);
-        LOKI_LOG(debug, "Empty body in storage test response");
+        OXEN_LOG(debug, "Empty body in storage test response");
         return;
     }
 
@@ -1125,30 +1125,30 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
 
             const auto value = res_json.at("value").get<std::string>();
             if (value == item.data) {
-                LOKI_LOG(debug,
+                OXEN_LOG(debug,
                          "Storage test is successful for: {} at height: {}",
                          testee, test_height);
                 result = ResultType::OK;
             } else {
-                LOKI_LOG(debug,
+                OXEN_LOG(debug,
                          "Test answer doesn't match for: {} at height {}",
                          testee, test_height);
 #ifdef INTEGRATION_TEST
-                LOKI_LOG(warn, "got: {} expected: {}", value, item.data);
+                OXEN_LOG(warn, "got: {} expected: {}", value, item.data);
 #endif
                 result = ResultType::MISMATCH;
             }
 
         } else if (status == "wrong request") {
-            LOKI_LOG(debug, "Storage test rejected by testee");
+            OXEN_LOG(debug, "Storage test rejected by testee");
             result = ResultType::REJECTED;
         } else {
             result = ResultType::OTHER;
-            LOKI_LOG(debug, "Storage test failed for some other reason");
+            OXEN_LOG(debug, "Storage test failed for some other reason");
         }
     } catch (...) {
         result = ResultType::OTHER;
-        LOKI_LOG(debug, "Invalid json in storage test response");
+        OXEN_LOG(debug, "Invalid json in storage test response");
     }
 
     this->all_stats_.record_storage_test_result(testee, result);
@@ -1210,7 +1210,7 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     const auto sn = swarm_->get_node_by_pk(sn_pk);
 
     if (!sn) {
-        LOKI_LOG(debug, "No Service node with pubkey: {}", sn_pk);
+        OXEN_LOG(debug, "No Service node with pubkey: {}", sn_pk);
         return;
     }
 
@@ -1219,19 +1219,19 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
     params["pubkey"] = (*sn).pub_key_hex();
     params["passed"] = reachable;
 
-    /// Note that if Lokid restarts, all its reachability records will be
+    /// Note that if Oxend restarts, all its reachability records will be
     /// updated to "true".
 
     auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
         std::lock_guard guard(this->sn_mutex_);
 
         if (res.error_code != SNodeError::NO_ERROR) {
-            LOKI_LOG(warn, "Could not report node status");
+            OXEN_LOG(warn, "Could not report node status");
             return;
         }
 
         if (!res.body) {
-            LOKI_LOG(warn, "Empty body on Lokid report node status");
+            OXEN_LOG(warn, "Empty body on Oxend report node status");
             return;
         }
 
@@ -1246,27 +1246,27 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
             if (status == "OK") {
                 success = true;
             } else {
-                LOKI_LOG(warn, "Could not report node. Status: {}", status);
+                OXEN_LOG(warn, "Could not report node. Status: {}", status);
             }
         } catch (...) {
-            LOKI_LOG(error,
+            OXEN_LOG(error,
                      "Could not report node status: bad json in response");
         }
 
         if (success) {
             if (reachable) {
-                LOKI_LOG(debug, "Successfully reported node as reachable: {}",
+                OXEN_LOG(debug, "Successfully reported node as reachable: {}",
                          sn_pk);
                 this->reach_records_.expire(sn_pk);
             } else {
-                LOKI_LOG(debug, "Successfully reported node as unreachable {}",
+                OXEN_LOG(debug, "Successfully reported node as unreachable {}",
                          sn_pk);
                 this->reach_records_.set_reported(sn_pk);
             }
         }
     };
 
-    lokid_client_.make_lokid_request("report_peer_storage_server_status",
+    oxend_client_.make_oxend_request("report_peer_storage_server_status",
                                      params, std::move(cb));
 }
 
@@ -1280,7 +1280,7 @@ void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk,
         reach_records_.record_reachable(pk, type, true);
 
         // NOTE: We don't need to report healthy nodes that previously has been
-        // not been reported to Lokid as unreachable but I'm worried there might
+        // not been reported to Oxend as unreachable but I'm worried there might
         // be some race conditions, so do it anyway for now.
 
         if (reach_records_.should_report_as(pk, ReportType::GOOD)) {
@@ -1289,7 +1289,7 @@ void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk,
 
     } else {
 
-        LOKI_LOG(trace, "Recording node as unreachable");
+        OXEN_LOG(trace, "Recording node as unreachable");
 
         reach_records_.record_reachable(pk, type, false);
 
@@ -1306,7 +1306,7 @@ void ServiceNode::process_blockchain_test_response(
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(debug,
+    OXEN_LOG(debug,
              "Processing blockchain test response from: {} at height: {}",
              testee, bc_height);
 
@@ -1321,18 +1321,18 @@ void ServiceNode::process_blockchain_test_response(
 
             if (our_answer.res_height == their_height) {
                 result = ResultType::OK;
-                LOKI_LOG(debug, "Success.");
+                OXEN_LOG(debug, "Success.");
             } else {
                 result = ResultType::MISMATCH;
-                LOKI_LOG(debug, "Failed: incorrect answer.");
+                OXEN_LOG(debug, "Failed: incorrect answer.");
             }
 
         } catch (...) {
-            LOKI_LOG(debug, "Failed: could not find answer in json.");
+            OXEN_LOG(debug, "Failed: could not find answer in json.");
         }
 
     } else {
-        LOKI_LOG(debug, "Failed to send a blockchain test request to snode: {}",
+        OXEN_LOG(debug, "Failed to send a blockchain test request to snode: {}",
                  testee);
     }
 
@@ -1349,7 +1349,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        LOKI_LOG(trace, "Could not initiate peer test: swarm too small");
+        OXEN_LOG(trace, "Could not initiate peer test: swarm too small");
         return false;
     }
 
@@ -1360,7 +1360,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         block_hash = block_hash_;
     } else if (blk_height < block_height_) {
 
-        LOKI_LOG(trace, "got storage test request for an older block: {}/{}",
+        OXEN_LOG(trace, "got storage test request for an older block: {}/{}",
                  blk_height, block_height_);
 
         const auto it =
@@ -1372,19 +1372,19 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         if (it != block_hashes_cache_.end()) {
             block_hash = it->second;
         } else {
-            LOKI_LOG(trace, "Could not find hash for a given block height");
-            // TODO: request from lokid?
+            OXEN_LOG(trace, "Could not find hash for a given block height");
+            // TODO: request from oxend?
             return false;
         }
     } else {
         assert(false);
-        LOKI_LOG(debug, "Could not find hash: block height is in the future");
+        OXEN_LOG(debug, "Could not find hash: block height is in the future");
         return false;
     }
 
     uint64_t seed;
     if (block_hash.size() < sizeof(seed)) {
-        LOKI_LOG(error, "Could not initiate peer test: invalid block hash");
+        OXEN_LOG(error, "Could not initiate peer test: invalid block hash");
         return false;
     }
 
@@ -1414,7 +1414,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     std::string block_hash;
 
     if (blk_height > block_height_) {
-        LOKI_LOG(debug, "Our blockchain is behind, height: {}, requested: {}",
+        OXEN_LOG(debug, "Our blockchain is behind, height: {}, requested: {}",
                  block_height_, blk_height);
         return MessageTestStatus::RETRY;
     }
@@ -1426,17 +1426,17 @@ MessageTestStatus ServiceNode::process_storage_test_req(
         this->derive_tester_testee(blk_height, tester, testee);
 
         if (testee != our_address_) {
-            LOKI_LOG(error, "We are NOT the testee for height: {}", blk_height);
+            OXEN_LOG(error, "We are NOT the testee for height: {}", blk_height);
             return MessageTestStatus::WRONG_REQ;
         }
 
         if (tester.pub_key_base32z() != tester_pk) {
-            LOKI_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
+            OXEN_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
                      tester.sn_address());
             abort_if_integration_test();
             return MessageTestStatus::WRONG_REQ;
         } else {
-            LOKI_LOG(trace, "Tester is valid: {}", tester_pk);
+            OXEN_LOG(trace, "Tester is valid: {}", tester_pk);
         }
     }
 
@@ -1454,14 +1454,14 @@ bool ServiceNode::select_random_message(Item& item) {
 
     uint64_t message_count;
     if (!db_->get_message_count(message_count)) {
-        LOKI_LOG(error, "Could not count messages in the database");
+        OXEN_LOG(error, "Could not count messages in the database");
         return false;
     }
 
-    LOKI_LOG(debug, "total messages: {}", message_count);
+    OXEN_LOG(debug, "total messages: {}", message_count);
 
     if (message_count == 0) {
-        LOKI_LOG(debug, "No messages in the database to initiate a peer test");
+        OXEN_LOG(debug, "No messages in the database to initiate a peer test");
         return false;
     }
 
@@ -1470,7 +1470,7 @@ bool ServiceNode::select_random_message(Item& item) {
     const auto msg_idx = util::uniform_distribution_portable(message_count);
 
     if (!db_->retrieve_by_index(msg_idx, item)) {
-        LOKI_LOG(error, "Could not retrieve message by index: {}", msg_idx);
+        OXEN_LOG(error, "Could not retrieve message by index: {}", msg_idx);
         return false;
     }
 
@@ -1491,7 +1491,7 @@ void ServiceNode::initiate_peer_test() {
     constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 
     if (block_height_ < TEST_BLOCKS_BUFFER) {
-        LOKI_LOG(debug, "Height {} is too small, skipping all tests",
+        OXEN_LOG(debug, "Height {} is too small, skipping all tests",
                  block_height_);
         return;
     }
@@ -1502,7 +1502,7 @@ void ServiceNode::initiate_peer_test() {
         return;
     }
 
-    LOKI_LOG(trace, "For height {}; tester: {} testee: {}", test_height, tester,
+    OXEN_LOG(trace, "For height {}; tester: {} testee: {}", test_height, tester,
              testee);
 
     if (tester != our_address_) {
@@ -1515,9 +1515,9 @@ void ServiceNode::initiate_peer_test() {
         // 2.1. Select a message
         Item item;
         if (!this->select_random_message(item)) {
-            LOKI_LOG(debug, "Could not select a message for testing");
+            OXEN_LOG(debug, "Could not select a message for testing");
         } else {
-            LOKI_LOG(trace, "Selected random message: {}, {}", item.hash,
+            OXEN_LOG(trace, "Selected random message: {}, {}", item.hash,
                      item.data);
 
             // 2.2. Initiate testing request
@@ -1532,14 +1532,14 @@ void ServiceNode::initiate_peer_test() {
     {
 
         // Distance between two consecutive checkpoints,
-        // should be in sync with lokid
+        // should be in sync with oxend
         constexpr uint64_t CHECKPOINT_DISTANCE = 4;
         // We can be confident that blockchain data won't
         // change if we go this many blocks back
         constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 3;
 
         if (block_height_ <= SAFETY_BUFFER_BLOCKS) {
-            LOKI_LOG(debug,
+            OXEN_LOG(debug,
                      "Blockchain too short, skipping blockchain testing.");
             return;
         }
@@ -1591,16 +1591,16 @@ void ServiceNode::bootstrap_swarms(
     std::lock_guard guard(sn_mutex_);
 
     if (swarms.empty()) {
-        LOKI_LOG(info, "Bootstrapping all swarms");
+        OXEN_LOG(info, "Bootstrapping all swarms");
     } else {
-        LOKI_LOG(info, "Bootstrapping swarms: {}", vec_to_string(swarms));
+        OXEN_LOG(info, "Bootstrapping swarms: {}", vec_to_string(swarms));
     }
 
     const auto& all_swarms = swarm_->all_valid_swarms();
 
     std::vector<Item> all_entries;
     if (!get_all_messages(all_entries)) {
-        LOKI_LOG(error, "Could not retrieve entries from the database");
+        OXEN_LOG(error, "Could not retrieve entries from the database");
         return;
     }
 
@@ -1612,7 +1612,7 @@ void ServiceNode::bootstrap_swarms(
     /// See what pubkeys we have
     std::unordered_map<std::string, swarm_id_t> cache;
 
-    LOKI_LOG(debug, "We have {} messages", all_entries.size());
+    OXEN_LOG(debug, "We have {} messages", all_entries.size());
 
     std::unordered_map<swarm_id_t, std::vector<Item>> to_relay;
 
@@ -1626,7 +1626,7 @@ void ServiceNode::bootstrap_swarms(
             auto pk = user_pubkey_t::create(entry.pub_key, success);
 
             if (!success) {
-                LOKI_LOG(error, "Invalid pubkey in a message while "
+                OXEN_LOG(error, "Invalid pubkey in a message while "
                                 "bootstrapping other nodes");
                 continue;
             }
@@ -1651,7 +1651,7 @@ void ServiceNode::bootstrap_swarms(
         }
     }
 
-    LOKI_LOG(trace, "Bootstrapping {} swarms", to_relay.size());
+    OXEN_LOG(trace, "Bootstrapping {} swarms", to_relay.size());
 
     for (const auto& kv : to_relay) {
         const uint64_t swarm_id = kv.first;
@@ -1667,16 +1667,16 @@ void ServiceNode::relay_messages(const std::vector<Message>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> batches = serialize_messages(messages);
 
-    LOKI_LOG(debug, "Relayed messages:");
+    OXEN_LOG(debug, "Relayed messages:");
     for (auto msg : batches) {
-        LOKI_LOG(debug, "    {}", msg);
+        OXEN_LOG(debug, "    {}", msg);
     }
-    LOKI_LOG(debug, "To Snodes:");
+    OXEN_LOG(debug, "To Snodes:");
     for (auto sn : snodes) {
-        LOKI_LOG(debug, "    {}", sn);
+        OXEN_LOG(debug, "    {}", sn);
     }
 
-    LOKI_LOG(debug, "Serialised batches: {}", batches.size());
+    OXEN_LOG(debug, "Serialised batches: {}", batches.size());
     for (const sn_record_t& sn : snodes) {
         for (auto& batch : batches) {
             // TODO: I could probably avoid copying here
@@ -1714,7 +1714,7 @@ void ServiceNode::set_difficulty_history(
             curr_pow_difficulty_ = difficulty;
         }
     }
-    LOKI_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
+    OXEN_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
 }
 
 static void to_json(nlohmann::json& j, const test_result_t& val) {
@@ -1803,7 +1803,7 @@ std::string ServiceNode::get_status_line() const {
 
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
-    if (!loki::is_mainnet())
+    if (!oxen::is_mainnet())
         s << " (TESTNET)";
 
     if (syncing_)
@@ -1841,7 +1841,7 @@ bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
     std::lock_guard guard(sn_mutex_);
 
-    LOKI_LOG(trace, "Get all messages");
+    OXEN_LOG(trace, "Get all messages");
 
     return db_->retrieve("", all_entries, "");
 }
@@ -1855,9 +1855,9 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
     std::vector<message_t> messages = deserialize_messages(blob);
 
-    LOKI_LOG(trace, "Saving all: begin");
+    OXEN_LOG(trace, "Saving all: begin");
 
-    LOKI_LOG(debug, "Got {} messages from peers, size: {}", messages.size(),
+    OXEN_LOG(debug, "Got {} messages from peers, size: {}", messages.size(),
              blob.size());
 
 #ifndef DISABLE_POW
@@ -1867,7 +1867,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
         });
     messages.erase(it, messages.end());
     if (it != messages.end()) {
-        LOKI_LOG(
+        OXEN_LOG(
             warn,
             "Some of the batch messages were removed due to incorrect PoW");
     }
@@ -1887,7 +1887,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
     this->save_bulk(items);
 
-    LOKI_LOG(trace, "Saving all: end");
+    OXEN_LOG(trace, "Saving all: end");
 }
 
 bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
@@ -1895,7 +1895,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        LOKI_LOG(error, "Swarm data missing");
+        OXEN_LOG(error, "Swarm data missing");
         return false;
     }
     return swarm_->is_pubkey_for_us(pk);
@@ -1907,7 +1907,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        LOKI_LOG(error, "Swarm data missing");
+        OXEN_LOG(error, "Swarm data missing");
         return {};
     }
 
@@ -1923,7 +1923,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
             return si.snodes;
     }
 
-    LOKI_LOG(critical, "Something went wrong in get_snodes_by_pk");
+    OXEN_LOG(critical, "Something went wrong in get_snodes_by_pk");
 
     return {};
 }
@@ -1934,7 +1934,7 @@ bool ServiceNode::is_snode_address_known(const std::string& sn_address) {
 
     // TODO: need more robust handling of uninitialized swarm_
     if (!swarm_) {
-        LOKI_LOG(error, "Swarm data missing");
+        OXEN_LOG(error, "Swarm data missing");
         return false;
     }
 
@@ -1965,4 +1965,4 @@ ServiceNode::find_node_by_ed25519_pk(const std::string& pk) const {
     return std::nullopt;
 }
 
-} // namespace loki
+} // namespace oxen

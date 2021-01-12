@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.1)
 add_definitions(-DSPDLOG_COMPILED_LIB)
 
 add_library(common STATIC
-    src/loki_logger.cpp
+    src/oxen_logger.cpp
 )
 
 add_subdirectory(../vendors/spdlog spdlog)
