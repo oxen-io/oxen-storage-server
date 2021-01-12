@@ -1,3 +1,47 @@
+oxen-storage-server (2.0.8-1) unstable; urgency=medium
+
+  [ Jason Rhinelander ]
+  * boost 1.73+ compatibility without deprecation warning
+  * boost::beast 1.74 compatibility
+  * Fix mismatched struct/class forward declaration
+
+  [ Maxim Shishmarev ]
+  * Increase response body limit from 8mb to 10mb
+  * Increase lokimq request timeout
+  * Fix header parsing in responses
+
+  [ Jason Rhinelander ]
+  * sqlite cmake improvements
+  * Update sqlite3 to latest stable
+  * Update loki-mq to latest stable
+  * Update spdlog to latest stable
+  * Replace embedded nlohmann with updated submodule
+  * Modernize boost cmake dependencies
+  * Remove boost::{filesystem,chrono,thread}
+  * Use lokimq for hex/b64/b32z conversion
+  * Remove cmake cruft
+  * Fix command line unit tests
+  * Allow building with -flto (and make it default)
+  * Fix missing deps
+
+  [ Sean Darcy ]
+  * initial rebrand
+  * merge conflicts
+  * revert seed nodes and DNS servers back to loki.foundation
+
+  [ Maxim Shishmarev ]
+  * Increase max ttl to 14 days
+
+  [ Sean Darcy ]
+  * revert other seeds
+
+  [ Jason Rhinelander ]
+  * Bump ss version for oxen rebrand + other misc dev changes
+  * Rediff patches
+  * Debian packaging updates for oxen rebrand
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 12 Jan 2021 15:01:48 -0400
+
 loki-storage-server (2.0.7-3) unstable; urgency=medium
 
   * Rebuild
