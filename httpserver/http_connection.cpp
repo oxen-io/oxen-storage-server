@@ -802,7 +802,7 @@ void connection_t::process_file_proxy_req() {
     req->prepare_payload();
 
     for (auto& el : headers_json.items()) {
-        req->insert(el.key(), el.value());
+        req->insert(el.key(), (std::string) el.value());
     }
 
     auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
