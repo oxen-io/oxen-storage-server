@@ -1,4 +1,4 @@
 /usr/bin/oxen-storage
-debian/ufw/loki-storage-server /etc/ufw/applications.d
-debian/storage.conf /etc/loki
-debian/storage-testnet.conf /etc/loki
+debian/ufw/oxen-storage-server /etc/ufw/applications.d
+debian/storage.conf /etc/oxen
+debian/storage-testnet.conf /etc/oxen
