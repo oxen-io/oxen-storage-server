@@ -89,10 +89,7 @@ endif()
 
 set(cross_host "")
 set(cross_extra "")
-if (ANDROID)
-  set(cross_host "--host=${CMAKE_LIBRARY_ARCHITECTURE}")
-  set(cross_extra "LD=${ANDROID_TOOLCHAIN_ROOT}/bin/${CMAKE_LIBRARY_ARCHITECTURE}-ld" "RANLIB=${CMAKE_RANLIB}" "AR=${CMAKE_AR}")
-elseif(CMAKE_CROSSCOMPILING)
+if(CMAKE_CROSSCOMPILING)
   if(APPLE)
     set(cross_host "--host=${APPLE_TARGET_TRIPLE}")
   else()
@@ -175,18 +172,6 @@ if(CMAKE_CROSSCOMPILING)
     set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
   elseif(ARCH_TRIPLET STREQUAL i686-w64-mingw32)
     set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
-  elseif(ANDROID)
-    set(openssl_system_env SYSTEM=Linux MACHINE=${openssl_machine} ${cross_extra})
-    set(openssl_extra_opts no-asm)
-  elseif(IOS)
-    get_filename_component(apple_toolchain "${CMAKE_C_COMPILER}" DIRECTORY)
-    get_filename_component(apple_sdk "${CMAKE_OSX_SYSROOT}" NAME)
-    if(NOT ${apple_toolchain} MATCHES Xcode OR NOT ${apple_sdk} MATCHES "iPhone(OS|Simulator)")
-      message(FATAL_ERROR "didn't find your toolchain and sdk correctly from ${CMAKE_C_COMPILER}/${CMAKE_OSX_SYSROOT}: found toolchain=${apple_toolchain}, sdk=${apple_sdk}")
-    endif()
-    set(openssl_system_env CROSS_COMPILE=${apple_toolchain}/ CROSS_TOP=${CMAKE_DEVELOPER_ROOT} CROSS_SDK=${apple_sdk})
-    set(openssl_configure ./Configure iphoneos-cross)
-    set(openssl_cc "clang")
   endif()
 endif()
 build_external(openssl
@@ -223,8 +208,6 @@ if(CMAKE_CROSSCOMPILING)
     else()
       list(APPEND boost_extra "address-model=32")
     endif()
-  elseif(ANDROID)
-    set(boost_bootstrap_cxx "CXX=c++")
   endif()
 endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
@@ -235,36 +218,11 @@ else()
   message(FATAL_ERROR "don't know how to build boost with ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
-if(IOS)
-  set(boost_arch_flags)
-    foreach(arch ${CMAKE_OSX_ARCHITECTURES})
-      string(APPEND boost_arch_flags " -arch ${arch}")
-    endforeach()
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using darwin : : ${deps_cxx} :
-  <architecture>arm
-  <target-os>iphone
-  <compileflags>\"-fPIC ${boost_arch_flags} ${CMAKE_CXX_OSX_DEPLOYMENT_TARGET_FLAG}${CMAKE_OSX_DEPLOYMENT_TARGET} -isysroot ${CMAKE_OSX_SYSROOT}\"
-  <threading>multi
-  ;")
-else()
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} ;")
-endif()
-
-set(boost_patch_commands "")
-if(IOS)
-  set(boost_patch_commands PATCH_COMMAND patch -p1 -i ${PROJECT_SOURCE_DIR}/utils/build_scripts/boost-darwin-libtool-path.patch)
-elseif(APPLE AND BOOST_VERSION VERSION_LESS 1.74.0)
-  set(boost_patch_commands PATCH_COMMAND patch -p1 -d tools/build -i ${PROJECT_SOURCE_DIR}/utils/build_scripts/boostorg-build-pr560-macos-build-fix.patch)
-endif()
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} ;")
 
 set(boost_buildflags "cxxflags=-fPIC")
-if(IOS)
-  set(boost_buildflags)
-elseif(APPLE)
-  set(boost_buildflags "cxxflags=-fPIC")
-  if (CMAKE_OSX_DEPLOYMENT_TARGET)
-    string(APPEND boost_buildflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-  endif()
+if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
+  string(APPEND boost_buildflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
 set(boost_libs program_options system)
@@ -279,7 +237,6 @@ endforeach()
 
 build_external(boost
   #  PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam tools/build/src/user-config.jam
-  ${boost_patch_commands}
   CONFIGURE_COMMAND
     ${CMAKE_COMMAND} -E env ${boost_bootstrap_cxx}
     ./bootstrap.sh --without-icu --prefix=${DEPS_DESTDIR} --with-toolset=${boost_toolset}
@@ -323,10 +280,6 @@ if(ZMQ_VERSION VERSION_LESS 4.3.4 AND CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATC
 endif()
 
 set(zmq_cross_host "${cross_host}")
-if(IOS AND cross_host MATCHES "-ios$")
-  # zmq doesn't like "-ios" for the host, so replace it with -darwin
-  string(REGEX REPLACE "-ios$" "-darwin" zmq_cross_host ${cross_host})
-endif()
 
 build_external(zmq
   DEPENDS sodium_external
