@@ -797,12 +797,12 @@ void connection_t::process_file_proxy_req() {
 
     req->body() = std::move(original_req.body());
     req->target(target);
-    req->set(http::field::host, "file.oxennet.org");
+    req->set(http::field::host, "file.lokinet.org");
 
     req->prepare_payload();
 
     for (auto& el : headers_json.items()) {
-        req->insert(el.key(), el.value());
+        req->insert(el.key(), (std::string) el.value());
     }
 
     auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
@@ -826,7 +826,7 @@ void connection_t::process_file_proxy_req() {
         self->write_response();
     };
 
-    make_https_request(ioc_, "https://file.oxennet.org", req, cb);
+    make_https_request(ioc_, "https://file.lokinet.org", req, cb);
 }
 
 void connection_t::process_swarm_req(std::string_view target) {
