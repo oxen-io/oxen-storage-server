@@ -1,4 +1,6 @@
 #include "hash-ops.h"
+#include "keccak.h"
+#include <string.h>
 
 void hash_process(union hash_state *state, const uint8_t *buf, size_t count) {
   keccak1600(buf, count, (uint8_t*)state);
