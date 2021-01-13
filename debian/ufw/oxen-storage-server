@@ -1,0 +1,4 @@
+[oxen-storage-server]
+title=Oxen storage server
+description=Oxen service node -- storage server
+ports=22020,22021,38154,38155/tcp
