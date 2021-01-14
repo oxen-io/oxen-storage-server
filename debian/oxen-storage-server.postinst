@@ -18,3 +18,12 @@ fi
 
 #DEBHELPER#
 
+# Also restart the oxen-multi-sn target on upgrade, if it exists
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+    if [ -n "$2" ] && [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        if systemctl --quiet is-active oxen-storage-servers.target; then
+            deb-systemd-invoke restart oxen-storage-servers.target >/dev/null || true
+        fi
+    fi
+fi
