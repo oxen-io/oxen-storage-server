@@ -1,0 +1,38 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Sat, 16 Jan 2021 01:11:50 -0400
+Subject: oxenmq target fix
+
+---
+ CMakeLists.txt            | 4 ++--
+ httpserver/CMakeLists.txt | 3 +--
+ 2 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index cafc892..b37d984 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -65,8 +65,8 @@ link_libatomic()
+ 
+ find_package(Boost REQUIRED)
+ 
+-pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2)
+-add_library(lokimq::lokimq ALIAS PkgConfig::LOKIMQ)
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET GLOBAL liboxenmq>=1.2.3)
++add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
+ 
+ add_subdirectory(common)
+ add_subdirectory(utils)
+diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
+index 6d75f88..0c8a06c 100644
+--- a/httpserver/CMakeLists.txt
++++ b/httpserver/CMakeLists.txt
+@@ -62,8 +62,7 @@ target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+ 
+ find_package(PkgConfig QUIET)
+ 
+-pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2.0)
+-target_link_libraries(httpserver PUBLIC PkgConfig::LOKIMQ)
++target_link_libraries(httpserver PUBLIC oxenmq::oxenmq)
+ 
+ if(PKG_CONFIG_FOUND)
+     pkg_check_modules(SYSTEMD libsystemd)
