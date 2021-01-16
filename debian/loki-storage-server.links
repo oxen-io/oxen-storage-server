@@ -1,1 +1,3 @@
 /usr/bin/oxen-storage /usr/bin/loki-storage
+/lib/systemd/system/oxen-storage-server.service /lib/systemd/system/loki-storage-server.service
+/lib/systemd/system/oxen-testnet-storage-server.service /lib/systemd/system/loki-testnet-storage-server.service

@@ -16,4 +16,3 @@ ExecStart=/usr/bin/oxen-storage --config-file /etc/oxen/storage-testnet.conf
 
 [Install]
 WantedBy=multi-user.target
-Alias=loki-testnet-storage-server.service
