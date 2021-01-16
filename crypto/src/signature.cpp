@@ -2,13 +2,15 @@
 #include "utils.hpp"
 
 extern "C" {
-#include "loki/crypto-ops/crypto-ops.h"
-#include "loki/crypto-ops/hash-ops.h"
+#include "oxen/crypto-ops/crypto-ops.h"
+#include "oxen/crypto-ops/hash-ops.h"
 }
 
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_generichash_blake2b.h>
 #include <sodium/randombytes.h>
+#include <lokimq/base32z.h>
+#include <lokimq/base64.h>
 
 #include <algorithm>
 #include <cassert>
@@ -17,9 +19,9 @@ extern "C" {
 #include <iterator>
 #include <string>
 
-static_assert(crypto_generichash_BYTES == loki::HASH_SIZE, "Wrong hash size!");
+static_assert(crypto_generichash_BYTES == oxen::HASH_SIZE, "Wrong hash size!");
 
-namespace loki {
+namespace oxen {
 
 using ec_point = std::array<uint8_t, 32>;
 struct s_comm {
@@ -53,7 +55,7 @@ hash hash_data(const std::string& data) {
 }
 
 signature generate_signature(const hash& prefix_hash,
-                             const lokid_key_pair_t& key_pair) {
+                             const oxend_key_pair_t& key_pair) {
     ge_p3 tmp3;
     ec_scalar k;
     s_comm buf;
@@ -115,21 +117,33 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
     return sc_isnonzero(c.data()) == 0;
 }
 
-bool check_signature(const std::string& signature, const hash& hash,
+bool check_signature(const std::string& signature_b64, const hash& hash,
                      const std::string& public_key_b32z) {
+    if (!lokimq::is_base64(signature_b64))
+        return false;
+
+    // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
+    if (!(signature_b64.size() == 86 ||
+                (signature_b64.size() == 88 && signature_b64[86] == '=')))
+        return false;
+
     // convert signature
-    const std::string raw_signature = util::base64_decode(signature);
-    struct signature sig;
-    std::copy_n(raw_signature.begin(), sig.c.size(), sig.c.begin());
-    std::copy_n(raw_signature.begin() + sig.c.size(), sig.r.size(),
-                sig.r.begin());
+    signature sig;
+    static_assert(sizeof(sig) == 64);
+    lokimq::from_base64(signature_b64.begin(), signature_b64.end(),
+            reinterpret_cast<uint8_t*>(&sig));
+
+    // 32 bytes -> 52 base32z encoded characters
+    if (public_key_b32z.size() != 52 || !lokimq::is_base32z(public_key_b32z))
+        return false;
 
     // convert public key
     public_key_t public_key;
-    if (!util::base32z_decode(public_key_b32z, public_key))
-        return false;
+    static_assert(sizeof(public_key) == 32);
+    lokimq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
+            public_key.begin());
 
     return check_signature(sig, hash, public_key);
 }
 
-} // namespace loki
+} // namespace oxen

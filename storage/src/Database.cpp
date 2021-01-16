@@ -1,12 +1,12 @@
 #include "Database.hpp"
-#include "loki_logger.h"
+#include "oxen_logger.h"
 #include "utils.hpp"
 
 #include "sqlite3.h"
 #include <cstdlib>
 #include <exception>
 
-namespace loki {
+namespace oxen {
 using namespace storage;
 
 constexpr auto CLEANUP_PERIOD = std::chrono::seconds(10);
@@ -79,19 +79,19 @@ static void set_page_count(sqlite3* db) {
 
     auto cb = [](void* a_param, int argc, char** argv, char** column) -> int {
         if (argc == 0) {
-            LOKI_LOG(error, "Failed to set the page count limit");
+            OXEN_LOG(error, "Failed to set the page count limit");
             return 0;
         }
 
         int res = strtol(argv[0], NULL, 10);
 
         if (res == 0) {
-            LOKI_LOG(error, "Failed to convert page limit ({}) to a number",
+            OXEN_LOG(error, "Failed to convert page limit ({}) to a number",
                      argv[0]);
             return 0;
         }
 
-        LOKI_LOG(info, "DB page limit is set to: {}", res);
+        OXEN_LOG(info, "DB page limit is set to: {}", res);
 
         return 0;
     };
@@ -102,7 +102,7 @@ static void set_page_count(sqlite3* db) {
 
     if (rc) {
         if (errMsg) {
-            LOKI_LOG(error, "Query error: {}", errMsg);
+            OXEN_LOG(error, "Query error: {}", errMsg);
         }
     }
 }
@@ -113,21 +113,21 @@ static void check_page_size(sqlite3* db) {
 
     auto cb = [](void* a_param, int argc, char** argv, char** column) -> int {
         if (argc == 0) {
-            LOKI_LOG(error, "Could not get DB page size");
+            OXEN_LOG(error, "Could not get DB page size");
         }
 
         int res = strtol(argv[0], NULL, 10);
 
         if (res == 0) {
-            LOKI_LOG(error, "Failed to convert page size ({}) to a number",
+            OXEN_LOG(error, "Failed to convert page size ({}) to a number",
                      argv[0]);
             return 0;
         }
 
         if (res != DB_PAGE_SIZE) {
-            LOKI_LOG(warn, "Unexpected DB page size: {}", res);
+            OXEN_LOG(warn, "Unexpected DB page size: {}", res);
         } else {
-            LOKI_LOG(info, "DB page size: {}", res);
+            OXEN_LOG(info, "DB page size: {}", res);
         }
 
         return 0;
@@ -136,7 +136,7 @@ static void check_page_size(sqlite3* db) {
     int rc = sqlite3_exec(db, "PRAGMA page_size;", cb, nullptr, &errMsg);
     if (rc) {
         if (errMsg) {
-            LOKI_LOG(error, "Query error: {}", errMsg);
+            OXEN_LOG(error, "Query error: {}", errMsg);
         }
     }
 }
@@ -246,14 +246,14 @@ bool Database::get_message_count(uint64_t& count) {
             count = sqlite3_column_int64(get_row_count_stmt, 0);
             success = true;
         } else {
-            LOKI_LOG(critical, "Could not execute `count` db statement");
+            OXEN_LOG(critical, "Could not execute `count` db statement");
             break;
         }
     }
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(critical, "sqlite reset error: [{}], {}", rc,
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
         success = false;
     }
@@ -298,7 +298,7 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
             success = true;
             break;
         } else {
-            LOKI_LOG(critical,
+            OXEN_LOG(critical,
                      "Could not execute `retrieve by index` db statement");
             break;
         }
@@ -306,7 +306,7 @@ bool Database::retrieve_by_index(uint64_t index, Item& item) {
 
     rc = sqlite3_reset(get_by_index_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(critical, "sqlite reset error: [{}], {}", rc,
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
         success = false;
     }
@@ -331,7 +331,7 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
             success = true;
             break;
         } else {
-            LOKI_LOG(
+            OXEN_LOG(
                 critical,
                 "Could not execute `retrieve by hash` db statement, ec: {}",
                 rc);
@@ -341,7 +341,7 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
 
     rc = sqlite3_reset(get_by_hash_stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(critical, "sqlite reset error: [{}], {}", rc,
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
         success = false;
     }
@@ -387,12 +387,12 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             break;
         } else if (rc == SQLITE_FULL) {
             if (db_full_counter % DB_FULL_FREQUENCY == 0) {
-                LOKI_LOG(error, "Failed to store message: database is full");
+                OXEN_LOG(error, "Failed to store message: database is full");
                 ++db_full_counter;
             }
             break;
         } else {
-            LOKI_LOG(critical, "Could not execute `store` db statement, ec: {}",
+            OXEN_LOG(critical, "Could not execute `store` db statement, ec: {}",
                      rc);
             break;
         }
@@ -400,7 +400,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
 
     rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK && rc != SQLITE_CONSTRAINT && rc != SQLITE_FULL) {
-        LOKI_LOG(critical, "sqlite reset error: [{}], {}", rc,
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
     }
     return result;
@@ -457,7 +457,7 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
             auto item = extract_item(stmt);
             items.push_back(std::move(item));
         } else {
-            LOKI_LOG(critical,
+            OXEN_LOG(critical,
                      "Could not execute `retrieve` db statement, ec: {}", rc);
             break;
         }
@@ -465,11 +465,11 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
 
     int rc = sqlite3_reset(stmt);
     if (rc != SQLITE_OK) {
-        LOKI_LOG(critical, "sqlite reset error: [{}], {}", rc,
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
         success = false;
     }
     return success;
 }
 
-} // namespace loki
+} // namespace oxen

@@ -1,9 +1,9 @@
 #include "channel_encryption.hpp"
 
-#include <boost/algorithm/hex.hpp>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <sodium.h>
+#include <lokimq/hex.h>
 
 #include "utils.hpp"
 
@@ -14,7 +14,9 @@
 
 std::vector<uint8_t> hexToBytes(const std::string& hex) {
     std::vector<uint8_t> temp;
-    boost::algorithm::unhex(hex, std::back_inserter(temp));
+    if (!lokimq::is_hex(hex)) throw std::runtime_error{"input is not hex"};
+    temp.reserve(hex.size() / 2);
+    lokimq::from_hex(hex.begin(), hex.end(), std::back_inserter(temp));
     return temp;
 }
 
