@@ -2,18 +2,23 @@
 
 set -e
 
-# If this is a new install then see if we also have a loki-storage-server package installed: if so
-# then we have to deal with the service rename by copying the service enabled status into the
-# oxen-storage-server enabled status so that the new oxen-storage-server.service file ends up in the
-# right state (i.e. not enabled if the loki service wasn't enabled).
+# If this is a new install but we have the old loki-storage-server package installed then preserve
+# the enabled state.
 if [ "$1" = configure ] && [ -z "$2" ] && [ -f /var/lib/dpkg/info/loki-storage-server.list ]; then
-    for s in storage-server.service testnet-storage-server.service; do
-        if deb-systemd-helper --quiet was-enabled "loki-$s"; then
-            deb-systemd-helper enable "oxen-$s"
-        else
-            deb-systemd-helper disable "oxen-$s"
-        fi
-    done
+    # Enabled by default, so disable if the old one was not enabled:
+    if ! deb-systemd-helper --quiet was-enabled loki-storage-server.service; then
+        # The enable-disable is a bit weird, but the first "d-s-h enable" call does initialization
+        # so we have to flip it on and off again to make d-s-h realize that it was explicitly
+        # disabled when it tries to call d-s-h enable again in the automatic debhelper scripts,
+        # below:
+        deb-systemd-helper enable oxen-storage-server.service
+        deb-systemd-helper disable oxen-storage-server.service
+    fi
+
+    if deb-systemd-helper --quiet was-enabled loki-testnet-storage-server.service; then
+        # Disabled by default, so enable only if the old one was enabled:
+        deb-systemd-helper enable oxen-testnet-storage-server.service
+    fi
 fi
 
 #DEBHELPER#
