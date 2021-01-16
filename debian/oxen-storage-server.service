@@ -16,4 +16,3 @@ ExecStart=/usr/bin/oxen-storage --config-file /etc/oxen/storage.conf
 
 [Install]
 WantedBy=multi-user.target
-Alias=loki-storage-server.service
