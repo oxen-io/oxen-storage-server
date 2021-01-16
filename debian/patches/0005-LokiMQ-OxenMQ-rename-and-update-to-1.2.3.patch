@@ -162,13 +162,13 @@ index 50866a4..4916deb 100644
  
      return check_signature(sig, hash, public_key);
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 6916aa1..0362c57 100644
+index 39315a5..9f06908 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -30,6 +30,7 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
- target_link_libraries(httpserver_lib PUBLIC
+@@ -33,6 +33,7 @@ target_link_libraries(httpserver_lib PUBLIC
      common storage utils pow crypto
      OpenSSL::SSL OpenSSL::Crypto
+     nlohmann_json::nlohmann_json
 +    oxenmq::oxenmq
      Boost::system Boost::program_options)
  

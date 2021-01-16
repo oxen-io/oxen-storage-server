@@ -9,19 +9,19 @@ Subject: Add check for -latomic (needed for armhf build)
  create mode 100644 cmake/check_atomic.cmake
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 264ee35..422384d 100644
+index eedb37c..4c6cec3 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -68,6 +68,9 @@ include_directories(${sodium_INCLUDE_DIR})
+@@ -59,6 +59,9 @@ include_directories(${sodium_INCLUDE_DIR})
  
  include(contrib/check_for_std_filesystem.cmake)
  
 +include(cmake/check_atomic.cmake)
 +link_libatomic()
 +
- find_package(Boost REQUIRED)
- 
- pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2)
+ add_library(boost_core INTERFACE)
+ target_include_directories(boost_core SYSTEM INTERFACE "${CMAKE_SOURCE_DIR}/boost/include")
+ add_library(Boost::boost ALIAS boost_core)
 diff --git a/cmake/check_atomic.cmake b/cmake/check_atomic.cmake
 new file mode 100644
 index 0000000..94d0cec
