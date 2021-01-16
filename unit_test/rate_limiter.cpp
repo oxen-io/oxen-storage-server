@@ -1,8 +1,6 @@
 #include "rate_limiter.h"
 
-#include <boost/chrono.hpp>
 #include <boost/test/unit_test.hpp>
-#include <boost/thread/thread.hpp>
 
 #include <chrono>
 

@@ -2,15 +2,15 @@
 
 /// TODO: should only be aware of messages
 #include "Item.hpp"
-#include "loki_logger.h"
+#include "oxen_logger.h"
 #include "service_node.h"
 
 #include <boost/endian/conversion.hpp>
 #include <boost/format.hpp>
 
-using loki::storage::Item;
+using oxen::storage::Item;
 
-namespace loki {
+namespace oxen {
 
 template <typename T>
 static T deserialize_integer(std::string::const_iterator& it) {
@@ -45,7 +45,7 @@ void serialize_message(std::string& res, const T& msg) {
     serialize_integer(res, msg.timestamp);
     serialize(res, msg.nonce);
 
-    LOKI_LOG(trace, "serialized message: {}", msg.data);
+    OXEN_LOG(trace, "serialized message: {}", msg.data);
 }
 
 template void serialize_message(std::string& res, const message_t& msg);
@@ -130,7 +130,7 @@ static std::optional<uint64_t> deserialize_uint64(string_view& slice) {
 
 std::vector<message_t> deserialize_messages(const std::string& blob) {
 
-    LOKI_LOG(trace, "=== Deserializing ===");
+    OXEN_LOG(trace, "=== Deserializing ===");
 
     std::vector<message_t> result;
 
@@ -139,57 +139,57 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
     while (!slice.empty()) {
 
         /// Deserialize PK
-        auto pk = deserialize_string(slice, loki::get_user_pubkey_size());
+        auto pk = deserialize_string(slice, oxen::get_user_pubkey_size());
         if (!pk) {
-            LOKI_LOG(debug, "Could not deserialize pk");
+            OXEN_LOG(debug, "Could not deserialize pk");
             return {};
         }
 
         /// Deserialize Hash
         auto hash = deserialize_string(slice);
         if (!hash) {
-            LOKI_LOG(debug, "Could not deserialize hash");
+            OXEN_LOG(debug, "Could not deserialize hash");
             return {};
         }
 
         /// Deserialize Data
         auto data = deserialize_string(slice);
         if (!data) {
-            LOKI_LOG(debug, "Could not deserialize data");
+            OXEN_LOG(debug, "Could not deserialize data");
             return {};
         }
 
         /// Deserialize TTL
         auto ttl = deserialize_uint64(slice);
         if (!ttl) {
-            LOKI_LOG(debug, "Could not deserialize ttl");
+            OXEN_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
         auto timestamp = deserialize_uint64(slice);
         if (!timestamp) {
-            LOKI_LOG(debug, "Could not deserialize timestamp");
+            OXEN_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
 
         /// Deserialize Nonce
         auto nonce = deserialize_string(slice);
         if (!nonce) {
-            LOKI_LOG(debug, "Could not deserialize nonce");
+            OXEN_LOG(debug, "Could not deserialize nonce");
             return {};
         }
 
-        LOKI_LOG(trace, "Deserialized data: {}", *data);
+        OXEN_LOG(trace, "Deserialized data: {}", *data);
 
-        LOKI_LOG(trace, "pk: {}, msg: {}", *pk, *data);
+        OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
 
         result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
     }
 
-    LOKI_LOG(trace, "=== END ===");
+    OXEN_LOG(trace, "=== END ===");
 
     return result;
 }
 
-} // namespace loki
+} // namespace oxen

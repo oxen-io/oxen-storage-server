@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Item.hpp"
-#include "loki_common.h"
+#include "oxen_common.h"
 
 #include <iostream>
 #include <memory>
@@ -15,7 +15,7 @@ struct sqlite3;
 struct sqlite3_stmt;
 class Timer;
 
-namespace loki {
+namespace oxen {
 
 class Database {
   public:
@@ -64,4 +64,4 @@ class Database {
     boost::asio::steady_timer cleanup_timer_;
 };
 
-} // namespace loki
+} // namespace oxen

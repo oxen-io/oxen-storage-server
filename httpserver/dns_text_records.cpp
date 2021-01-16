@@ -1,5 +1,5 @@
 #include "dns_text_records.h"
-#include "../external/json.hpp"
+#include <nlohmann/json.hpp>
 #include "pow.hpp"
 #include "version.h"
 #include <netinet/in.h>
@@ -12,7 +12,7 @@ using json = nlohmann::json;
 static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 static constexpr char LATEST_VERSION_URL[] = "storage.version.loki.network";
 
-namespace loki {
+namespace oxen {
 
 namespace dns {
 
@@ -28,7 +28,7 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
         res_query(url, ns_c_in, ns_t_txt, query_buffer, sizeof(query_buffer));
 
     if (response == -1) {
-        LOKI_LOG(warn, "res_query failed while retrieving dns entry");
+        OXEN_LOG(warn, "res_query failed while retrieving dns entry");
         ec = std::make_error_code(std::errc::bad_message);
         return data;
     }
@@ -36,7 +36,7 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
     ns_msg nsMsg;
 
     if (ns_initparse(query_buffer, response, &nsMsg) == -1) {
-        LOKI_LOG(warn, "ns_initparse failed while retrieving dns entry");
+        OXEN_LOG(warn, "ns_initparse failed while retrieving dns entry");
         ec = std::make_error_code(std::errc::bad_message);
         return data;
     }
@@ -51,7 +51,7 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
     for (int i = 0; i < count; i++) {
         ns_rr rr;
         if (ns_parserr(&nsMsg, ns_s_an, i, &rr) == -1) {
-            LOKI_LOG(warn, "ns_parserr failed while parsing dns entry");
+            OXEN_LOG(warn, "ns_parserr failed while parsing dns entry");
             ec = std::make_error_code(std::errc::bad_message);
             return data;
         }
@@ -63,7 +63,7 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
 }
 
 std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
-    LOKI_LOG(debug, "Querying PoW difficulty...");
+    OXEN_LOG(debug, "Querying PoW difficulty...");
 
     std::vector<pow_difficulty_t> new_history;
     const std::string data = get_dns_record(POW_DIFFICULTY_URL, ec);
@@ -80,14 +80,14 @@ std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
         }
         return new_history;
     } catch (const std::exception& e) {
-        LOKI_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
+        OXEN_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
         ec = std::make_error_code(std::errc::bad_message);
         return new_history;
     }
 }
 
 static std::string query_latest_version() {
-    LOKI_LOG(debug, "Querying Latest Version...");
+    OXEN_LOG(debug, "Querying Latest Version...");
 
     std::error_code ec;
     const std::string version_str = get_dns_record(LATEST_VERSION_URL, ec);
@@ -139,7 +139,7 @@ static bool parse_version(const std::string& str, version_t& version_out) {
     strs.reserve(3);
     boost::split(strs, str, boost::is_any_of("."));
     if (strs.size() != 3) {
-        LOKI_LOG(warn, "Invalid format for the Storage Server version!");
+        OXEN_LOG(warn, "Invalid format for the Storage Server version!");
         return false;
     }
 
@@ -148,7 +148,7 @@ static bool parse_version(const std::string& str, version_t& version_out) {
         version_out.minor = std::stoi(strs[1]);
         version_out.patch = std::stoi(strs[2]);
     } catch (const std::exception& e) {
-        LOKI_LOG(warn,
+        OXEN_LOG(warn,
                  "Invalid format for the Storage Server version! Error: {}",
                  e.what());
         return false;
@@ -162,29 +162,29 @@ void check_latest_version() {
     const auto latest_version_str = query_latest_version();
 
     if (latest_version_str.empty()) {
-        LOKI_LOG(warn, "Failed to retrieve or parse the latest version number "
+        OXEN_LOG(warn, "Failed to retrieve or parse the latest version number "
                        "from DNS record");
         return;
     }
 
     version_t latest_version;
     if (!parse_version(latest_version_str, latest_version)) {
-        LOKI_LOG(warn, "Could not parse the latest version: {}",
+        OXEN_LOG(warn, "Could not parse the latest version: {}",
                  latest_version_str);
         return;
     }
 
     if (is_old_version(latest_version)) {
-        LOKI_LOG(warn,
+        OXEN_LOG(warn,
                  "You are using an outdated version of the storage server "
                  "({}), please update to {}!",
                  STORAGE_SERVER_VERSION_STRING, latest_version_str);
     } else {
-        LOKI_LOG(debug,
+        OXEN_LOG(debug,
                  "You are using the latest version of the storage server ({})",
                  STORAGE_SERVER_VERSION_STRING);
     }
 }
 
 } // namespace dns
-} // namespace loki
+} // namespace oxen
