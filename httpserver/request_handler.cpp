@@ -7,7 +7,7 @@
 
 #include "https_client.h"
 
-#include <lokimq/base64.h>
+#include <oxenmq/base64.h>
 #include <nlohmann/json.hpp>
 
 using nlohmann::json;
@@ -378,10 +378,10 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
     std::string ciphertext;
 
     if (use_gcm) {
-        ciphertext = lokimq::to_base64(
+        ciphertext = oxenmq::to_base64(
             channel_cipher_.encrypt_gcm(res_body, client_key));
     } else {
-        ciphertext = lokimq::to_base64(
+        ciphertext = oxenmq::to_base64(
             channel_cipher_.encrypt_cbc(res_body, client_key));
     }
 

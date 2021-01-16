@@ -23,7 +23,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
         ("oxend-rpc-ip", po::value(&options_.oxend_rpc_ip), "RPC IP on which the local Oxen daemon is listening (usually localhost)")
         ("oxend-rpc-port", po::value(&options_.oxend_rpc_port), "RPC port on which the local Oxen daemon is listening")
-        ("lmq-port", po::value(&options_.lmq_port), "Port used by LokiMQ")
+        ("lmq-port", po::value(&options_.lmq_port), "Port used by OxenMQ")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
         ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
