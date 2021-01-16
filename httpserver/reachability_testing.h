@@ -1,6 +1,6 @@
 #pragma once
 
-#include "loki_common.h"
+#include "oxen_common.h"
 #include <chrono>
 #include <unordered_map>
 
@@ -8,7 +8,7 @@ using namespace std::chrono_literals;
 
 constexpr std::chrono::seconds PING_PEERS_INTERVAL = 10s;
 
-namespace loki {
+namespace oxen {
 
 namespace detail {
 
@@ -20,7 +20,7 @@ class reach_record_t {
     // (and hasn't come back online)
     time_point_t first_failure;
     time_point_t last_failure;
-    // whether it's been reported to Lokid
+    // whether it's been reported to Oxend
     bool reported = false;
 
     // whether reachable over http
@@ -62,7 +62,7 @@ class reachability_records_t {
     // Records node as reachable/unreachable according to `val`
     void record_reachable(const sn_pub_key_t& sn, ReachType type, bool val);
 
-    // return `true` if the node should be reported to Lokid as being
+    // return `true` if the node should be reported to Oxend as being
     // reachable or unreachable for a long time depending on `type`
     bool should_report_as(const sn_pub_key_t& sn, ReportType type);
 
@@ -76,4 +76,4 @@ class reachability_records_t {
     std::optional<sn_pub_key_t> next_to_test();
 };
 
-} // namespace loki
+} // namespace oxen

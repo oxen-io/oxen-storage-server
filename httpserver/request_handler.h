@@ -1,22 +1,21 @@
 #pragma once
 
-#include "loki_common.h"
+#include "oxen_common.h"
 #include <string>
 #include <string_view>
 
 #include <boost/asio.hpp>
 
-// TODO: can I avoid including this in the header?
-#include "../external/json.hpp"
+#include <nlohmann/json_fwd.hpp>
 
-// TODO: move ChannelEncryption to ::loki
+// TODO: move ChannelEncryption to ::oxen
 template <typename T>
 class ChannelEncryption;
 
-namespace loki {
+namespace oxen {
 
 class ServiceNode;
-class LokidClient;
+class OxendClient;
 
 enum class Status {
     OK = 200,
@@ -74,7 +73,7 @@ std::string to_string(const Response& res);
 class RequestHandler {
 
     ServiceNode& service_node_;
-    const LokidClient& lokid_client_;
+    const OxendClient& oxend_client_;
     const ChannelEncryption<std::string>& channel_cipher_;
 
     boost::asio::io_context& ioc_;
@@ -101,21 +100,21 @@ class RequestHandler {
 
     void process_onion_exit(const std::string& eph_key,
                             const std::string& payload,
-                            std::function<void(loki::Response)> cb);
+                            std::function<void(oxen::Response)> cb);
 
     void process_lns_request(std::string name_hash,
-                             std::function<void(loki::Response)> cb);
+                             std::function<void(oxen::Response)> cb);
 
     // ===================================
 
   public:
     RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                   const LokidClient& lokid_client,
+                   const OxendClient& oxend_client,
                    const ChannelEncryption<std::string>& ce);
 
     // Process all Session client requests
     void process_client_req(const std::string& req_json,
-                            std::function<void(loki::Response)> cb);
+                            std::function<void(oxen::Response)> cb);
 
     // Test only: retrieve all db entires
     Response process_retrieve_all();
@@ -123,18 +122,18 @@ class RequestHandler {
     // Handle a Session client reqeust sent via SN proxy
     void process_proxy_exit(const std::string& client_key,
                             const std::string& payload,
-                            std::function<void(loki::Response)> cb);
+                            std::function<void(oxen::Response)> cb);
 
     void process_onion_to_url(const std::string& host,
                               const std::string& target,
                               const std::string& payload,
-                              std::function<void(loki::Response)> cb);
+                              std::function<void(oxen::Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(const std::string& ciphertext,
                            const std::string& ephem_key,
-                           std::function<void(loki::Response)> cb,
+                           std::function<void(oxen::Response)> cb,
                            // Whether to use the new v2 protocol
                            bool v2 = false);
 };
-} // namespace loki
+} // namespace oxen

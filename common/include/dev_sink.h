@@ -6,7 +6,7 @@
 #include <vector>
 // A sink used to store most important logs for developers
 
-namespace loki {
+namespace oxen {
 
 template <typename Mutex>
 class dev_sink : public spdlog::sinks::base_sink<Mutex> {
