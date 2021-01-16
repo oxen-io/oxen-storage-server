@@ -21,7 +21,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("data-dir", po::value(&options_.data_dir), "Path to persistent data (defaults to ~/.oxen/storage)")
         ("config-file", po::value(&config_file), "Path to custom config file (defaults to `storage-server.conf' inside --data-dir)")
         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
-        ("oxend-rpc-ip", po::value(&options_.oxend_rpc_port), "RPC IP on which the local Oxen daemon is listening (usually localhost)")
+        ("oxend-rpc-ip", po::value(&options_.oxend_rpc_ip), "RPC IP on which the local Oxen daemon is listening (usually localhost)")
         ("oxend-rpc-port", po::value(&options_.oxend_rpc_port), "RPC port on which the local Oxen daemon is listening")
         ("lmq-port", po::value(&options_.lmq_port), "Port used by LokiMQ")
         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
