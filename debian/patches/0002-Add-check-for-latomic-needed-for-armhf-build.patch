@@ -9,10 +9,10 @@ Subject: Add check for -latomic (needed for armhf build)
  create mode 100644 cmake/check_atomic.cmake
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5451c54..23ba519 100644
+index 6f54c3f..cafc892 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -58,6 +58,9 @@ include_directories(${sodium_INCLUDE_DIR})
+@@ -60,6 +60,9 @@ include_directories(${sodium_INCLUDE_DIR})
  
  include(contrib/check_for_std_filesystem.cmake)
  

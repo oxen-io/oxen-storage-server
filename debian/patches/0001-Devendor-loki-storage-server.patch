@@ -5,16 +5,16 @@ Subject: Devendor loki-storage-server
 ---
  CMakeLists.txt            |  5 +++--
  common/CMakeLists.txt     |  2 +-
- httpserver/CMakeLists.txt | 17 +++++------------
+ httpserver/CMakeLists.txt | 21 +++++----------------
  httpserver/lmq_server.cpp |  2 ++
  storage/CMakeLists.txt    |  4 ++--
- 5 files changed, 13 insertions(+), 17 deletions(-)
+ 5 files changed, 13 insertions(+), 21 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 03aceb4..5451c54 100644
+index 50dfbe7..6f54c3f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -60,14 +60,15 @@ include(contrib/check_for_std_filesystem.cmake)
+@@ -62,14 +62,15 @@ include(contrib/check_for_std_filesystem.cmake)
  
  find_package(Boost REQUIRED)
  
@@ -45,7 +45,7 @@ index bd5a4d8..ff94f11 100644
  target_link_libraries(common PUBLIC spdlog::spdlog filesystem)
  target_include_directories(common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 132fd37..e462fe0 100644
+index 604e695..0b17497 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
 @@ -21,8 +21,6 @@ add_library(httpserver_lib STATIC
@@ -66,22 +66,28 @@ index 132fd37..e462fe0 100644
      Boost::system Boost::program_options)
  
  # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
-@@ -55,19 +51,16 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
+@@ -55,25 +51,18 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
--execute_process(
--    COMMAND
--        git rev-parse --short HEAD
--    OUTPUT_VARIABLE
--        SHORT_HASH
--    OUTPUT_STRIP_TRAILING_WHITESPACE)
+-find_package(Git)
+-if(GIT_FOUND)
+-    execute_process(
+-        COMMAND
+-            git rev-parse --short HEAD
+-        OUTPUT_VARIABLE
+-            SHORT_HASH
+-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+-else()
+-    set(SHORT_HASH "unknown")
+-endif()
++set(SHORT_HASH "deb-${OXENSS_VERSION_TAG}")
  string(TIMESTAMP BUILD_TIME UTC)
 -message(STATUS "using git commit hash ${SHORT_HASH}")
  message(STATUS "using UTC build time ${BUILD_TIME}")
--target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="${SHORT_HASH}")
-+target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_GIT_HASH_STRING="deb-${OXENSS_VERSION_TAG}")
- target_compile_definitions(httpserver PRIVATE -DSTORAGE_SERVER_BUILD_TIME="${BUILD_TIME}")
+ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/version.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+ target_sources(httpserver_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+ target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
  
  find_package(PkgConfig QUIET)
 +
