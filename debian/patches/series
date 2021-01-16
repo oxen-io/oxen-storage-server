@@ -1,3 +1,3 @@
+0001-Move-version-into-CMakeLists.txt-and-generate-versio.patch
 0001-Devendor-loki-storage-server.patch
 0002-Add-check-for-latomic-needed-for-armhf-build.patch
-0003-Enable-LTO.patch
