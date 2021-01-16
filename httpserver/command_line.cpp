@@ -37,6 +37,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("ip", po::value<std::string>(), "(unused)")
         ("port", po::value(&options_.port), "Port to listen on")
         ("oxend-key", po::value(&options_.oxend_key), "Legacy secret key (test only)")
+        ("lokid-rpc-ip", po::value(&options_.oxend_rpc_ip), "Backwards compatible option for oxend RPC IP")
+        ("lokid-rpc-port", po::value(&options_.oxend_rpc_port), "Backwards compatible option for oxend RPC port")
         ("oxend-x25519-key", po::value(&options_.oxend_x25519_key), "x25519 secret key (test only)")
         ("oxend-ed25519-key", po::value(&options_.oxend_ed25519_key), "ed25519 public key (test only)");
     // clang-format on
