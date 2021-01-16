@@ -8,7 +8,7 @@ Subject: LokiMQ -> OxenMQ rename (and update to 1.2.3)
  crypto/src/channel_encryption.cpp |  6 ++--
  crypto/src/oxend_key.cpp          |  8 ++---
  crypto/src/signature.cpp          | 12 ++++----
- httpserver/CMakeLists.txt         |  2 ++
+ httpserver/CMakeLists.txt         |  1 +
  httpserver/command_line.cpp       |  2 +-
  httpserver/lmq_server.cpp         | 62 +++++++++++++++++++--------------------
  httpserver/lmq_server.h           | 38 ++++++++++++------------
@@ -24,7 +24,7 @@ Subject: LokiMQ -> OxenMQ rename (and update to 1.2.3)
  unit_test/signature.cpp           |  8 ++---
  utils/CMakeLists.txt              |  2 +-
  utils/src/utils.cpp               |  6 ++--
- 21 files changed, 120 insertions(+), 118 deletions(-)
+ 21 files changed, 119 insertions(+), 118 deletions(-)
 
 diff --git a/common/include/oxen_common.h b/common/include/oxen_common.h
 index 3b8cc48..19f3362 100644
@@ -162,14 +162,13 @@ index 50866a4..4916deb 100644
  
      return check_signature(sig, hash, public_key);
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 96bf054..d51f4f2 100644
+index 96bf054..e19a18c 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -35,6 +35,8 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+@@ -35,6 +35,7 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
  target_link_libraries(httpserver_lib PUBLIC
      common storage utils pow crypto
      OpenSSL::SSL OpenSSL::Crypto
-+    nlohmann_json::nlohmann_json
 +    oxenmq::oxenmq
      Boost::system Boost::program_options)
  
