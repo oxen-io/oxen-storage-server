@@ -23,10 +23,10 @@ index cafc892..b37d984 100644
  add_subdirectory(common)
  add_subdirectory(utils)
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index fb9325d..5172162 100644
+index f0f29e1..3b77365 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -61,8 +61,7 @@ target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+@@ -64,8 +64,7 @@ target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
  
  find_package(PkgConfig QUIET)
  

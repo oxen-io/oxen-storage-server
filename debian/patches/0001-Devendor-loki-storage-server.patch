@@ -4,10 +4,10 @@ Subject: Devendor loki-storage-server
 
 ---
  CMakeLists.txt            |  5 +++--
- httpserver/CMakeLists.txt | 21 +++++----------------
+ httpserver/CMakeLists.txt | 18 +++++-------------
  httpserver/lmq_server.cpp |  2 ++
  storage/CMakeLists.txt    |  4 ++--
- 4 files changed, 12 insertions(+), 20 deletions(-)
+ 4 files changed, 12 insertions(+), 17 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 50dfbe7..6f54c3f 100644
@@ -32,28 +32,18 @@ index 50dfbe7..6f54c3f 100644
  option(BUILD_TESTS "build storage server unit tests" OFF)
  if (BUILD_TESTS)
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 604e695..0b17497 100644
+index 604e695..95dbae2 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -21,8 +21,6 @@ add_library(httpserver_lib STATIC
-     onion_processing.cpp
-     )
- 
--set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
--add_subdirectory(../vendors/nlohmann_json nlohmann_json)
- find_package(OpenSSL REQUIRED)
- 
- find_package(Boost
-@@ -37,8 +35,6 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
- target_link_libraries(httpserver_lib PUBLIC
+@@ -38,7 +38,6 @@ target_link_libraries(httpserver_lib PUBLIC
      common storage utils pow crypto
      OpenSSL::SSL OpenSSL::Crypto
--    nlohmann_json::nlohmann_json
+     nlohmann_json::nlohmann_json
 -    lokimq::lokimq
      Boost::system Boost::program_options)
  
  # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
-@@ -55,25 +51,18 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
+@@ -55,25 +54,18 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
