@@ -1,0 +1,892 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Sat, 16 Jan 2021 00:58:25 -0400
+Subject: LokiMQ -> OxenMQ rename (and update to 1.2.3)
+
+---
+ common/include/oxen_common.h      |  2 +-
+ crypto/CMakeLists.txt             |  2 +-
+ crypto/src/channel_encryption.cpp |  6 ++--
+ crypto/src/oxend_key.cpp          |  8 ++---
+ crypto/src/signature.cpp          | 12 ++++----
+ httpserver/CMakeLists.txt         |  2 ++
+ httpserver/command_line.cpp       |  2 +-
+ httpserver/lmq_server.cpp         | 62 +++++++++++++++++++--------------------
+ httpserver/lmq_server.h           | 38 ++++++++++++------------
+ httpserver/main.cpp               | 18 ++++++------
+ httpserver/onion_processing.cpp   |  6 ++--
+ httpserver/request_handler.cpp    |  6 ++--
+ httpserver/security.cpp           |  6 ++--
+ httpserver/service_node.cpp       | 32 ++++++++++----------
+ httpserver/service_node.h         |  8 ++---
+ httpserver/swarm.h                |  4 +--
+ pow/CMakeLists.txt                |  2 +-
+ pow/src/pow.cpp                   |  6 ++--
+ unit_test/signature.cpp           |  8 ++---
+ utils/CMakeLists.txt              |  2 +-
+ utils/src/utils.cpp               |  6 ++--
+ 21 files changed, 120 insertions(+), 118 deletions(-)
+
+diff --git a/common/include/oxen_common.h b/common/include/oxen_common.h
+index 3b8cc48..19f3362 100644
+--- a/common/include/oxen_common.h
++++ b/common/include/oxen_common.h
+@@ -20,7 +20,7 @@ struct sn_record_t {
+ 
+   private:
+     uint16_t port_;
+-    // Required by LokiMQ
++    // Required by OxenMQ
+     uint16_t lmq_port_;
+     // TODO: create separate types for different encodings of pubkeys,
+     // so if we confuse them, it will be a compiler error
+diff --git a/crypto/CMakeLists.txt b/crypto/CMakeLists.txt
+index 7eec314..160a165 100644
+--- a/crypto/CMakeLists.txt
++++ b/crypto/CMakeLists.txt
+@@ -32,7 +32,7 @@ find_package(Threads)
+ target_link_libraries(crypto PRIVATE
+     sodium
+     Boost::boost
+-    lokimq::lokimq
++    oxenmq::oxenmq
+     filesystem
+     Threads::Threads
+     ${CMAKE_DL_LIBS})
+diff --git a/crypto/src/channel_encryption.cpp b/crypto/src/channel_encryption.cpp
+index 2c9c4fc..d74e0bb 100644
+--- a/crypto/src/channel_encryption.cpp
++++ b/crypto/src/channel_encryption.cpp
+@@ -3,7 +3,7 @@
+ #include <openssl/evp.h>
+ #include <openssl/rand.h>
+ #include <sodium.h>
+-#include <lokimq/hex.h>
++#include <oxenmq/hex.h>
+ 
+ #include "utils.hpp"
+ 
+@@ -14,9 +14,9 @@
+ 
+ std::vector<uint8_t> hexToBytes(const std::string& hex) {
+     std::vector<uint8_t> temp;
+-    if (!lokimq::is_hex(hex)) throw std::runtime_error{"input is not hex"};
++    if (!oxenmq::is_hex(hex)) throw std::runtime_error{"input is not hex"};
+     temp.reserve(hex.size() / 2);
+-    lokimq::from_hex(hex.begin(), hex.end(), std::back_inserter(temp));
++    oxenmq::from_hex(hex.begin(), hex.end(), std::back_inserter(temp));
+     return temp;
+ }
+ 
+diff --git a/crypto/src/oxend_key.cpp b/crypto/src/oxend_key.cpp
+index b7f31a8..5cf5370 100644
+--- a/crypto/src/oxend_key.cpp
++++ b/crypto/src/oxend_key.cpp
+@@ -2,7 +2,7 @@
+ #include "utils.hpp"
+ 
+ #include <sodium.h>
+-#include <lokimq/hex.h>
++#include <oxenmq/hex.h>
+ 
+ #include <exception>
+ #include <fstream>
+@@ -11,14 +11,14 @@
+ namespace oxen {
+ 
+ private_key_t oxendKeyFromHex(const std::string& private_key_hex) {
+-    if (!lokimq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
++    if (!oxenmq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
+         throw std::runtime_error("Oxend key data is invalid: expected " +
+                                  std::to_string(KEY_LENGTH) + " hex digits not " +
+                                  std::to_string(private_key_hex.size()) +
+                                  " bytes");
+ 
+     private_key_t private_key;
+-    lokimq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
++    oxenmq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
+ 
+     return private_key;
+ }
+@@ -32,7 +32,7 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
+                                  " bytes");
+ 
+     private_key_ed25519_t key;
+-    lokimq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
++    oxenmq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
+ 
+     return key;
+ }
+diff --git a/crypto/src/signature.cpp b/crypto/src/signature.cpp
+index 50866a4..4916deb 100644
+--- a/crypto/src/signature.cpp
++++ b/crypto/src/signature.cpp
+@@ -9,8 +9,8 @@ extern "C" {
+ #include <sodium/crypto_generichash.h>
+ #include <sodium/crypto_generichash_blake2b.h>
+ #include <sodium/randombytes.h>
+-#include <lokimq/base32z.h>
+-#include <lokimq/base64.h>
++#include <oxenmq/base32z.h>
++#include <oxenmq/base64.h>
+ 
+ #include <algorithm>
+ #include <cassert>
+@@ -119,7 +119,7 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
+ 
+ bool check_signature(const std::string& signature_b64, const hash& hash,
+                      const std::string& public_key_b32z) {
+-    if (!lokimq::is_base64(signature_b64))
++    if (!oxenmq::is_base64(signature_b64))
+         return false;
+ 
+     // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
+@@ -130,17 +130,17 @@ bool check_signature(const std::string& signature_b64, const hash& hash,
+     // convert signature
+     signature sig;
+     static_assert(sizeof(sig) == 64);
+-    lokimq::from_base64(signature_b64.begin(), signature_b64.end(),
++    oxenmq::from_base64(signature_b64.begin(), signature_b64.end(),
+             reinterpret_cast<uint8_t*>(&sig));
+ 
+     // 32 bytes -> 52 base32z encoded characters
+-    if (public_key_b32z.size() != 52 || !lokimq::is_base32z(public_key_b32z))
++    if (public_key_b32z.size() != 52 || !oxenmq::is_base32z(public_key_b32z))
+         return false;
+ 
+     // convert public key
+     public_key_t public_key;
+     static_assert(sizeof(public_key) == 32);
+-    lokimq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
++    oxenmq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
+             public_key.begin());
+ 
+     return check_signature(sig, hash, public_key);
+diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
+index 0b17497..6d75f88 100644
+--- a/httpserver/CMakeLists.txt
++++ b/httpserver/CMakeLists.txt
+@@ -35,6 +35,8 @@ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+ target_link_libraries(httpserver_lib PUBLIC
+     common storage utils pow crypto
+     OpenSSL::SSL OpenSSL::Crypto
++    nlohmann_json::nlohmann_json
++    oxenmq::oxenmq
+     Boost::system Boost::program_options)
+ 
+ # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
+diff --git a/httpserver/command_line.cpp b/httpserver/command_line.cpp
+index 3d06e07..3340b52 100644
+--- a/httpserver/command_line.cpp
++++ b/httpserver/command_line.cpp
+@@ -23,7 +23,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
+         ("log-level", po::value(&options_.log_level), "Log verbosity level, see Log Levels below for accepted values")
+         ("oxend-rpc-ip", po::value(&options_.oxend_rpc_port), "RPC IP on which the local Oxen daemon is listening (usually localhost)")
+         ("oxend-rpc-port", po::value(&options_.oxend_rpc_port), "RPC port on which the local Oxen daemon is listening")
+-        ("lmq-port", po::value(&options_.lmq_port), "Port used by LokiMQ")
++        ("lmq-port", po::value(&options_.lmq_port), "Port used by OxenMQ")
+         ("testnet", po::bool_switch(&options_.testnet), "Start storage server in testnet mode")
+         ("force-start", po::bool_switch(&options_.force_start), "Ignore the initialisation ready check")
+         ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
+diff --git a/httpserver/lmq_server.cpp b/httpserver/lmq_server.cpp
+index b40567d..766101a 100644
+--- a/httpserver/lmq_server.cpp
++++ b/httpserver/lmq_server.cpp
+@@ -7,8 +7,8 @@
+ #include "request_handler.h"
+ #include "service_node.h"
+ 
+-#include <lokimq/hex.h>
+-#include <lokimq/lokimq.h>
++#include <oxenmq/hex.h>
++#include <oxenmq/oxenmq.h>
+ #include <nlohmann/json.hpp>
+ 
+ #include <nlohmann/json.hpp>
+@@ -17,7 +17,7 @@
+ 
+ namespace oxen {
+ 
+-std::string LokimqServer::peer_lookup(std::string_view pubkey_bin) const {
++std::string OxenmqServer::peer_lookup(std::string_view pubkey_bin) const {
+ 
+     OXEN_LOG(trace, "[LMQ] Peer Lookup");
+ 
+@@ -33,11 +33,11 @@ std::string LokimqServer::peer_lookup(std::string_view pubkey_bin) const {
+     }
+ }
+ 
+-void LokimqServer::handle_sn_data(lokimq::Message& message) {
++void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
+ 
+     OXEN_LOG(debug, "[LMQ] handle_sn_data");
+     OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
+-    OXEN_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
++    OXEN_LOG(debug, "[LMQ]   from: {}", oxenmq::to_hex(message.conn.pubkey()));
+ 
+     std::stringstream ss;
+ 
+@@ -56,11 +56,11 @@ void LokimqServer::handle_sn_data(lokimq::Message& message) {
+     message.send_reply();
+ };
+ 
+-void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
++void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
+ 
+     OXEN_LOG(debug, "[LMQ] handle_sn_proxy_exit");
+     OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
+-    OXEN_LOG(debug, "[LMQ]   from: {}", lokimq::to_hex(message.conn.pubkey()));
++    OXEN_LOG(debug, "[LMQ]   from: {}", oxenmq::to_hex(message.conn.pubkey()));
+ 
+     if (message.data.size() != 2) {
+         OXEN_LOG(debug, "Expected 2 message parts, got {}",
+@@ -81,13 +81,13 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
+             OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
+ 
+             if (res.status() == Status::OK) {
+-                this->lokimq_->send(origin_pk, "REPLY", reply_tag,
++                this->oxenmq_->send(origin_pk, "REPLY", reply_tag,
+                                     res.message());
+ 
+             } else {
+                 // We reply with 2 messages which will be treated as
+                 // an error (rather than timeout)
+-                this->lokimq_->send(origin_pk, "REPLY", reply_tag,
++                this->oxenmq_->send(origin_pk, "REPLY", reply_tag,
+                                     fmt::format("{}", res.status()),
+                                     res.message());
+                 OXEN_LOG(debug, "Error: status is not OK for proxy_exit: {}",
+@@ -96,7 +96,7 @@ void LokimqServer::handle_sn_proxy_exit(lokimq::Message& message) {
+         });
+ }
+ 
+-void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
++void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
+ 
+     OXEN_LOG(debug, "Got an onion request over OXENMQ");
+ 
+@@ -109,7 +109,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
+ 
+         std::string status = std::to_string(static_cast<int>(res.status()));
+ 
+-        lokimq_->send(origin_pk, "REPLY", reply_tag, std::move(status),
++        oxenmq_->send(origin_pk, "REPLY", reply_tag, std::move(status),
+                       res.message());
+     };
+ 
+@@ -139,7 +139,7 @@ void LokimqServer::handle_onion_request(lokimq::Message& message, bool v2) {
+                                         std::string(eph_key), on_response, v2);
+ }
+ 
+-void LokimqServer::handle_get_logs(lokimq::Message& message) {
++void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
+ 
+     OXEN_LOG(debug, "Received get_logs request via LMQ");
+ 
+@@ -158,7 +158,7 @@ void LokimqServer::handle_get_logs(lokimq::Message& message) {
+     message.send_reply(val.dump(4));
+ }
+ 
+-void LokimqServer::handle_get_stats(lokimq::Message& message) {
++void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
+ 
+     OXEN_LOG(debug, "Received get_stats request via LMQ");
+ 
+@@ -167,26 +167,26 @@ void LokimqServer::handle_get_stats(lokimq::Message& message) {
+     message.send_reply(payload);
+ }
+ 
+-void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
++void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh,
+                         const oxend_key_pair_t& keypair,
+                         const std::vector<std::string>& stats_access_keys) {
+ 
+-    using lokimq::Allow;
++    using oxenmq::Allow;
+ 
+     service_node_ = sn;
+     request_handler_ = rh;
+ 
+     for (const auto& key : stats_access_keys) {
+-        this->stats_access_keys.push_back(lokimq::from_hex(key));
++        this->stats_access_keys.push_back(oxenmq::from_hex(key));
+     }
+ 
+     auto pubkey = key_to_string(keypair.public_key);
+     auto seckey = key_to_string(keypair.private_key);
+ 
+-    auto logger = [](lokimq::LogLevel level, const char* file, int line,
++    auto logger = [](oxenmq::LogLevel level, const char* file, int line,
+                      std::string message) {
+ #define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
+-    case lokimq::LogLevel::LMQ_LVL:                                            \
++    case oxenmq::LogLevel::LMQ_LVL:                                            \
+         OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
+         break;
+         switch (level) {
+@@ -203,43 +203,43 @@ void LokimqServer::init(ServiceNode* sn, RequestHandler* rh,
+ 
+     auto lookup_fn = [this](auto pk) { return this->peer_lookup(pk); };
+ 
+-    lokimq_.reset(new LokiMQ{pubkey, seckey, true /* is service node */,
++    oxenmq_.reset(new OxenMQ{pubkey, seckey, true /* is service node */,
+                              lookup_fn, logger});
+ 
+-    OXEN_LOG(info, "LokiMQ is listenting on port {}", port_);
++    OXEN_LOG(info, "OxenMQ is listenting on port {}", port_);
+ 
+-    lokimq_->log_level(lokimq::LogLevel::info);
++    oxenmq_->log_level(oxenmq::LogLevel::info);
+     // clang-format off
+-    lokimq_->add_category("sn", lokimq::Access{lokimq::AuthLevel::none, true, false})
++    oxenmq_->add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false})
+         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
+         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
+         .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m, false); })
+         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
+         ;
+ 
+-    lokimq_->add_category("service", lokimq::AuthLevel::admin)
++    oxenmq_->add_category("service", oxenmq::AuthLevel::admin)
+         .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
+         .add_request_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
+ 
+     // clang-format on
+-    lokimq_->set_general_threads(1);
++    oxenmq_->set_general_threads(1);
+ 
+-    lokimq_->listen_curve(
++    oxenmq_->listen_curve(
+         fmt::format("tcp://0.0.0.0:{}", port_),
+         [this](std::string_view /*ip*/, std::string_view pk, bool /*sn*/) {
+             const auto& keys = this->stats_access_keys;
+             const auto it = std::find(keys.begin(), keys.end(), pk);
+-            return it == keys.end() ? lokimq::AuthLevel::none
+-                                    : lokimq::AuthLevel::admin;
++            return it == keys.end() ? oxenmq::AuthLevel::none
++                                    : oxenmq::AuthLevel::admin;
+         });
+ 
+-    lokimq_->MAX_MSG_SIZE =
++    oxenmq_->MAX_MSG_SIZE =
+         10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+ 
+-    lokimq_->start();
++    oxenmq_->start();
+ }
+ 
+-LokimqServer::LokimqServer(uint16_t port) : port_(port){};
+-LokimqServer::~LokimqServer() = default;
++OxenmqServer::OxenmqServer(uint16_t port) : port_(port){};
++OxenmqServer::~OxenmqServer() = default;
+ 
+ } // namespace oxen
+diff --git a/httpserver/lmq_server.h b/httpserver/lmq_server.h
+index bb09d8d..81d4974 100644
+--- a/httpserver/lmq_server.h
++++ b/httpserver/lmq_server.h
+@@ -6,13 +6,13 @@
+ #include <string_view>
+ #include <vector>
+ 
+-namespace lokimq {
+-class LokiMQ;
++namespace oxenmq {
++class OxenMQ;
+ struct Allow;
+ class Message;
+-} // namespace lokimq
++} // namespace oxenmq
+ 
+-using lokimq::LokiMQ;
++using oxenmq::OxenMQ;
+ 
+ namespace oxen {
+ 
+@@ -20,9 +20,9 @@ struct oxend_key_pair_t;
+ class ServiceNode;
+ class RequestHandler;
+ 
+-class LokimqServer {
++class OxenmqServer {
+ 
+-    std::unique_ptr<LokiMQ> lokimq_;
++    std::unique_ptr<OxenMQ> oxenmq_;
+ 
+     // Has information about current SNs
+     ServiceNode* service_node_;
+@@ -33,17 +33,17 @@ class LokimqServer {
+     std::string peer_lookup(std::string_view pubkey_bin) const;
+ 
+     // Handle Session data coming from peer SN
+-    void handle_sn_data(lokimq::Message& message);
++    void handle_sn_data(oxenmq::Message& message);
+ 
+     // Handle Session client requests arrived via proxy
+-    void handle_sn_proxy_exit(lokimq::Message& message);
++    void handle_sn_proxy_exit(oxenmq::Message& message);
+ 
+     // v2 indicates whether to use the new (v2) protocol
+-    void handle_onion_request(lokimq::Message& message, bool v2);
++    void handle_onion_request(oxenmq::Message& message, bool v2);
+ 
+-    void handle_get_logs(lokimq::Message& message);
++    void handle_get_logs(oxenmq::Message& message);
+ 
+-    void handle_get_stats(lokimq::Message& message);
++    void handle_get_stats(oxenmq::Message& message);
+ 
+     uint16_t port_ = 0;
+ 
+@@ -51,21 +51,21 @@ class LokimqServer {
+     std::vector<std::string> stats_access_keys;
+ 
+   public:
+-    LokimqServer(uint16_t port);
+-    ~LokimqServer();
++    OxenmqServer(uint16_t port);
++    ~OxenmqServer();
+ 
+-    // Initialize lokimq
++    // Initialize oxenmq
+     void init(ServiceNode* sn, RequestHandler* rh,
+               const oxend_key_pair_t& keypair,
+               const std::vector<std::string>& stats_access_key);
+ 
+     uint16_t port() { return port_; }
+ 
+-    /// True if LokiMQ instance has been set
+-    explicit operator bool() const { return (bool)lokimq_; }
+-    /// Dereferencing via * or -> accesses the contained LokiMQ instance.
+-    LokiMQ& operator*() const { return *lokimq_; }
+-    LokiMQ* operator->() const { return lokimq_.get(); }
++    /// True if OxenMQ instance has been set
++    explicit operator bool() const { return (bool)oxenmq_; }
++    /// Dereferencing via * or -> accesses the contained OxenMQ instance.
++    OxenMQ& operator*() const { return *oxenmq_; }
++    OxenMQ* operator->() const { return oxenmq_.get(); }
+ };
+ 
+ } // namespace oxen
+diff --git a/httpserver/main.cpp b/httpserver/main.cpp
+index 71e84c0..96230a4 100644
+--- a/httpserver/main.cpp
++++ b/httpserver/main.cpp
+@@ -14,7 +14,7 @@
+ #include "request_handler.h"
+ 
+ #include <sodium.h>
+-#include <lokimq/hex.h>
++#include <oxenmq/hex.h>
+ 
+ #include <cstdlib>
+ #include <filesystem>
+@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
+              options.oxend_rpc_port);
+     OXEN_LOG(info, "Https server is listening at {}:{}", options.ip,
+              options.port);
+-    OXEN_LOG(info, "LokiMQ is listening at {}:{}", options.ip,
++    OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
+              options.lmq_port);
+ 
+     boost::asio::io_context ioc{1};
+@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) {
+ 
+         const auto public_key = oxen::derive_pubkey_legacy(private_key);
+         OXEN_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
+-                 lokimq::to_hex(public_key.begin(), public_key.end()));
++                 oxenmq::to_hex(public_key.begin(), public_key.end()));
+ 
+         // TODO: avoid conversion to vector
+         const std::vector<uint8_t> priv(private_key_x25519.begin(),
+@@ -199,13 +199,13 @@ int main(int argc, char* argv[]) {
+         const auto public_key_x25519 =
+             oxen::derive_pubkey_x25519(private_key_x25519);
+ 
+-        OXEN_LOG(info, "SN x25519 pubkey is: {}", lokimq::to_hex(
++        OXEN_LOG(info, "SN x25519 pubkey is: {}", oxenmq::to_hex(
+                     public_key_x25519.begin(), public_key_x25519.end()));
+ 
+         const auto public_key_ed25519 =
+             oxen::derive_pubkey_ed25519(private_key_ed25519);
+ 
+-        const std::string pubkey_ed25519_hex = lokimq::to_hex(
++        const std::string pubkey_ed25519_hex = oxenmq::to_hex(
+                 public_key_ed25519.begin(), public_key_ed25519.end());
+ 
+         OXEN_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
+@@ -220,18 +220,18 @@ int main(int argc, char* argv[]) {
+         // We pass port early because we want to send it in the first ping to
+         // Oxend (in ServiceNode's constructor), but don't want to initialize
+         // the rest of lmq server before we have a reference to ServiceNode
+-        oxen::LokimqServer lokimq_server(options.lmq_port);
++        oxen::OxenmqServer oxenmq_server(options.lmq_port);
+ 
+-        // TODO: SN doesn't need lokimq_server, just the lmq components
++        // TODO: SN doesn't need oxenmq_server, just the lmq components
+         oxen::ServiceNode service_node(ioc, worker_ioc, options.port,
+-                                       lokimq_server, oxend_key_pair,
++                                       oxenmq_server, oxend_key_pair,
+                                        pubkey_ed25519_hex, options.data_dir,
+                                        oxend_client, options.force_start);
+ 
+         oxen::RequestHandler request_handler(ioc, service_node, oxend_client,
+                                              channel_encryption);
+ 
+-        lokimq_server.init(&service_node, &request_handler,
++        oxenmq_server.init(&service_node, &request_handler,
+                            oxend_key_pair_x25519, options.stats_access_keys);
+ 
+         RateLimiter rate_limiter;
+diff --git a/httpserver/onion_processing.cpp b/httpserver/onion_processing.cpp
+index e2e5637..972f7b7 100644
+--- a/httpserver/onion_processing.cpp
++++ b/httpserver/onion_processing.cpp
+@@ -2,7 +2,7 @@
+ #include "oxen_logger.h"
+ #include "request_handler.h"
+ #include "service_node.h"
+-#include <lokimq/base64.h>
++#include <oxenmq/base64.h>
+ #include <nlohmann/json.hpp>
+ 
+ /// This is only included because of `parse_combined_payload`,
+@@ -58,9 +58,9 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
+     std::string plaintext;
+ 
+     try {
+-        if (!lokimq::is_base64(ciphertext))
++        if (!oxenmq::is_base64(ciphertext))
+             throw std::runtime_error{"cipher text is not base64 encoded"};
+-        const std::string ciphertext_bin = lokimq::from_base64(ciphertext);
++        const std::string ciphertext_bin = oxenmq::from_base64(ciphertext);
+ 
+         plaintext = decryptor.decrypt_gcm(ciphertext_bin, ephem_key);
+     } catch (const std::exception& e) {
+diff --git a/httpserver/request_handler.cpp b/httpserver/request_handler.cpp
+index d8ac61d..6786027 100644
+--- a/httpserver/request_handler.cpp
++++ b/httpserver/request_handler.cpp
+@@ -7,7 +7,7 @@
+ 
+ #include "https_client.h"
+ 
+-#include <lokimq/base64.h>
++#include <oxenmq/base64.h>
+ #include <nlohmann/json.hpp>
+ 
+ using nlohmann::json;
+@@ -378,10 +378,10 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
+     std::string ciphertext;
+ 
+     if (use_gcm) {
+-        ciphertext = lokimq::to_base64(
++        ciphertext = oxenmq::to_base64(
+             channel_cipher_.encrypt_gcm(res_body, client_key));
+     } else {
+-        ciphertext = lokimq::to_base64(
++        ciphertext = oxenmq::to_base64(
+             channel_cipher_.encrypt_cbc(res_body, client_key));
+     }
+ 
+diff --git a/httpserver/security.cpp b/httpserver/security.cpp
+index e509006..976f19d 100644
+--- a/httpserver/security.cpp
++++ b/httpserver/security.cpp
+@@ -2,7 +2,7 @@
+ #include "oxend_key.h"
+ #include "signature.h"
+ 
+-#include <lokimq/base64.h>
++#include <oxenmq/base64.h>
+ 
+ #include <filesystem>
+ #include <fstream>
+@@ -19,7 +19,7 @@ std::string Security::base64_sign(const std::string& body) {
+     raw_sig.reserve(sig.c.size() + sig.r.size());
+     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+-    return lokimq::to_base64(raw_sig);
++    return oxenmq::to_base64(raw_sig);
+ }
+ 
+ void Security::generate_cert_signature() {
+@@ -36,7 +36,7 @@ void Security::generate_cert_signature() {
+     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+ 
+-    cert_signature_ = lokimq::to_base64(raw_sig);
++    cert_signature_ = oxenmq::to_base64(raw_sig);
+ }
+ 
+ std::string Security::get_cert_signature() const { return cert_signature_; }
+diff --git a/httpserver/service_node.cpp b/httpserver/service_node.cpp
+index 77dc685..993d275 100644
+--- a/httpserver/service_node.cpp
++++ b/httpserver/service_node.cpp
+@@ -13,10 +13,10 @@
+ #include "signature.h"
+ #include "utils.hpp"
+ #include "version.h"
+-#include <lokimq/base32z.h>
+-#include <lokimq/base64.h>
+-#include <lokimq/hex.h>
+-#include <lokimq/lokimq.h>
++#include <oxenmq/base32z.h>
++#include <oxenmq/base64.h>
++#include <oxenmq/hex.h>
++#include <oxenmq/oxenmq.h>
+ #include <nlohmann/json.hpp>
+ 
+ #include "request_handler.h"
+@@ -151,7 +151,7 @@ static bool verify_message(const message_t& msg,
+ 
+ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
+                          boost::asio::io_context& worker_ioc, uint16_t port,
+-                         LokimqServer& lmq_server,
++                         OxenmqServer& lmq_server,
+                          const oxend_key_pair_t& oxend_key_pair,
+                          const std::string& ed25519hex,
+                          const std::string& db_location,
+@@ -165,12 +165,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
+       lmq_server_(lmq_server), oxend_client_(oxend_client),
+       force_start_(force_start) {
+ 
+-    const auto addr = lokimq::to_base32z(
++    const auto addr = oxenmq::to_base32z(
+             oxend_key_pair_.public_key.begin(),
+             oxend_key_pair_.public_key.end());
+     OXEN_LOG(info, "Our loki address: {}", addr);
+ 
+-    const auto pk_hex = lokimq::to_hex(
++    const auto pk_hex = oxenmq::to_hex(
+             oxend_key_pair_.public_key.begin(),
+             oxend_key_pair_.public_key.end());
+ 
+@@ -250,12 +250,12 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
+         for (const auto& sn_json : service_node_states) {
+             const auto& pubkey =
+                 sn_json.at("service_node_pubkey").get_ref<const std::string&>();
+-            if (!lokimq::is_hex(pubkey)) {
++            if (!oxenmq::is_hex(pubkey)) {
+                 OXEN_LOG(warn, "service_node_pubkey is not valid hex");
+                 continue;
+             }
+             std::string snode_address =
+-                lokimq::to_base32z(lokimq::from_hex(pubkey));
++                oxenmq::to_base32z(oxenmq::from_hex(pubkey));
+ 
+             const swarm_id_t swarm_id =
+                 sn_json.at("swarm_id").get<swarm_id_t>();
+@@ -445,7 +445,7 @@ void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
+                                       ss_client::Callback cb) const {
+ 
+     lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
+-                         lokimq::send_option::request_timeout{30s}, eph_key,
++                         oxenmq::send_option::request_timeout{30s}, eph_key,
+                          payload);
+ }
+ 
+@@ -456,7 +456,7 @@ void ServiceNode::send_onion_to_sn_v2(const sn_record_t& sn,
+ 
+     lmq_server_->request(
+         sn.pubkey_x25519_bin(), "sn.onion_req_v2", std::move(cb),
+-        lokimq::send_option::request_timeout{30s}, eph_key, payload);
++        oxenmq::send_option::request_timeout{30s}, eph_key, payload);
+ }
+ 
+ // Calls callback on success only?
+@@ -469,7 +469,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
+     switch (method) {
+     case ss_client::ReqMethod::DATA: {
+         OXEN_LOG(debug, "Sending sn.data request to {}",
+-                 lokimq::to_hex(sn.pubkey_x25519_bin()));
++                 oxenmq::to_hex(sn.pubkey_x25519_bin()));
+         lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
+                              req.body);
+         break;
+@@ -481,7 +481,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
+         // parameters...
+         if (client_key != req.headers.end()) {
+             OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
+-                     lokimq::to_hex(sn.pubkey_x25519_bin()));
++                     oxenmq::to_hex(sn.pubkey_x25519_bin()));
+             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
+                                  std::move(cb), client_key->second, req.body);
+         } else {
+@@ -493,7 +493,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
+         break;
+     }
+     case ss_client::ReqMethod::ONION_REQUEST: {
+-        // Onion reqeusts always use lokimq, so they use it
++        // Onion reqeusts always use oxenmq, so they use it
+         // directly, no need for the "send_to_sn" abstraction
+         OXEN_LOG(error, "Onion requests should not use this interface");
+         assert(false);
+@@ -963,7 +963,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
+                          },
+                          "ping",
+                          // Only use an existing (or new) outgoing connection:
+-                         lokimq::send_option::outgoing{});
++                         oxenmq::send_option::outgoing{});
+ }
+ 
+ void ServiceNode::oxend_ping_timer_tick() {
+@@ -1075,7 +1075,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
+     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+ 
+-    const std::string sig_b64 = lokimq::to_base64(raw_sig);
++    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
+     request->set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
+ 
+     request->set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
+diff --git a/httpserver/service_node.h b/httpserver/service_node.h
+index 7bcfcb0..1439129 100644
+--- a/httpserver/service_node.h
++++ b/httpserver/service_node.h
+@@ -30,7 +30,7 @@ class Database;
+ namespace http = boost::beast::http;
+ using request_t = http::request<http::string_body>;
+ 
+-namespace lokimq {
++namespace oxenmq {
+ struct ConnectionID;
+ }
+ 
+@@ -45,7 +45,7 @@ struct blockchain_test_answer_t;
+ struct bc_test_params_t;
+ 
+ class OxendClient;
+-class LokimqServer;
++class OxenmqServer;
+ 
+ namespace ss_client {
+ class Request;
+@@ -154,7 +154,7 @@ class ServiceNode {
+     // Need to make sure we only use this to get lmq() object and
+     // not call any method that would in turn call a method in SN
+     // causing a deadlock
+-    LokimqServer& lmq_server_;
++    OxenmqServer& lmq_server_;
+ 
+     reachability_records_t reach_records_;
+ 
+@@ -260,7 +260,7 @@ class ServiceNode {
+   public:
+     ServiceNode(boost::asio::io_context& ioc,
+                 boost::asio::io_context& worker_ioc, uint16_t port,
+-                LokimqServer& lmq_server,
++                OxenmqServer& lmq_server,
+                 const oxen::oxend_key_pair_t& key_pair,
+                 const std::string& ed25519hex, const std::string& db_location,
+                 OxendClient& oxend_client, const bool force_start);
+diff --git a/httpserver/swarm.h b/httpserver/swarm.h
+index 009ae82..1d0e4e5 100644
+--- a/httpserver/swarm.h
++++ b/httpserver/swarm.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include <iostream>
+-#include <lokimq/auth.h>
++#include <oxenmq/auth.h>
+ #include <string>
+ #include <vector>
+ 
+@@ -27,7 +27,7 @@ using all_swarms_t = std::vector<SwarmInfo>;
+ struct block_update_t {
+     all_swarms_t swarms;
+     std::vector<sn_record_t> decommissioned_nodes;
+-    lokimq::pubkey_set active_x25519_pubkeys;
++    oxenmq::pubkey_set active_x25519_pubkeys;
+     uint64_t height;
+     std::string block_hash;
+     int hardfork;
+diff --git a/pow/CMakeLists.txt b/pow/CMakeLists.txt
+index 2a5b819..3237781 100644
+--- a/pow/CMakeLists.txt
++++ b/pow/CMakeLists.txt
+@@ -10,4 +10,4 @@ target_include_directories(pow
+     ${CMAKE_CURRENT_LIST_DIR}/include
+ )
+ 
+-target_link_libraries(pow PRIVATE utils lokimq::lokimq)
++target_link_libraries(pow PRIVATE utils oxenmq::oxenmq)
+diff --git a/pow/src/pow.cpp b/pow/src/pow.cpp
+index b074de1..d782030 100644
+--- a/pow/src/pow.cpp
++++ b/pow/src/pow.cpp
+@@ -4,7 +4,7 @@
+ #include <array>
+ #include <iomanip>
+ #include <limits>
+-#include <lokimq/base64.h>
++#include <oxenmq/base64.h>
+ #include <openssl/sha.h>
+ #include <sstream>
+ #include <string.h>
+@@ -115,9 +115,9 @@ bool checkPoW(const std::string& nonce, const std::string& timestamp,
+     // Initial hash
+     SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
+     // Convert nonce to binary
+-    if (!lokimq::is_base64(nonce))
++    if (!oxenmq::is_base64(nonce))
+         return false;
+-    std::string decodedNonce = lokimq::from_base64(nonce);
++    std::string decodedNonce = oxenmq::from_base64(nonce);
+     // Convert decoded nonce string into uint8_t vector. Will have length 8
+     std::vector<uint8_t> innerPayload;
+     innerPayload.reserve(decodedNonce.size() + SHA512_DIGEST_LENGTH);
+diff --git a/unit_test/signature.cpp b/unit_test/signature.cpp
+index 84042b5..c354b25 100644
+--- a/unit_test/signature.cpp
++++ b/unit_test/signature.cpp
+@@ -1,7 +1,7 @@
+ #include "signature.h"
+ 
+-#include <lokimq/base32z.h>
+-#include <lokimq/base64.h>
++#include <oxenmq/base32z.h>
++#include <oxenmq/base64.h>
+ #include <boost/test/unit_test.hpp>
+ 
+ #include <vector>
+@@ -67,9 +67,9 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
+     raw_sig.reserve(sig.c.size() + sig.r.size());
+     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
+     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
+-    const std::string sig_b64 = lokimq::to_base64(raw_sig);
++    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
+ 
+-    const auto public_key_b32z = lokimq::to_base32z(public_key.begin(), public_key.end());
++    const auto public_key_b32z = oxenmq::to_base32z(public_key.begin(), public_key.end());
+ 
+     bool verified = check_signature(sig_b64, hash, public_key_b32z);
+     BOOST_CHECK(verified);
+diff --git a/utils/CMakeLists.txt b/utils/CMakeLists.txt
+index 1094bb1..7e19dba 100644
+--- a/utils/CMakeLists.txt
++++ b/utils/CMakeLists.txt
+@@ -3,4 +3,4 @@ add_library(utils STATIC
+ )
+ 
+ target_include_directories(utils PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
+-target_link_libraries(utils PRIVATE lokimq::lokimq)
++target_link_libraries(utils PRIVATE oxenmq::oxenmq)
+diff --git a/utils/src/utils.cpp b/utils/src/utils.cpp
+index a947a14..b4ee5c1 100644
+--- a/utils/src/utils.cpp
++++ b/utils/src/utils.cpp
+@@ -6,9 +6,9 @@
+ #include <unistd.h>
+ #endif
+ 
+-#include <lokimq/base64.h>
+-#include <lokimq/base32z.h>
+-#include <lokimq/hex.h>
++#include <oxenmq/base64.h>
++#include <oxenmq/base32z.h>
++#include <oxenmq/hex.h>
+ 
+ namespace util {
+ 
