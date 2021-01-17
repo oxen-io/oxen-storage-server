@@ -36,10 +36,10 @@ namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 /// +===========================================
 
 static constexpr auto OXEN_FILE_SERVER_TARGET_HEADER =
-    "X-Oxen-File-Server-Target";
-static constexpr auto OXEN_FILE_SERVER_VERB_HEADER = "X-Oxen-File-Server-Verb";
+    "X-Loki-File-Server-Target";
+static constexpr auto OXEN_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
 static constexpr auto OXEN_FILE_SERVER_HEADERS_HEADER =
-    "X-Oxen-File-Server-Headers";
+    "X-Loki-File-Server-Headers";
 
 using oxen::storage::Item;
 
