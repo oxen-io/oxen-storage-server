@@ -1,3 +1,24 @@
+oxen-storage-server (2.0.8-2~ubuntu2004) focal; urgency=medium
+
+  * Rediff patches
+  * New upload location & include _all deb
+  * URL fixes
+  * boost 1.75.0 compatibility fix
+  * Rediff patches
+  * Fix install paths
+  * Move migration restart logic into transitional package
+  * Add SS restart-on-upgrade for loki-multi-sn installs
+  * Fix service enabled preservation code
+  * Use service symlink instead of an Alias
+  * Move version into CMakeLists.txt and generate version.cpp
+  * LokiMQ -> OxenMQ rename (and update to 1.2.3)
+  * oxenmq target fix
+  * Fix patch (accidentally readded nlohmann_json)
+  * lokid-rpc-ip option fix
+  * Revert X-Oxen-* header changes
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 17 Jan 2021 00:19:24 -0400
+
 oxen-storage-server (2.0.8-1~ubuntu2004) focal; urgency=medium
 
   [ Jason Rhinelander ]
