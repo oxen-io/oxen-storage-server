@@ -1,3 +1,13 @@
+oxen-storage-server (2.0.8-2~ubuntu2010) groovy; urgency=medium
+
+  * LokiMQ -> OxenMQ rename (and update to 1.2.3)
+  * oxenmq target fix
+  * Fix patch (accidentally readded nlohmann_json)
+  * lokid-rpc-ip option fix
+  * Revert X-Oxen-* header changes
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 17 Jan 2021 00:19:13 -0400
+
 oxen-storage-server (2.0.8-1~ubuntu2010) groovy; urgency=medium
 
   [ Jason Rhinelander ]
