@@ -1,3 +1,14 @@
+oxen-storage-server (2.0.8-2~ubuntu1804) bionic; urgency=medium
+
+  * LokiMQ -> OxenMQ rename (and update to 1.2.3)
+  * oxenmq target fix
+  * Fix patch (accidentally readded nlohmann_json)
+  * bionic build fixes for boost, spd, nlohmann
+  * lokid-rpc-ip option fix
+  * Revert X-Oxen-* header changes
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 17 Jan 2021 00:19:34 -0400
+
 oxen-storage-server (2.0.8-1~ubuntu1804) bionic; urgency=medium
 
   [ Jason Rhinelander ]
