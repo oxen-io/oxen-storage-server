@@ -1,7 +1,6 @@
 #include "channel_encryption.hpp"
 #include <assert.h>
 #include <iostream>
-#include <sodium.h>
 
 int main() {
     const std::vector<uint8_t> private_key{

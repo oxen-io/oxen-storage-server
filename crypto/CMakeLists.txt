@@ -10,9 +10,6 @@ add_library(crypto STATIC
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/hash-ops.c
 )
 
-if (NOT OPENSSL_FOUND)
-    find_package(OpenSSL REQUIRED)
-endif ()
 target_link_libraries(crypto PRIVATE OpenSSL::SSL)
 
 target_include_directories(crypto
