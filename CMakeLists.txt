@@ -12,7 +12,9 @@ endif()
 
 cmake_minimum_required(VERSION 3.10)
 
-project(storage_server)
+project(storage_server
+    VERSION 2.0.8
+    LANGUAGES CXX C)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
 option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
@@ -49,16 +51,31 @@ if (DISABLE_SNODE_SIGNATURE)
     add_definitions(-DDISABLE_SNODE_SIGNATURE)
 endif()
 
-list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/contrib")
-find_package(sodium REQUIRED)
-if (sodium_VERSION VERSION_LESS 1.0.17)
-  message(FATAL_ERROR "sodium 1.0.17 or higher required; found ${sodium_VERSION}")
+option(BUILD_TESTS "build storage server unit tests" OFF)
+
+list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+option(BUILD_STATIC_DEPS "Download, build and statically link against core dependencies" OFF)
+if(BUILD_STATIC_DEPS)
+  include(StaticBuild)
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium>=1.0.17)
+  add_library(sodium INTERFACE)
+  target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
+
+  # Need this target export so that loki-mq properly picks up sodium
+  export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+
+  find_package(Boost REQUIRED system program_options)
+
+  find_package(OpenSSL REQUIRED)
 endif()
-include_directories(${sodium_INCLUDE_DIR})
 
-include(contrib/check_for_std_filesystem.cmake)
+include(cmake/check_for_std_filesystem.cmake)
 
-find_package(Boost REQUIRED)
+if(NOT BUILD_STATIC_DEPS)
+endif()
 
 add_subdirectory(common)
 add_subdirectory(utils)
@@ -69,7 +86,8 @@ add_subdirectory(httpserver)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 add_subdirectory(vendors/loki-mq)
 
-option(BUILD_TESTS "build storage server unit tests" OFF)
 if (BUILD_TESTS)
     add_subdirectory(unit_test)
 endif ()
+
+include(cmake/archive.cmake)
