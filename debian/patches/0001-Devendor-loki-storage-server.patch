@@ -9,7 +9,7 @@ Subject: Devendor loki-storage-server
  3 files changed, 4 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 94a285f..a34cd9a 100644
+index 94a285f..9cde150 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -83,8 +83,8 @@ add_subdirectory(crypto)
@@ -18,8 +18,8 @@ index 94a285f..a34cd9a 100644
  add_subdirectory(httpserver)
 -set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 -add_subdirectory(vendors/loki-mq)
-+pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2.3)
-+add_library(lokimq::lokimq ALIAS PkgConfig::LOKIMQ)
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
++add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
  
  if (BUILD_TESTS)
      add_subdirectory(unit_test)
