@@ -20,7 +20,7 @@ struct sn_record_t {
 
   private:
     uint16_t port_;
-    // Required by LokiMQ
+    // Required by OxenMQ
     uint16_t lmq_port_;
     // TODO: create separate types for different encodings of pubkeys,
     // so if we confuse them, it will be a compiler error
