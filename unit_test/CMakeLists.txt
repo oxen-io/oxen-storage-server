@@ -14,6 +14,8 @@ target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_li
 target_include_directories(Test PRIVATE ../httpserver)
 
 # boost
-find_package(Boost REQUIRED unit_test_framework)
+if(NOT BUILD_STATIC_DEPS)
+  find_package(Boost REQUIRED unit_test_framework)
+endif()
 
 target_link_libraries(Test PRIVATE Boost::unit_test_framework)
