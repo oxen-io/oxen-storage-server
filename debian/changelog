@@ -1,3 +1,24 @@
+oxen-storage-server (2.0.8-3~deb10) buster; urgency=medium
+
+  * URL fixes
+  * Moved cmake files into cmake/
+  * boost 1.75.0 compatibility fix
+  * Add static build capability to cmake
+  * Move version into CMakeLists.txt and generate version.cpp
+  * Add `strip` and `create_archive` targets for release distribution
+  * Add missing headers to avoid warning/error
+  * Remove unused header
+  * Add drone CI
+  * Remove travis-ci build
+  * Remove android/ios bits from static build script
+  * Make `lokid-rpc-ip` and `lokid-rpc-port` options still work
+  * Make oxend-rpc-ip actually work
+  * Revert X-Oxen-* header changes
+  * Fix archive naming for tagged commits
+  * Fix version info string
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 18 Jan 2021 15:39:39 -0400
+
 oxen-storage-server (2.0.8-2~deb10) buster; urgency=medium
 
   * LokiMQ -> OxenMQ rename (and update to 1.2.3)
