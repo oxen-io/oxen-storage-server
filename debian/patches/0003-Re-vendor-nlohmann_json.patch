@@ -1,0 +1,30 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 18 Jan 2021 17:44:22 -0400
+Subject: Re-vendor nlohmann_json
+
+Buster's version is too old.
+---
+ httpserver/CMakeLists.txt | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
+index 6325195..f084f39 100644
+--- a/httpserver/CMakeLists.txt
++++ b/httpserver/CMakeLists.txt
+@@ -21,12 +21,16 @@ add_library(httpserver_lib STATIC
+     onion_processing.cpp
+     )
+ 
++set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
++add_subdirectory(../vendors/nlohmann_json nlohmann_json)
++
+ # TODO: enable more warnings!
+ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+ 
+ target_link_libraries(httpserver_lib PUBLIC
+     common storage utils pow crypto
+     OpenSSL::SSL OpenSSL::Crypto
++    nlohmann_json::nlohmann_json
+     oxenmq::oxenmq
+     Boost::system Boost::program_options)
+ 
