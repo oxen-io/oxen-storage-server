@@ -2,7 +2,7 @@
 #include "oxen_logger.h"
 #include "request_handler.h"
 #include "service_node.h"
-#include <lokimq/base64.h>
+#include <oxenmq/base64.h>
 #include <nlohmann/json.hpp>
 
 /// This is only included because of `parse_combined_payload`,
@@ -58,9 +58,9 @@ process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
     std::string plaintext;
 
     try {
-        if (!lokimq::is_base64(ciphertext))
+        if (!oxenmq::is_base64(ciphertext))
             throw std::runtime_error{"cipher text is not base64 encoded"};
-        const std::string ciphertext_bin = lokimq::from_base64(ciphertext);
+        const std::string ciphertext_bin = oxenmq::from_base64(ciphertext);
 
         plaintext = decryptor.decrypt_gcm(ciphertext_bin, ephem_key);
     } catch (const std::exception& e) {

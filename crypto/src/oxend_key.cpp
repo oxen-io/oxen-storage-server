@@ -2,7 +2,7 @@
 #include "utils.hpp"
 
 #include <sodium.h>
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 
 #include <exception>
 #include <fstream>
@@ -11,14 +11,14 @@
 namespace oxen {
 
 private_key_t oxendKeyFromHex(const std::string& private_key_hex) {
-    if (!lokimq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
+    if (!oxenmq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
         throw std::runtime_error("Oxend key data is invalid: expected " +
                                  std::to_string(KEY_LENGTH) + " hex digits not " +
                                  std::to_string(private_key_hex.size()) +
                                  " bytes");
 
     private_key_t private_key;
-    lokimq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
+    oxenmq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
 
     return private_key;
 }
@@ -32,7 +32,7 @@ private_key_ed25519_t::from_hex(const std::string& sc_hex) {
                                  " bytes");
 
     private_key_ed25519_t key;
-    lokimq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
+    oxenmq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
 
     return key;
 }
