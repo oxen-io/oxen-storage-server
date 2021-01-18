@@ -9,14 +9,14 @@ Subject: Devendor loki-storage-server
  3 files changed, 5 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 94a285f..cc226f8 100644
+index 94a285f..54fbc5b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -77,14 +77,15 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
-+pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET GLOBAL liboxenmq>=1.2.3)
 +add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
 +
  add_subdirectory(common)
