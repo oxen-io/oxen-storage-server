@@ -3,23 +3,30 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  4 ++--
+ CMakeLists.txt            |  5 +++--
  common/CMakeLists.txt     |  2 +-
  httpserver/CMakeLists.txt | 16 +---------------
- 3 files changed, 4 insertions(+), 18 deletions(-)
+ 3 files changed, 5 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 94a285f..9cde150 100644
+index 94a285f..cc226f8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -83,8 +83,8 @@ add_subdirectory(crypto)
+@@ -77,14 +77,15 @@ include(cmake/check_for_std_filesystem.cmake)
+ if(NOT BUILD_STATIC_DEPS)
+ endif()
+ 
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
++add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
++
+ add_subdirectory(common)
+ add_subdirectory(utils)
+ add_subdirectory(crypto)
  add_subdirectory(pow)
  add_subdirectory(storage)
  add_subdirectory(httpserver)
 -set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 -add_subdirectory(vendors/loki-mq)
-+pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
-+add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
  
  if (BUILD_TESTS)
      add_subdirectory(unit_test)
