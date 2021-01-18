@@ -8,7 +8,7 @@ storage server needs boost 1.66+
  1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5f6b238..46ef96f 100644
+index 45e5912..f82d27f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -67,8 +67,6 @@ else()
@@ -36,6 +36,6 @@ index 5f6b238..46ef96f 100644
 +    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a"
 +    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/boost/include")
 +
- pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET GLOBAL liboxenmq>=1.2.3)
- add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
- 
+ pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
+ add_library(oxenmq_pkgconfig INTERFACE)
+ target_link_libraries(oxenmq_pkgconfig INTERFACE PkgConfig::OXENMQ)
