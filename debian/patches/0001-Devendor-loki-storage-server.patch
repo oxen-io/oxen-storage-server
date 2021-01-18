@@ -3,22 +3,21 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  6 ++++--
+ CMakeLists.txt            |  5 +++--
  common/CMakeLists.txt     |  2 +-
  httpserver/CMakeLists.txt | 16 +---------------
- 3 files changed, 6 insertions(+), 18 deletions(-)
+ 3 files changed, 5 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 94a285f..770ac8f 100644
+index 94a285f..54fbc5b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -77,14 +77,16 @@ include(cmake/check_for_std_filesystem.cmake)
+@@ -77,14 +77,15 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
-+pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
-+add_library(oxenmq INTERFACE)
-+target_link_libraries(oxenmq INTERFACE PkgConfig::OXENMQ)
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET GLOBAL liboxenmq>=1.2.3)
++add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
 +
  add_subdirectory(common)
  add_subdirectory(utils)
