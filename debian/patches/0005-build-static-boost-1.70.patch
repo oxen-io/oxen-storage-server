@@ -4,14 +4,23 @@ Subject: build static boost
 
 storage server needs boost 1.66+
 ---
- CMakeLists.txt | 12 ++++++++++++
- 1 file changed, 12 insertions(+)
+ CMakeLists.txt | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5f6b238..0c590d2 100644
+index 5f6b238..46ef96f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -80,6 +80,18 @@ include(cmake/check_for_std_filesystem.cmake)
+@@ -67,8 +67,6 @@ else()
+   # Need this target export so that loki-mq properly picks up sodium
+   export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+ 
+-  find_package(Boost REQUIRED system program_options)
+-
+   find_package(OpenSSL REQUIRED)
+ endif()
+ 
+@@ -80,6 +78,18 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
