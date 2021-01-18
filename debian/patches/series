@@ -1,6 +1,2 @@
-0001-Move-version-into-CMakeLists.txt-and-generate-versio.patch
 0001-Devendor-loki-storage-server.patch
 0002-Add-check-for-latomic-needed-for-armhf-build.patch
-0004-LokiMQ-OxenMQ-rename-and-update-to-1.2.3.patch
-0005-oxenmq-target-fix.patch
-0006-lokid-rpc-ip-option-fix.patch

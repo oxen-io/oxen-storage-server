@@ -9,19 +9,19 @@ Subject: Add check for -latomic (needed for armhf build)
  create mode 100644 cmake/check_atomic.cmake
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 61f4446..e89e992 100644
+index cc226f8..410a26d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -60,6 +60,9 @@ include_directories(${sodium_INCLUDE_DIR})
- 
- include(contrib/check_for_std_filesystem.cmake)
+@@ -72,6 +72,9 @@ else()
+   find_package(OpenSSL REQUIRED)
+ endif()
  
 +include(cmake/check_atomic.cmake)
 +link_libatomic()
 +
- find_package(Boost REQUIRED)
+ include(cmake/check_for_std_filesystem.cmake)
  
- pkg_check_modules(LOKIMQ REQUIRED IMPORTED_TARGET liblokimq>=1.2)
+ if(NOT BUILD_STATIC_DEPS)
 diff --git a/cmake/check_atomic.cmake b/cmake/check_atomic.cmake
 new file mode 100644
 index 0000000..94d0cec
