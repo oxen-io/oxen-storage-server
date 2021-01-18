@@ -3,30 +3,67 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  4 ++--
- httpserver/CMakeLists.txt | 12 +-----------
- 2 files changed, 3 insertions(+), 13 deletions(-)
+ CMakeLists.txt            |  5 +++--
+ common/CMakeLists.txt     |  2 +-
+ httpserver/CMakeLists.txt | 16 +---------------
+ 3 files changed, 5 insertions(+), 18 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 94a285f..9cde150 100644
+index 94a285f..cc226f8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -83,8 +83,8 @@ add_subdirectory(crypto)
+@@ -77,14 +77,15 @@ include(cmake/check_for_std_filesystem.cmake)
+ if(NOT BUILD_STATIC_DEPS)
+ endif()
+ 
++pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
++add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
++
+ add_subdirectory(common)
+ add_subdirectory(utils)
+ add_subdirectory(crypto)
  add_subdirectory(pow)
  add_subdirectory(storage)
  add_subdirectory(httpserver)
 -set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
 -add_subdirectory(vendors/loki-mq)
-+pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
-+add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
  
  if (BUILD_TESTS)
      add_subdirectory(unit_test)
+diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
+index bd5a4d8..ff94f11 100644
+--- a/common/CMakeLists.txt
++++ b/common/CMakeLists.txt
+@@ -6,6 +6,6 @@ add_library(common STATIC
+     src/oxen_logger.cpp
+ )
+ 
+-add_subdirectory(../vendors/spdlog spdlog)
++find_package(spdlog)
+ target_link_libraries(common PUBLIC spdlog::spdlog filesystem)
+ target_include_directories(common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 42aef08..f084f39 100644
+index 42aef08..6325195 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -48,17 +48,7 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
+@@ -21,16 +21,12 @@ add_library(httpserver_lib STATIC
+     onion_processing.cpp
+     )
+ 
+-set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+-add_subdirectory(../vendors/nlohmann_json nlohmann_json)
+-
+ # TODO: enable more warnings!
+ target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+ 
+ target_link_libraries(httpserver_lib PUBLIC
+     common storage utils pow crypto
+     OpenSSL::SSL OpenSSL::Crypto
+-    nlohmann_json::nlohmann_json
+     oxenmq::oxenmq
+     Boost::system Boost::program_options)
+ 
+@@ -48,17 +44,7 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
