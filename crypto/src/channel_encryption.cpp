@@ -3,7 +3,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <sodium.h>
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 
 #include "utils.hpp"
 
@@ -14,9 +14,9 @@
 
 std::vector<uint8_t> hexToBytes(const std::string& hex) {
     std::vector<uint8_t> temp;
-    if (!lokimq::is_hex(hex)) throw std::runtime_error{"input is not hex"};
+    if (!oxenmq::is_hex(hex)) throw std::runtime_error{"input is not hex"};
     temp.reserve(hex.size() / 2);
-    lokimq::from_hex(hex.begin(), hex.end(), std::back_inserter(temp));
+    oxenmq::from_hex(hex.begin(), hex.end(), std::back_inserter(temp));
     return temp;
 }
 

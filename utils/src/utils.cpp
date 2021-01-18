@@ -6,9 +6,9 @@
 #include <unistd.h>
 #endif
 
-#include <lokimq/base64.h>
-#include <lokimq/base32z.h>
-#include <lokimq/hex.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/hex.h>
 
 namespace util {
 

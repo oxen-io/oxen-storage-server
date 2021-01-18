@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include <lokimq/auth.h>
+#include <oxenmq/auth.h>
 #include <string>
 #include <vector>
 
@@ -27,7 +27,7 @@ using all_swarms_t = std::vector<SwarmInfo>;
 struct block_update_t {
     all_swarms_t swarms;
     std::vector<sn_record_t> decommissioned_nodes;
-    lokimq::pubkey_set active_x25519_pubkeys;
+    oxenmq::pubkey_set active_x25519_pubkeys;
     uint64_t height;
     std::string block_hash;
     int hardfork;

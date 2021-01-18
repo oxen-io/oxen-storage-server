@@ -31,7 +31,7 @@ target_link_libraries(httpserver_lib PUBLIC
     common storage utils pow crypto
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
-    lokimq::lokimq
+    oxenmq::oxenmq
     Boost::system Boost::program_options)
 
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it

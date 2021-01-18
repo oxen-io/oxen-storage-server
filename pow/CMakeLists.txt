@@ -9,4 +9,4 @@ target_include_directories(pow
     ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
-target_link_libraries(pow PRIVATE utils lokimq::lokimq)
+target_link_libraries(pow PRIVATE utils oxenmq::oxenmq)
