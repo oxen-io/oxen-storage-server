@@ -5,8 +5,9 @@ add_custom_target(strip COMMAND ${CMAKE_STRIP} $<TARGET_FILE:httpserver>)
 find_package(Git)
 set(git_tag "-unknown")
 if(GIT_FOUND)
-  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD RESULT_VARIABLE ret OUTPUT_VARIABLE branch OUTPUT_STRIP_TRAILING_WHITESPACE)
-  if(NOT ret AND branch STREQUAL "master")
+  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD RESULT_VARIABLE ret OUTPUT_VARIABLE curr_commit OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse master RESULT_VARIABLE ret2 OUTPUT_VARIABLE stable_commit OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT ret AND curr_commit STREQUAL "${stable_commit}")
     # Get the tag description; for a tagged release this will be just the tag (v1.2.3); for
     # something following a tag this will be something like "v1.2.3-2-abcdef" for something 2
     # commits beyond the tag, currently at commit "abcdef".
