@@ -12,7 +12,6 @@ Build-Depends: debhelper (>= 11),
     libsodium-dev (>= 1.0.17),
     libssl-dev,
     libsqlite3-dev,
-    nlohmann-json3-dev,
     libsystemd-dev,
     pkg-config
 Standards-Version: 4.1.3
