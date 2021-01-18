@@ -9,8 +9,8 @@ extern "C" {
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_generichash_blake2b.h>
 #include <sodium/randombytes.h>
-#include <lokimq/base32z.h>
-#include <lokimq/base64.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
 
 #include <algorithm>
 #include <cassert>
@@ -119,7 +119,7 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
 
 bool check_signature(const std::string& signature_b64, const hash& hash,
                      const std::string& public_key_b32z) {
-    if (!lokimq::is_base64(signature_b64))
+    if (!oxenmq::is_base64(signature_b64))
         return false;
 
     // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
@@ -130,17 +130,17 @@ bool check_signature(const std::string& signature_b64, const hash& hash,
     // convert signature
     signature sig;
     static_assert(sizeof(sig) == 64);
-    lokimq::from_base64(signature_b64.begin(), signature_b64.end(),
+    oxenmq::from_base64(signature_b64.begin(), signature_b64.end(),
             reinterpret_cast<uint8_t*>(&sig));
 
     // 32 bytes -> 52 base32z encoded characters
-    if (public_key_b32z.size() != 52 || !lokimq::is_base32z(public_key_b32z))
+    if (public_key_b32z.size() != 52 || !oxenmq::is_base32z(public_key_b32z))
         return false;
 
     // convert public key
     public_key_t public_key;
     static_assert(sizeof(public_key) == 32);
-    lokimq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
+    oxenmq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
             public_key.begin());
 
     return check_signature(sig, hash, public_key);

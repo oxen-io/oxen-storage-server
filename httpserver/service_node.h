@@ -30,7 +30,7 @@ class Database;
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
 
-namespace lokimq {
+namespace oxenmq {
 struct ConnectionID;
 }
 
@@ -45,7 +45,7 @@ struct blockchain_test_answer_t;
 struct bc_test_params_t;
 
 class OxendClient;
-class LokimqServer;
+class OxenmqServer;
 
 namespace ss_client {
 class Request;
@@ -154,7 +154,7 @@ class ServiceNode {
     // Need to make sure we only use this to get lmq() object and
     // not call any method that would in turn call a method in SN
     // causing a deadlock
-    LokimqServer& lmq_server_;
+    OxenmqServer& lmq_server_;
 
     reachability_records_t reach_records_;
 
@@ -260,7 +260,7 @@ class ServiceNode {
   public:
     ServiceNode(boost::asio::io_context& ioc,
                 boost::asio::io_context& worker_ioc, uint16_t port,
-                LokimqServer& lmq_server,
+                OxenmqServer& lmq_server,
                 const oxen::oxend_key_pair_t& key_pair,
                 const std::string& ed25519hex, const std::string& db_location,
                 OxendClient& oxend_client, const bool force_start);

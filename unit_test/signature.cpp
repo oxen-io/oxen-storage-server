@@ -1,7 +1,7 @@
 #include "signature.h"
 
-#include <lokimq/base32z.h>
-#include <lokimq/base64.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
 #include <boost/test/unit_test.hpp>
 
 #include <vector>
@@ -67,9 +67,9 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-    const std::string sig_b64 = lokimq::to_base64(raw_sig);
+    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
 
-    const auto public_key_b32z = lokimq::to_base32z(public_key.begin(), public_key.end());
+    const auto public_key_b32z = oxenmq::to_base32z(public_key.begin(), public_key.end());
 
     bool verified = check_signature(sig_b64, hash, public_key_b32z);
     BOOST_CHECK(verified);
