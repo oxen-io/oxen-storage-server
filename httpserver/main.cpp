@@ -14,7 +14,7 @@
 #include "request_handler.h"
 
 #include <sodium.h>
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
              options.oxend_rpc_port);
     OXEN_LOG(info, "Https server is listening at {}:{}", options.ip,
              options.port);
-    OXEN_LOG(info, "LokiMQ is listening at {}:{}", options.ip,
+    OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
              options.lmq_port);
 
     boost::asio::io_context ioc{1};
@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) {
 
         const auto public_key = oxen::derive_pubkey_legacy(private_key);
         OXEN_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
-                 lokimq::to_hex(public_key.begin(), public_key.end()));
+                 oxenmq::to_hex(public_key.begin(), public_key.end()));
 
         // TODO: avoid conversion to vector
         const std::vector<uint8_t> priv(private_key_x25519.begin(),
@@ -199,13 +199,13 @@ int main(int argc, char* argv[]) {
         const auto public_key_x25519 =
             oxen::derive_pubkey_x25519(private_key_x25519);
 
-        OXEN_LOG(info, "SN x25519 pubkey is: {}", lokimq::to_hex(
+        OXEN_LOG(info, "SN x25519 pubkey is: {}", oxenmq::to_hex(
                     public_key_x25519.begin(), public_key_x25519.end()));
 
         const auto public_key_ed25519 =
             oxen::derive_pubkey_ed25519(private_key_ed25519);
 
-        const std::string pubkey_ed25519_hex = lokimq::to_hex(
+        const std::string pubkey_ed25519_hex = oxenmq::to_hex(
                 public_key_ed25519.begin(), public_key_ed25519.end());
 
         OXEN_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
@@ -220,18 +220,18 @@ int main(int argc, char* argv[]) {
         // We pass port early because we want to send it in the first ping to
         // Oxend (in ServiceNode's constructor), but don't want to initialize
         // the rest of lmq server before we have a reference to ServiceNode
-        oxen::LokimqServer lokimq_server(options.lmq_port);
+        oxen::OxenmqServer oxenmq_server(options.lmq_port);
 
-        // TODO: SN doesn't need lokimq_server, just the lmq components
+        // TODO: SN doesn't need oxenmq_server, just the lmq components
         oxen::ServiceNode service_node(ioc, worker_ioc, options.port,
-                                       lokimq_server, oxend_key_pair,
+                                       oxenmq_server, oxend_key_pair,
                                        pubkey_ed25519_hex, options.data_dir,
                                        oxend_client, options.force_start);
 
         oxen::RequestHandler request_handler(ioc, service_node, oxend_client,
                                              channel_encryption);
 
-        lokimq_server.init(&service_node, &request_handler,
+        oxenmq_server.init(&service_node, &request_handler,
                            oxend_key_pair_x25519, options.stats_access_keys);
 
         RateLimiter rate_limiter;

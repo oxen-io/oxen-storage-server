@@ -13,10 +13,10 @@
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
-#include <lokimq/base32z.h>
-#include <lokimq/base64.h>
-#include <lokimq/hex.h>
-#include <lokimq/lokimq.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/hex.h>
+#include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 
 #include "request_handler.h"
@@ -151,7 +151,7 @@ static bool verify_message(const message_t& msg,
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
-                         LokimqServer& lmq_server,
+                         OxenmqServer& lmq_server,
                          const oxend_key_pair_t& oxend_key_pair,
                          const std::string& ed25519hex,
                          const std::string& db_location,
@@ -165,12 +165,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       lmq_server_(lmq_server), oxend_client_(oxend_client),
       force_start_(force_start) {
 
-    const auto addr = lokimq::to_base32z(
+    const auto addr = oxenmq::to_base32z(
             oxend_key_pair_.public_key.begin(),
             oxend_key_pair_.public_key.end());
     OXEN_LOG(info, "Our loki address: {}", addr);
 
-    const auto pk_hex = lokimq::to_hex(
+    const auto pk_hex = oxenmq::to_hex(
             oxend_key_pair_.public_key.begin(),
             oxend_key_pair_.public_key.end());
 
@@ -250,12 +250,12 @@ parse_swarm_update(const std::shared_ptr<std::string>& response_body) {
         for (const auto& sn_json : service_node_states) {
             const auto& pubkey =
                 sn_json.at("service_node_pubkey").get_ref<const std::string&>();
-            if (!lokimq::is_hex(pubkey)) {
+            if (!oxenmq::is_hex(pubkey)) {
                 OXEN_LOG(warn, "service_node_pubkey is not valid hex");
                 continue;
             }
             std::string snode_address =
-                lokimq::to_base32z(lokimq::from_hex(pubkey));
+                oxenmq::to_base32z(oxenmq::from_hex(pubkey));
 
             const swarm_id_t swarm_id =
                 sn_json.at("swarm_id").get<swarm_id_t>();
@@ -445,7 +445,7 @@ void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
                                       ss_client::Callback cb) const {
 
     lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req", std::move(cb),
-                         lokimq::send_option::request_timeout{30s}, eph_key,
+                         oxenmq::send_option::request_timeout{30s}, eph_key,
                          payload);
 }
 
@@ -456,7 +456,7 @@ void ServiceNode::send_onion_to_sn_v2(const sn_record_t& sn,
 
     lmq_server_->request(
         sn.pubkey_x25519_bin(), "sn.onion_req_v2", std::move(cb),
-        lokimq::send_option::request_timeout{30s}, eph_key, payload);
+        oxenmq::send_option::request_timeout{30s}, eph_key, payload);
 }
 
 // Calls callback on success only?
@@ -469,7 +469,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     switch (method) {
     case ss_client::ReqMethod::DATA: {
         OXEN_LOG(debug, "Sending sn.data request to {}",
-                 lokimq::to_hex(sn.pubkey_x25519_bin()));
+                 oxenmq::to_hex(sn.pubkey_x25519_bin()));
         lmq_server_->request(sn.pubkey_x25519_bin(), "sn.data", std::move(cb),
                              req.body);
         break;
@@ -481,7 +481,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         // parameters...
         if (client_key != req.headers.end()) {
             OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
-                     lokimq::to_hex(sn.pubkey_x25519_bin()));
+                     oxenmq::to_hex(sn.pubkey_x25519_bin()));
             lmq_server_->request(sn.pubkey_x25519_bin(), "sn.proxy_exit",
                                  std::move(cb), client_key->second, req.body);
         } else {
@@ -493,7 +493,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         break;
     }
     case ss_client::ReqMethod::ONION_REQUEST: {
-        // Onion reqeusts always use lokimq, so they use it
+        // Onion reqeusts always use oxenmq, so they use it
         // directly, no need for the "send_to_sn" abstraction
         OXEN_LOG(error, "Onion requests should not use this interface");
         assert(false);
@@ -963,7 +963,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
                          },
                          "ping",
                          // Only use an existing (or new) outgoing connection:
-                         lokimq::send_option::outgoing{});
+                         oxenmq::send_option::outgoing{});
 }
 
 void ServiceNode::oxend_ping_timer_tick() {
@@ -1075,7 +1075,7 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
-    const std::string sig_b64 = lokimq::to_base64(raw_sig);
+    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
     request->set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
 
     request->set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
