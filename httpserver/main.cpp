@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.print_version) {
-        std::cout << version_info();
+        std::cout << STORAGE_SERVER_VERSION_INFO;
         return EXIT_SUCCESS;
     }
 
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Always print version for the logs
-    print_version();
+    OXEN_LOG(info, "{}", STORAGE_SERVER_VERSION_INFO);
 
     if (options.ip == "127.0.0.1") {
         OXEN_LOG(critical,
