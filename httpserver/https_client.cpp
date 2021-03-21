@@ -45,26 +45,26 @@ void make_https_request(boost::asio::io_context& ioc,
     static ssl::context ctx{ssl::context::tlsv12_client};
 
     auto session = std::make_shared<HttpsClientSession>(
-        ioc, ctx, std::move(resolve_results), req, std::move(cb),
+        ioc, ctx, std::move(resolve_results), "service_node", req, std::move(cb),
         sn_pubkey_b32z);
 
     session->start();
 }
 
-void make_https_request(boost::asio::io_context& ioc, const std::string& url,
+void make_https_request(boost::asio::io_context& ioc, const std::string& host,
                         const std::shared_ptr<request_t>& req,
                         http_callback_t&& cb) {
 
     static boost::asio::ip::tcp::resolver resolver(ioc);
 
     constexpr char prefix[] = "https://";
-    std::string query = url;
+    std::string query = host;
 
-    if (url.find(prefix) == 0) {
+    if (host.find(prefix) == 0) {
         query.erase(0, sizeof(prefix) - 1);
     }
 
-    auto resolve_handler = [&ioc, req, query, cb = std::move(cb)](
+    auto resolve_handler = [&ioc, req, query, host, cb = std::move(cb)](
                                const boost::system::error_code& ec,
                                boost::asio::ip::tcp::resolver::results_type
                                    resolve_results) mutable {
@@ -78,7 +78,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& url,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), req, std::move(cb),
+            ioc, ctx, std::move(resolve_results), host.c_str(), req, std::move(cb),
             std::nullopt);
 
         session->start();
@@ -114,6 +114,7 @@ static std::string x509_to_string(X509* x509) {
 HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results,
+    const char* host,
     const std::shared_ptr<request_t>& req, http_callback_t&& cb,
     std::optional<std::string> sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
@@ -124,18 +125,19 @@ HttpsClientSession::HttpsClientSession(
 
     response_.body_limit(1024 * 1024 * 10); // 10 mb
 
-    static uint64_t connection_count = 0;
-    this->connection_idx = connection_count++;
-}
-
-void HttpsClientSession::start() {
     // Set SNI Hostname (many hosts need this to handshake successfully)
-    if (!SSL_set_tlsext_host_name(stream_.native_handle(), "service node")) {
+    if (!SSL_set_tlsext_host_name(stream_.native_handle(), host)) {
         boost::beast::error_code ec{static_cast<int>(::ERR_get_error()),
                                     boost::asio::error::get_ssl_category()};
         OXEN_LOG(critical, "{}", ec.message());
         return;
     }
+
+    static uint64_t connection_count = 0;
+    this->connection_idx = connection_count++;
+}
+
+void HttpsClientSession::start() {
     boost::asio::async_connect(
         stream_.next_layer(), resolve_results_,
         [this, self = shared_from_this()](boost::system::error_code ec,
