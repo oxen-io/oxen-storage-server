@@ -146,8 +146,8 @@ get_snode_map_from_swarms(const all_swarms_t& swarms) {
     return snode_map;
 }
 
-static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
-                              const all_swarms_t& other_swarms) {
+auto apply_ips(const all_swarms_t& swarms_to_keep,
+               const all_swarms_t& other_swarms) -> all_swarms_t {
 
     all_swarms_t result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
@@ -160,7 +160,7 @@ static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
             if (other_snode_it != other_snode_map.end()) {
                 const auto& other_snode = other_snode_it->second;
                 // Keep swarms_to_keep but don't overwrite with default IPs
-                if (snode.ip() == "0.0.0.0") {
+                if (other_snode.ip() != "0.0.0.0") {
                     snode.set_ip(other_snode.ip());
                     updates_count++;
                 }

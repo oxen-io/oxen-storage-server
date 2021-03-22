@@ -39,6 +39,12 @@ void debug_print(std::ostream& os, const block_update_t& bu);
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk);
 
+/// For every node in `swarms_to_keep`, this checks whether the node
+/// exists in incoming `other_swarms` and has updated IP address.
+/// If it does and the value is not "0.0.0.0", it updates the value that node.
+auto apply_ips(const all_swarms_t& swarms_to_keep,
+               const all_swarms_t& other_swarms) -> all_swarms_t;
+
 struct SwarmEvents {
 
     /// our (potentially new) swarm id
