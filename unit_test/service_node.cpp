@@ -62,6 +62,4 @@ BOOST_AUTO_TEST_CASE(updates_ip_address) {
     test_ip_update(ip1, default_ip, ip1);
 }
 
-// Check that default ip doesn't get overwritten by the default value (0.0.0.0)
-
 BOOST_AUTO_TEST_SUITE_END()

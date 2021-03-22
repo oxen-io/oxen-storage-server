@@ -158,10 +158,10 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
             const auto other_snode_it =
                 other_snode_map.find(snode.sn_address());
             if (other_snode_it != other_snode_map.end()) {
-                const auto& other_snode = other_snode_it->second;
+                const auto& new_ip = other_snode_it->second.ip();
                 // Keep swarms_to_keep but don't overwrite with default IPs
-                if (other_snode.ip() != "0.0.0.0") {
-                    snode.set_ip(other_snode.ip());
+                if (new_ip != "0.0.0.0" && snode.ip() != new_ip) {
+                    snode.set_ip(new_ip);
                     updates_count++;
                 }
             }
