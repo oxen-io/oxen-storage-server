@@ -68,6 +68,7 @@ class HttpsClientSession
     // Resolver and socket require an io_context
     HttpsClientSession(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                        tcp::resolver::results_type resolve_results,
+                       const char* host,
                        const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb,
                        std::optional<std::string> sn_pubkey_b32z);
