@@ -8,6 +8,7 @@ add_executable (Test
     signature.cpp
     rate_limiter.cpp
     command_line.cpp
+    service_node.cpp
 )
 
 target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)
