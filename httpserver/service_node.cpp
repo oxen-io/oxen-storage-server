@@ -107,7 +107,7 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
-constexpr std::chrono::minutes OXEND_PING_INTERVAL = 5min;
+constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
