@@ -7,8 +7,9 @@
 
 #include "https_client.h"
 
-#include <oxenmq/base64.h>
 #include <nlohmann/json.hpp>
+#include <openssl/sha.h>
+#include <oxenmq/base64.h>
 
 using nlohmann::json;
 
@@ -76,9 +77,34 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
                     ContentType::json};
 }
 
+std::string computeMessageHash(const std::string& timestamp,
+                               const std::string& ttl,
+                               const std::string& recipient,
+                               const std::string& data) {
+
+    std::string payload;
+    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
+                    data.size());
+    payload += timestamp;
+    payload += ttl;
+    payload += recipient;
+    payload += data;
+
+    uint8_t hashResult[SHA512_DIGEST_LENGTH];
+    // Initial hash
+    SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+        ss << std::setw(2) << static_cast<unsigned>(hashResult[i]);
+    auto messageHash = ss.str();
+
+    return messageHash;
+}
+
 Response RequestHandler::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
+    constexpr const char* fields[] = {"pubKey", "ttl", "timestamp",
                                       "data"};
 
     for (const auto& field : fields) {
@@ -92,7 +118,6 @@ Response RequestHandler::process_store(const json& params) {
     }
 
     const auto& ttl = params.at("ttl").get_ref<const std::string&>();
-    const auto& nonce = params.at("nonce").get_ref<const std::string&>();
     const auto& timestamp =
         params.at("timestamp").get_ref<const std::string&>();
     const auto& data = params.at("data").get_ref<const std::string&>();
@@ -136,29 +161,14 @@ Response RequestHandler::process_store(const json& params) {
                         "Timestamp error: check your clock\n"};
     }
 
-    // Do not store message if the PoW provided is invalid
-    std::string messageHash;
-
-    const bool valid_pow =
-        checkPoW(nonce, timestamp, ttl, pk.str(), data, messageHash,
-                 service_node_.get_curr_pow_difficulty());
-#ifndef DISABLE_POW
-    if (!valid_pow) {
-        OXEN_LOG(debug, "Forbidden. Invalid PoW nonce: {}", nonce);
-
-        json res_body;
-        res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
-
-        return Response{Status::INVALID_POW, res_body.dump(),
-                        ContentType::json};
-    }
-#endif
+    auto messageHash =
+        computeMessageHash(timestamp, ttl, pk.str(), data);
 
     bool success;
 
     try {
         const auto msg =
-            message_t{pk.str(), data, messageHash, ttlInt, timestampInt, nonce};
+            message_t{pk.str(), data, messageHash, ttlInt, timestampInt};
         success = service_node_.process_store(msg);
     } catch (std::exception e) {
         OXEN_LOG(critical,

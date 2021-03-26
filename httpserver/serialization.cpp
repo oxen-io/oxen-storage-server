@@ -174,17 +174,16 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         }
 
         /// Deserialize Nonce
-        auto nonce = deserialize_string(slice);
-        if (!nonce) {
-            OXEN_LOG(debug, "Could not deserialize nonce");
-            return {};
-        }
+        /// TODO: Nonce is unused. We don't strictly need to call this, but
+        /// I'm leaving this to be explicit about what is in the protocol.
+        /// If possible, would be good to remove it from the protocol.
+        auto unused_nonce = deserialize_string(slice);
 
         OXEN_LOG(trace, "Deserialized data: {}", *data);
 
         OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
 
-        result.push_back({*pk, *data, *hash, *ttl, *timestamp, *nonce});
+        result.push_back({*pk, *data, *hash, *ttl, *timestamp});
     }
 
     OXEN_LOG(trace, "=== END ===");

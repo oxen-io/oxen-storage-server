@@ -70,6 +70,12 @@ class Response {
 
 std::string to_string(const Response& res);
 
+/// Compute message's hash based on its constituents.
+std::string computeMessageHash(const std::string& timestamp,
+                               const std::string& ttl,
+                               const std::string& recipient,
+                               const std::string& data);
+
 class RequestHandler {
 
     ServiceNode& service_node_;

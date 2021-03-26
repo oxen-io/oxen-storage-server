@@ -28,7 +28,7 @@ add_subdirectory(../vendors/nlohmann_json nlohmann_json)
 target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
 
 target_link_libraries(httpserver_lib PUBLIC
-    common storage utils pow crypto
+    common storage utils crypto
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     oxenmq::oxenmq
