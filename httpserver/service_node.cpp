@@ -110,7 +110,7 @@ constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
 constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
-constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
+constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
     return build_post_request("/swarms/push_batch/v1", std::move(data));
