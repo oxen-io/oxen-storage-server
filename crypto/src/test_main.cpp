@@ -1,4 +1,5 @@
 #include "channel_encryption.hpp"
+#include "oxend_key.h"
 #include <iostream>
 #include <oxenmq/hex.h>
 
@@ -15,13 +16,11 @@ std::string printable(std::string_view in) {
 }
 
 int main() {
-    const std::vector<uint8_t> private_key{
-        114, 19,  233, 130, 59,  240, 42,  209, 251, 142, 29,
-        59,  200, 89,  234, 154, 202, 12,  29,  44,  180, 111,
-        36,  158, 126, 252, 198, 236, 141, 163, 95,  15};
-    ChannelEncryption<std::string> channel(private_key);
-    const std::string pubKey =
-        "86fe0345719904c47d9d3d24d742d110cab95f9386173057bd59f1c2249da174";
+    oxen::ChannelEncryption channel{oxen::x25519_seckey::from_hex(
+            "7213e9823bf02ad1fb8e1d3bc859ea9aca0c1d2cb46f249e7efcc6ec8da35f0f")};
+
+    auto pubKey = oxen::x25519_pubkey::from_hex(
+        "86fe0345719904c47d9d3d24d742d110cab95f9386173057bd59f1c2249da174");
     const std::string plainText = "params\":{\"pubKey\":"
                                   "\"0549b42c7600a25ab9800903630a57f157a1a0f771"
                                   "cac31df559eb13fc5cc0c813\"}}";

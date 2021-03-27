@@ -8,9 +8,9 @@
 #include <boost/endian/conversion.hpp>
 #include <boost/format.hpp>
 
-using oxen::storage::Item;
-
 namespace oxen {
+
+using storage::Item;
 
 template <typename T>
 static T deserialize_integer(std::string::const_iterator& it) {

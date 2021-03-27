@@ -3,9 +3,9 @@
 #include "Item.hpp"
 #include "oxen_common.h"
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
-#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -13,7 +13,6 @@
 
 struct sqlite3;
 struct sqlite3_stmt;
-class Timer;
 
 namespace oxen {
 

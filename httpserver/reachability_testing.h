@@ -1,79 +1,129 @@
 #pragma once
 
 #include "oxen_common.h"
+#include "oxend_key.h"
+#include "sn_record.h"
+
 #include <chrono>
+#include <queue>
+#include <random>
 #include <unordered_map>
-
-using namespace std::chrono_literals;
-
-constexpr std::chrono::seconds PING_PEERS_INTERVAL = 10s;
+#include <unordered_set>
+#include <vector>
 
 namespace oxen {
 
 namespace detail {
 
-/// TODO: make this class "private"?
-class reach_record_t {
-
-  public:
-    // The time the node failed for the first time
-    // (and hasn't come back online)
-    time_point_t first_failure;
-    time_point_t last_failure;
-    // whether it's been reported to Oxend
-    bool reported = false;
-
-    // whether reachable over http
-    bool http_ok = true;
-    // whether reachable over zmq
-    bool zmq_ok = true;
-
-    reach_record_t();
+// Returns std::greater on the std::get<N>(v)th element value.
+template <typename T, size_t N>
+struct nth_greater {
+    constexpr bool operator()(const T& lhs, const T& rhs) const {
+        return std::greater<std::tuple_element_t<N, T>>{}(
+                std::get<N>(lhs), std::get<N>(rhs));
+    }
 };
+
+struct incoming_test_state {
+    time_point_t last_test{};
+    time_point_t last_whine{};
+    bool was_failing = false;
+};
+
 } // namespace detail
 
-enum class ReachType { HTTP, ZMQ };
+class Swarm;
 
-enum class ReportType { GOOD, BAD };
+class reachability_testing {
+  public:
+    // How often we tick the timer to check whether we need to do any tests.
+    inline static constexpr auto TESTING_TIMER_INTERVAL = 50ms;
 
-class reachability_records_t {
+    // Distribution for the seconds between node tests: we throw in some randomness to avoid
+    // potential clustering of tests.  (Note that there is some granularity here as the test timer
+    // only runs every TESTING_TIMER_INTERVAL).
+    inline static thread_local std::normal_distribution<double> TESTING_INTERVAL{10.0, 3.0};
 
-    // TODO: sn_records are heavy (3 strings), so how about we only store the
-    // pubkey?
+    // The linear backoff after each consecutive test failure before we re-test.  Specifically we
+    // schedule the next re-test for (TESTING_BACKOFF*previous_failures) + TESTING_INTERVAL(rng).
+    inline static constexpr auto TESTING_BACKOFF = 10s;
 
-    // Nodes that failed the reachability test
-    // Note: I don't expect this list to be large, so
-    // `std::vector` is probably faster than `std::set` here
-    std::unordered_map<sn_pub_key_t, detail::reach_record_t> offline_nodes_;
+    // The upper bound for the re-test interval.
+    inline static constexpr auto TESTING_BACKOFF_MAX = 2min;
+
+    // The maximum number of nodes that we will re-test at once (i.e. per TESTING_TIMING_INTERVAL);
+    // mainly intended to throttle ourselves if, for instance, our own connectivity loss makes us
+    // accumulate tons of nodes to test all at once.  (Despite the random intervals, this can happen
+    // if we also get decommissioned during which we can't test at all but still have lots of
+    // failing nodes we want to test right away when we get recommissioned).
+    inline static constexpr int MAX_RETESTS_PER_TICK = 4;
+
+    // Maximum time without a ping before we start whining about it.
+    //
+    // We have a probability of about 0.368 of *not* getting pinged within a second ping interval
+    // (10s), and so the probability of not getting a ping for 2 minutes (i.e. 12 test spans) just
+    // because we haven't been selected is extremely small (0.0000061).  It also coincides nicely
+    // with blockchain time (i.e. two minutes) and our max testing backoff.
+    inline static constexpr auto MAX_TIME_WITHOUT_PING = 2min;
+
+    // How often we whine in the logs about being unreachable
+    inline static constexpr auto WHINING_INTERVAL = 2min;
+
+  private:
+
+    // Queue of pubkeys of service nodes to test; we pop off the back of this until the queue
+    // empties then we refill it with a shuffled list of all pubkeys then pull off of it until it is
+    // empty again, etc.
+    std::vector<legacy_pubkey> testing_queue;
+
+    // The next time for a general test
+    time_point_t next_general_test = time_point_t::min();
+
+    // Pubkeys, next test times, and sequential failure counts of service nodes that are currently
+    // in "failed" status along with the last time they failed; we retest them first after 10s then
+    // back off linearly by an additional 10s up to a max testing interval of 2m30s, until we get a
+    // successful response.
+    using FailingPK = std::tuple<legacy_pubkey, time_point_t, int>;
+    std::priority_queue<FailingPK, std::vector<FailingPK>, detail::nth_greater<FailingPK, 1>> failing_queue;
+    std::unordered_set<legacy_pubkey> failing;
+
+    // Track the last time *this node* was tested by other network nodes; used to detect and warn about
+    // possible network issues.
+    detail::incoming_test_state last_https;
+    detail::incoming_test_state last_omq;
 
   public:
-    // The time we were last tested and reached by some other node over lmq
-    time_point_t latest_incoming_lmq_;
-    // The time we were last tested and reached by some other node over http
-    time_point_t latest_incoming_http_;
 
-    // These will be set to `false` if we stop receiving lmq/http pings
-    bool lmq_ok = true;
-    bool http_ok = true;
+    // If it is time to perform another random test, this returns the next node to test from the
+    // testing queue and returns it, also updating the timer for the next test.  If it is not yet
+    // time, or if the queue is empty and cannot current be replenished, returns std::nullopt.  If
+    // the queue empties then this builds a new one by shuffling current public keys in the swarm's
+    // "all nodes" then starts using the new queue for this an subsequent calls.
+    //
+    // `requeue` is mainly for internal use: if false it avoids rebuilding the queue if we run
+    // out (and instead just return nullopt).
+    std::optional<sn_record_t> next_random(
+            const Swarm& swarm,
+            const time_point_t& now = std::chrono::steady_clock::now(),
+            bool requeue = true);
+
+    // Removes and returns up to MAX_RETESTS_PER_TICK nodes that are due to be tested (i.e.
+    // next-testing-time <= now).  Returns [snrecord, #previous-failures] for each.
+    std::vector<std::pair<sn_record_t, int>> get_failing(
+            const Swarm& swarm,
+            const time_point_t& now = std::chrono::steady_clock::now());
+
+    // Adds a bad node pubkey to the failing list, to be re-tested soon (with a backoff depending on
+    // `failures`; see TESTING_BACKOFF).  `previous_failures` should be the number of previous
+    // failures *before* this one, i.e. 0 for a random general test; or the failure count returned
+    // by `get_failing` for repeated failures.
+    void add_failing_node(const legacy_pubkey& pk, int previous_failures = 0);
+
+    // Called when this storage server receives an incoming HTTP or OMQ ping
+    void incoming_ping(bool omq, const time_point_t& now = std::chrono::steady_clock::now());
 
     // Check whether we received incoming pings recently
-    void check_incoming_tests(time_point_t reset_time);
-
-    // Records node as reachable/unreachable according to `val`
-    void record_reachable(const sn_pub_key_t& sn, ReachType type, bool val);
-
-    // return `true` if the node should be reported to Oxend as being
-    // reachable or unreachable for a long time depending on `type`
-    bool should_report_as(const sn_pub_key_t& sn, ReportType type);
-
-    // Expires a node, removing it from offline nodes.  Returns true if found
-    // and removed, false if it didn't exist.
-    bool expire(const sn_pub_key_t& sn);
-
-    void set_reported(const sn_pub_key_t& sn);
-
-    // Retrun the least recently tested node
-    std::optional<sn_pub_key_t> next_to_test();
+    void check_incoming_tests(const time_point_t& now = std::chrono::steady_clock::now());
 };
 
 } // namespace oxen

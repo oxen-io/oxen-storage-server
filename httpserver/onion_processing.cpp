@@ -56,8 +56,8 @@ auto process_inner_request(const CiphertextPlusJson& parsed,
 
         } else {
             // We fall back to forwarding a request to the next node
-            const auto& dest =
-                inner_json.at("destination").get_ref<const std::string&>();
+            const auto& dest = ed25519_pubkey::from_hex(
+                inner_json.at("destination").get_ref<const std::string&>());
             const auto& ekey =
                 inner_json.at("ephemeral_key").get_ref<const std::string&>();
 
@@ -72,9 +72,9 @@ auto process_inner_request(const CiphertextPlusJson& parsed,
 }
 
 static auto
-process_ciphertext_v2(const ChannelEncryption<std::string>& decryptor,
+process_ciphertext_v2(const ChannelEncryption& decryptor,
                       const std::string& ciphertext,
-                      const std::string& ephem_key) -> ParsedInfo {
+                      const x25519_pubkey& ephem_key) -> ParsedInfo {
     std::string plaintext;
 
     try {
@@ -142,7 +142,7 @@ static void relay_to_node(const ServiceNode& service_node,
     const auto& payload = info.ciphertext;
     const auto& ekey = info.ephemeral_key;
 
-    auto dest_node = service_node.find_node_by_ed25519_pk(dest);
+    auto dest_node = service_node.find_node(dest);
 
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
@@ -183,7 +183,7 @@ static void relay_to_node(const ServiceNode& service_node,
         cb(oxen::Response{make_status(data[0]), std::move(data[1])});
     };
 
-    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *dest_node, req_idx);
+    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", dest_node->pubkey_legacy, req_idx);
 
     if (v2) {
         service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
@@ -201,14 +201,15 @@ bool is_server_url_allowed(std::string_view url) {
            (url.find('?') == std::string::npos);
 }
 
+// FIXME: why is this method definition *here* instead of request_handler.cpp?
 void RequestHandler::process_onion_req(const std::string& ciphertext,
-                                       const std::string& ephem_key,
+                                       const x25519_pubkey& ephem_key,
                                        std::function<void(oxen::Response)> cb,
                                        bool v2) {
     if (!service_node_.snode_ready()) {
         auto msg =
             fmt::format("Snode not ready: {}",
-                        service_node_.own_address().pubkey_ed25519_hex());
+                        service_node_.own_address().pubkey_ed25519);
         cb(oxen::Response{Status::SERVICE_UNAVAILABLE, std::move(msg)});
         return;
     }

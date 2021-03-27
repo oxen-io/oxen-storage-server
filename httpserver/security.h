@@ -1,16 +1,15 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 
-#include <filesystem>
+#include "oxend_key.h"
 
 namespace oxen {
 
-struct oxend_key_pair_t;
-
 class Security {
   public:
-    Security(const oxend_key_pair_t& key_pair,
+    Security(const legacy_keypair& key_pair,
              const std::filesystem::path& base_path);
 
     std::string base64_sign(const std::string& body);
@@ -18,7 +17,7 @@ class Security {
     std::string get_cert_signature() const;
 
   private:
-    const oxend_key_pair_t& key_pair_;
+    const legacy_keypair& key_pair_;
     std::string cert_signature_;
     std::filesystem::path base_path_;
 };

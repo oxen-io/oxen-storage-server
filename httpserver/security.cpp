@@ -8,7 +8,7 @@
 #include <fstream>
 
 namespace oxen {
-Security::Security(const oxend_key_pair_t& key_pair,
+Security::Security(const legacy_keypair& key_pair,
                    const std::filesystem::path& base_path)
     : key_pair_(key_pair), base_path_(base_path) {}
 
@@ -23,7 +23,7 @@ std::string Security::base64_sign(const std::string& body) {
 }
 
 void Security::generate_cert_signature() {
-    std::ifstream file((base_path_ / "cert.pem").string());
+    std::ifstream file{base_path_ / "cert.pem"};
     if (!file.is_open()) {
         throw std::runtime_error("Could not find cert.pem");
     }

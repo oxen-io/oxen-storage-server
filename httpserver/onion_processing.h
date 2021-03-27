@@ -1,6 +1,8 @@
 #pragma once
 
+#include <string>
 #include <variant>
+#include "oxend_key.h"
 
 namespace oxen {
 
@@ -16,7 +18,7 @@ struct RelayToNodeInfo {
     // Key to be forwarded to next node for decryption
     std::string ephemeral_key;
     // Next node's ed25519 key
-    std::string next_node;
+    ed25519_pubkey next_node;
 };
 
 std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& p);

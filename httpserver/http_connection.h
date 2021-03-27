@@ -17,16 +17,16 @@
 
 #include "oxen_common.h"
 #include "oxend_key.h"
+#include "oxen_logger.h"
 #include "swarm.h"
 
-constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
-constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
-constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
-constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
-constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
+namespace oxen {
 
-template <typename T>
-class ChannelEncryption;
+inline constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
+inline constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
+inline constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
+inline constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
+inline constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
 class RateLimiter;
 
@@ -35,8 +35,6 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
-
-namespace oxen {
 
 std::shared_ptr<request_t> build_post_request(const char* target,
                                               std::string&& data);
@@ -255,7 +253,7 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     /// Process storage test request and repeat if necessary
     void process_storage_test_req(uint64_t height,
-                                  const std::string& tester_addr,
+                                  const legacy_pubkey& tester_addr,
                                   const std::string& msg_hash);
 
     void set_response(const Response& res);

@@ -1,24 +1,27 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
-#include <vector>
+#include <string_view>
 
-// Why is this even a template??
-template <typename T>
+#include "oxend_key.h"
+
+namespace oxen {
+
 class ChannelEncryption {
   public:
-    ChannelEncryption(const std::vector<uint8_t>& private_key);
-    ~ChannelEncryption() = default;
+    ChannelEncryption(x25519_seckey private_key)
+        : private_key_{std::move(private_key)} {}
 
-    T encrypt_cbc(const T& plainText, const std::string& pubKey) const;
+    std::string encrypt_cbc(std::string_view plainText, const x25519_pubkey& pubKey) const;
 
-    T encrypt_gcm(const T& plainText, const std::string& pubKey) const;
+    std::string encrypt_gcm(std::string_view plainText, const x25519_pubkey& pubKey) const;
 
-    T decrypt_cbc(const T& cipherText, const std::string& pubKey) const;
+    std::string decrypt_cbc(std::string_view cipherText, const x25519_pubkey& pubKey) const;
 
-    T decrypt_gcm(const T& cipherText, const std::string& pubKey) const;
+    std::string decrypt_gcm(std::string_view cipherText, const x25519_pubkey& pubKey) const;
 
   private:
-    const std::vector<uint8_t> private_key_;
+    const x25519_seckey private_key_;
 };
+
+}

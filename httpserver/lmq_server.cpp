@@ -19,16 +19,16 @@ std::string OxenmqServer::peer_lookup(std::string_view pubkey_bin) const {
 
     OXEN_LOG(trace, "[LMQ] Peer Lookup");
 
-    // TODO: don't create a new string here
-    std::optional<sn_record_t> sn =
-        this->service_node_->find_node_by_x25519_bin(std::string(pubkey_bin));
-
-    if (sn) {
-        return fmt::format("tcp://{}:{}", sn->ip(), sn->lmq_port());
-    } else {
-        OXEN_LOG(debug, "[LMQ] peer node not found {}!", pubkey_bin);
+    if (pubkey_bin.size() != sizeof(x25519_pubkey))
         return "";
-    }
+    x25519_pubkey pubkey;
+    std::memcpy(pubkey.data(), pubkey_bin.data(), sizeof(x25519_pubkey));
+
+    if (auto sn = service_node_->find_node(pubkey))
+        return fmt::format("tcp://{}:{}", sn->ip, sn->lmq_port);
+
+    OXEN_LOG(debug, "[LMQ] peer node not found via x25519 pubkey {}!", pubkey);
+    return "";
 }
 
 void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
@@ -54,6 +54,15 @@ void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
     message.send_reply();
 };
 
+static std::optional<x25519_pubkey> extract_x25519_from_hex(std::string_view hex) {
+    try {
+        return x25519_pubkey::from_hex(hex);
+    } catch (const std::exception& e) {
+        OXEN_LOG(warn, "Failed to decode client key: {}", e.what());
+    }
+    return std::nullopt;
+}
+
 void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
 
     OXEN_LOG(debug, "[LMQ] handle_sn_proxy_exit");
@@ -66,12 +75,12 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
         return;
     }
 
-    const auto& client_key = message.data[0];
+    auto client_key = extract_x25519_from_hex(message.data[0]);
+    if (!client_key) return;
     const auto& payload = message.data[1];
 
-    // TODO: accept string_view?
     request_handler_->process_proxy_exit(
-        std::string(client_key), std::string(payload),
+        *client_key, payload,
         [send=message.send_later()](oxen::Response res) {
             OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
 
@@ -105,7 +114,7 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
         // reply code here doesn't actually matter; the ping test only requires
         // that we provide *some* response).
         OXEN_LOG(debug, "Remote pinged me");
-        service_node_->update_last_ping(ReachType::ZMQ);
+        service_node_->update_last_ping(true /*omq*/);
         on_response(oxen::Response{Status::OK, "pong"});
         return;
     }
@@ -118,11 +127,12 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
         return;
     }
 
-    const auto& eph_key = message.data[0];
+    auto eph_key = extract_x25519_from_hex(message.data[0]);
+    if (!eph_key) return;
     const auto& ciphertext = message.data[1];
 
     request_handler_->process_onion_req(std::string(ciphertext),
-                                        std::string(eph_key), on_response, v2);
+                                        *eph_key, on_response, v2);
 }
 
 void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
@@ -171,28 +181,27 @@ static void logger(oxenmq::LogLevel level, const char* file, int line,
 #undef LMQ_LOG_MAP
 }
 
-template <size_t N>
-static std::string as_str(const std::array<uint8_t, N>& data) {
-    return {reinterpret_cast<const char*>(data.data()), data.size()};
-}
-
 OxenmqServer::OxenmqServer(
-        uint16_t port,
-        const oxend_key_pair_t& keypair,
-        const std::vector<std::string>& stats_access_keys_hex) :
-    omq_{as_str(keypair.public_key), as_str(keypair.private_key), true /*is service node*/,
-        [this](auto pk) { return peer_lookup(pk); }, /* SN-by-key lookup func */
-        logger, oxenmq::LogLevel::info}
+        const sn_record_t& me,
+        const x25519_seckey& privkey,
+        const std::vector<x25519_pubkey>& stats_access_keys) :
+    omq_{
+        std::string{me.pubkey_x25519.view()},
+        std::string{privkey.view()},
+        true, // is service node
+        [this](auto pk) { return peer_lookup(pk); }, // SN-by-key lookup func
+        logger,
+        oxenmq::LogLevel::info}
 {
-    for (const auto& key : stats_access_keys_hex)
-        stats_access_keys.insert(oxenmq::from_hex(key));
+    for (const auto& key : stats_access_keys)
+        stats_access_keys_.emplace(key.view());
 
-    OXEN_LOG(info, "OxenMQ is listenting on port {}", port);
+    OXEN_LOG(info, "OxenMQ is listenting on port {}", me.lmq_port);
 
     omq_.listen_curve(
-        fmt::format("tcp://0.0.0.0:{}", port),
+        fmt::format("tcp://0.0.0.0:{}", me.lmq_port),
         [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
-            return stats_access_keys.count(std::string{pk})
+            return stats_access_keys_.count(std::string{pk})
                 ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;
         });
 

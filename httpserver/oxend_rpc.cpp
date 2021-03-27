@@ -10,9 +10,7 @@
 
 namespace oxen {
 
-using namespace std::literals;
-
-oxend_keys get_sn_privkeys(std::string_view oxend_rpc_address) {
+oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
     oxenmq::OxenMQ omq;
     omq.start();
     constexpr auto retry_interval = 5s;
@@ -27,7 +25,7 @@ oxend_keys get_sn_privkeys(std::string_view oxend_rpc_address) {
             std::this_thread::sleep_until(next_try);
         last_try = now;
 
-        std::promise<oxend_keys> prom;
+        std::promise<oxend_seckeys> prom;
         auto fut = prom.get_future();
         auto conn = omq.connect_remote(oxend_rpc_address,
             [&omq, &prom](auto conn) {
@@ -41,17 +39,14 @@ oxend_keys get_sn_privkeys(std::string_view oxend_rpc_address) {
                             }
                             auto r = nlohmann::json::parse(data[1]);
 
-                            oxend_keys result;
-                            auto pk = r.at("service_node_privkey");
+                            auto pk = r.at("service_node_privkey").get<std::string>();
                             if (pk.empty())
                                 throw std::runtime_error{"main service node private key is empty; "
                                     "perhaps oxend is not running in service-node mode?"};
-                            std::get<0>(result) = oxendKeyFromHex(pk);
-                            std::get<1>(result) = private_key_ed25519_t::from_hex(
-                                    r.at("service_node_ed25519_privkey"));
-                            std::get<2>(result) = oxendKeyFromHex(
-                                    r.at("service_node_x25519_privkey"));
-                            prom.set_value(std::move(result));
+                            prom.set_value(oxend_seckeys{
+                                legacy_seckey::from_hex(pk),
+                                ed25519_seckey::from_hex(r.at("service_node_ed25519_privkey").get<std::string>()),
+                                x25519_seckey::from_hex(r.at("service_node_x25519_privkey").get<std::string>())});
                         } catch (...) {
                             prom.set_exception(std::current_exception());
                         }

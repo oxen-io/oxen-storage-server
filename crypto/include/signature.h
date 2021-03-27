@@ -14,16 +14,20 @@ using ec_scalar = std::array<uint8_t, EC_SCALAR_SIZE>;
 
 struct signature {
     ec_scalar c, r;
+
+    // Decodes a base64 signature into a `signature`.  Throws on invalid input.
+    static signature from_base64(std::string_view b64);
 };
 
 hash hash_data(const std::string& data);
 
+// Generates a not-proper-Ed25519 Monero signature for the given legacy monero pubkey.
+// TODO: start using proper Ed25519 signatures instead.
 signature generate_signature(const hash& prefix_hash,
-                             const oxend_key_pair_t& key_pair);
+        const legacy_keypair& keys);
 
-bool check_signature(const std::string& signature, const hash& hash,
-                     const std::string& public_key_t_b32z);
+// Verifies the not-proper-Ed25519 Monero signature against the given public key
 bool check_signature(const signature& sig, const hash& prefix_hash,
-                     const public_key_t& pub);
+                     const legacy_pubkey& pub);
 
 } // namespace oxen

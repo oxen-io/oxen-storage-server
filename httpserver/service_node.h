@@ -19,17 +19,15 @@
 #include "stats.h"
 #include "swarm.h"
 
-static constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
-static constexpr int STORAGE_SERVER_HARDFORK = 12;
-static constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
-static constexpr int OXENMQ_ONION_HARDFORK = 15;
-
-class Database;
-
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
 
 namespace oxen {
+
+inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
+inline constexpr int STORAGE_SERVER_HARDFORK = 12;
+inline constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
+inline constexpr int OXENMQ_ONION_HARDFORK = 15;
 
 namespace storage {
 struct Item;
@@ -93,7 +91,6 @@ enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
-    using pub_key_t = std::string;
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
@@ -110,7 +107,8 @@ class ServiceNode {
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
-    sn_record_t our_address_;
+    const sn_record_t our_address_;
+    const legacy_seckey our_seckey_;
 
     /// Cache for block_height/block_hash mapping
     boost::circular_buffer<std::pair<uint64_t, std::string>>
@@ -125,8 +123,6 @@ class ServiceNode {
     /// Used to periodially send messages from relay_buffer_
     boost::asio::steady_timer relay_timer_;
 
-    oxen::oxend_key_pair_t oxend_key_pair_;
-
     // Need to make sure we only use this to get OxenMQ object and
     // not call any method that would in turn call a method in SN
     // causing a deadlock
@@ -134,7 +130,7 @@ class ServiceNode {
 
     bool force_start_ = false;
 
-    reachability_records_t reach_records_;
+    reachability_testing reach_records_;
 
     /// Container for recently received messages directly from
     /// clients;
@@ -194,16 +190,10 @@ class ServiceNode {
     void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
                                const storage::Item& item);
 
-    /// Report `sn` to Oxend as unreachable
-    void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
-
     void process_storage_test_response(const sn_record_t& testee,
                                        const storage::Item& item,
                                        uint64_t test_height,
                                        sn_response_t&& res);
-
-    void process_reach_test_result(const sn_pub_key_t& pk, ReachType type,
-                                   bool success);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -211,24 +201,27 @@ class ServiceNode {
     // Select a random message from our database, return false on error
     bool select_random_message(storage::Item& item); // mutex not needed
 
-    // Ping some node and record its reachability
-    void test_reachability(const sn_record_t& sn); // mutex not needed
+    // Initiate node ping tests
+    void test_reachability(const sn_record_t& sn, int previous_failures);
+
+    // Reports node reachability result to oxend and, if a failure, queues the node for retesting.
+    void report_reachability(const sn_record_t& sn, bool reachable, int previous_failures);
 
     void sign_request(std::shared_ptr<request_t>& req) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
-                uint16_t port, uint16_t omq_port,
+                sn_record_t address,
+                const legacy_seckey& skey,
                 OxenmqServer& omq_server,
-                const oxen::oxend_key_pair_t& key_pair,
-                const std::string& ed25519hex, const std::string& db_location,
-                const bool force_start);
+                const std::string& db_location,
+                bool force_start);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record_t& own_address() { return our_address_; }
 
-    // Record the time of our last being tested over omq/http
-    void update_last_ping(ReachType type);
+    // Record the time of our last being tested over omq/https
+    void update_last_ping(bool omq);
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later
@@ -262,15 +255,13 @@ class ServiceNode {
 
     // Attempt to find an answer (message body) to the storage test
     MessageTestStatus process_storage_test_req(uint64_t blk_height,
-                                               const std::string& tester_addr,
+                                               const legacy_pubkey& tester_addr,
                                                const std::string& msg_hash,
                                                std::string& answer);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
     std::vector<sn_record_t> get_snodes_by_pk(const user_pubkey_t& pk);
-
-    bool is_snode_address_known(const std::string&);
 
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(std::vector<storage::Item>& all_entries) const;
@@ -285,11 +276,14 @@ class ServiceNode {
 
     std::string get_status_line() const;
 
+    template <typename PubKey>
     std::optional<sn_record_t>
-    find_node_by_x25519_bin(const sn_pub_key_t& address) const;
-
-    std::optional<sn_record_t>
-    find_node_by_ed25519_pk(const std::string& pk) const;
+    find_node(const PubKey& pk) const {
+        std::lock_guard guard{sn_mutex_};
+        if (swarm_)
+            return swarm_->find_node(pk);
+        return std::nullopt;
+    }
 
     // Called once we have established the initial connection to our local oxend to set up initial
     // data and timers that rely on an oxend connection.

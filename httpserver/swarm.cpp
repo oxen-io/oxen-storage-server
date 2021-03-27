@@ -4,8 +4,8 @@
 
 #include "service_node.h"
 
+#include <cstdlib>
 #include <ostream>
-#include <stdlib.h>
 #include <unordered_map>
 
 #include "utils.hpp"
@@ -134,13 +134,12 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     cur_swarm_id_ = sid;
 }
 
-static std::unordered_map<std::string, sn_record_t>
-get_snode_map_from_swarms(const all_swarms_t& swarms) {
+static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
 
-    std::unordered_map<std::string, sn_record_t> snode_map;
+    std::unordered_map<legacy_pubkey, sn_record_t> snode_map;
     for (const auto& swarm : swarms) {
         for (const auto& snode : swarm.snodes) {
-            snode_map.insert({snode.sn_address(), snode});
+            snode_map.emplace(snode.pubkey_legacy, snode);
         }
     }
     return snode_map;
@@ -153,15 +152,15 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
 
     int updates_count = 0;
-    for (auto& swarm : result_swarms) {
-        for (auto& snode : swarm.snodes) {
+    for (auto& [swarm_id, snodes] : result_swarms) {
+        for (auto& snode : snodes) {
             const auto other_snode_it =
-                other_snode_map.find(snode.sn_address());
+                other_snode_map.find(snode.pubkey_legacy);
             if (other_snode_it != other_snode_map.end()) {
-                const auto& new_ip = other_snode_it->second.ip();
+                const auto& new_ip = other_snode_it->second.ip;
                 // Keep swarms_to_keep but don't overwrite with default IPs
-                if (new_ip != "0.0.0.0" && snode.ip() != new_ip) {
-                    snode.set_ip(new_ip);
+                if (new_ip != "0.0.0.0" && snode.ip != new_ip) {
+                    snode.ip = new_ip;
                     updates_count++;
                 }
             }
@@ -192,7 +191,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
         }
 
         for (const sn_record_t& sn : events.new_snodes) {
-            OXEN_LOG(info, "EVENT: detected new SN: {}", sn);
+            OXEN_LOG(info, "EVENT: detected new SN: {}", sn.pubkey_legacy);
         }
 
         for (swarm_id_t swarm : events.new_swarms) {
@@ -219,73 +218,43 @@ void Swarm::update_state(const all_swarms_t& swarms,
 
     // Store a copy of every node in a separate data structure
     all_funded_nodes_.clear();
+    all_funded_ed25519_.clear();
+    all_funded_x25519_.clear();
 
     for (const auto& si : swarms) {
         for (const auto& sn : si.snodes) {
-            all_funded_nodes_.push_back(sn);
+            all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
         }
     }
 
     for (const auto& sn : decommissioned) {
-        all_funded_nodes_.push_back(sn);
+        all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
+    }
+
+    for (const auto& [pk, sn] : all_funded_nodes_) {
+        all_funded_ed25519_.emplace(sn.pubkey_ed25519, pk);
+        all_funded_x25519_.emplace(sn.pubkey_x25519, pk);
     }
 }
 
-std::optional<sn_record_t> Swarm::choose_funded_node() const {
-
-    if (all_funded_nodes_.empty())
-        return std::nullopt;
-
-    const auto idx =
-        util::uniform_distribution_portable(all_funded_nodes_.size());
-
-    // Note: this can return our own node which should be fine
-    return all_funded_nodes_[idx];
-}
-
-std::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.port() == port) {
-            return sn;
-        }
-    }
-
+std::optional<sn_record_t>
+Swarm::find_node(const legacy_pubkey& pk) const {
+    if (auto it = all_funded_nodes_.find(pk); it != all_funded_nodes_.end())
+        return it->second;
     return std::nullopt;
 }
 
 std::optional<sn_record_t>
-Swarm::find_node_by_ed25519_pk(const std::string& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pubkey_ed25519_hex() == pk) {
-            return sn;
-        }
-    }
-
+Swarm::find_node(const ed25519_pubkey& pk) const {
+    if (auto it = all_funded_ed25519_.find(pk); it != all_funded_ed25519_.end())
+        return find_node(it->second);
     return std::nullopt;
 }
 
 std::optional<sn_record_t>
-Swarm::find_node_by_x25519_bin(const std::string& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pubkey_x25519_bin() == pk) {
-            return sn;
-        }
-    }
-
-    return std::nullopt;
-}
-
-std::optional<sn_record_t> Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pub_key_base32z() == pk) {
-            return sn;
-        }
-    }
-
+Swarm::find_node(const x25519_pubkey& pk) const {
+    if (auto it = all_funded_x25519_.find(pk); it != all_funded_x25519_.end())
+        return find_node(it->second);
     return std::nullopt;
 }
 
@@ -313,14 +282,6 @@ bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
     /// TODO: Make sure no exceptions bubble up from here!
     return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk);
-}
-
-bool Swarm::is_fully_funded_node(const std::string& sn_address) const {
-
-    return std::any_of(all_funded_nodes_.begin(), all_funded_nodes_.end(),
-                       [&sn_address](const sn_record_t& sn) {
-                           return sn.sn_address() == sn_address;
-                       });
 }
 
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
@@ -381,10 +342,6 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
     }
 
     return cur_best;
-}
-
-const std::vector<sn_record_t>& Swarm::other_nodes() const {
-    return swarm_peers_;
 }
 
 } // namespace oxen
