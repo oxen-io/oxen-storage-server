@@ -1,6 +1,6 @@
 #include "https_client.h"
-#include "oxen_logger.h"
 #include "net_stats.h"
+#include "oxen_logger.h"
 #include "signature.h"
 
 #include <boost/algorithm/string/erase.hpp>
@@ -10,11 +10,11 @@ namespace oxen {
 
 using error_code = boost::system::error_code;
 
-void make_https_request(boost::asio::io_context& ioc,
-                        const std::string& sn_address, uint16_t port,
-                        const std::string& sn_pubkey_b32z,
-                        const std::shared_ptr<request_t>& req,
-                        http_callback_t&& cb) {
+void make_https_request_to_sn(boost::asio::io_context& ioc,
+                              const std::string& sn_address, uint16_t port,
+                              const std::string& sn_pubkey_b32z,
+                              const std::shared_ptr<request_t>& req,
+                              http_callback_t&& cb) {
 
     error_code ec;
     boost::asio::ip::tcp::resolver resolver(ioc);
@@ -45,14 +45,14 @@ void make_https_request(boost::asio::io_context& ioc,
     static ssl::context ctx{ssl::context::tlsv12_client};
 
     auto session = std::make_shared<HttpsClientSession>(
-        ioc, ctx, std::move(resolve_results), "service-node", req, std::move(cb),
-        sn_pubkey_b32z);
+        ioc, ctx, std::move(resolve_results), "service-node", req,
+        std::move(cb), sn_pubkey_b32z);
 
     session->start();
 }
 
 void make_https_request(boost::asio::io_context& ioc, const std::string& host,
-                        const std::shared_ptr<request_t>& req,
+                        uint16_t port, const std::shared_ptr<request_t>& req,
                         http_callback_t&& cb) {
 
     static boost::asio::ip::tcp::resolver resolver(ioc);
@@ -78,16 +78,14 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& host,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), host.c_str(), req, std::move(cb),
-            std::nullopt);
+            ioc, ctx, std::move(resolve_results), host.c_str(), req,
+            std::move(cb), std::nullopt);
 
         session->start();
     };
 
-    constexpr char https_port[] = "443";
-
     resolver.async_resolve(
-        query, https_port,
+        query, std::to_string(port),
         boost::asio::ip::tcp::resolver::query::numeric_service,
         resolve_handler);
 }
@@ -113,8 +111,7 @@ static std::string x509_to_string(X509* x509) {
 
 HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
-    tcp::resolver::results_type resolve_results,
-    const char* host,
+    tcp::resolver::results_type resolve_results, const char* host,
     const std::shared_ptr<request_t>& req, http_callback_t&& cb,
     std::optional<std::string> sn_pubkey_b32z)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
@@ -255,7 +252,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     OXEN_LOG(trace, "Successfully received {} bytes", bytes_transferred);
 
-    const auto &response = response_.get();
+    const auto& response = response_.get();
 
     if (!ec || (ec == http::error::end_of_stream)) {
 
@@ -267,11 +264,13 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
                 trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
             } else {
                 auto body = std::make_shared<std::string>(response.body());
-                trigger_callback(SNodeError::NO_ERROR, std::move(body), response);
+                trigger_callback(SNodeError::NO_ERROR, std::move(body),
+                                 response);
             }
 
         } else {
-            OXEN_LOG(debug, "ERROR OTHER: [{}] {}", response.result_int(), response.body());
+            OXEN_LOG(debug, "ERROR OTHER: [{}] {}", response.result_int(),
+                     response.body());
             trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
         }
 

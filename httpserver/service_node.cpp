@@ -5,19 +5,19 @@
 #include "http_connection.h"
 #include "https_client.h"
 #include "lmq_server.h"
+#include "net_stats.h"
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
-#include "net_stats.h"
 #include "serialization.h"
 #include "signature.h"
 #include "utils.hpp"
 #include "version.h"
+#include <nlohmann/json.hpp>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 #include <oxenmq/oxenmq.h>
-#include <nlohmann/json.hpp>
 
 #include "request_handler.h"
 
@@ -47,8 +47,8 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key_base32z(), req,
-                       std::move(cb));
+    make_https_request_to_sn(ioc, sn.ip(), sn.port(), sn.pub_key_base32z(), req,
+                             std::move(cb));
 }
 
 FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
@@ -165,14 +165,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
       lmq_server_(lmq_server), oxend_client_(oxend_client),
       force_start_(force_start) {
 
-    const auto addr = oxenmq::to_base32z(
-            oxend_key_pair_.public_key.begin(),
-            oxend_key_pair_.public_key.end());
+    const auto addr = oxenmq::to_base32z(oxend_key_pair_.public_key.begin(),
+                                         oxend_key_pair_.public_key.end());
     OXEN_LOG(info, "Our loki address: {}", addr);
 
-    const auto pk_hex = oxenmq::to_hex(
-            oxend_key_pair_.public_key.begin(),
-            oxend_key_pair_.public_key.end());
+    const auto pk_hex = oxenmq::to_hex(oxend_key_pair_.public_key.begin(),
+                                       oxend_key_pair_.public_key.end());
 
     // TODO: get rid of "unused" fields
     our_address_ = sn_record_t(port, lmq_server.port(), addr, pk_hex, "unused",
@@ -192,7 +190,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     oxend_ping_timer_tick();
     cleanup_timer_tick();
 
-    ping_peers_tick();
+    // ping_peers_tick();
 
     worker_thread_ = std::thread([this]() { worker_ioc_.run(); });
     boost::asio::post(worker_ioc_, [this]() {
@@ -953,17 +951,17 @@ void ServiceNode::test_reachability(const sn_record_t& sn) {
     OXEN_LOG(debug, "Testing node for reachability over LMQ: {}", sn);
 
     // test lmq port:
-    lmq_server_->request(sn.pubkey_x25519_bin(), "sn.onion_req",
-                         [this, sn](bool success, const auto&) {
-                             OXEN_LOG(debug,
-                                      "Got success={} testing response from {}",
-                                      success, sn.pubkey_x25519_hex());
-                             this->process_reach_test_result(
-                                 sn.pub_key_base32z(), ReachType::ZMQ, success);
-                         },
-                         "ping",
-                         // Only use an existing (or new) outgoing connection:
-                         oxenmq::send_option::outgoing{});
+    lmq_server_->request(
+        sn.pubkey_x25519_bin(), "sn.onion_req",
+        [this, sn](bool success, const auto&) {
+            OXEN_LOG(debug, "Got success={} testing response from {}", success,
+                     sn.pubkey_x25519_hex());
+            this->process_reach_test_result(sn.pub_key_base32z(),
+                                            ReachType::ZMQ, success);
+        },
+        "ping",
+        // Only use an existing (or new) outgoing connection:
+        oxenmq::send_option::outgoing{});
 }
 
 void ServiceNode::oxend_ping_timer_tick() {

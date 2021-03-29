@@ -508,8 +508,9 @@ void RequestHandler::process_proxy_exit(
 }
 
 void RequestHandler::process_onion_to_url(
-    const std::string& host, const std::string& target,
-    const std::string& payload, std::function<void(oxen::Response)> cb) {
+    const std::string& protocol, const std::string& host, uint16_t port,
+    const std::string& target, const std::string& payload,
+    std::function<void(oxen::Response)> cb) {
 
     // TODO: investigate if the use of a shared pointer is necessary
     auto req = std::make_shared<request_t>();
@@ -531,7 +532,11 @@ void RequestHandler::process_onion_to_url(
         }
     };
 
-    make_https_request(ioc_, host, req, http_cb);
+    if (protocol != "https") {
+        make_http_request(ioc_, host, port, req, http_cb);
+    } else {
+        make_https_request(ioc_, host, port, req, http_cb);
+    }
 }
 
 } // namespace oxen

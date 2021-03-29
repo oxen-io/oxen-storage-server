@@ -9,6 +9,7 @@ add_executable (Test
     rate_limiter.cpp
     command_line.cpp
     service_node.cpp
+    onion_requests.cpp
 )
 
 target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)
