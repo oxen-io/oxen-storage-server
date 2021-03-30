@@ -13,6 +13,7 @@
 // needed for proxy requests
 #include "https_client.h"
 
+#include "ip_utils.h"
 #include "onion_processing.h"
 #include "request_handler.h"
 
@@ -64,9 +65,9 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb) {
 
-    static tcp::resolver resolver(ioc);
+    auto resolver = std::make_shared<tcp::resolver>(ioc);
 
-    auto resolve_handler = [&ioc, address, port, req, cb = std::move(cb)](
+    auto resolve_handler = [&ioc, address, port, req, resolver, cb = std::move(cb)](
                                const boost::system::error_code& ec,
                                boost::asio::ip::tcp::resolver::results_type
                                    resolve_results) mutable {
@@ -79,13 +80,27 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
 
         tcp::endpoint endpoint;
 
+        bool resolved = false;
+
         while (resolve_results != tcp::resolver::iterator()) {
             const tcp::endpoint ep = (resolve_results++)->endpoint();
-            if (!ep.address().is_v4()) {
+
+#ifndef INTEGRATION_TEST
+            if (!ep.address().is_v4() || is_ip_public(ep.address().to_v4())) {
                 continue;
             }
+#endif
             endpoint = ep;
+            resolved = true;
+            break;
         }
+
+        if (!resolved) {
+            OXEN_LOG(error, "[HTTP] DNS resulution error for {}", address);
+            cb({SNodeError::ERROR_OTHER});
+            return;
+        }
+
         endpoint.port(port);
 
         auto session = std::make_shared<HttpClientSession>(ioc, endpoint, req,
@@ -94,7 +109,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
         session->start();
     };
 
-    resolver.async_resolve(
+    resolver->async_resolve(
         address, std::to_string(port),
         boost::asio::ip::tcp::resolver::query::numeric_service,
         resolve_handler);

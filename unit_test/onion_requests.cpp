@@ -26,7 +26,7 @@ BOOST_AUTO_TEST_CASE(final_destination) {
         ciphertext
     };
 
-    BOOST_CHECK_EQUAL(std::holds_alternative<FinalDestinationInfo>(res), true);
+    BOOST_REQUIRE(std::holds_alternative<FinalDestinationInfo>(res));
     BOOST_CHECK_EQUAL(*std::get_if<FinalDestinationInfo>(&res), expected);
 
 }
@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(relay_to_server_legacy) {
         "target"
     };
 
-    BOOST_CHECK_EQUAL(std::holds_alternative<RelayToServerInfo>(res), true);
+    BOOST_REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
     BOOST_CHECK_EQUAL(*std::get_if<RelayToServerInfo>(&res), expected);
 
 }
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(relay_to_server) {
         "target"
     };
 
-    BOOST_CHECK_EQUAL(std::holds_alternative<RelayToServerInfo>(res), true);
+    BOOST_REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
     BOOST_CHECK_EQUAL(*std::get_if<RelayToServerInfo>(&res), expected);
 
 }
@@ -109,7 +109,7 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
         "destination"
     };
 
-    BOOST_CHECK_EQUAL(std::holds_alternative<RelayToNodeInfo>(res), true);
+    BOOST_REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));
     BOOST_CHECK_EQUAL(*std::get_if<RelayToNodeInfo>(&res), expected);
 
 }

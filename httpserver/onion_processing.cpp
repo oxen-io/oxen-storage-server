@@ -8,6 +8,8 @@
 
 #include "onion_processing.h"
 
+#include "utils.hpp"
+
 #include <charconv>
 #include <variant>
 
@@ -244,7 +246,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         const auto& target = info->target;
 
         // Forward the request to url but only if it ends in `/lsrpc`
-        if ((target.rfind("/lsrpc") == target.size() - 6) &&
+        if ((util::ends_with(target, "/lsrpc")) &&
             (target.find('?') == std::string::npos)) {
             this->process_onion_to_url(info->protocol, info->host, info->port,
                                        target, info->payload, std::move(cb));
@@ -292,8 +294,9 @@ auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson {
         throw std::exception();
     }
 
-    const auto b1 = reinterpret_cast<const uint32_t&>(*it);
-    const auto n = boost::endian::little_to_native(b1);
+    uint32_t n;
+    std::memcpy(&n, payload.data(), sizeof(uint32_t));
+    boost::endian::little_to_native_inplace(n);
 
     OXEN_LOG(trace, "Ciphertext length: {}", n);
 

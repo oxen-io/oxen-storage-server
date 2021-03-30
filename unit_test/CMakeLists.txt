@@ -10,6 +10,7 @@ add_executable (Test
     command_line.cpp
     service_node.cpp
     onion_requests.cpp
+    ip_utils.cpp
 )
 
 target_link_libraries(Test PRIVATE common storage pow utils crypto httpserver_lib)

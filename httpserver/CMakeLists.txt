@@ -19,6 +19,7 @@ add_library(httpserver_lib STATIC
     lmq_server.cpp
     request_handler.cpp
     onion_processing.cpp
+    ip_utils.cpp
     )
 
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
