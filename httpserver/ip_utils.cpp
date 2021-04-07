@@ -60,8 +60,6 @@ bool is_ip_public(boost::asio::ip::address_v4 addr) {
 
   uint32_t bytes = addr.to_ulong();
 
-  boost::endian::native_to_little_inplace(bytes);
-
   return is_ip_public_inner(bytes);
 
 }
