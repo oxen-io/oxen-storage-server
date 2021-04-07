@@ -1,12 +1,10 @@
 #pragma once
 
-#include <algorithm>
-#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <random>
-#include <stdint.h>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 namespace util {
 
@@ -43,5 +41,7 @@ inline bool ends_with(std::string_view str, std::string_view suffix) {
 inline bool starts_with(std::string_view str, std::string_view prefix) {
   return str.substr(0, prefix.size()) == prefix;
 }
+
+std::optional<std::filesystem::path> get_home_dir();
 
 } // namespace util

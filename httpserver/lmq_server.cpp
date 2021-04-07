@@ -4,11 +4,11 @@
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
+#include "oxenmq/connections.h"
 #include "request_handler.h"
 #include "service_node.h"
 
 #include <oxenmq/hex.h>
-#include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 
 #include <optional>
@@ -79,13 +79,13 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
             OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
 
             if (res.status() == Status::OK) {
-                this->oxenmq_->send(origin_pk, "REPLY", reply_tag,
+                omq_.send(origin_pk, "REPLY", reply_tag,
                                     res.message());
 
             } else {
                 // We reply with 2 messages which will be treated as
                 // an error (rather than timeout)
-                this->oxenmq_->send(origin_pk, "REPLY", reply_tag,
+                omq_.send(origin_pk, "REPLY", reply_tag,
                                     fmt::format("{}", res.status()),
                                     res.message());
                 OXEN_LOG(debug, "Error: status is not OK for proxy_exit: {}",
@@ -107,7 +107,7 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
-        oxenmq_->send(origin_pk, "REPLY", reply_tag, std::move(status),
+        omq_.send(origin_pk, "REPLY", reply_tag, std::move(status),
                       res.message());
     };
 
@@ -165,79 +165,96 @@ void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
     message.send_reply(payload);
 }
 
-void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh,
-                        const oxend_key_pair_t& keypair,
-                        const std::vector<std::string>& stats_access_keys) {
-
-    using oxenmq::Allow;
-
-    service_node_ = sn;
-    request_handler_ = rh;
-
-    for (const auto& key : stats_access_keys) {
-        this->stats_access_keys.push_back(oxenmq::from_hex(key));
-    }
-
-    auto pubkey = key_to_string(keypair.public_key);
-    auto seckey = key_to_string(keypair.private_key);
-
-    auto logger = [](oxenmq::LogLevel level, const char* file, int line,
-                     std::string message) {
+static void logger(oxenmq::LogLevel level, const char* file, int line,
+        std::string message) {
 #define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
     case oxenmq::LogLevel::LMQ_LVL:                                            \
         OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
         break;
-        switch (level) {
-            LMQ_LOG_MAP(fatal, critical);
-            LMQ_LOG_MAP(error, error);
-            LMQ_LOG_MAP(warn, warn);
-            LMQ_LOG_MAP(info, info);
-            LMQ_LOG_MAP(trace, trace);
-        default:
-            OXEN_LOG(debug, "[{}:{}]: {}", file, line, message);
-        };
+
+    switch (level) {
+        LMQ_LOG_MAP(fatal, critical);
+        LMQ_LOG_MAP(error, error);
+        LMQ_LOG_MAP(warn, warn);
+        LMQ_LOG_MAP(info, info);
+        LMQ_LOG_MAP(trace, trace);
+        LMQ_LOG_MAP(debug, debug);
+    }
 #undef LMQ_LOG_MAP
-    };
+}
 
-    auto lookup_fn = [this](auto pk) { return this->peer_lookup(pk); };
+template <size_t N>
+static std::string as_str(const std::array<uint8_t, N>& data) {
+    return {reinterpret_cast<const char*>(data.data()), data.size()};
+}
 
-    oxenmq_.reset(new OxenMQ{pubkey, seckey, true /* is service node */,
-                             lookup_fn, logger});
+OxenmqServer::OxenmqServer(
+        uint16_t port,
+        const oxend_key_pair_t& keypair,
+        const std::vector<std::string>& stats_access_keys_hex) :
+    omq_{as_str(keypair.public_key), as_str(keypair.private_key), true /*is service node*/,
+        [this](auto pk) { return peer_lookup(pk); }, /* SN-by-key lookup func */
+        logger, oxenmq::LogLevel::info}
+{
+    for (const auto& key : stats_access_keys_hex)
+        stats_access_keys.insert(oxenmq::from_hex(key));
 
-    OXEN_LOG(info, "OxenMQ is listenting on port {}", port_);
+    OXEN_LOG(info, "OxenMQ is listenting on port {}", port);
 
-    oxenmq_->log_level(oxenmq::LogLevel::info);
+    omq_.listen_curve(
+        fmt::format("tcp://0.0.0.0:{}", port),
+        [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
+            return stats_access_keys.count(std::string{pk})
+                ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;
+        });
+
     // clang-format off
-    oxenmq_->add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false})
+    omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false})
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
         .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m, false); })
         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
 
-    oxenmq_->add_category("service", oxenmq::AuthLevel::admin)
+    omq_.add_category("service", oxenmq::AuthLevel::admin)
         .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
         .add_request_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
 
-    // clang-format on
-    oxenmq_->set_general_threads(1);
-
-    oxenmq_->listen_curve(
-        fmt::format("tcp://0.0.0.0:{}", port_),
-        [this](std::string_view /*ip*/, std::string_view pk, bool /*sn*/) {
-            const auto& keys = this->stats_access_keys;
-            const auto it = std::find(keys.begin(), keys.end(), pk);
-            return it == keys.end() ? oxenmq::AuthLevel::none
-                                    : oxenmq::AuthLevel::admin;
+    // We send a sub.block to oxend to tell it to push new block notifications to us via this
+    // endpoint:
+    omq_.add_category("notify", oxenmq::AuthLevel::admin)
+        .add_request_command("block", [this](auto& m) {
+            OXEN_LOG(debug, "Recieved new block notification from oxend, updating swarms");
+            if (service_node_) service_node_->update_swarms();
         });
 
-    oxenmq_->MAX_MSG_SIZE =
-        10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+    // clang-format on
+    omq_.set_general_threads(1);
 
-    oxenmq_->start();
+    omq_.MAX_MSG_SIZE =
+        10 * 1024 * 1024; // 10 MB (needed by the fileserver)
 }
 
-OxenmqServer::OxenmqServer(uint16_t port) : port_(port){};
-OxenmqServer::~OxenmqServer() = default;
+void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
+    // Establish our persistent connection to oxend.
+    auto success = [this](auto&&) {
+        OXEN_LOG(info, "connection to oxend established");
+        service_node_->on_oxend_connected();
+    };
+    oxend_conn_ = omq_.connect_remote(oxend_rpc, success,
+        [this, oxend_rpc](auto&&, std::string_view reason) {
+            OXEN_LOG(warn, "failed to connect to local oxend @ {}: {}; retrying", oxend_rpc, reason);
+            connect_oxend(oxend_rpc);
+        },
+        oxenmq::AuthLevel::admin);
+}
+
+void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxend_rpc) {
+    assert(!service_node_);
+    service_node_ = sn;
+    request_handler_ = rh;
+    omq_.start();
+    connect_oxend(oxend_rpc);
+}
 
 } // namespace oxen

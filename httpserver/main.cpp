@@ -3,6 +3,7 @@
 #include "http_connection.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
+#include "oxend_rpc.h"
 #include "rate_limiter.h"
 #include "security.h"
 #include "service_node.h"
@@ -14,6 +15,7 @@
 #include "request_handler.h"
 
 #include <sodium.h>
+#include <oxenmq/oxenmq.h>
 #include <oxenmq/hex.h>
 
 #include <cstdlib>
@@ -21,27 +23,16 @@
 #include <iostream>
 #include <vector>
 
-#ifdef ENABLE_SYSTEMD
 extern "C" {
+#include <sys/types.h>
+#include <pwd.h>
+
+#ifdef ENABLE_SYSTEMD
 #include <systemd/sd-daemon.h>
-}
 #endif
+}
 
 namespace fs = std::filesystem;
-
-static std::optional<fs::path> get_home_dir() {
-
-    /// TODO: support default dir for Windows
-#ifdef WIN32
-    return std::nullopt;
-#endif
-
-    char* pszHome = getenv("HOME");
-    if (pszHome == NULL || strlen(pszHome) == 0)
-        return std::nullopt;
-
-    return fs::u8path(pszHome);
-}
 
 #ifdef ENABLE_SYSTEMD
 static void systemd_watchdog_tick(boost::asio::steady_timer& timer,
@@ -82,12 +73,12 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.data_dir.empty()) {
-        if (auto home_dir = get_home_dir()) {
+        if (auto home_dir = util::get_home_dir()) {
             if (options.testnet) {
                 options.data_dir =
-                    (*home_dir / ".oxen" / "testnet" / "storage").string();
+                    (*home_dir / ".oxen" / "testnet" / "storage").u8string();
             } else {
-                options.data_dir = (*home_dir / ".oxen" / "storage").string();
+                options.data_dir = (*home_dir / ".oxen" / "storage").u8string();
             }
         }
     }
@@ -121,17 +112,10 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    if (options.port == options.oxend_rpc_port) {
-        OXEN_LOG(error, "Storage server port must be different from that of "
-                        "Oxend! Terminating.");
-        exit(EXIT_INVALID_PORT);
-    }
-
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
     OXEN_LOG(info, "Setting database location to {}", options.data_dir);
-    OXEN_LOG(info, "Setting Oxend RPC to {}:{}", options.oxend_rpc_ip,
-             options.oxend_rpc_port);
-    OXEN_LOG(info, "Https server is listening at {}:{}", options.ip,
+    OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
+    OXEN_LOG(info, "HTTPS server is listening at {}:{}", options.ip,
              options.port);
     OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
              options.lmq_port);
@@ -160,28 +144,23 @@ int main(int argc, char* argv[]) {
 
     try {
 
-        auto oxend_client = oxen::OxendClient(ioc, options.oxend_rpc_ip,
-                                              options.oxend_rpc_port);
 
+#ifndef INTEGRATION_TEST
+        const auto [private_key, private_key_ed25519, private_key_x25519] =
+            oxen::get_sn_privkeys(options.oxend_omq_rpc);
+#else
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
         // command line option:
-        oxen::private_key_t private_key;
-        oxen::private_key_ed25519_t private_key_ed25519; // Unused at the moment
-        oxen::private_key_t private_key_x25519;
-#ifndef INTEGRATION_TEST
-        std::tie(private_key, private_key_ed25519, private_key_x25519) =
-            oxend_client.wait_for_privkey();
-#else
-        private_key = oxen::oxendKeyFromHex(options.oxend_key);
+        const auto private_key = oxen::oxendKeyFromHex(options.oxend_key);
         OXEN_LOG(info, "OXEND LEGACY KEY: {}", options.oxend_key);
 
-        private_key_x25519 = oxen::oxendKeyFromHex(options.oxend_x25519_key);
+        const auto private_key_x25519 = oxen::oxendKeyFromHex(options.oxend_x25519_key);
         OXEN_LOG(info, "x25519 SECRET KEY: {}", options.oxend_x25519_key);
 
-        private_key_ed25519 =
+        // Unused at the moment:
+        const auto private_key_ed25519 =
             oxen::private_key_ed25519_t::from_hex(options.oxend_ed25519_key);
-
         OXEN_LOG(info, "ed25519 SECRET KEY: {}", options.oxend_ed25519_key);
 #endif
 
@@ -220,19 +199,19 @@ int main(int argc, char* argv[]) {
         // We pass port early because we want to send it in the first ping to
         // Oxend (in ServiceNode's constructor), but don't want to initialize
         // the rest of lmq server before we have a reference to ServiceNode
-        oxen::OxenmqServer oxenmq_server(options.lmq_port);
+        oxen::OxenmqServer oxenmq_server{options.lmq_port,
+                oxend_key_pair_x25519, options.stats_access_keys};
 
         // TODO: SN doesn't need oxenmq_server, just the lmq components
-        oxen::ServiceNode service_node(ioc, worker_ioc, options.port,
+        oxen::ServiceNode service_node(ioc, worker_ioc, options.port, options.lmq_port,
                                        oxenmq_server, oxend_key_pair,
                                        pubkey_ed25519_hex, options.data_dir,
-                                       oxend_client, options.force_start);
+                                       options.force_start);
 
-        oxen::RequestHandler request_handler(ioc, service_node, oxend_client,
-                                             channel_encryption);
+        oxen::RequestHandler request_handler(ioc, service_node, channel_encryption);
 
         oxenmq_server.init(&service_node, &request_handler,
-                           oxend_key_pair_x25519, options.stats_access_keys);
+                oxenmq::address{options.oxend_omq_rpc});
 
         RateLimiter rate_limiter;
 

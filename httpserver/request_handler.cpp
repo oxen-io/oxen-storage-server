@@ -1,6 +1,7 @@
 #include "request_handler.h"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
+#include "lmq_server.h"
 #include "oxen_logger.h"
 #include "service_node.h"
 #include "utils.hpp"
@@ -33,10 +34,8 @@ std::string to_string(const Response& res) {
 }
 
 RequestHandler::RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                               const OxendClient& oxend_client,
                                const ChannelEncryption<std::string>& ce)
-    : ioc_(ioc), service_node_(sn), oxend_client_(oxend_client),
-      channel_cipher_(ce) {}
+    : ioc_(ioc), service_node_(sn), channel_cipher_(ce) {}
 
 static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 
@@ -407,23 +406,24 @@ void RequestHandler::process_lns_request(
     array.push_back(entry);
     params["entries"] = array;
 
-    // this should not be called "sn response"
-    auto on_oxend_res = [cb = std::move(cb)](sn_response_t sn) {
-        if (sn.error_code == SNodeError::NO_ERROR && sn.body) {
-            cb({Status::OK, *sn.body});
-        } else {
-            cb({Status::BAD_REQUEST, "unknown oxend error"});
-        }
-    };
-
 #ifdef INTEGRATION_TEST
     // use mainnet seed
-    oxend_client_.make_custom_oxend_request("public.loki.foundation", 22023,
-                                            "lns_names_to_owners", params,
-                                            std::move(on_oxend_res));
+    oxend_json_rpc_request(ioc_, "public.loki.foundation", 22023,
+        "lns_names_to_owners", params,
+        [cb = std::move(cb)](sn_response_t sn) {
+            if (sn.error_code == SNodeError::NO_ERROR && sn.body)
+                cb({Status::OK, *sn.body});
+            else
+                cb({Status::BAD_REQUEST, "unknown oxend error"});
+        });
 #else
-    oxend_client_.make_oxend_request("lns_names_to_owners", params,
-                                     std::move(on_oxend_res));
+    service_node_.omq_server().oxend_request("rpc.lns_names_to_owners",
+            [cb = std::move(cb)](bool success, auto&& data) {
+                if (success && !data.empty())
+                    cb({Status::OK, data.front()});
+                else
+                    cb({Status::BAD_REQUEST, "unknown oxend error"});
+            });
 #endif
 }
 
