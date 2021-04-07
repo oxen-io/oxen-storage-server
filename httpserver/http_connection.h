@@ -80,16 +80,6 @@ OStream& operator<<(OStream& os, const sn_response_t& res) {
     return os << "(" << (res.body ? *res.body : "n/a") << ")";
 }
 
-struct blockchain_test_answer_t {
-    uint64_t res_height;
-};
-
-/// Blockchain test parameters
-struct bc_test_params_t {
-    uint64_t max_height;
-    uint64_t seed;
-};
-
 using http_callback_t = std::function<void(sn_response_t)>;
 
 class OxendClient {
@@ -286,10 +276,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void process_storage_test_req(uint64_t height,
                                   const std::string& tester_addr,
                                   const std::string& msg_hash);
-
-    void process_blockchain_test_req(uint64_t height,
-                                     const std::string& tester_pk,
-                                     bc_test_params_t params);
 
     void set_response(const Response& res);
 

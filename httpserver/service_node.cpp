@@ -938,46 +938,6 @@ void ServiceNode::oxend_ping_timer_tick() {
         boost::bind(&ServiceNode::oxend_ping_timer_tick, this));
 }
 
-void ServiceNode::perform_blockchain_test(
-    bc_test_params_t test_params,
-    std::function<void(blockchain_test_answer_t)>&& cb) const {
-
-    std::lock_guard guard(sn_mutex_);
-
-    OXEN_LOG(debug, "Delegating blockchain test to Oxend");
-
-    nlohmann::json params;
-
-    params["max_height"] = test_params.max_height;
-    params["seed"] = test_params.seed;
-
-    auto on_resp = [cb = std::move(cb)](const sn_response_t& resp) {
-        if (resp.error_code != SNodeError::NO_ERROR || !resp.body) {
-            OXEN_LOG(critical, "Could not send blockchain request to Oxend");
-            return;
-        }
-
-        const json body = json::parse(*resp.body, nullptr, false);
-
-        if (body.is_discarded()) {
-            OXEN_LOG(critical, "Bad Oxend rpc response: invalid json");
-            return;
-        }
-
-        try {
-            auto result = body.at("result");
-            uint64_t height = result.at("res_height").get<uint64_t>();
-
-            cb(blockchain_test_answer_t{height});
-
-        } catch (...) {
-        }
-    };
-
-    oxend_client_.make_oxend_request("perform_blockchain_test", params,
-                                     std::move(on_resp));
-}
-
 void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
                                    const signature& sig) const {
 
@@ -1089,30 +1049,6 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                     });
 }
 
-void ServiceNode::send_blockchain_test_req(const sn_record_t& testee,
-                                           bc_test_params_t params,
-                                           uint64_t test_height,
-                                           blockchain_test_answer_t answer) {
-
-    // Used as a callback to needs a mutex even if it is private
-    std::lock_guard guard(sn_mutex_);
-
-    nlohmann::json json_body;
-
-    json_body["max_height"] = params.max_height;
-    json_body["seed"] = params.seed;
-    json_body["height"] = test_height;
-
-    auto req =
-        build_post_request("/swarms/blockchain_test/v1", json_body.dump());
-    this->sign_request(req);
-
-    make_sn_request(ioc_, testee, req,
-                    std::bind(&ServiceNode::process_blockchain_test_response,
-                              this, std::placeholders::_1, answer, testee,
-                              this->block_height_));
-}
-
 void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
                                            bool reachable) {
 
@@ -1209,45 +1145,6 @@ void ServiceNode::process_reach_test_result(const sn_pub_key_t& pk,
             this->report_node_reachability(pk, false);
         }
     }
-}
-
-void ServiceNode::process_blockchain_test_response(
-    sn_response_t&& res, blockchain_test_answer_t our_answer,
-    sn_record_t testee, uint64_t bc_height) {
-
-    std::lock_guard guard(sn_mutex_);
-
-    OXEN_LOG(debug,
-             "Processing blockchain test response from: {} at height: {}",
-             testee, bc_height);
-
-    ResultType result = ResultType::OTHER;
-
-    if (res.error_code == SNodeError::NO_ERROR && res.body) {
-
-        try {
-
-            const json body = json::parse(*res.body, nullptr, true);
-            uint64_t their_height = body.at("res_height").get<uint64_t>();
-
-            if (our_answer.res_height == their_height) {
-                result = ResultType::OK;
-                OXEN_LOG(debug, "Success.");
-            } else {
-                result = ResultType::MISMATCH;
-                OXEN_LOG(debug, "Failed: incorrect answer.");
-            }
-
-        } catch (...) {
-            OXEN_LOG(debug, "Failed: could not find answer in json.");
-        }
-
-    } else {
-        OXEN_LOG(debug, "Failed to send a blockchain test request to snode: {}",
-                 testee);
-    }
-
-    this->all_stats_.record_blockchain_test_result(testee, result);
 }
 
 // Deterministically selects two random swarm members; returns true on success
@@ -1435,37 +1332,6 @@ void ServiceNode::initiate_peer_test() {
             this->send_storage_test_req(testee, test_height, item);
         }
     }
-
-    // Note: might consider choosing a different tester/testee pair for
-    // different types of tests as to spread out the computations
-
-    /// 3. Blockchain Testing
-    {
-
-        // Distance between two consecutive checkpoints,
-        // should be in sync with oxend
-        constexpr uint64_t CHECKPOINT_DISTANCE = 4;
-        // We can be confident that blockchain data won't
-        // change if we go this many blocks back
-        constexpr uint64_t SAFETY_BUFFER_BLOCKS = CHECKPOINT_DISTANCE * 3;
-
-        if (block_height_ <= SAFETY_BUFFER_BLOCKS) {
-            OXEN_LOG(debug,
-                     "Blockchain too short, skipping blockchain testing.");
-            return;
-        }
-
-        bc_test_params_t params;
-        params.max_height = block_height_ - SAFETY_BUFFER_BLOCKS;
-        params.seed = util::rng()();
-
-        auto callback =
-            std::bind(&ServiceNode::send_blockchain_test_req, this, testee,
-                      params, test_height, std::placeholders::_1);
-
-        /// Compute your own answer, then initiate a test request
-        this->perform_blockchain_test(params, callback);
-    }
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
@@ -1648,7 +1514,6 @@ static nlohmann::json to_json(const all_stats_t& stats) {
         peers[pubkey]["requests_failed"] = kv.second.requests_failed;
         peers[pubkey]["pushes_failed"] = kv.second.requests_failed;
         peers[pubkey]["storage_tests"] = kv.second.storage_tests;
-        peers[pubkey]["blockchain_tests"] = kv.second.blockchain_tests;
     }
 
     json["peers"] = peers;

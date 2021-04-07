@@ -40,8 +40,6 @@ struct Item;
 } // namespace storage
 
 struct sn_response_t;
-struct blockchain_test_answer_t;
-struct bc_test_params_t;
 
 class OxendClient;
 class OxenmqServer;
@@ -206,10 +204,6 @@ class ServiceNode {
     void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
                                const storage::Item& item);
 
-    void send_blockchain_test_req(const sn_record_t& testee,
-                                  bc_test_params_t params, uint64_t test_height,
-                                  blockchain_test_answer_t answer);
-
     /// Report `sn` to Oxend as unreachable
     void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
 
@@ -220,12 +214,6 @@ class ServiceNode {
 
     void process_reach_test_result(const sn_pub_key_t& pk, ReachType type,
                                    bool success);
-
-    /// From a peer
-    void process_blockchain_test_response(sn_response_t&& res,
-                                          blockchain_test_answer_t our_answer,
-                                          sn_record_t testee,
-                                          uint64_t bc_height);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -283,11 +271,6 @@ class ServiceNode {
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
-
-    /// request blockchain test from a peer
-    void perform_blockchain_test(
-        bc_test_params_t params,
-        std::function<void(blockchain_test_answer_t)>&& cb) const;
 
     // Attempt to find an answer (message body) to the storage test
     MessageTestStatus process_storage_test_req(uint64_t blk_height,

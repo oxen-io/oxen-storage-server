@@ -31,7 +31,6 @@ void all_stats_t::cleanup() {
         const sn_record_t& sn = kv.first;
 
         cleanup_old(peer_report_[sn].storage_tests, cutoff);
-        cleanup_old(peer_report_[sn].blockchain_tests, cutoff);
     }
 
     /// updated stats for "previous period"

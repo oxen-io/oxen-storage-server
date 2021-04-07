@@ -532,30 +532,6 @@ void connection_t::process_storage_test_req(uint64_t height,
     }
 }
 
-void connection_t::process_blockchain_test_req(uint64_t,
-                                               const std::string& tester_pk,
-                                               bc_test_params_t params) {
-
-    // Note: `height` can be 0, which is the default value for old SS, allowed
-    // pre HF13
-
-    OXEN_LOG(debug, "Performing blockchain test");
-
-    auto callback = [this](blockchain_test_answer_t answer) {
-        this->response_.result(http::status::ok);
-
-        nlohmann::json json_res;
-        json_res["res_height"] = answer.res_height;
-
-        this->body_stream_ << json_res.dump();
-        this->write_response();
-    };
-
-    /// TODO: this should first check if tester/testee are correct! (use
-    /// `height`)
-    service_node_.perform_blockchain_test(params, std::move(callback));
-}
-
 void connection_t::process_onion_req_v2() {
 
     OXEN_LOG(debug, "Processing an onion request from client (v2)");
@@ -654,49 +630,6 @@ void connection_t::process_swarm_req(std::string_view target) {
         } else {
             OXEN_LOG(debug, "Ignoring test request, no pubkey present");
         }
-    } else if (target == "/swarms/blockchain_test/v1") {
-        OXEN_LOG(debug, "Got blockchain test request");
-
-        using nlohmann::json;
-
-        const json body = json::parse(req.body(), nullptr, false);
-
-        if (body.is_discarded()) {
-            OXEN_LOG(debug, "Bad snode test request: invalid json");
-            response_.result(http::status::bad_request);
-            return;
-        }
-
-        bc_test_params_t params;
-
-        // Height that should be used to check derive tester/testee
-        uint64_t height = 0;
-
-        try {
-            params.max_height = body.at("max_height").get<uint64_t>();
-            params.seed = body.at("seed").get<uint64_t>();
-
-            if (body.find("height") != body.end()) {
-                height = body.at("height").get<uint64_t>();
-            } else {
-                OXEN_LOG(debug, "No tester height, defaulting to {}", height);
-            }
-        } catch (...) {
-            response_.result(http::status::bad_request);
-            OXEN_LOG(debug, "Bad snode test request: missing fields in json");
-            return;
-        }
-
-        /// TODO: only check pubkey field once (in validate snode req)
-        const auto it = header_.find(OXEN_SENDER_SNODE_PUBKEY_HEADER);
-        if (it != header_.end()) {
-            const std::string& tester_pk = it->second;
-            delay_response_ = true;
-            this->process_blockchain_test_req(height, tester_pk, params);
-        } else {
-            OXEN_LOG(debug, "Ignoring test request, no pubkey present");
-        }
-
     } else if (target == "/swarms/ping_test/v1") {
         OXEN_LOG(trace, "Received ping_test");
         service_node_.update_last_ping(ReachType::HTTP);
