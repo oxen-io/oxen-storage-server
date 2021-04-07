@@ -21,8 +21,6 @@
 
 #include "request_handler.h"
 
-#include "dns_text_records.h"
-
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -108,7 +106,6 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
 constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
-constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
@@ -120,8 +117,8 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          OxendClient& oxend_client, const bool force_start)
     : ioc_(ioc), worker_ioc_(worker_ioc), oxend_client_(oxend_client),
       db_(std::make_unique<Database>(ioc, db_location)),
-      check_version_timer_(worker_ioc), swarm_update_timer_(ioc),
-      oxend_ping_timer_(ioc), stats_cleanup_timer_(ioc), peer_ping_timer_(ioc),
+      swarm_update_timer_(ioc), oxend_ping_timer_(ioc),
+      stats_cleanup_timer_(ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), oxend_key_pair_(oxend_key_pair),
       lmq_server_(lmq_server), force_start_(force_start) {
 
@@ -151,9 +148,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     cleanup_timer_tick();
 
     // ping_peers_tick();
-
-    boost::asio::post(worker_ioc_,
-                      [this]() { this->check_version_timer_tick(); });
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
@@ -690,15 +684,6 @@ void ServiceNode::relay_buffered_messages() {
 
     this->relay_messages(relay_buffer_, swarm_->other_nodes());
     relay_buffer_.clear();
-}
-
-void ServiceNode::check_version_timer_tick() {
-
-    check_version_timer_.expires_after(VERSION_CHECK_INTERVAL);
-    check_version_timer_.async_wait(
-        std::bind(&ServiceNode::check_version_timer_tick, this));
-
-    dns::check_latest_version();
 }
 
 void ServiceNode::swarm_timer_tick() {

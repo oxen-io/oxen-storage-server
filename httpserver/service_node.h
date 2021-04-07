@@ -123,8 +123,6 @@ class ServiceNode {
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
 
-    boost::asio::steady_timer check_version_timer_;
-
     boost::asio::steady_timer swarm_update_timer_;
 
     boost::asio::steady_timer oxend_ping_timer_;
@@ -196,9 +194,6 @@ class ServiceNode {
     void ping_peers_tick();
 
     void relay_buffered_messages();
-
-    /// Check the latest version from DNS text record
-    void check_version_timer_tick(); // mutex not needed
 
     /// Ping the storage server periodically as required for uptime proofs
     void oxend_ping_timer_tick();

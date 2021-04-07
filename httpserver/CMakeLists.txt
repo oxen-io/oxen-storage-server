@@ -14,7 +14,6 @@ add_library(httpserver_lib STATIC
     stats.cpp
     security.cpp
     command_line.cpp
-    dns_text_records.cpp
     reachability_testing.cpp
     lmq_server.cpp
     request_handler.cpp
