@@ -70,13 +70,18 @@ class Response {
 
 std::string to_string(const Response& res);
 
+/// Compute message's hash based on its constituents.
+std::string computeMessageHash(const std::string& timestamp,
+                               const std::string& ttl,
+                               const std::string& recipient,
+                               const std::string& data);
+
 class RequestHandler {
 
+    boost::asio::io_context& ioc_;
     ServiceNode& service_node_;
     const OxendClient& oxend_client_;
     const ChannelEncryption<std::string>& channel_cipher_;
-
-    boost::asio::io_context& ioc_;
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
