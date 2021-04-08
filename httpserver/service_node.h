@@ -98,7 +98,6 @@ class ServiceNode {
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
-    boost::asio::io_context& worker_ioc_;
 
     bool syncing_ = true;
     bool active_ = true;
@@ -220,13 +219,11 @@ class ServiceNode {
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
-                boost::asio::io_context& worker_ioc, uint16_t port, uint16_t omq_port,
+                uint16_t port, uint16_t omq_port,
                 OxenmqServer& omq_server,
                 const oxen::oxend_key_pair_t& key_pair,
                 const std::string& ed25519hex, const std::string& db_location,
                 const bool force_start);
-
-    ~ServiceNode();
 
     // Return info about this node as it is advertised to other nodes
     const sn_record_t& own_address() { return our_address_; }

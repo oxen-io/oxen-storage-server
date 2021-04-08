@@ -121,7 +121,6 @@ int main(int argc, char* argv[]) {
              options.lmq_port);
 
     boost::asio::io_context ioc{1};
-    boost::asio::io_context worker_ioc{1};
 
     if (sodium_init() != 0) {
         OXEN_LOG(error, "Could not initialize libsodium");
@@ -203,7 +202,7 @@ int main(int argc, char* argv[]) {
                 oxend_key_pair_x25519, options.stats_access_keys};
 
         // TODO: SN doesn't need oxenmq_server, just the lmq components
-        oxen::ServiceNode service_node(ioc, worker_ioc, options.port, options.lmq_port,
+        oxen::ServiceNode service_node(ioc, options.port, options.lmq_port,
                                        oxenmq_server, oxend_key_pair,
                                        pubkey_ed25519_hex, options.data_dir,
                                        options.force_start);

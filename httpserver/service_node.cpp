@@ -104,7 +104,6 @@ constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
-                         boost::asio::io_context& worker_ioc,
                          uint16_t port,
                          uint16_t lmq_port,
                          OxenmqServer& lmq_server,
@@ -112,7 +111,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          const std::string& ed25519hex,
                          const std::string& db_location,
                          const bool force_start)
-    : ioc_(ioc), worker_ioc_(worker_ioc),
+    : ioc_(ioc),
       db_(std::make_unique<Database>(ioc, db_location)),
       oxend_ping_timer_(ioc),
       stats_cleanup_timer_(ioc), peer_ping_timer_(ioc),
@@ -375,8 +374,6 @@ bool ServiceNode::snode_ready(std::string* reason) {
 
     return ready || force_start_;
 }
-
-ServiceNode::~ServiceNode() { worker_ioc_.stop(); };
 
 void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
                                       const std::string& payload,
