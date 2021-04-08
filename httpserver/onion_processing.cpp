@@ -194,6 +194,13 @@ static void relay_to_node(const ServiceNode& service_node,
     }
 }
 
+bool is_server_url_allowed(std::string_view url) {
+    return (util::starts_with(url, "/loki/") ||
+            util::starts_with(url, "/oxen/")) &&
+           util::ends_with(url, "/lsrpc") &&
+           (url.find('?') == std::string::npos);
+}
+
 void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        const std::string& ephem_key,
                                        std::function<void(oxen::Response)> cb,
@@ -217,7 +224,8 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
             process_ciphertext_v2(this->channel_cipher_, ciphertext, ephem_key);
     } else {
         OXEN_LOG(warn, "onion requests v1 are no longer supported");
-        cb(oxen::Response{Status::BAD_REQUEST, "onion requests v2 not supported"});
+        cb(oxen::Response{Status::BAD_REQUEST,
+                          "onion requests v1 not supported"});
         return;
     }
 
@@ -246,8 +254,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         const auto& target = info->target;
 
         // Forward the request to url but only if it ends in `/lsrpc`
-        if ((util::ends_with(target, "/lsrpc")) &&
-            (target.find('?') == std::string::npos)) {
+        if (is_server_url_allowed(target)) {
             this->process_onion_to_url(info->protocol, info->host, info->port,
                                        target, info->payload, std::move(cb));
 

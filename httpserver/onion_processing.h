@@ -66,4 +66,6 @@ auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
 auto process_inner_request(const CiphertextPlusJson& parsed,
                            std::string plaintext) -> ParsedInfo;
 
+bool is_server_url_allowed(std::string_view url);
+
 } // namespace oxen
