@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
 #include <oxenmq/base64.h>
+#include <oxenmq/hex.h>
 
 using nlohmann::json;
 
@@ -81,25 +82,14 @@ std::string computeMessageHash(const std::string& timestamp,
                                const std::string& ttl,
                                const std::string& recipient,
                                const std::string& data) {
+    SHA512_CTX ctx;
+    SHA512_Init(&ctx);
+    for (const auto* s : {&timestamp, &ttl, &recipient, &data})
+        SHA512_Update(&ctx, s->data(), s->size());
 
-    std::string payload;
-    payload.reserve(timestamp.size() + ttl.size() + recipient.size() +
-                    data.size());
-    payload += timestamp;
-    payload += ttl;
-    payload += recipient;
-    payload += data;
-
-    uint8_t hashResult[SHA512_DIGEST_LENGTH];
-    // Initial hash
-    SHA512((const unsigned char*)payload.data(), payload.size(), hashResult);
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
-        ss << std::setw(2) << static_cast<unsigned>(hashResult[i]);
-    auto messageHash = ss.str();
-
-    return messageHash;
+    unsigned char hashResult[SHA512_DIGEST_LENGTH];
+    SHA512_Final(hashResult, &ctx);
+    return oxenmq::to_hex(std::begin(hashResult), std::end(hashResult));
 }
 
 Response RequestHandler::process_store(const json& params) {
@@ -170,7 +160,7 @@ Response RequestHandler::process_store(const json& params) {
         const auto msg =
             message_t{pk.str(), data, messageHash, ttlInt, timestampInt};
         success = service_node_.process_store(msg);
-    } catch (std::exception e) {
+    } catch (const std::exception& e) {
         OXEN_LOG(critical,
                  "Internal Server Error. Could not store message for {}",
                  obfuscate_pubkey(pk.str()));
@@ -188,7 +178,9 @@ Response RequestHandler::process_store(const json& params) {
              obfuscate_pubkey(pk.str()));
 
     json res_body;
-    res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
+    /// NOTE: difficulty is not longer used by modern clients, but
+    /// we send this to avoid breaking older clients.
+    res_body["difficulty"] = 1;
 
     return Response{Status::OK, res_body.dump(), ContentType::json};
 }

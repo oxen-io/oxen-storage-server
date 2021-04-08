@@ -16,11 +16,11 @@
 #include "request_handler.h"
 
 #include <boost/endian/conversion.hpp>
-#include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <openssl/sha.h>
 #include <sodium.h>
 #include <sstream>
@@ -288,10 +288,9 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                            RequestHandler& rh, RateLimiter& rate_limiter,
                            const Security& security)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
-      stream_(socket_, ssl_ctx_), service_node_(sn), request_handler_(rh),
-      rate_limiter_(rate_limiter), repeat_timer_(ioc),
-      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt},
-      security_(security) {
+      stream_(socket_, ssl_ctx_), security_(security), service_node_(sn),
+      request_handler_(rh), rate_limiter_(rate_limiter), repeat_timer_(ioc),
+      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt} {
 
     static uint64_t instance_counter = 0;
     conn_idx = instance_counter++;
@@ -534,13 +533,6 @@ void connection_t::process_blockchain_test_req(uint64_t,
     service_node_.perform_blockchain_test(params, std::move(callback));
 }
 
-static void print_headers(const request_t& req) {
-    OXEN_LOG(info, "HEADERS:");
-    for (const auto& field : req) {
-        OXEN_LOG(info, "    [{}]: {}", field.name_string(), field.value());
-    }
-}
-
 void connection_t::process_onion_req_v2() {
 
     OXEN_LOG(debug, "Processing an onion request from client (v2)");
@@ -652,10 +644,6 @@ void connection_t::process_proxy_req() {
     service_node_.record_proxy_request();
 
     const request_t& req = this->request_.get();
-
-#ifdef INTEGRATION_TEST
-    // print_headers(req);
-#endif
 
     if (!parse_header(OXEN_SENDER_KEY_HEADER, OXEN_TARGET_SNODE_KEY)) {
         OXEN_LOG(debug, "Missing headers for a proxy request");
@@ -802,7 +790,7 @@ void connection_t::process_file_proxy_req() {
     req->prepare_payload();
 
     for (auto& el : headers_json.items()) {
-        req->insert(el.key(), (std::string) el.value());
+        req->insert(el.key(), (std::string)el.value());
     }
 
     auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
@@ -840,12 +828,7 @@ void connection_t::process_swarm_req(std::string_view target) {
 
     response_.set(OXEN_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
-    if (target == "/swarms/push_batch/v1") {
-
-        response_.result(http::status::ok);
-        service_node_.process_push_batch(req.body());
-
-    } else if (target == "/swarms/storage_test/v1") {
+    if (target == "/swarms/storage_test/v1") {
 
         /// Set to "bad request" by default
         response_.result(http::status::bad_request);
@@ -1095,7 +1078,8 @@ void connection_t::write_response() {
         this->response_modifier_(response_);
     }
 
-    response_.set(http::field::content_length, std::to_string(response_.body().size()));
+    response_.set(http::field::content_length,
+                  std::to_string(response_.body().size()));
 
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much

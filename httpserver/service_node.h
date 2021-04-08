@@ -106,7 +106,6 @@ class ServiceNode {
     boost::asio::io_context& ioc_;
     boost::asio::io_context& worker_ioc_;
 
-    bool force_start_ = false;
     bool syncing_ = true;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
@@ -143,6 +142,8 @@ class ServiceNode {
     // not call any method that would in turn call a method in SN
     // causing a deadlock
     OxenmqServer& lmq_server_;
+
+    bool force_start_ = false;
 
     reachability_records_t reach_records_;
 
@@ -307,9 +308,6 @@ class ServiceNode {
 
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(std::vector<storage::Item>& all_entries) const;
-
-    // Return the current PoW difficulty
-    int get_curr_pow_difficulty() const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<storage::Item>& items);

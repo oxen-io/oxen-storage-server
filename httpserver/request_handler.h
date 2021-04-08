@@ -78,11 +78,10 @@ std::string computeMessageHash(const std::string& timestamp,
 
 class RequestHandler {
 
+    boost::asio::io_context& ioc_;
     ServiceNode& service_node_;
     const OxendClient& oxend_client_;
     const ChannelEncryption<std::string>& channel_cipher_;
-
-    boost::asio::io_context& ioc_;
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,

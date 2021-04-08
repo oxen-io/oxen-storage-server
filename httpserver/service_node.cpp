@@ -118,13 +118,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          const std::string& ed25519hex,
                          const std::string& db_location,
                          OxendClient& oxend_client, const bool force_start)
-    : ioc_(ioc), worker_ioc_(worker_ioc),
+    : ioc_(ioc), worker_ioc_(worker_ioc), oxend_client_(oxend_client),
       db_(std::make_unique<Database>(ioc, db_location)),
-      swarm_update_timer_(ioc), oxend_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc), check_version_timer_(worker_ioc),
-      peer_ping_timer_(ioc), relay_timer_(ioc), oxend_key_pair_(oxend_key_pair),
-      lmq_server_(lmq_server), oxend_client_(oxend_client),
-      force_start_(force_start) {
+      check_version_timer_(worker_ioc), swarm_update_timer_(ioc),
+      oxend_ping_timer_(ioc), stats_cleanup_timer_(ioc), peer_ping_timer_(ioc),
+      relay_timer_(ioc), oxend_key_pair_(oxend_key_pair),
+      lmq_server_(lmq_server), force_start_(force_start) {
 
     const auto addr = oxenmq::to_base32z(oxend_key_pair_.public_key.begin(),
                                          oxend_key_pair_.public_key.end());
@@ -313,7 +312,7 @@ void ServiceNode::bootstrap_data() {
                        {"storage.testnetseed1.loki.network", 38157}}};
     }
 
-    auto req_counter = std::make_shared<int>(0);
+    auto req_counter = std::make_shared<size_t>(0);
 
     for (auto seed_node : seed_nodes) {
         oxend_client_.make_custom_oxend_request(
@@ -1741,12 +1740,6 @@ std::string ServiceNode::get_status_line() const {
       << get_net_stats().http_connections_out << '/'
       << get_net_stats().https_connections_out;
     return s.str();
-}
-
-int ServiceNode::get_curr_pow_difficulty() const {
-    /// NOTE: difficulty is not longer used by modern clients, but
-    /// we send this to avoid breaking older clients.
-    return 1;
 }
 
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {

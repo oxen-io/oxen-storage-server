@@ -183,7 +183,7 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
 
         OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
 
-        result.push_back({*pk, *data, *hash, *ttl, *timestamp});
+        result.emplace_back(*pk, *data, *hash, *ttl, *timestamp);
     }
 
     OXEN_LOG(trace, "=== END ===");
