@@ -1,6 +1,5 @@
 #include "dns_text_records.h"
 #include <nlohmann/json.hpp>
-#include "pow.hpp"
 #include "version.h"
 #include <netinet/in.h>
 #include <resolv.h>
@@ -10,7 +9,6 @@
 
 using json = nlohmann::json;
 
-static constexpr char POW_DIFFICULTY_URL[] = "sentinel.messenger.loki.network";
 static constexpr char LATEST_VERSION_URL[] = "storage.version.loki.network";
 
 namespace oxen {
@@ -61,30 +59,6 @@ static std::string get_dns_record(const char* url, std::error_code& ec) {
     }
 
     return data;
-}
-
-std::vector<pow_difficulty_t> query_pow_difficulty(std::error_code& ec) {
-    OXEN_LOG(debug, "Querying PoW difficulty...");
-
-    std::vector<pow_difficulty_t> new_history;
-    const std::string data = get_dns_record(POW_DIFFICULTY_URL, ec);
-    if (ec) {
-        return new_history;
-    }
-
-    try {
-        const json history = json::parse(data, nullptr, true);
-        for (const auto& el : history.items()) {
-            const std::chrono::milliseconds timestamp(std::stoul(el.key()));
-            const int difficulty = el.value().get<int>();
-            new_history.push_back(pow_difficulty_t{timestamp, difficulty});
-        }
-        return new_history;
-    } catch (const std::exception& e) {
-        OXEN_LOG(warn, "JSON parsing of PoW data failed: {}", e.what());
-        ec = std::make_error_code(std::errc::bad_message);
-        return new_history;
-    }
 }
 
 static std::string query_latest_version() {

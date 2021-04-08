@@ -15,7 +15,6 @@
 
 #include "oxen_common.h"
 #include "oxend_key.h"
-#include "pow.hpp"
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
@@ -66,9 +65,6 @@ class Swarm;
 
 struct signature;
 
-using pow_dns_callback_t =
-    std::function<void(const std::vector<pow_difficulty_t>&)>;
-
 /// Represents failed attempt at communicating with a SNode
 /// (currently only for single messages)
 class FailedRequestHandler
@@ -109,14 +105,7 @@ class ServiceNode {
 
     boost::asio::io_context& ioc_;
     boost::asio::io_context& worker_ioc_;
-    std::thread worker_thread_;
 
-    // We set the default difficulty to some low value, so that we don't reject
-    // clients unnecessarily before we get the DNS record
-    pow_difficulty_t curr_pow_difficulty_{std::chrono::milliseconds(0), 1};
-    std::vector<pow_difficulty_t> pow_history_{curr_pow_difficulty_};
-
-    bool force_start_ = false;
     bool syncing_ = true;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
@@ -133,8 +122,6 @@ class ServiceNode {
     /// Cache for block_height/block_hash mapping
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
-
-    boost::asio::steady_timer pow_update_timer_;
 
     boost::asio::steady_timer check_version_timer_;
 
@@ -155,6 +142,8 @@ class ServiceNode {
     // not call any method that would in turn call a method in SN
     // causing a deadlock
     OxenmqServer& lmq_server_;
+
+    bool force_start_ = false;
 
     reachability_records_t reach_records_;
 
@@ -210,9 +199,6 @@ class ServiceNode {
 
     /// Check the latest version from DNS text record
     void check_version_timer_tick(); // mutex not needed
-    /// Update PoW difficulty from DNS text record
-    void
-    pow_difficulty_timer_tick(const pow_dns_callback_t cb); // mutex not needed
 
     /// Ping the storage server periodically as required for uptime proofs
     void oxend_ping_timer_tick();
@@ -323,14 +309,8 @@ class ServiceNode {
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(std::vector<storage::Item>& all_entries) const;
 
-    // Return the current PoW difficulty
-    int get_curr_pow_difficulty() const;
-
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<storage::Item>& items);
-
-    void
-    set_difficulty_history(const std::vector<pow_difficulty_t>& new_history);
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;

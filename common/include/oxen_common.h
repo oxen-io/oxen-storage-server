@@ -156,13 +156,12 @@ struct message_t {
     std::string hash;
     uint64_t ttl;
     uint64_t timestamp;
+    /// Nonce is now meaningless, but we keep it to avoid breaking the protocol
     std::string nonce;
 
     message_t(const std::string& pk, const std::string& text,
-              const std::string& hash, uint64_t ttl, uint64_t timestamp,
-              const std::string& nonce)
-        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp),
-          nonce(nonce) {}
+              const std::string& hash, uint64_t ttl, uint64_t timestamp)
+        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp) {}
 };
 
 } // namespace oxen

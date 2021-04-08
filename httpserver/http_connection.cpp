@@ -311,10 +311,9 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                            RequestHandler& rh, RateLimiter& rate_limiter,
                            const Security& security)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
-      stream_(socket_, ssl_ctx_), service_node_(sn), request_handler_(rh),
-      rate_limiter_(rate_limiter), repeat_timer_(ioc),
-      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt},
-      security_(security) {
+      stream_(socket_, ssl_ctx_), security_(security), service_node_(sn),
+      request_handler_(rh), rate_limiter_(rate_limiter), repeat_timer_(ioc),
+      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt} {
 
     static uint64_t instance_counter = 0;
     conn_idx = instance_counter++;
@@ -557,13 +556,6 @@ void connection_t::process_blockchain_test_req(uint64_t,
     service_node_.perform_blockchain_test(params, std::move(callback));
 }
 
-static void print_headers(const request_t& req) {
-    OXEN_LOG(info, "HEADERS:");
-    for (const auto& field : req) {
-        OXEN_LOG(info, "    [{}]: {}", field.name_string(), field.value());
-    }
-}
-
 void connection_t::process_onion_req_v2() {
 
     OXEN_LOG(debug, "Processing an onion request from client (v2)");
@@ -624,12 +616,7 @@ void connection_t::process_swarm_req(std::string_view target) {
 
     response_.set(OXEN_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
-    if (target == "/swarms/push_batch/v1") {
-
-        response_.result(http::status::ok);
-        service_node_.process_push_batch(req.body());
-
-    } else if (target == "/swarms/storage_test/v1") {
+    if (target == "/swarms/storage_test/v1") {
 
         /// Set to "bad request" by default
         response_.result(http::status::bad_request);

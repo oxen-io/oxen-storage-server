@@ -107,47 +107,9 @@ constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 200ms;
 constexpr std::chrono::milliseconds SWARM_UPDATE_INTERVAL = 1000ms;
 #endif
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
-constexpr std::chrono::minutes OXEND_PING_INTERVAL = 5min;
-constexpr std::chrono::minutes POW_DIFFICULTY_UPDATE_INTERVAL = 10min;
+constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr std::chrono::seconds VERSION_CHECK_INTERVAL = 10min;
-constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 10;
-
-static std::shared_ptr<request_t> make_push_all_request(std::string&& data) {
-    return build_post_request("/swarms/push_batch/v1", std::move(data));
-}
-
-static bool verify_message(const message_t& msg,
-                           const std::vector<pow_difficulty_t> history,
-                           const char** error_message = nullptr) {
-    if (!util::validateTTL(msg.ttl)) {
-        if (error_message)
-            *error_message = "Provided TTL is not valid";
-        return false;
-    }
-    if (!util::validateTimestamp(msg.timestamp, msg.ttl)) {
-        if (error_message)
-            *error_message = "Provided timestamp is not valid";
-        return false;
-    }
-    std::string hash;
-#ifndef DISABLE_POW
-    const int difficulty =
-        get_valid_difficulty(std::to_string(msg.timestamp), history);
-    if (!checkPoW(msg.nonce, std::to_string(msg.timestamp),
-                  std::to_string(msg.ttl), msg.pub_key, msg.data, hash,
-                  difficulty)) {
-        if (error_message)
-            *error_message = "Provided PoW nonce is not valid";
-        return false;
-    }
-#endif
-    if (hash != msg.hash) {
-        if (error_message)
-            *error_message = "Incorrect hash provided";
-        return false;
-    }
-    return true;
-}
+constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          boost::asio::io_context& worker_ioc, uint16_t port,
@@ -156,14 +118,12 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
                          const std::string& ed25519hex,
                          const std::string& db_location,
                          OxendClient& oxend_client, const bool force_start)
-    : ioc_(ioc), worker_ioc_(worker_ioc),
+    : ioc_(ioc), worker_ioc_(worker_ioc), oxend_client_(oxend_client),
       db_(std::make_unique<Database>(ioc, db_location)),
-      swarm_update_timer_(ioc), oxend_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc), pow_update_timer_(worker_ioc),
-      check_version_timer_(worker_ioc), peer_ping_timer_(ioc),
+      check_version_timer_(worker_ioc), swarm_update_timer_(ioc),
+      oxend_ping_timer_(ioc), stats_cleanup_timer_(ioc), peer_ping_timer_(ioc),
       relay_timer_(ioc), oxend_key_pair_(oxend_key_pair),
-      lmq_server_(lmq_server), oxend_client_(oxend_client),
-      force_start_(force_start) {
+      lmq_server_(lmq_server), force_start_(force_start) {
 
     const auto addr = oxenmq::to_base32z(oxend_key_pair_.public_key.begin(),
                                          oxend_key_pair_.public_key.end());
@@ -191,12 +151,6 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     cleanup_timer_tick();
 
     // ping_peers_tick();
-
-    worker_thread_ = std::thread([this]() { worker_ioc_.run(); });
-    boost::asio::post(worker_ioc_, [this]() {
-        pow_difficulty_timer_tick(std::bind(
-            &ServiceNode::set_difficulty_history, this, std::placeholders::_1));
-    });
 
     boost::asio::post(worker_ioc_,
                       [this]() { this->check_version_timer_tick(); });
@@ -358,7 +312,7 @@ void ServiceNode::bootstrap_data() {
                        {"storage.testnetseed1.loki.network", 38157}}};
     }
 
-    auto req_counter = std::make_shared<int>(0);
+    auto req_counter = std::make_shared<size_t>(0);
 
     for (auto seed_node : seed_nodes) {
         oxend_client_.make_custom_oxend_request(
@@ -432,10 +386,7 @@ bool ServiceNode::snode_ready(std::string* reason) {
     return ready || force_start_;
 }
 
-ServiceNode::~ServiceNode() {
-    worker_ioc_.stop();
-    worker_thread_.join();
-};
+ServiceNode::~ServiceNode() { worker_ioc_.stop(); };
 
 void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
                                       const std::string& payload,
@@ -750,17 +701,6 @@ void ServiceNode::check_version_timer_tick() {
     dns::check_latest_version();
 }
 
-void ServiceNode::pow_difficulty_timer_tick(const pow_dns_callback_t cb) {
-    std::error_code ec;
-    std::vector<pow_difficulty_t> new_history = dns::query_pow_difficulty(ec);
-    if (!ec) {
-        boost::asio::post(ioc_, std::bind(cb, new_history));
-    }
-    pow_update_timer_.expires_after(POW_DIFFICULTY_UPDATE_INTERVAL);
-    pow_update_timer_.async_wait(
-        boost::bind(&ServiceNode::pow_difficulty_timer_tick, this, cb));
-}
-
 void ServiceNode::swarm_timer_tick() {
 
     std::lock_guard guard(sn_mutex_);
@@ -1011,18 +951,6 @@ void ServiceNode::oxend_ping_timer_tick() {
     oxend_ping_timer_.expires_after(OXEND_PING_INTERVAL);
     oxend_ping_timer_.async_wait(
         boost::bind(&ServiceNode::oxend_ping_timer_tick, this));
-}
-
-static std::vector<std::shared_ptr<request_t>>
-make_batch_requests(std::vector<std::string>&& data) {
-
-    std::vector<std::shared_ptr<request_t>> result;
-    result.reserve(data.size());
-
-    std::transform(std::make_move_iterator(data.begin()),
-                   std::make_move_iterator(data.end()),
-                   std::back_inserter(result), make_push_all_request);
-    return result;
 }
 
 void ServiceNode::perform_blockchain_test(
@@ -1701,20 +1629,6 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
-void ServiceNode::set_difficulty_history(
-    const std::vector<pow_difficulty_t>& new_history) {
-
-    std::lock_guard guard(sn_mutex_);
-
-    pow_history_ = new_history;
-    for (const auto& difficulty : pow_history_) {
-        if (curr_pow_difficulty_.timestamp < difficulty.timestamp) {
-            curr_pow_difficulty_ = difficulty;
-        }
-    }
-    OXEN_LOG(info, "Read PoW difficulty: {}", curr_pow_difficulty_.difficulty);
-}
-
 static void to_json(nlohmann::json& j, const test_result_t& val) {
     j["timestamp"] = val.timestamp;
     j["result"] = to_str(val.result);
@@ -1828,13 +1742,6 @@ std::string ServiceNode::get_status_line() const {
     return s.str();
 }
 
-int ServiceNode::get_curr_pow_difficulty() const {
-
-    std::lock_guard guard(sn_mutex_);
-
-    return curr_pow_difficulty_.difficulty;
-}
-
 bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
 
     std::lock_guard guard(sn_mutex_);
@@ -1857,19 +1764,6 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
     OXEN_LOG(debug, "Got {} messages from peers, size: {}", messages.size(),
              blob.size());
-
-#ifndef DISABLE_POW
-    const auto it = std::remove_if(
-        messages.begin(), messages.end(), [this](const message_t& message) {
-            return verify_message(message, pow_history_) == false;
-        });
-    messages.erase(it, messages.end());
-    if (it != messages.end()) {
-        OXEN_LOG(
-            warn,
-            "Some of the batch messages were removed due to incorrect PoW");
-    }
-#endif
 
     std::vector<Item> items;
     items.reserve(messages.size());
