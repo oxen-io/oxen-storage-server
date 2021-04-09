@@ -129,7 +129,9 @@ class RequestHandler {
                             const std::string& payload,
                             std::function<void(oxen::Response)> cb);
 
-    void process_onion_to_url(const std::string& host,
+    void process_onion_to_url(const std::string& protocol,
+                              const std::string& host,
+                              const uint16_t port,
                               const std::string& target,
                               const std::string& payload,
                               std::function<void(oxen::Response)> cb);

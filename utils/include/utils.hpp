@@ -35,4 +35,13 @@ uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
 /// Return the open file limit (-1 on failure)
 int get_fd_limit();
 
+inline bool ends_with(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.substr(str.size() - suffix.size()) == suffix;
+}
+
+inline bool starts_with(std::string_view str, std::string_view prefix) {
+  return str.substr(0, prefix.size()) == prefix;
+}
+
 } // namespace util

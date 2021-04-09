@@ -47,8 +47,8 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             const std::shared_ptr<request_t>& req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    make_https_request(ioc, sn.ip(), sn.port(), sn.pub_key_base32z(), req,
-                       std::move(cb));
+    make_https_request_to_sn(ioc, sn.ip(), sn.port(), sn.pub_key_base32z(), req,
+                             std::move(cb));
 }
 
 FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
@@ -150,7 +150,7 @@ ServiceNode::ServiceNode(boost::asio::io_context& ioc,
     oxend_ping_timer_tick();
     cleanup_timer_tick();
 
-    ping_peers_tick();
+    // ping_peers_tick();
 
     boost::asio::post(worker_ioc_,
                       [this]() { this->check_version_timer_tick(); });

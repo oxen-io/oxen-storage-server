@@ -13,9 +13,10 @@
 // needed for proxy requests
 #include "https_client.h"
 
+#include "ip_utils.h"
+#include "onion_processing.h"
 #include "request_handler.h"
 
-#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -64,32 +65,54 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
                        uint16_t port, const std::shared_ptr<request_t>& req,
                        http_callback_t&& cb) {
 
-    error_code ec;
-    tcp::endpoint endpoint;
-    tcp::resolver resolver(ioc);
+    auto resolver = std::make_shared<tcp::resolver>(ioc);
 
-    tcp::resolver::iterator destination = resolver.resolve(address, "http", ec);
-
-    if (ec) {
-        OXEN_LOG(error,
-                 "http: Failed to parse the IP address <{}>. Error code = {}. "
-                 "Message: {}",
-                 address, ec.value(), ec.message());
-        return;
-    }
-    while (destination != tcp::resolver::iterator()) {
-        const tcp::endpoint thisEndpoint = (destination++)->endpoint();
-        if (!thisEndpoint.address().is_v4()) {
-            continue;
+    auto resolve_handler = [&ioc, address, port, req, resolver, cb = std::move(cb)](
+                               const boost::system::error_code& ec,
+                               boost::asio::ip::tcp::resolver::results_type
+                                   resolve_results) mutable {
+        if (ec) {
+            OXEN_LOG(error, "DNS resolution error for {}: {}", address,
+                     ec.message());
+            cb({SNodeError::ERROR_OTHER});
+            return;
         }
-        endpoint = thisEndpoint;
-    }
-    endpoint.port(port);
 
-    auto session =
-        std::make_shared<HttpClientSession>(ioc, endpoint, req, std::move(cb));
+        tcp::endpoint endpoint;
 
-    session->start();
+        bool resolved = false;
+
+        while (resolve_results != tcp::resolver::iterator()) {
+            const tcp::endpoint ep = (resolve_results++)->endpoint();
+
+#ifndef INTEGRATION_TEST
+            if (!ep.address().is_v4() || is_ip_public(ep.address().to_v4())) {
+                continue;
+            }
+#endif
+            endpoint = ep;
+            resolved = true;
+            break;
+        }
+
+        if (!resolved) {
+            OXEN_LOG(error, "[HTTP] DNS resulution error for {}", address);
+            cb({SNodeError::ERROR_OTHER});
+            return;
+        }
+
+        endpoint.port(port);
+
+        auto session = std::make_shared<HttpClientSession>(ioc, endpoint, req,
+                                                           std::move(cb));
+
+        session->start();
+    };
+
+    resolver->async_resolve(
+        address, std::to_string(port),
+        boost::asio::ip::tcp::resolver::query::numeric_service,
+        resolve_handler);
 }
 
 // ======================== Oxend Client ========================
@@ -582,241 +605,6 @@ void connection_t::process_onion_req_v2() {
     }
 }
 
-void connection_t::process_onion_req_v1() {
-
-    OXEN_LOG(debug, "Processing an onion request from client (v1)");
-
-    const request_t& req = this->request_.get();
-
-    // We are not expecting any headers, all parameters are in json body
-
-    // Need to make sure we are not blocking waiting for the response
-    delay_response_ = true;
-
-    auto on_response = [wself = std::weak_ptr<connection_t>{
-                            shared_from_this()}](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as guard node");
-
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping onion response");
-            return;
-        }
-
-        self->body_stream_ << res.message();
-        self->response_.result(static_cast<int>(res.status()));
-
-        self->write_response();
-    };
-
-    try {
-
-        const json json_req = json::parse(req.body(), nullptr, true);
-        // base64
-        const auto& ciphertext =
-            json_req.at("ciphertext").get_ref<const std::string&>();
-        // hex
-        const auto& ephem_key =
-            json_req.at("ephemeral_key").get_ref<const std::string&>();
-
-        service_node_.record_onion_request();
-        request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
-
-    } catch (const std::exception& e) {
-        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
-                               e.what());
-        OXEN_LOG(error, "{}", msg);
-        response_.result(http::status::bad_request);
-        this->body_stream_ << std::move(msg);
-        this->write_response();
-    }
-}
-
-void connection_t::process_proxy_req() {
-
-    static int req_counter = 0;
-
-    const int req_idx = req_counter;
-
-    OXEN_LOG(debug, "[{}] Processing proxy request: we are first hop", req_idx);
-
-    service_node_.record_proxy_request();
-
-    const request_t& req = this->request_.get();
-
-    if (!parse_header(OXEN_SENDER_KEY_HEADER, OXEN_TARGET_SNODE_KEY)) {
-        OXEN_LOG(debug, "Missing headers for a proxy request");
-        return;
-    }
-
-    delay_response_ = true;
-
-    const auto& sender_key = header_[OXEN_SENDER_KEY_HEADER];
-    const auto& target_snode_key = header_[OXEN_TARGET_SNODE_KEY];
-
-    OXEN_LOG(debug, "[{}] Destination: {}", req_idx, target_snode_key);
-
-    auto sn = service_node_.find_node_by_ed25519_pk(target_snode_key);
-
-    // TODO: make an https response out of what we got back
-    auto on_proxy_response =
-        [wself = std::weak_ptr<connection_t>{shared_from_this()},
-         req_idx](bool success, std::vector<std::string> data) {
-            OXEN_LOG(debug, "on proxy response: {}",
-                     success ? "success" : "failure");
-
-            auto self = wself.lock();
-            if (!self) {
-                OXEN_LOG(
-                    debug,
-                    "Connection is no longer valid, dropping proxy response");
-                return;
-            }
-
-            if (!success) {
-                OXEN_LOG(debug, "Proxy response FAILED (timeout), idx: {}",
-                         req_idx);
-                self->response_.result(http::status::gateway_timeout);
-            } else if (data.size() == 2) {
-                OXEN_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
-
-                try {
-                    int status = std::stoi(data[0]);
-                    self->response_.result(status);
-                    self->body_stream_ << data[1];
-                } catch (const std::exception&) {
-                    self->response_.result(http::status::internal_server_error);
-                }
-
-            } else if (data.size() != 1) {
-                OXEN_LOG(debug,
-                         "Proxy response FAILED (wrong data size), idx: {}",
-                         req_idx);
-                self->response_.result(http::status::internal_server_error);
-            } else {
-                OXEN_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
-                self->body_stream_ << data[0];
-                self->response_.result(http::status::ok);
-            }
-
-            // This will return an empty, but failed response to the client
-            // if the raw_response is empty (we should provide better errors)
-            self->write_response();
-        };
-
-    if (!sn) {
-        OXEN_LOG(debug, "Could not find target snode for proxy: {}",
-                 target_snode_key);
-        on_proxy_response(false, {});
-        return;
-    }
-
-    OXEN_LOG(debug, "Target Snode: {}", target_snode_key);
-
-    // Send this request to SN over either HTTP or OXENMQ
-    auto sn_req =
-        ss_client::Request{req.body(), {{OXEN_SENDER_KEY_HEADER, sender_key}}};
-
-    OXEN_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
-    req_counter += 1;
-
-    service_node_.send_to_sn(*sn, ss_client::ReqMethod::PROXY_EXIT,
-                             std::move(sn_req), on_proxy_response);
-}
-
-void connection_t::process_file_proxy_req() {
-
-    OXEN_LOG(debug, "Processing a file proxy request: we are first hop");
-
-    const request_t& original_req = this->request_.get();
-
-    delay_response_ = true;
-
-    if (!parse_header(OXEN_FILE_SERVER_TARGET_HEADER,
-                      OXEN_FILE_SERVER_VERB_HEADER,
-                      OXEN_FILE_SERVER_HEADERS_HEADER)) {
-        OXEN_LOG(error, "Missing headers for a file proxy request");
-        // TODO: The connection should be closed by the timer if we return
-        // early, but need to double-check that! (And close it early if
-        // possible)
-        return;
-    }
-
-    const auto& target = header_[OXEN_FILE_SERVER_TARGET_HEADER];
-    const auto& verb_str = header_[OXEN_FILE_SERVER_VERB_HEADER];
-    const auto& headers_str = header_[OXEN_FILE_SERVER_HEADERS_HEADER];
-
-    OXEN_LOG(trace, "Target: {}", target);
-    OXEN_LOG(trace, "Verb: {}", verb_str);
-    OXEN_LOG(trace, "Headers json: {}", headers_str);
-
-    const json headers_json = json::parse(headers_str, nullptr, false);
-
-    if (headers_json.is_discarded()) {
-        OXEN_LOG(debug, "Bad file proxy request: invalid header json");
-        response_.result(http::status::bad_request);
-        return;
-    }
-
-    auto req = std::make_shared<request_t>();
-
-    namespace http = boost::beast::http;
-
-    if (verb_str == "POST") {
-        req->method(http::verb::post);
-    } else if (verb_str == "PATCH") {
-        req->method(http::verb::patch);
-    } else if (verb_str == "PUT") {
-        req->method(http::verb::put);
-    } else if (verb_str == "DELETE") {
-        req->method(http::verb::delete_);
-    } else {
-        req->method(http::verb::get);
-    }
-
-    {
-        const auto it = original_req.find(http::field::content_type);
-        if (it != original_req.end()) {
-            OXEN_LOG(trace, "Content-Type: {}", it->value().to_string());
-            req->set(http::field::content_type, it->value().to_string());
-        }
-    }
-
-    req->body() = std::move(original_req.body());
-    req->target(target);
-    req->set(http::field::host, "file.lokinet.org");
-
-    req->prepare_payload();
-
-    for (auto& el : headers_json.items()) {
-        req->insert(el.key(), (std::string)el.value());
-    }
-
-    auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
-                  sn_response_t res) {
-        OXEN_LOG(trace, "Successful file proxy request!");
-
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping proxy response");
-            return;
-        }
-
-        if (res.raw_response) {
-            self->response_ = *res.raw_response;
-            OXEN_LOG(trace, "Response: {}", self->response_);
-        } else {
-            OXEN_LOG(debug, "No response from file server!");
-        }
-
-        self->write_response();
-    };
-
-    make_https_request(ioc_, "https://file.lokinet.org", req, cb);
-}
-
 void connection_t::process_swarm_req(std::string_view target) {
 
     const request_t& req = this->request_.get();
@@ -1001,14 +789,8 @@ void connection_t::process_request() {
 
         } else if (is_swarm_req) {
             this->process_swarm_req(target);
-        } else if (target == "/proxy") {
-            this->process_proxy_req();
-        } else if (target == "/onion_req") {
-            this->process_onion_req_v1();
         } else if (target == "/onion_req/v2") {
             this->process_onion_req_v2();
-        } else if (target == "/file_proxy") {
-            this->process_file_proxy_req();
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
@@ -1428,43 +1210,6 @@ HttpClientSession::~HttpClientSession() {
     get_net_stats().http_connections_out--;
 
     this->clean_up();
-}
-
-/// We are expecting a payload of the following shape:
-/// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
-auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson {
-
-    OXEN_LOG(trace, "Parsing payload of length: {}", payload.size());
-
-    auto it = payload.begin();
-
-    /// First 4 bytes as number
-    if (payload.size() < 4) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::exception();
-    }
-
-    const auto b1 = reinterpret_cast<const uint32_t&>(*it);
-    const auto n = boost::endian::little_to_native(b1);
-
-    OXEN_LOG(trace, "Ciphertext length: {}", n);
-
-    if (payload.size() < 4 + n) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::exception();
-    }
-
-    it += sizeof(uint32_t);
-
-    const auto ciphertext = std::string(it, it + n);
-
-    OXEN_LOG(debug, "ciphertext length: {}", ciphertext.size());
-
-    const auto json_blob = std::string(it + n, payload.end());
-
-    OXEN_LOG(debug, "json blob: (len: {})", json_blob.size());
-
-    return CiphertextPlusJson{ciphertext, json_blob};
 }
 
 } // namespace oxen
