@@ -29,10 +29,6 @@ class Database;
 namespace http = boost::beast::http;
 using request_t = http::request<http::string_body>;
 
-namespace oxenmq {
-struct ConnectionID;
-}
-
 namespace oxen {
 
 namespace storage {
@@ -40,8 +36,6 @@ struct Item;
 } // namespace storage
 
 struct sn_response_t;
-struct blockchain_test_answer_t;
-struct bc_test_params_t;
 
 class OxendClient;
 class OxenmqServer;
@@ -104,13 +98,13 @@ class ServiceNode {
     using listeners_t = std::vector<connection_ptr>;
 
     boost::asio::io_context& ioc_;
-    boost::asio::io_context& worker_ioc_;
 
     bool syncing_ = true;
+    bool active_ = true;
+    bool got_first_response_ = false;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
-    const OxendClient& oxend_client_;
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
@@ -123,10 +117,6 @@ class ServiceNode {
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
 
-    boost::asio::steady_timer check_version_timer_;
-
-    boost::asio::steady_timer swarm_update_timer_;
-
     boost::asio::steady_timer oxend_ping_timer_;
 
     boost::asio::steady_timer stats_cleanup_timer_;
@@ -138,7 +128,7 @@ class ServiceNode {
 
     oxen::oxend_key_pair_t oxend_key_pair_;
 
-    // Need to make sure we only use this to get lmq() object and
+    // Need to make sure we only use this to get OxenMQ object and
     // not call any method that would in turn call a method in SN
     // causing a deadlock
     OxenmqServer& lmq_server_;
@@ -188,19 +178,13 @@ class ServiceNode {
         const std::vector<Message>& messages,
         const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
-    /// Request swarm structure from the deamon and reset the timer
-    void swarm_timer_tick();
-
     void cleanup_timer_tick();
 
     void ping_peers_tick();
 
     void relay_buffered_messages();
 
-    /// Check the latest version from DNS text record
-    void check_version_timer_tick(); // mutex not needed
-
-    /// Ping the storage server periodically as required for uptime proofs
+    /// Ping oxend periodically as required for uptime proofs
     void oxend_ping_timer_tick();
 
     /// Return tester/testee pair based on block_height
@@ -210,10 +194,6 @@ class ServiceNode {
     /// Send a request to a SN under test
     void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
                                const storage::Item& item);
-
-    void send_blockchain_test_req(const sn_record_t& testee,
-                                  bc_test_params_t params, uint64_t test_height,
-                                  blockchain_test_answer_t answer);
 
     /// Report `sn` to Oxend as unreachable
     void report_node_reachability(const sn_pub_key_t& sn, bool reachable);
@@ -225,12 +205,6 @@ class ServiceNode {
 
     void process_reach_test_result(const sn_pub_key_t& pk, ReachType type,
                                    bool success);
-
-    /// From a peer
-    void process_blockchain_test_response(sn_response_t&& res,
-                                          blockchain_test_answer_t our_answer,
-                                          sn_record_t testee,
-                                          uint64_t bc_height);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -245,18 +219,16 @@ class ServiceNode {
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
-                boost::asio::io_context& worker_ioc, uint16_t port,
-                OxenmqServer& lmq_server,
+                uint16_t port, uint16_t omq_port,
+                OxenmqServer& omq_server,
                 const oxen::oxend_key_pair_t& key_pair,
                 const std::string& ed25519hex, const std::string& db_location,
-                OxendClient& oxend_client, const bool force_start);
-
-    ~ServiceNode();
+                const bool force_start);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record_t& own_address() { return our_address_; }
 
-    // Record the time of our last being tested over lmq/http
+    // Record the time of our last being tested over omq/http
     void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
@@ -276,7 +248,7 @@ class ServiceNode {
                              ss_client::Callback cb) const;
 
     // TODO: move this eventually out of SN
-    // Send by either http or lmq
+    // Send by either http or omq
     void send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
                     ss_client::Request req, ss_client::Callback cb) const;
 
@@ -288,11 +260,6 @@ class ServiceNode {
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
-
-    /// request blockchain test from a peer
-    void perform_blockchain_test(
-        bc_test_params_t params,
-        std::function<void(blockchain_test_answer_t)>&& cb) const;
 
     // Attempt to find an answer (message body) to the storage test
     MessageTestStatus process_storage_test_req(uint64_t blk_height,
@@ -324,6 +291,15 @@ class ServiceNode {
 
     std::optional<sn_record_t>
     find_node_by_ed25519_pk(const std::string& pk) const;
+
+    // Called once we have established the initial connection to our local oxend to set up initial
+    // data and timers that rely on an oxend connection.
+    void on_oxend_connected();
+
+    // Called when oxend notifies us of a new block to update swarm info
+    void update_swarms();
+
+    OxenmqServer& omq_server() { return lmq_server_; }
 };
 
 } // namespace oxen

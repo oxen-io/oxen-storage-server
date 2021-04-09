@@ -80,7 +80,6 @@ class RequestHandler {
 
     boost::asio::io_context& ioc_;
     ServiceNode& service_node_;
-    const OxendClient& oxend_client_;
     const ChannelEncryption<std::string>& channel_cipher_;
 
     // Wrap response `res` to an intermediate node
@@ -114,7 +113,6 @@ class RequestHandler {
 
   public:
     RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                   const OxendClient& oxend_client,
                    const ChannelEncryption<std::string>& ce);
 
     // Process all Session client requests

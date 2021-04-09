@@ -5,14 +5,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-namespace oxenmq {
-class OxenMQ;
-struct Allow;
-class Message;
-} // namespace oxenmq
-
-using oxenmq::OxenMQ;
+#include <oxenmq/oxenmq.h>
 
 namespace oxen {
 
@@ -22,14 +15,15 @@ class RequestHandler;
 
 class OxenmqServer {
 
-    std::unique_ptr<OxenMQ> oxenmq_;
+    oxenmq::OxenMQ omq_;
+    oxenmq::ConnectionID oxend_conn_;
 
     // Has information about current SNs
-    ServiceNode* service_node_;
+    ServiceNode* service_node_ = nullptr;
 
-    RequestHandler* request_handler_;
+    RequestHandler* request_handler_ = nullptr;
 
-    // Get nodes' address
+    // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
 
     // Handle Session data coming from peer SN
@@ -45,27 +39,42 @@ class OxenmqServer {
 
     void handle_get_stats(oxenmq::Message& message);
 
-    uint16_t port_ = 0;
-
     // Access keys for the 'service' category as binary
-    std::vector<std::string> stats_access_keys;
+    std::unordered_set<std::string> stats_access_keys;
+
+    void connect_oxend(const oxenmq::address& oxend_rpc);
 
   public:
-    OxenmqServer(uint16_t port);
-    ~OxenmqServer();
+    OxenmqServer(
+            uint16_t port,
+            const oxend_key_pair_t& keypair,
+            const std::vector<std::string>& stats_access_keys_hex);
 
     // Initialize oxenmq
-    void init(ServiceNode* sn, RequestHandler* rh,
-              const oxend_key_pair_t& keypair,
-              const std::vector<std::string>& stats_access_key);
+    void init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxend_rpc);
 
-    uint16_t port() { return port_; }
-
-    /// True if OxenMQ instance has been set
-    explicit operator bool() const { return (bool)oxenmq_; }
     /// Dereferencing via * or -> accesses the contained OxenMQ instance.
-    OxenMQ& operator*() const { return *oxenmq_; }
-    OxenMQ* operator->() const { return oxenmq_.get(); }
+    oxenmq::OxenMQ& operator*() { return omq_; }
+    oxenmq::OxenMQ* operator->() { return &omq_; }
+
+    // Returns the OMQ ConnectionID for the connection to oxend.
+    const oxenmq::ConnectionID& oxend_conn() const { return oxend_conn_; }
+
+    // Invokes a request to the local oxend; given arguments (which must contain at least the
+    // request name and a callback) are forwarded as `omq.request(connid, ...)`.
+    template <typename... Args>
+    void oxend_request(Args&&... args) {
+        if (!oxend_conn_) { std::abort(); }
+        omq_.request(oxend_conn(), std::forward<Args>(args)...);
+    }
+
+    // Sends a one-way message to the local oxend; arguments are forwarded as `omq.send(connid,
+    // ...)` (and must contain at least a command name).
+    template <typename... Args>
+    void oxend_send(Args&&... args) {
+        if (!oxend_conn_) { std::abort(); }
+        omq_.send(oxend_conn(), std::forward<Args>(args)...);
+    }
 };
 
 } // namespace oxen

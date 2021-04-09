@@ -1,6 +1,5 @@
 #include "http_connection.h"
 #include "Database.hpp"
-#include "Item.hpp"
 
 #include "net_stats.h"
 #include "rate_limiter.h"
@@ -42,8 +41,6 @@ static constexpr auto OXEN_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
 static constexpr auto OXEN_FILE_SERVER_HEADERS_HEADER =
     "X-Loki-File-Server-Headers";
 
-using oxen::storage::Item;
-
 using error_code = boost::system::error_code;
 
 namespace oxen {
@@ -61,9 +58,9 @@ std::shared_ptr<request_t> build_post_request(const char* target,
     return req;
 }
 
-void make_http_request(boost::asio::io_context& ioc, const std::string& address,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
-                       http_callback_t&& cb) {
+static void make_http_request(boost::asio::io_context& ioc, const std::string& address,
+        uint16_t port, const std::shared_ptr<request_t>& req,
+        http_callback_t&& cb) {
 
     auto resolver = std::make_shared<tcp::resolver>(ioc);
 
@@ -115,24 +112,13 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
         resolve_handler);
 }
 
-// ======================== Oxend Client ========================
-OxendClient::OxendClient(boost::asio::io_context& ioc, std::string ip,
-                         uint16_t port)
-    : ioc_(ioc), oxend_rpc_ip_(std::move(ip)), oxend_rpc_port_(port) {}
-
-void OxendClient::make_oxend_request(std::string_view method,
-                                     const nlohmann::json& params,
-                                     http_callback_t&& cb) const {
-
-    make_custom_oxend_request(oxend_rpc_ip_, oxend_rpc_port_, method, params,
-                              std::move(cb));
-}
-
-void OxendClient::make_custom_oxend_request(const std::string& daemon_ip,
-                                            const uint16_t daemon_port,
-                                            std::string_view method,
-                                            const nlohmann::json& params,
-                                            http_callback_t&& cb) const {
+void oxend_json_rpc_request(
+        boost::asio::io_context& ioc,
+        const std::string& daemon_ip,
+        const uint16_t daemon_port,
+        std::string_view method,
+        const nlohmann::json& params,
+        http_callback_t&& cb) {
 
     auto req = std::make_shared<request_t>();
 
@@ -151,78 +137,7 @@ void OxendClient::make_custom_oxend_request(const std::string& daemon_ip,
 
     OXEN_LOG(trace, "Making oxend request, method: {}", std::string(method));
 
-    make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
-}
-
-static bool validateHexKey(const std::string& key,
-                           const size_t key_length = oxen::KEY_LENGTH) {
-    return key.size() == 2 * key_length &&
-           std::all_of(key.begin(), key.end(), [](char c) {
-               return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-           });
-}
-
-std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
-OxendClient::wait_for_privkey() {
-    // fetch SN private key from oxend; do this synchronously because we can't
-    // finish startup until we have it.
-    oxen::private_key_t private_key;
-    oxen::private_key_ed25519_t private_key_ed;
-    oxen::private_key_t private_key_x;
-    OXEN_LOG(info, "Retrieving SN key from oxend");
-    boost::asio::steady_timer delay{ioc_};
-    std::function<void(oxen::sn_response_t && res)> key_fetch;
-    key_fetch = [&](oxen::sn_response_t res) {
-        try {
-            if (res.error_code != oxen::SNodeError::NO_ERROR)
-                throw std::runtime_error(oxen::error_string(res.error_code));
-            else if (!res.body)
-                throw std::runtime_error("empty body");
-            else {
-                auto r = nlohmann::json::parse(*res.body);
-                const auto& legacy_privkey = r.at("result")
-                                                 .at("service_node_privkey")
-                                                 .get_ref<const std::string&>();
-                const auto& privkey_ed = r.at("result")
-                                             .at("service_node_ed25519_privkey")
-                                             .get_ref<const std::string&>();
-                const auto& privkey_x = r.at("result")
-                                            .at("service_node_x25519_privkey")
-                                            .get_ref<const std::string&>();
-                if (!validateHexKey(legacy_privkey) ||
-                    !validateHexKey(privkey_ed,
-                                    private_key_ed25519_t::LENGTH) ||
-                    !validateHexKey(privkey_x))
-                    throw std::runtime_error("returned value is not hex");
-                else {
-                    private_key = oxen::oxendKeyFromHex(legacy_privkey);
-                    // TODO: check that one is derived from the other as a
-                    // sanity check?
-                    private_key_ed =
-                        private_key_ed25519_t::from_hex(privkey_ed);
-                    private_key_x = oxen::oxendKeyFromHex(privkey_x);
-                    // run out of work, which will end the event loop
-                }
-            }
-        } catch (const std::exception& e) {
-            OXEN_LOG(critical,
-                     "Error retrieving SN privkey from oxend @ {}:{}: {}.  Is "
-                     "oxend running?  Retrying in 5s",
-                     oxend_rpc_ip_, oxend_rpc_port_, e.what());
-
-            delay.expires_after(std::chrono::seconds{5});
-            delay.async_wait([this,
-                              &key_fetch](const boost::system::error_code&) {
-                make_oxend_request("get_service_node_privkey", {}, key_fetch);
-            });
-        }
-    };
-    make_oxend_request("get_service_node_privkey", {}, key_fetch);
-    ioc_.run(); // runs until we get success above
-    ioc_.restart();
-
-    return std::tuple<private_key_t, private_key_ed25519_t, private_key_t>{
-        private_key, private_key_ed, private_key_x};
+    make_http_request(ioc, daemon_ip, daemon_port, req, std::move(cb));
 }
 
 // =============================================================
@@ -532,30 +447,6 @@ void connection_t::process_storage_test_req(uint64_t height,
     }
 }
 
-void connection_t::process_blockchain_test_req(uint64_t,
-                                               const std::string& tester_pk,
-                                               bc_test_params_t params) {
-
-    // Note: `height` can be 0, which is the default value for old SS, allowed
-    // pre HF13
-
-    OXEN_LOG(debug, "Performing blockchain test");
-
-    auto callback = [this](blockchain_test_answer_t answer) {
-        this->response_.result(http::status::ok);
-
-        nlohmann::json json_res;
-        json_res["res_height"] = answer.res_height;
-
-        this->body_stream_ << json_res.dump();
-        this->write_response();
-    };
-
-    /// TODO: this should first check if tester/testee are correct! (use
-    /// `height`)
-    service_node_.perform_blockchain_test(params, std::move(callback));
-}
-
 void connection_t::process_onion_req_v2() {
 
     OXEN_LOG(debug, "Processing an onion request from client (v2)");
@@ -654,49 +545,6 @@ void connection_t::process_swarm_req(std::string_view target) {
         } else {
             OXEN_LOG(debug, "Ignoring test request, no pubkey present");
         }
-    } else if (target == "/swarms/blockchain_test/v1") {
-        OXEN_LOG(debug, "Got blockchain test request");
-
-        using nlohmann::json;
-
-        const json body = json::parse(req.body(), nullptr, false);
-
-        if (body.is_discarded()) {
-            OXEN_LOG(debug, "Bad snode test request: invalid json");
-            response_.result(http::status::bad_request);
-            return;
-        }
-
-        bc_test_params_t params;
-
-        // Height that should be used to check derive tester/testee
-        uint64_t height = 0;
-
-        try {
-            params.max_height = body.at("max_height").get<uint64_t>();
-            params.seed = body.at("seed").get<uint64_t>();
-
-            if (body.find("height") != body.end()) {
-                height = body.at("height").get<uint64_t>();
-            } else {
-                OXEN_LOG(debug, "No tester height, defaulting to {}", height);
-            }
-        } catch (...) {
-            response_.result(http::status::bad_request);
-            OXEN_LOG(debug, "Bad snode test request: missing fields in json");
-            return;
-        }
-
-        /// TODO: only check pubkey field once (in validate snode req)
-        const auto it = header_.find(OXEN_SENDER_SNODE_PUBKEY_HEADER);
-        if (it != header_.end()) {
-            const std::string& tester_pk = it->second;
-            delay_response_ = true;
-            this->process_blockchain_test_req(height, tester_pk, params);
-        } else {
-            OXEN_LOG(debug, "Ignoring test request, no pubkey present");
-        }
-
     } else if (target == "/swarms/ping_test/v1") {
         OXEN_LOG(trace, "Received ping_test");
         service_node_.update_last_ping(ReachType::HTTP);

@@ -46,12 +46,6 @@ class Security;
 class RequestHandler;
 class Response;
 
-namespace storage {
-struct Item;
-}
-
-using storage::Item;
-
 enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 
 struct sn_response_t {
@@ -80,46 +74,19 @@ OStream& operator<<(OStream& os, const sn_response_t& res) {
     return os << "(" << (res.body ? *res.body : "n/a") << ")";
 }
 
-struct blockchain_test_answer_t {
-    uint64_t res_height;
-};
-
-/// Blockchain test parameters
-struct bc_test_params_t {
-    uint64_t max_height;
-    uint64_t seed;
-};
-
 using http_callback_t = std::function<void(sn_response_t)>;
 
-class OxendClient {
-
-    boost::asio::io_context& ioc_;
-    std::string oxend_rpc_ip_;
-    const uint16_t oxend_rpc_port_;
-
-  public:
-    OxendClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
-    void make_oxend_request(std::string_view method,
-                            const nlohmann::json& params,
-                            http_callback_t&& cb) const;
-    void make_custom_oxend_request(const std::string& daemon_ip,
-                                   const uint16_t daemon_port,
-                                   std::string_view method,
-                                   const nlohmann::json& params,
-                                   http_callback_t&& cb) const;
-    // Synchronously fetches the private key from oxend.  Designed to be called
-    // *before* the io_context has been started (this runs it, waits for a
-    // successful fetch, then restarts it when finished).
-    std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
-    wait_for_privkey();
-};
+// Makes an HTTP JSON-RPC request to some oxend; this is currently needed only for bootstrap nodes
+// (for a local oxend we speak oxenmq rpc).
+void oxend_json_rpc_request(
+        boost::asio::io_context& ioc,
+        const std::string& daemon_ip,
+        const uint16_t daemon_port,
+        std::string_view method,
+        const nlohmann::json& params,
+        http_callback_t&& cb);
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(60);
-
-void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
-                       http_callback_t&& cb);
 
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {
@@ -286,10 +253,6 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
     void process_storage_test_req(uint64_t height,
                                   const std::string& tester_addr,
                                   const std::string& msg_hash);
-
-    void process_blockchain_test_req(uint64_t height,
-                                     const std::string& tester_pk,
-                                     bc_test_params_t params);
 
     void set_response(const Response& res);
 

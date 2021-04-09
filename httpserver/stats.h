@@ -44,8 +44,6 @@ struct peer_stats_t {
     uint64_t pushes_failed = 0;
 
     std::deque<test_result_t> storage_tests;
-
-    std::deque<test_result_t> blockchain_tests;
 };
 
 class all_stats_t {
@@ -100,12 +98,6 @@ class all_stats_t {
     void record_storage_test_result(const sn_record_t& sn, ResultType result) {
         test_result_t res = {std::time(nullptr), result};
         peer_report_[sn].storage_tests.push_back(res);
-    }
-
-    void record_blockchain_test_result(const sn_record_t& sn,
-                                       ResultType result) {
-        test_result_t t = {std::time(nullptr), result};
-        peer_report_[sn].blockchain_tests.push_back(t);
     }
 
     // remove old test entries and reset counters, update reset time
