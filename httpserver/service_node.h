@@ -37,7 +37,6 @@ struct Item;
 
 struct sn_response_t;
 
-class OxendClient;
 class OxenmqServer;
 
 namespace ss_client {

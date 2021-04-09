@@ -15,7 +15,6 @@ class ChannelEncryption;
 namespace oxen {
 
 class ServiceNode;
-class OxendClient;
 
 enum class Status {
     OK = 200,
