@@ -88,6 +88,10 @@ void oxend_json_rpc_request(
 
 constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(60);
 
+void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
+                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       http_callback_t&& cb);
+
 class HttpClientSession
     : public std::enable_shared_from_this<HttpClientSession> {
 

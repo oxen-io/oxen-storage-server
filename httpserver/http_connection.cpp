@@ -58,13 +58,14 @@ std::shared_ptr<request_t> build_post_request(const char* target,
     return req;
 }
 
-static void make_http_request(boost::asio::io_context& ioc, const std::string& address,
-        uint16_t port, const std::shared_ptr<request_t>& req,
-        http_callback_t&& cb) {
+void make_http_request(boost::asio::io_context& ioc, const std::string& address,
+                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       http_callback_t&& cb) {
 
     auto resolver = std::make_shared<tcp::resolver>(ioc);
 
-    auto resolve_handler = [&ioc, address, port, req, resolver, cb = std::move(cb)](
+    auto resolve_handler = [&ioc, address, port, req, resolver,
+                            cb = std::move(cb)](
                                const boost::system::error_code& ec,
                                boost::asio::ip::tcp::resolver::results_type
                                    resolve_results) mutable {
@@ -112,13 +113,11 @@ static void make_http_request(boost::asio::io_context& ioc, const std::string& a
         resolve_handler);
 }
 
-void oxend_json_rpc_request(
-        boost::asio::io_context& ioc,
-        const std::string& daemon_ip,
-        const uint16_t daemon_port,
-        std::string_view method,
-        const nlohmann::json& params,
-        http_callback_t&& cb) {
+void oxend_json_rpc_request(boost::asio::io_context& ioc,
+                            const std::string& daemon_ip,
+                            const uint16_t daemon_port, std::string_view method,
+                            const nlohmann::json& params,
+                            http_callback_t&& cb) {
 
     auto req = std::make_shared<request_t>();
 
