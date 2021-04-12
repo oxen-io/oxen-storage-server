@@ -69,25 +69,18 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
     const auto& client_key = message.data[0];
     const auto& payload = message.data[1];
 
-    auto& reply_tag = message.reply_tag;
-    auto& origin_pk = message.conn.pubkey();
-
     // TODO: accept string_view?
     request_handler_->process_proxy_exit(
         std::string(client_key), std::string(payload),
-        [this, origin_pk, reply_tag](oxen::Response res) {
+        [send=message.send_later()](oxen::Response res) {
             OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
 
             if (res.status() == Status::OK) {
-                omq_.send(origin_pk, "REPLY", reply_tag,
-                                    res.message());
-
+                send.reply(res.message());
             } else {
-                // We reply with 2 messages which will be treated as
+                // We reply with 2 message parts which will be treated as
                 // an error (rather than timeout)
-                omq_.send(origin_pk, "REPLY", reply_tag,
-                                    fmt::format("{}", res.status()),
-                                    res.message());
+                send.reply(fmt::format("{}", res.status()), res.message());
                 OXEN_LOG(debug, "Error: status is not OK for proxy_exit: {}",
                          res.status());
             }
@@ -98,17 +91,12 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
 
     OXEN_LOG(debug, "Got an onion request over OXENMQ");
 
-    auto& reply_tag = message.reply_tag;
-    auto& origin_pk = message.conn.pubkey();
-
-    auto on_response = [this, origin_pk,
-                        reply_tag](oxen::Response res) mutable {
+    auto on_response = [send=message.send_later()](oxen::Response res) {
         OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
         std::string status = std::to_string(static_cast<int>(res.status()));
 
-        omq_.send(origin_pk, "REPLY", reply_tag, std::move(status),
-                      res.message());
+        send.reply(std::move(status), res.message());
     };
 
     if (message.data.size() == 1 && message.data[0] == "ping") {
