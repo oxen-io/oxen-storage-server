@@ -1,6 +1,18 @@
 #include "channel_encryption.hpp"
-#include <assert.h>
 #include <iostream>
+#include <oxenmq/hex.h>
+
+std::string printable(std::string_view in) {
+    // Quick, dirty, and inefficient only meant for test code.
+    std::string result;
+    for (char c : in) {
+        if (c >= 0x21 && c <= 0x7e)
+            result += c;
+        else
+            result += "\\x" + oxenmq::to_hex(&c, &c+1);
+    }
+    return result;
+}
 
 int main() {
     const std::vector<uint8_t> private_key{
@@ -15,6 +27,13 @@ int main() {
                                   "cac31df559eb13fc5cc0c813\"}}";
 
     const auto ciphertext = channel.encrypt_gcm(plainText, pubKey);
-    const auto decrypted = channel.encrypt_gcm(ciphertext, pubKey);
-    assert(plainText == decrypted);
+    const auto decrypted = channel.decrypt_gcm(ciphertext, pubKey);
+    if (plainText != decrypted) {
+        std::cerr << "round-trip GCM encrypt-decrypt failed!\n";
+        std::cerr << "orig:   " << printable(plainText) << "\n";
+        std::cerr << "result: " << printable(decrypted) << "\n";
+        return 1;
+    }
+    std::cout << "OK\n";
+    return 0;
 }
