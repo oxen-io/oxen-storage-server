@@ -32,27 +32,16 @@ class user_pubkey_t {
 
     user_pubkey_t() {}
 
-    user_pubkey_t(std::string&& pk) : pubkey_(std::move(pk)) {}
-
-    user_pubkey_t(const std::string& pk) : pubkey_(pk) {}
+    user_pubkey_t(std::string pk) : pubkey_(std::move(pk)) {}
 
   public:
-    static user_pubkey_t create(std::string&& pk, bool& success) {
+    static user_pubkey_t create(std::string pk, bool& success) {
         success = true;
         if (pk.size() != get_user_pubkey_size()) {
             success = false;
             return {};
         }
         return user_pubkey_t(std::move(pk));
-    }
-
-    static user_pubkey_t create(const std::string& pk, bool& success) {
-        success = true;
-        if (pk.size() != get_user_pubkey_size()) {
-            success = false;
-            return {};
-        }
-        return user_pubkey_t(pk);
     }
 
     const std::string& str() const { return pubkey_; }
