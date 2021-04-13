@@ -145,6 +145,15 @@ static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
     return snode_map;
 }
 
+template <typename T>
+bool update_if_changed(T& val, const T& new_val, const std::common_type_t<T>& ignore_val) {
+    if (new_val != ignore_val && new_val != val) {
+        val = new_val;
+        return true;
+    }
+    return false;
+}
+
 auto apply_ips(const all_swarms_t& swarms_to_keep,
                const all_swarms_t& other_swarms) -> all_swarms_t {
 
@@ -157,12 +166,14 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
             const auto other_snode_it =
                 other_snode_map.find(snode.pubkey_legacy);
             if (other_snode_it != other_snode_map.end()) {
-                const auto& new_ip = other_snode_it->second.ip;
-                // Keep swarms_to_keep but don't overwrite with default IPs
-                if (new_ip != "0.0.0.0" && snode.ip != new_ip) {
-                    snode.ip = new_ip;
+                auto& sn = other_snode_it->second;
+                // Keep swarms_to_keep but don't overwrite with default IPs/ports
+                bool updated = false;
+                updated += update_if_changed(snode.ip, sn.ip, "0.0.0.0");
+                updated += update_if_changed(snode.port, sn.port, 0);
+                updated += update_if_changed(snode.lmq_port, sn.lmq_port, 0);
+                if (updated)
                     updates_count++;
-                }
             }
         }
     }

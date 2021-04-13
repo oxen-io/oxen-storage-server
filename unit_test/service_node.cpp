@@ -20,34 +20,39 @@ static auto create_dummy_sn_record() -> oxen::sn_record_t {
     return {ip, 8080, 8081, pk, pk_ed25519, pk_x25519};
 }
 
-static auto test_ip_update(const char* old_ip, const char* new_ip,
-                           const char* expected_ip) -> void {
+using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
+
+static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
+                           ip_ports expected) -> void {
+
     using oxen::sn_record_t;
 
     auto sn = create_dummy_sn_record();
 
-    sn.ip = old_ip;
+    std::tie(sn.ip, sn.port, sn.lmq_port) = old_addr;
 
     oxen::SwarmInfo si{0, std::vector<sn_record_t>{sn}};
     auto current = std::vector<oxen::SwarmInfo>{si};
 
-    sn.ip = new_ip;
+    std::tie(sn.ip, sn.port, sn.lmq_port) = new_addr;
 
     oxen::SwarmInfo si2{0, std::vector<sn_record_t>{sn}};
     auto incoming = std::vector<oxen::SwarmInfo>{si2};
 
     auto new_records = apply_ips(current, incoming);
 
-    BOOST_CHECK_EQUAL(new_records[0].snodes[0].ip, expected_ip);
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].ip, std::get<0>(expected));
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].port, std::get<1>(expected));
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].lmq_port, std::get<2>(expected));
 }
 
 BOOST_AUTO_TEST_CASE(updates_ip_address) {
 
     auto sn = create_dummy_sn_record();
 
-    const auto default_ip = "0.0.0.0";
-    const auto ip1 = "1.1.1.1";
-    const auto ip2 = "1.2.3.4";
+    const auto default_ip = ip_ports{"0.0.0.0", 0, 0};
+    const auto ip1 = ip_ports{"1.1.1.1", 123, 456};
+    const auto ip2 = ip_ports{"1.2.3.4", 123, 456};
 
     // Should update
     test_ip_update(ip1, ip2, ip2);
