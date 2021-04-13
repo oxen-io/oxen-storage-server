@@ -208,18 +208,14 @@ void RequestHandler::process_oxend_request(
         return;
     }
 
-    const auto id_it = params.find("id");
-
-    const json id = (id_it == params.end()) ? json{1} : *id_it;
-
     auto rpc_endpoint = fmt::format("rpc.{}", endpoint_str);
 
     service_node_.omq_server().oxend_request(
         rpc_endpoint,
-        [cb = std::move(cb), id](bool success, auto&& data) {
+        [cb = std::move(cb)](bool success, auto&& data) {
             if (success && data.size() >= 2) {
 
-                json res = {{"jsonrpc", "2.0"}, {"id", id}};
+                json res;
 
                 if (data[0] != "200") {
                     res["error"] = {{"code", data[0]}, {"message", data[1]}};
