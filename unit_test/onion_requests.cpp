@@ -95,7 +95,7 @@ BOOST_AUTO_TEST_CASE(relay_to_server) {
 BOOST_AUTO_TEST_CASE(relay_to_node) {
 
     const std::string inner_json = R"#({
-        "destination": "destination",
+        "destination": "ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000",
         "ephemeral_key": "ephemeral_key"
     })#";
 
@@ -106,7 +106,7 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
     auto expected = RelayToNodeInfo {
         ciphertext,
         "ephemeral_key",
-        "destination"
+        ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
     };
 
     BOOST_REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));
