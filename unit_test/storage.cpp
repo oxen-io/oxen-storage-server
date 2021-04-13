@@ -145,7 +145,7 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     boost::asio::io_context ioc;
     Database storage(ioc, ".");
 
-    const size_t num_entries = 1000;
+    const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
         const auto hash = std::string("hash") + std::to_string(i);
         storage.store(hash, "mypubkey", "bytesasstring", 100000,
@@ -178,7 +178,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
 
     boost::asio::io_context ioc;
 
-    Database storage(ioc, ".");
+    Database storage(ioc, ".", 100ms);
 
     /// Note: `Database` is not thread safe
     /// and not meant to be used in this way;
@@ -198,7 +198,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
     // the timer kicks in every 10 seconds
     // give 100ms to perform the cleanup
     std::cout << "waiting for cleanup timer..." << std::endl;
-    std::this_thread::sleep_for(10s + 100ms);
+    std::this_thread::sleep_for(100ms + 100ms);
 
     {
         std::vector<Item> items;
@@ -221,7 +221,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    const size_t num_items = 10000;
+    const size_t num_items = 100;
 
     boost::asio::io_context ioc;
     Database storage(ioc, ".");
@@ -255,7 +255,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    const size_t num_items = 10000;
+    const size_t num_items = 100;
 
     boost::asio::io_context ioc;
     Database storage(ioc, ".");
@@ -280,53 +280,6 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 
         BOOST_CHECK(storage.retrieve(pubkey, items, ""));
         BOOST_CHECK_EQUAL(items.size(), num_items);
-    }
-}
-
-BOOST_AUTO_TEST_CASE(bulk_performance_check) {
-    const auto pubkey = "mypubkey";
-    const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
-
-    const size_t num_items = 10000;
-
-    std::vector<Item> items;
-    for (int i = 0; i < num_items; ++i) {
-        items.push_back({std::to_string(i), pubkey, timestamp, ttl,
-                         timestamp + ttl, nonce, bytes});
-    }
-
-    // bulk store
-    {
-        StorageRAIIFixture fixture;
-        boost::asio::io_context ioc;
-        Database storage(ioc, ".");
-        const auto start = std::chrono::steady_clock::now();
-        storage.bulk_store(items);
-        const auto end = std::chrono::steady_clock::now();
-        const auto diff = end - start;
-        std::cout << "bulk: "
-                  << std::chrono::duration<double, std::milli>(diff).count()
-                  << " ms" << std::endl;
-    }
-
-    // single stores
-    {
-        StorageRAIIFixture fixture;
-        boost::asio::io_context ioc;
-        Database storage(ioc, ".");
-        const auto start = std::chrono::steady_clock::now();
-        for (const auto& item : items) {
-            storage.store(item.hash, item.pub_key, item.data, item.ttl,
-                          item.timestamp, item.nonce);
-        }
-        const auto end = std::chrono::steady_clock::now();
-        const auto diff = end - start;
-        std::cout << "singles:"
-                  << std::chrono::duration<double, std::milli>(diff).count()
-                  << " ms" << std::endl;
     }
 }
 

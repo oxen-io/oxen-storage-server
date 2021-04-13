@@ -119,6 +119,9 @@ class RequestHandler {
     void process_client_req(const std::string& req_json,
                             std::function<void(oxen::Response)> cb);
 
+    void process_oxend_request(const nlohmann::json& params,
+                               std::function<void(oxen::Response)> cb);
+
     // Test only: retrieve all db entires
     Response process_retrieve_all();
 
@@ -128,8 +131,7 @@ class RequestHandler {
                             std::function<void(oxen::Response)> cb);
 
     void process_onion_to_url(const std::string& protocol,
-                              const std::string& host,
-                              const uint16_t port,
+                              const std::string& host, const uint16_t port,
                               const std::string& target,
                               const std::string& payload,
                               std::function<void(oxen::Response)> cb);

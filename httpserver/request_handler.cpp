@@ -93,8 +93,7 @@ std::string computeMessageHash(const std::string& timestamp,
 
 Response RequestHandler::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "timestamp",
-                                      "data"};
+    constexpr const char* fields[] = {"pubKey", "ttl", "timestamp", "data"};
 
     for (const auto& field : fields) {
         if (!params.contains(field)) {
@@ -150,8 +149,7 @@ Response RequestHandler::process_store(const json& params) {
                         "Timestamp error: check your clock\n"};
     }
 
-    auto messageHash =
-        computeMessageHash(timestamp, ttl, pk.str(), data);
+    auto messageHash = computeMessageHash(timestamp, ttl, pk.str(), data);
 
     bool success;
 
@@ -182,6 +180,56 @@ Response RequestHandler::process_store(const json& params) {
     res_body["difficulty"] = 1;
 
     return Response{Status::OK, res_body.dump(), ContentType::json};
+}
+
+void RequestHandler::process_oxend_request(
+    const json& params, std::function<void(oxen::Response)> cb) {
+
+    const static auto allowed_endpoints =
+        std::unordered_set{"get_service_nodes", "ons_resolve"};
+
+    const auto endpoint_it = params.find("endpoint");
+    if (endpoint_it == params.end() || !endpoint_it->is_string()) {
+        cb({Status::BAD_REQUEST, "missing 'endpoint'"});
+        return;
+    }
+
+    const auto& endpoint_str = endpoint_it->get_ref<const std::string&>();
+
+    if (!allowed_endpoints.count(endpoint_str.c_str())) {
+        cb({Status::BAD_REQUEST,
+            fmt::format("Endpoint not allowed: {}", endpoint_str)});
+        return;
+    }
+
+    const auto oxend_params_it = params.find("oxend_params");
+    if (oxend_params_it == params.end() || !oxend_params_it->is_object()) {
+        cb({Status::BAD_REQUEST, "missing 'oxend_params'"});
+        return;
+    }
+
+    auto rpc_endpoint = fmt::format("rpc.{}", endpoint_str);
+
+    service_node_.omq_server().oxend_request(
+        rpc_endpoint,
+        [cb = std::move(cb)](bool success, auto&& data) {
+            if (success && data.size() >= 2) {
+
+                json res;
+
+                if (data[0] != "200") {
+                    res["error"] = {{"code", data[0]}, {"message", data[1]}};
+                } else {
+                    res["result"] = data[1];
+                }
+
+                cb({Status::OK, res.dump(), ContentType::json});
+
+            } else {
+                cb({Status::BAD_REQUEST, "unknown oxend error"});
+            }
+        },
+        oxend_params_it->dump());
 }
 
 Response RequestHandler::process_retrieve_all() {
@@ -349,6 +397,9 @@ void RequestHandler::process_client_req(
     } else if (method_name == "get_snodes_for_pubkey") {
         OXEN_LOG(debug, "Process client request: snodes for pubkey");
         cb(this->process_snodes_by_pk(*params_it));
+    } else if (method_name == "oxend_request") {
+        OXEN_LOG(debug, "Process client request: oxend_request");
+        this->process_oxend_request(*params_it, std::move(cb));
     } else if (method_name == "get_lns_mapping") {
 
         const auto name_it = params_it->find("name_hash");
@@ -408,8 +459,8 @@ void RequestHandler::process_lns_request(
 
 #ifdef INTEGRATION_TEST
     // use mainnet seed
-    oxend_json_rpc_request(ioc_, "public.loki.foundation", 22023,
-        "lns_names_to_owners", params,
+    oxend_json_rpc_request(
+        ioc_, "public.loki.foundation", 22023, "lns_names_to_owners", params,
         [cb = std::move(cb)](sn_response_t sn) {
             if (sn.error_code == SNodeError::NO_ERROR && sn.body)
                 cb({Status::OK, *sn.body});
@@ -417,13 +468,14 @@ void RequestHandler::process_lns_request(
                 cb({Status::BAD_REQUEST, "unknown oxend error"});
         });
 #else
-    service_node_.omq_server().oxend_request("rpc.lns_names_to_owners",
-            [cb = std::move(cb)](bool success, auto&& data) {
-                if (success && !data.empty())
-                    cb({Status::OK, data.front()});
-                else
-                    cb({Status::BAD_REQUEST, "unknown oxend error"});
-            });
+    service_node_.omq_server().oxend_request(
+        "rpc.lns_names_to_owners",
+        [cb = std::move(cb)](bool success, auto&& data) {
+            if (success && !data.empty())
+                cb({Status::OK, data.front()});
+            else
+                cb({Status::BAD_REQUEST, "unknown oxend error"});
+        });
 #endif
 }
 
