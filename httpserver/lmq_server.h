@@ -16,6 +16,9 @@ struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
 
+void omq_logger(oxenmq::LogLevel level, const char* file, int line,
+        std::string message);
+
 class OxenmqServer {
 
     oxenmq::OxenMQ omq_;

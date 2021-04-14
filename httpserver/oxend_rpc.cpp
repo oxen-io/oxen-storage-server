@@ -1,5 +1,6 @@
 #include "oxen_logger.h"
 #include "oxend_rpc.h"
+#include "lmq_server.h"
 
 #include <chrono>
 #include <exception>
@@ -11,7 +12,7 @@
 namespace oxen {
 
 oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
-    oxenmq::OxenMQ omq;
+    oxenmq::OxenMQ omq{omq_logger, oxenmq::LogLevel::info};
     omq.start();
     constexpr auto retry_interval = 5s;
     auto last_try = std::chrono::steady_clock::now() - retry_interval;

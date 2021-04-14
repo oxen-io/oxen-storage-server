@@ -163,7 +163,7 @@ void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
     message.send_reply(payload);
 }
 
-static void logger(oxenmq::LogLevel level, const char* file, int line,
+void omq_logger(oxenmq::LogLevel level, const char* file, int line,
         std::string message) {
 #define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
     case oxenmq::LogLevel::LMQ_LVL:                                            \
@@ -190,7 +190,7 @@ OxenmqServer::OxenmqServer(
         std::string{privkey.view()},
         true, // is service node
         [this](auto pk) { return peer_lookup(pk); }, // SN-by-key lookup func
-        logger,
+        omq_logger,
         oxenmq::LogLevel::info}
 {
     for (const auto& key : stats_access_keys)
