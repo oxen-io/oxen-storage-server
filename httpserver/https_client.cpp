@@ -21,7 +21,7 @@ void make_https_request_to_sn(
     boost::asio::ip::tcp::resolver resolver(ioc);
 #ifdef INTEGRATION_TEST
     const auto resolve_results =
-        resolver.resolve("0.0.0.0", std::to_string(port), ec);
+        resolver.resolve("0.0.0.0", std::to_string(sn.port), ec);
 #else
 
     if (sn.ip == "0.0.0.0") {
