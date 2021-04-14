@@ -96,7 +96,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
         }
 
         if (!resolved) {
-            OXEN_LOG(error, "[HTTP] DNS resulution error for {}", address);
+            OXEN_LOG(error, "[HTTP] DNS resolution error for {}", address);
             cb({SNodeError::ERROR_OTHER});
             return;
         }

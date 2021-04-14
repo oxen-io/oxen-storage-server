@@ -714,7 +714,7 @@ void ServiceNode::ping_peers_tick() {
 
     if (this->status_ == SnodeStatus::UNSTAKED ||
         this->status_ == SnodeStatus::UNKNOWN) {
-        OXEN_LOG(debug, "Skipping this round of peer testing (unstaked)");
+        OXEN_LOG(trace, "Skipping peer testing (unstaked)");
         return;
     }
 
@@ -724,7 +724,7 @@ void ServiceNode::ping_peers_tick() {
     reach_records_.check_incoming_tests(now);
 
     if (this->status_ == SnodeStatus::DECOMMISSIONED) {
-        OXEN_LOG(debug, "Skipping this round of peer testing (decommissioned)");
+        OXEN_LOG(trace, "Skipping peer testing (decommissioned)");
         return;
     }
 
