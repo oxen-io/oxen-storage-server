@@ -33,20 +33,24 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         ("bind-ip", po::value(&options_.ip)->default_value("0.0.0.0"), "IP to which to bind the server")
         ("version,v", po::bool_switch(&options_.print_version), "Print the version of this binary")
         ("help", po::bool_switch(&options_.print_help),"Shows this help message")
-        ("stats-access-key", po::value(&options_.stats_access_keys)->multitoken(), "A public key (x25519) that will be given access to the `get_stats` lmq endpoint");
+        ("stats-access-key", po::value(&options_.stats_access_keys)->multitoken(), "A public key (x25519) that will be given access to the `get_stats` lmq endpoint")
+#ifdef INTEGRATION_TEST
+        ("oxend-key", po::value(&options_.oxend_key), "Legacy secret key (integration testing only)")
+        ("oxend-x25519-key", po::value(&options_.oxend_x25519_key), "x25519 secret key (integration testing only)")
+        ("oxend-ed25519-key", po::value(&options_.oxend_ed25519_key), "ed25519 public key (integration testing only)");
+#endif
+        ;
         // Add hidden ip and port options.  You technically can use the `--ip=` and `--port=` with
         // these here, but they are meant to be positional.  More usefully, you can specify `ip=`
         // and `port=` in the config file to specify them.
     hidden.add_options()
         ("ip", po::value<std::string>(), "(unused)")
         ("port", po::value(&options_.port), "Port to listen on")
-        ("oxend-key", po::value(&options_.oxend_key), "Legacy secret key (test only)")
         ("oxend-rpc-ip", po::value(&old_rpc_ip), "Obsolete: oxend HTTP RPC IP; use --oxend-rpc with the zmq address instead")
         ("oxend-rpc-port", po::value(&old_rpc_port), "Obsolete: oxend HTTP RPC port; use --oxend-rpc with the zmq address instead")
         ("lokid-rpc-ip", po::value(&old_rpc_ip), "Backwards compatible option for oxend RPC IP")
         ("lokid-rpc-port", po::value(&old_rpc_port), "Backwards compatible option for oxend RPC port")
-        ("oxend-x25519-key", po::value(&options_.oxend_x25519_key), "x25519 secret key (test only)")
-        ("oxend-ed25519-key", po::value(&options_.oxend_ed25519_key), "ed25519 public key (test only)");
+        ;
     // clang-format on
 
     all.add(desc_).add(hidden);

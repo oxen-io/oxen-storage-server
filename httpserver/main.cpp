@@ -93,6 +93,10 @@ int main(int argc, char* argv[]) {
     // Always print version for the logs
     OXEN_LOG(info, "{}", oxen::STORAGE_SERVER_VERSION_INFO);
 
+#ifdef INTEGRATION_TEST
+    OXEN_LOG(warn, "Compiled for integration tests; this binary will not function as a regular storage server!");
+#endif
+
     if (options.ip == "127.0.0.1") {
         OXEN_LOG(critical,
                  "Tried to bind oxen-storage to localhost, please bind "
@@ -145,9 +149,18 @@ int main(int argc, char* argv[]) {
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
         // command line option:
-        const auto private_key = legacy_seckey::from_hex(options.oxend_key);
-        const auto private_key_ed25519 = ed25519_seckey::from_hex(options.oxend_ed25519_key);
-        const auto private_key_x25519 = x25519_seckey::from_hex(options.oxend_x25519_key);
+        legacy_seckey private_key{};
+        ed25519_seckey private_key_ed25519{};
+        x25519_seckey private_key_x25519{};
+        try {
+            private_key = legacy_seckey::from_hex(options.oxend_key);
+            private_key_ed25519 = ed25519_seckey::from_hex(options.oxend_ed25519_key);
+            private_key_x25519 = x25519_seckey::from_hex(options.oxend_x25519_key);
+        } catch (...) {
+            OXEN_LOG(critical, "This storage server binary is compiled in integration test mode: "
+                "--oxend-key, --oxend-x25519-key, and --oxend-ed25519-key are required");
+            throw;
+        }
 #endif
 
         sn_record_t me{"0.0.0.0", options.port, options.lmq_port,
