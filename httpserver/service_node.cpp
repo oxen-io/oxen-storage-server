@@ -47,55 +47,6 @@ static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
     make_https_request_to_sn(ioc, sn, req, std::move(cb));
 }
 
-FailedRequestHandler::FailedRequestHandler(boost::asio::io_context& ioc,
-                                           const sn_record_t& sn,
-                                           std::shared_ptr<request_t> req,
-                                           std::function<void()> give_up_cb)
-    : ioc_(ioc), retry_timer_(ioc), sn_(sn), request_(std::move(req)),
-      give_up_callback_(std::move(give_up_cb)) {}
-
-void FailedRequestHandler::retry(std::shared_ptr<FailedRequestHandler>&& self) {
-
-    attempt_count_ += 1;
-    if (attempt_count_ > RETRY_INTERVALS.size()) {
-        OXEN_LOG(debug, "Gave up after {} attempts", attempt_count_);
-        if (give_up_callback_)
-            give_up_callback_();
-        return;
-    }
-
-    retry_timer_.expires_after(RETRY_INTERVALS[attempt_count_ - 1]);
-    OXEN_LOG(debug, "Will retry in {} secs",
-             RETRY_INTERVALS[attempt_count_ - 1].count());
-
-    retry_timer_.async_wait(
-        [self = std::move(self)](const boost::system::error_code&) mutable {
-            /// Save some references before possibly moved out of `self`
-            const auto& sn = self->sn_;
-            auto& ioc = self->ioc_;
-            /// TODO: investigate whether we can get rid of the extra ptr copy
-            /// here?
-            const std::shared_ptr<request_t> req = self->request_;
-
-            /// Request will be copied here
-            make_sn_request(
-                ioc, sn, req,
-                [self = std::move(self)](sn_response_t&& res) mutable {
-                    if (res.error_code != SNodeError::NO_ERROR) {
-                        OXEN_LOG(debug, "Could not relay one: {} (attempt #{})",
-                                 self->sn_.pubkey_legacy, self->attempt_count_);
-                        self->retry(std::move(self));
-                    }
-                });
-        });
-}
-
-FailedRequestHandler::~FailedRequestHandler() {
-    OXEN_LOG(trace, "~FailedRequestHandler()");
-}
-
-void FailedRequestHandler::init_timer() { retry(shared_from_this()); }
-
 /// TODO: there should be config.h to store constants like these
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
 constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;

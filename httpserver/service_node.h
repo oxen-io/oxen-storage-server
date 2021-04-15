@@ -56,34 +56,6 @@ class Swarm;
 
 struct signature;
 
-/// Represents failed attempt at communicating with a SNode
-/// (currently only for single messages)
-class FailedRequestHandler
-    : public std::enable_shared_from_this<FailedRequestHandler> {
-    boost::asio::io_context& ioc_;
-    boost::asio::steady_timer retry_timer_;
-    sn_record_t sn_;
-    const std::shared_ptr<request_t> request_;
-
-    uint32_t attempt_count_ = 0;
-
-    /// Call this if we give up re-transmitting
-    std::function<void()> give_up_callback_;
-
-    void retry(std::shared_ptr<FailedRequestHandler>&& self);
-
-  public:
-    FailedRequestHandler(boost::asio::io_context& ioc, const sn_record_t& sn,
-                         std::shared_ptr<request_t> req,
-                         std::function<void()> give_up_cb = nullptr);
-
-    ~FailedRequestHandler();
-    /// Initiates the timer for retrying (which cannot be done directly in
-    /// the constructor as it is not possible to create a shared ptr
-    /// to itself before the construction is done)
-    void init_timer();
-};
-
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
