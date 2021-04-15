@@ -35,7 +35,7 @@ static void check_incoming_tests_impl(
                     name, fminutes{elapsed}.count());
             }
             OXEN_LOG(warn, "Please check your {} port. Not being reachable "
-                    "over {} may result in a deregistration!", name);
+                    "over {} may result in a deregistration!", name, name);
         }
     }
 }

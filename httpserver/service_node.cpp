@@ -960,7 +960,7 @@ void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int
         }
 
         try {
-            const auto status = json::parse(data[1]).at("result").at("status").get<std::string>();
+            const auto status = json::parse(data[1]).at("status").get<std::string>();
 
             if (status == "OK") {
                 OXEN_LOG(debug, "Successfully reported {} node: {}",
