@@ -801,7 +801,7 @@ void ServiceNode::oxend_ping_timer_tick() {
     json params{
         {"version", STORAGE_SERVER_VERSION},
         {"https_port", our_address_.port},
-        {"lmq_port", our_address_.lmq_port}};
+        {"omq_port", our_address_.lmq_port}};
 
     lmq_server_.oxend_request("admin.storage_server_ping",
         [](bool success, std::vector<std::string> data) {
