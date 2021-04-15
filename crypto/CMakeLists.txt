@@ -26,10 +26,11 @@ target_link_libraries(crypto_test PRIVATE crypto)
 
 find_package(Threads)
 
-target_link_libraries(crypto PRIVATE
+target_link_libraries(crypto
+    PUBLIC
+    common
+    PRIVATE
     sodium
     Boost::boost
-    oxenmq::oxenmq
-    filesystem
     Threads::Threads
     ${CMAKE_DL_LIBS})
