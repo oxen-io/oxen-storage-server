@@ -18,7 +18,13 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     std::string config_file;
     po::options_description all, hidden;
     auto home = util::get_home_dir().value_or(".");
-    options_.oxend_omq_rpc = "ipc://" + (home / ".oxen" / "oxend.sock").u8string();
+    auto oxen_sock = home;
+    if (home == fs::path{"/var/lib/oxen"} || home == fs::path{"/var/lib/loki"})
+        oxen_sock /= "oxend.sock";
+    else
+        oxen_sock = oxen_sock / ".oxen" / "oxend.sock";
+
+    options_.oxend_omq_rpc = "ipc://" + oxen_sock.u8string();
     std::string old_rpc_ip;
     uint16_t old_rpc_port = 0;
     // clang-format off
@@ -86,7 +92,8 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
     }
 
     if (options_.testnet && !vm.count("oxend-rpc")) {
-        options_.oxend_omq_rpc = "ipc://" + (home / ".oxen" / "testnet" / "oxend.sock").u8string();
+        oxen_sock = oxen_sock.parent_path() / "testnet" / "oxend.sock";
+        options_.oxend_omq_rpc = "ipc://" + oxen_sock.u8string();
     }
 
     if (!vm.count("oxend-rpc") && (!old_rpc_ip.empty() || old_rpc_port != 0)) {
