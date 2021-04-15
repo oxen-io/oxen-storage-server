@@ -9,6 +9,9 @@ using std::chrono::steady_clock;
 
 namespace oxen {
 
+using fseconds = std::chrono::duration<float, std::chrono::seconds::period>;
+using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
+
 static void check_incoming_tests_impl(
         std::string_view name,
         const time_point_t& now,
@@ -21,7 +24,6 @@ static void check_incoming_tests_impl(
 
     incoming.was_failing = failing;
 
-    using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
     if (whine) {
         incoming.last_whine = now;
         if (!failing) {
@@ -56,6 +58,8 @@ std::optional<sn_record_t> reachability_testing::next_random(
 
     if (next_general_test > now)
         return std::nullopt;
+    next_general_test = now + std::chrono::duration_cast<time_point_t::duration>(
+            fseconds(TESTING_INTERVAL(util::rng())));
 
     // Pull the next element off the queue, but skip ourself, any that are no longer registered, and
     // any that are currently known to be failing (those are queued for testing separately).
@@ -111,11 +115,10 @@ std::vector<std::pair<sn_record_t, int>> reachability_testing::get_failing(
 
 void reachability_testing::add_failing_node(const legacy_pubkey& pk, int previous_failures) {
     using namespace std::chrono;
-    using dseconds = duration<double, seconds::period>;
 
     if (previous_failures < 0) previous_failures = 0;
     auto next_test = steady_clock::now() + duration_cast<time_point_t::duration>(
-            previous_failures * TESTING_BACKOFF + dseconds{TESTING_INTERVAL(util::rng())});
+            previous_failures * TESTING_BACKOFF + fseconds{TESTING_INTERVAL(util::rng())});
 
     failing_queue.emplace(pk, next_test, previous_failures + 1);
 }

@@ -42,7 +42,7 @@ class reachability_testing {
     // Distribution for the seconds between node tests: we throw in some randomness to avoid
     // potential clustering of tests.  (Note that there is some granularity here as the test timer
     // only runs every TESTING_TIMER_INTERVAL).
-    inline static thread_local std::normal_distribution<double> TESTING_INTERVAL{10.0, 3.0};
+    inline static thread_local std::normal_distribution<float> TESTING_INTERVAL{10.0, 3.0};
 
     // The linear backoff after each consecutive test failure before we re-test.  Specifically we
     // schedule the next re-test for (TESTING_BACKOFF*previous_failures) + TESTING_INTERVAL(rng).
