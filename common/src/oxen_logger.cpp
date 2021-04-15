@@ -55,6 +55,7 @@ void init_logging(const std::string& data_dir,
 
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(log_level);
+    console_sink->set_color_mode(spdlog::color_mode::always);
 
     // setting this to `true` can be useful for debugging on testnet
     bool rotate_on_open = false;
