@@ -86,7 +86,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
             const tcp::endpoint ep = (resolve_results++)->endpoint();
 
 #ifndef INTEGRATION_TEST
-            if (!ep.address().is_v4() || is_ip_public(ep.address().to_v4())) {
+            if (!ep.address().is_v4() || !is_ip_public(ep.address().to_v4())) {
                 continue;
             }
 #endif
