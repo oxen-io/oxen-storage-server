@@ -5,6 +5,7 @@
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "oxenmq/connections.h"
+#include "oxenmq/oxenmq.h"
 #include "request_handler.h"
 #include "service_node.h"
 
@@ -230,19 +231,25 @@ OxenmqServer::OxenmqServer(
 
     omq_.MAX_MSG_SIZE =
         10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+
+    // Be explicit about wanting per-SN unique connection IDs:
+    omq_.EPHEMERAL_ROUTING_ID = true;
 }
 
 void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
     // Establish our persistent connection to oxend.
-    auto success = [this](auto&&) {
-        OXEN_LOG(info, "connection to oxend established");
-        service_node_->on_oxend_connected();
-    };
-    oxend_conn_ = omq_.connect_remote(oxend_rpc, success,
+    oxend_conn_ = omq_.connect_remote(oxend_rpc,
+        [this](auto&&) {
+            OXEN_LOG(info, "connection to oxend established");
+            service_node_->on_oxend_connected();
+        },
         [this, oxend_rpc](auto&&, std::string_view reason) {
             OXEN_LOG(warn, "failed to connect to local oxend @ {}: {}; retrying", oxend_rpc, reason);
             connect_oxend(oxend_rpc);
         },
+        // Turn this off since we are using oxenmq's own key and don't want to replace some existing
+        // connection to it that might also be using that pubkey:
+        oxenmq::connect_option::ephemeral_routing_id{},
         oxenmq::AuthLevel::admin);
 }
 

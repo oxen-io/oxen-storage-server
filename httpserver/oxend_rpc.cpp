@@ -28,7 +28,7 @@ oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
 
         std::promise<oxend_seckeys> prom;
         auto fut = prom.get_future();
-        auto conn = omq.connect_remote(oxend_rpc_address,
+        auto conn = omq.connect_remote(oxenmq::address{oxend_rpc_address},
             [&omq, &prom](auto conn) {
                 OXEN_LOG(info, "Connected to oxend; retrieving SN keys");
                 omq.request(conn, "admin.get_service_node_privkey",
