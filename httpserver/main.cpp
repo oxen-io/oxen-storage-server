@@ -167,10 +167,10 @@ int main(int argc, char* argv[]) {
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
-        if (me.pubkey_legacy != me.pubkey_ed25519)
-            OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
-        OXEN_LOG(info, "- ed25519: {} ({})", me.pubkey_ed25519, me.pubkey_ed25519.snode_address());
+        OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
+        OXEN_LOG(info, "- ed25519: {}", me.pubkey_ed25519);
         OXEN_LOG(info, "- x25519:  {}", me.pubkey_x25519);
+        OXEN_LOG(info, "- lokinet: {}", me.pubkey_ed25519.snode_address());
 
         ChannelEncryption channel_encryption{private_key_x25519};
 
