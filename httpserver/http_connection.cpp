@@ -75,12 +75,12 @@ std::shared_ptr<request_t> build_post_request(
 }
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& address,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       uint16_t port, std::shared_ptr<request_t> req,
                        http_callback_t&& cb) {
 
     auto resolver = std::make_shared<tcp::resolver>(ioc);
 
-    auto resolve_handler = [&ioc, address, port, req, resolver,
+    auto resolve_handler = [&ioc, address, port, req=std::move(req), resolver,
                             cb = std::move(cb)](
                                const boost::system::error_code& ec,
                                boost::asio::ip::tcp::resolver::results_type

@@ -41,10 +41,10 @@ constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
 constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
-                            const std::shared_ptr<request_t>& req,
+                            std::shared_ptr<request_t> req,
                             http_callback_t&& cb) {
     // TODO: Return to using snode address instead of ip
-    make_https_request_to_sn(ioc, sn, req, std::move(cb));
+    make_https_request_to_sn(ioc, sn, std::move(req), std::move(cb));
 }
 
 /// TODO: there should be config.h to store constants like these
@@ -692,9 +692,9 @@ void ServiceNode::ping_peers_tick() {
         test_reachability(sn, prev_fails);
 }
 
-void ServiceNode::sign_request(std::shared_ptr<request_t>& req) const {
+void ServiceNode::sign_request(request_t& req) const {
     // TODO: investigate why we are not signing headers
-    const auto hash = hash_data(req->body());
+    const auto hash = hash_data(req.body());
     const auto signature = generate_signature(hash, {our_address_.pubkey_legacy, our_seckey_});
     attach_signature(req, signature);
 }
@@ -724,8 +724,8 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
             report_reachability(sn, success && result == TEST_PASSED, previous_failures);
     };
     auto req = build_post_request(sn.pubkey_ed25519, "/swarms/ping_test/v1", "{}");
-    this->sign_request(req);
-    make_sn_request(ioc_, sn, req, std::move(http_callback));
+    this->sign_request(*req);
+    make_sn_request(ioc_, sn, std::move(req), std::move(http_callback));
 
     // test lmq port:
     lmq_server_->request(
@@ -793,7 +793,7 @@ void ServiceNode::oxend_ping_timer_tick() {
         boost::bind(&ServiceNode::oxend_ping_timer_tick, this));
 }
 
-void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
+void ServiceNode::attach_signature(request_t& request,
                                    const signature& sig) const {
 
     std::string raw_sig;
@@ -802,9 +802,9 @@ void ServiceNode::attach_signature(std::shared_ptr<request_t>& request,
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
     const std::string sig_b64 = oxenmq::to_base64(raw_sig);
-    request->set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
+    request.set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
 
-    request->set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
+    request.set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
                  oxenmq::to_base32z(our_address_.pubkey_legacy.view()));
 }
 
@@ -887,7 +887,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
     auto req = build_post_request(testee.pubkey_ed25519, "/swarms/storage_test/v1", json_body.dump());
 
-    this->sign_request(req);
+    this->sign_request(*req);
 
     make_sn_request(ioc_, testee, req,
                     [testee, item, height = this->block_height_,

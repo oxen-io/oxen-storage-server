@@ -69,7 +69,7 @@ void oxend_json_rpc_request(
         http_callback_t&& cb);
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       uint16_t port, std::shared_ptr<request_t> req,
                        http_callback_t&& cb);
 
 class HttpClientSession

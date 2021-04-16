@@ -132,7 +132,7 @@ class ServiceNode {
     /// (called when our old node got dissolved)
     void salvage_data() const; // mutex not needed
 
-    void attach_signature(std::shared_ptr<request_t>& request,
+    void attach_signature(request_t& request,
                           const signature& sig) const; // mutex not needed
 
     /// Reliably push message/batch to a service node
@@ -179,7 +179,7 @@ class ServiceNode {
     // Reports node reachability result to oxend and, if a failure, queues the node for retesting.
     void report_reachability(const sn_record_t& sn, bool reachable, int previous_failures);
 
-    void sign_request(std::shared_ptr<request_t>& req) const;
+    void sign_request(request_t& req) const;
 
   public:
     ServiceNode(boost::asio::io_context& ioc,
