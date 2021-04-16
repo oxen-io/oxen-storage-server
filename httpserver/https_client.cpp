@@ -6,10 +6,13 @@
 
 #include <openssl/x509.h>
 #include <oxenmq/base64.h>
+#include <oxenmq/base32z.h>
 
 namespace oxen {
 
 using error_code = boost::system::error_code;
+
+static ssl::context ctx{ssl::context::tlsv12_client};
 
 void make_https_request_to_sn(
         boost::asio::io_context& ioc,
@@ -24,9 +27,9 @@ void make_https_request_to_sn(
         resolver.resolve("0.0.0.0", std::to_string(sn.port), ec);
 #else
 
-    if (sn.ip == "0.0.0.0") {
+    if (sn.ip == "0.0.0.0" || sn.port == 0) {
         OXEN_LOG(debug, "Could not initiate request to snode (we don't know "
-                        "their IP yet).");
+                        "their IP/port yet).");
 
         cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
@@ -43,10 +46,11 @@ void make_https_request_to_sn(
         return;
     }
 
-    static ssl::context ctx{ssl::context::tlsv12_client};
-
+    std::string hostname = sn.pubkey_ed25519
+        ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
+        : "service-node.snode";
     auto session = std::make_shared<HttpsClientSession>(
-        ioc, ctx, std::move(resolve_results), "service-node", std::move(req),
+        ioc, ctx, std::move(resolve_results), hostname.c_str(), std::move(req),
         std::move(cb), sn.pubkey_legacy);
 
     session->start();

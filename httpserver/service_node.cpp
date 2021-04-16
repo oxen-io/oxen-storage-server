@@ -723,7 +723,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
         if (result.exchange(success ? TEST_PASSED : TEST_FAILED) != TEST_WAITING)
             report_reachability(sn, success && result == TEST_PASSED, previous_failures);
     };
-    auto req = build_post_request("/swarms/ping_test/v1", "{}");
+    auto req = build_post_request(sn.pubkey_ed25519, "/swarms/ping_test/v1", "{}");
     this->sign_request(req);
     make_sn_request(ioc_, sn, req, std::move(http_callback));
 
@@ -885,7 +885,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     json_body["height"] = test_height;
     json_body["hash"] = item.hash;
 
-    auto req = build_post_request("/swarms/storage_test/v1", json_body.dump());
+    auto req = build_post_request(testee.pubkey_ed25519, "/swarms/storage_test/v1", json_body.dump());
 
     this->sign_request(req);
 

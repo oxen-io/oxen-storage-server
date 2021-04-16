@@ -38,8 +38,8 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-std::shared_ptr<request_t> build_post_request(const char* target,
-                                              std::string&& data);
+std::shared_ptr<request_t> build_post_request(
+        const ed25519_pubkey& host, const char* target, std::string data);
 
 class Security;
 

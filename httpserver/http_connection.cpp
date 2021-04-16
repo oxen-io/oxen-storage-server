@@ -62,12 +62,13 @@ std::ostream& operator<<(std::ostream& os, const sn_response_t& res) {
 
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
-std::shared_ptr<request_t> build_post_request(const char* target,
-                                              std::string&& data) {
+std::shared_ptr<request_t> build_post_request(
+        const ed25519_pubkey& host, const char* target, std::string data) {
     auto req = std::make_shared<request_t>();
     req->body() = std::move(data);
     req->method(http::verb::post);
-    req->set(http::field::host, "service node");
+    req->set(http::field::host,
+            (host ? oxenmq::to_base32z(host.view()) : "service-node") + ".snode");
     req->target(target);
     req->prepare_payload();
     return req;
