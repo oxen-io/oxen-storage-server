@@ -247,16 +247,21 @@ void ServiceNode::bootstrap_data() {
 
                 (*req_counter)++;
 
-                if (*req_counter == node_count && this->target_height_ == 0) {
-                    // If target height is still 0 after having contacted
-                    // (successfully or not) all seed nodes, just assume we have
-                    // finished syncing. (Otherwise we will never get a chance
-                    // to update syncing status.)
-                    OXEN_LOG(
-                        warn,
-                        "Could not contact any of the seed nodes to get target "
-                        "height. Going to assume our height is correct.");
-                    this->syncing_ = false;
+                if (*req_counter == node_count) {
+                    OXEN_LOG(info, "Bootstrapping done");
+                    if (this->target_height_ > 0) {
+                        update_swarms();
+                    } else {
+                        // If target height is still 0 after having contacted
+                        // (successfully or not) all seed nodes, just assume we have
+                        // finished syncing. (Otherwise we will never get a chance
+                        // to update syncing status.)
+                        OXEN_LOG(
+                            warn,
+                            "Could not contact any of the seed nodes to get target "
+                            "height. Going to assume our height is correct.");
+                        this->syncing_ = false;
+                    }
                 }
             });
     }
@@ -608,9 +613,10 @@ void ServiceNode::update_swarms() {
             {"pubkey_ed25519", true},
             {"storage_lmq_port", true}
         }},
-        {"poll_block_hash", block_hash_},
         {"active_only", false}
     };
+    if (!got_first_response_ && !block_hash_.empty())
+        params["poll_block_hash"] = block_hash_;
 
     lmq_server_.oxend_request("rpc.get_service_nodes",
         [this](bool success, std::vector<std::string> data) {
@@ -620,19 +626,36 @@ void ServiceNode::update_swarms() {
             }
             try {
                 std::lock_guard guard(sn_mutex_);
+                block_update_t bu = parse_swarm_update(data[1]);
                 if (!got_first_response_) {
                     OXEN_LOG(
                         info,
                         "Got initial swarm information from local Oxend");
                     got_first_response_ = true;
+
 #ifndef INTEGRATION_TEST
-                    // Only bootstrap (apply ips) once we have at least
-                    // some entries for snodes from oxend
-                    this->bootstrap_data();
+                    // If this is our very first response then we *may* want to try falling back to
+                    // the bootstrap node *if* our response looks sparse: this will typically happen
+                    // for a fresh service node because IP/port distribution through the network can
+                    // take up to an hour.  We don't really want to hit the bootstrap nodes when we
+                    // don't have to, though, so only do it if our responses is missing more than 3%
+                    // of proof data (IPs/ports/ed25519/x25519 pubkeys) or we got back fewer than
+                    // 100 SNs (10 on testnet).
+                    //
+                    // (In the future it would be nice to eliminate this by putting all the required
+                    // data on chain, and get rid of needing to consult bootstrap nodes: but
+                    // currently we still need this to deal with the lag).
+
+                    auto [missing, total] = count_missing_data(bu);
+                    if (total < (oxen::is_mainnet ? 100 : 10)
+                            || missing > 3*total/100) {
+                        OXEN_LOG(info, "Detected some missing SN data ({}/{}); "
+                                "querying bootstrap nodes for help", missing, total);
+                        this->bootstrap_data();
+                    }
 #endif
                 }
 
-                block_update_t bu = parse_swarm_update(data[1]);
                 if (!bu.unchanged)
                     on_swarm_update(std::move(bu));
             } catch (const std::exception& e) {

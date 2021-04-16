@@ -38,6 +38,11 @@ void debug_print(std::ostream& os, const block_update_t& bu);
 swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
                            const user_pubkey_t& pk);
 
+// Takes a swarm update, returns the number of active SN entries with missing
+// IP/port/ed25519/x25519 data and the total number of entries.  (We don't include
+// decommissioned nodes in either count).
+std::pair<int, int> count_missing_data(const block_update_t& bu);
+
 /// For every node in `swarms_to_keep`, this checks whether the node
 /// exists in incoming `other_swarms` and has a new IP address.
 /// If it does and the value is not "0.0.0.0", it updates the value for that node.
