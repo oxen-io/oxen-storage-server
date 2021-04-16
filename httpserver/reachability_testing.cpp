@@ -15,9 +15,10 @@ using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
 static void check_incoming_tests_impl(
         std::string_view name,
         const time_point_t& now,
+        const time_point_t& startup,
         detail::incoming_test_state& incoming) {
 
-    const auto elapsed = now - incoming.last_test;
+    const auto elapsed = now - std::max(startup, incoming.last_test);
     bool failing = elapsed > reachability_testing::MAX_TIME_WITHOUT_PING;
     bool whine = failing != incoming.was_failing ||
         (failing && now - incoming.last_whine > reachability_testing::WHINING_INTERVAL);
@@ -27,7 +28,7 @@ static void check_incoming_tests_impl(
     if (whine) {
         incoming.last_whine = now;
         if (!failing) {
-            OXEN_LOG(info, "{} ping received; port is likely reachable again");
+            OXEN_LOG(info, "{} ping received; port is likely reachable again", name);
         } else {
             if (incoming.last_test.time_since_epoch() == 0s) {
                 OXEN_LOG(warn, "Have NEVER received {} pings!", name);
@@ -43,8 +44,8 @@ static void check_incoming_tests_impl(
 }
 
 void reachability_testing::check_incoming_tests(const time_point_t& now) {
-    check_incoming_tests_impl("HTTP", now, last_https);
-    check_incoming_tests_impl("OxenMQ", now, last_omq);
+    check_incoming_tests_impl("HTTP", now, startup, last_https);
+    check_incoming_tests_impl("OxenMQ", now, startup, last_omq);
 }
 
 void reachability_testing::incoming_ping(bool omq, const time_point_t& now) {

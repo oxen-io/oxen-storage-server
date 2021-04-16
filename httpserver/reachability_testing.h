@@ -79,6 +79,9 @@ class reachability_testing {
     // The next time for a general test
     time_point_t next_general_test = time_point_t::min();
 
+    // When we started, so that we know not to hold off on whining about no pings for a while.
+    const time_point_t startup = std::chrono::steady_clock::now();
+
     // Pubkeys, next test times, and sequential failure counts of service nodes that are currently
     // in "failed" status along with the last time they failed; we retest them first after 10s then
     // back off linearly by an additional 10s up to a max testing interval of 2m30s, until we get a
