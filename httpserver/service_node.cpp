@@ -709,8 +709,9 @@ void ServiceNode::ping_peers_tick() {
         to_test.emplace_back(std::move(*rando), 0);
 
     if (to_test.empty())
-        return;
-
+        OXEN_LOG(trace, "no nodes to test this tick");
+    else
+        OXEN_LOG(debug, "{} nodes to test", to_test.size());
     for (const auto& [sn, prev_fails] : to_test)
         test_reachability(sn, prev_fails);
 }
