@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
-#include <iostream>
+#include <iosfwd>
 #include <map>
 #include <memory>
 #include <optional>
@@ -28,6 +28,8 @@ inline constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
 inline constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
 inline constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
 
+inline constexpr auto SESSION_TIME_LIMIT = 60s;
+
 class RateLimiter;
 
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
@@ -52,25 +54,7 @@ struct sn_response_t {
     std::optional<response_t> raw_response;
 };
 
-template <typename OStream>
-OStream& operator<<(OStream& os, const sn_response_t& res) {
-    switch (res.error_code) {
-    case SNodeError::NO_ERROR:
-        os << "NO_ERROR";
-        break;
-    case SNodeError::ERROR_OTHER:
-        os << "ERROR_OTHER";
-        break;
-    case SNodeError::NO_REACH:
-        os << "NO_REACH";
-        break;
-    case SNodeError::HTTP_ERROR:
-        os << "HTTP_ERROR";
-        break;
-    }
-
-    return os << "(" << (res.body ? *res.body : "n/a") << ")";
-}
+std::ostream& operator<<(std::ostream& os, const sn_response_t& res);
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
@@ -83,8 +67,6 @@ void oxend_json_rpc_request(
         std::string_view method,
         const nlohmann::json& params,
         http_callback_t&& cb);
-
-constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(60);
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
                        uint16_t port, const std::shared_ptr<request_t>& req,

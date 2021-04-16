@@ -30,22 +30,35 @@
 #include <string>
 #include <thread>
 
+/// +===========================================
+
+namespace oxen {
+
+using error_code = boost::system::error_code;
 using json = nlohmann::json;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
-/// +===========================================
 
-static constexpr auto OXEN_FILE_SERVER_TARGET_HEADER =
-    "X-Loki-File-Server-Target";
-static constexpr auto OXEN_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
-static constexpr auto OXEN_FILE_SERVER_HEADERS_HEADER =
-    "X-Loki-File-Server-Headers";
+std::ostream& operator<<(std::ostream& os, const sn_response_t& res) {
+    switch (res.error_code) {
+    case SNodeError::NO_ERROR:
+        os << "NO_ERROR";
+        break;
+    case SNodeError::ERROR_OTHER:
+        os << "ERROR_OTHER";
+        break;
+    case SNodeError::NO_REACH:
+        os << "NO_REACH";
+        break;
+    case SNodeError::HTTP_ERROR:
+        os << "HTTP_ERROR";
+        break;
+    }
 
-using error_code = boost::system::error_code;
-
-namespace oxen {
+    return os << "(" << (res.body ? *res.body : "n/a") << ")";
+}
 
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
