@@ -135,7 +135,7 @@ static auto make_status(std::string_view status) -> oxen::Status {
 
 static void relay_to_node(const ServiceNode& service_node,
                           const RelayToNodeInfo& info,
-                          std::function<void(oxen::Response)> cb, int req_idx,
+                          std::function<void(oxen::Response)> cb,
                           bool v2) {
 
     const auto& dest = info.next_node;
@@ -183,7 +183,7 @@ static void relay_to_node(const ServiceNode& service_node,
         cb(oxen::Response{make_status(data[0]), std::move(data[1])});
     };
 
-    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", dest_node->pubkey_legacy, req_idx);
+    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", dest_node->pubkey_legacy);
 
     if (v2) {
         service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
@@ -216,8 +216,6 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
     OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
 
-    static int counter = 0;
-
     ParsedInfo res;
 
     if (v2) {
@@ -246,7 +244,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
     } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
 
-        relay_to_node(this->service_node_, *info, std::move(cb), counter++, v2);
+        relay_to_node(this->service_node_, *info, std::move(cb), v2);
 
     } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
         OXEN_LOG(debug, "We are to forward the request to url: {}{}",
