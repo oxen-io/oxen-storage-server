@@ -9,8 +9,8 @@ namespace oxen {
 
 class Security {
   public:
-    Security(const legacy_keypair& key_pair,
-             const std::filesystem::path& base_path);
+    Security(legacy_keypair key_pair,
+             std::filesystem::path base_path);
 
     void generate_cert_signature();
     const std::string& get_cert_signature() const {
@@ -18,7 +18,7 @@ class Security {
     }
 
   private:
-    const legacy_keypair& key_pair_;
+    legacy_keypair key_pair_;
     std::string cert_signature_;
     std::filesystem::path base_path_;
 };

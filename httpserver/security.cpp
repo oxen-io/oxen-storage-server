@@ -8,9 +8,9 @@
 #include <fstream>
 
 namespace oxen {
-Security::Security(const legacy_keypair& key_pair,
-                   const std::filesystem::path& base_path)
-    : key_pair_(key_pair), base_path_(base_path) {}
+Security::Security(legacy_keypair key_pair,
+                   std::filesystem::path base_path)
+    : key_pair_{std::move(key_pair)}, base_path_{std::move(base_path)} {}
 
 void Security::generate_cert_signature() {
     std::ifstream file{base_path_ / "cert.pem"};
