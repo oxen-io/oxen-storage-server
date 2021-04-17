@@ -31,11 +31,7 @@ void Security::generate_cert_signature() {
                          std::istreambuf_iterator<char>());
     const auto hash = hash_data(cert_pem);
     const auto sig = generate_signature(hash, key_pair_);
-    std::string raw_sig;
-    raw_sig.reserve(sig.c.size() + sig.r.size());
-    raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
-    raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-
+    std::string_view raw_sig{reinterpret_cast<const char*>(&sig), sizeof(sig)};
     cert_signature_ = oxenmq::to_base64(raw_sig);
 }
 
