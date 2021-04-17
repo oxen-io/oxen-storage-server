@@ -392,8 +392,7 @@ bool connection_t::validate_snode_request() {
     }
 
     /// Known service node
-    auto sn = service_node_.find_node(public_key);
-    if (!sn) {
+    if (!service_node_.find_node(public_key)) {
         body_stream_ << "Unknown service node\n";
         OXEN_LOG(debug, "Discarding signature from unknown service node: {}",
                  public_key);
@@ -402,7 +401,7 @@ bool connection_t::validate_snode_request() {
     }
 
     if (!check_signature(sig, hash_data(request_.get().body()), public_key)) {
-        constexpr auto msg = "Could not verify batch signature"sv;
+        constexpr auto msg = "Could not verify snode signature"sv;
         OXEN_LOG(debug, "{}", msg);
         body_stream_ << msg;
         response_.result(http::status::unauthorized);

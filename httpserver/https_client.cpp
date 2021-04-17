@@ -46,6 +46,12 @@ void make_https_request_to_sn(
         return;
     }
 
+    OXEN_LOG(warn, "Making https request to {}", req->target());
+    for (auto& h : req->base()) {
+        OXEN_LOG(warn, "    {}: {}", h.name_string(), h.value());
+    }
+    OXEN_LOG(warn, "Body:\n{}", req->body());
+
     std::string hostname = sn.pubkey_ed25519
         ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
         : "service-node.snode";

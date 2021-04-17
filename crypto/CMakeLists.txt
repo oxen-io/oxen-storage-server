@@ -4,8 +4,6 @@ add_library(crypto STATIC
     src/oxend_key.cpp
     src/channel_encryption.cpp
     src/signature.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/crypto-ops.c
-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/crypto-ops-data.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/keccak.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/hash-ops.c
 )
