@@ -25,9 +25,8 @@ using request_t = http::request<http::string_body>;
 namespace oxen {
 
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
-inline constexpr int STORAGE_SERVER_HARDFORK = 12;
-inline constexpr int ENFORCED_REACHABILITY_HARDFORK = 13;
-inline constexpr int OXENMQ_ONION_HARDFORK = 15;
+// The earliest hardfork *this* version of storage server will work on:
+inline constexpr int STORAGE_SERVER_HARDFORK = 17;
 
 namespace storage {
 struct Item;
@@ -217,6 +216,8 @@ class ServiceNode {
     // Send by either http or omq
     void send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
                     ss_client::Request req, ss_client::Callback cb) const;
+
+    bool hf_at_least(int hardfork) const { return hardfork_ >= hardfork; }
 
     // Return true if the service node is ready to start running
     bool snode_ready(std::string* reason = nullptr);

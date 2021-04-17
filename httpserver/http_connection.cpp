@@ -500,8 +500,7 @@ void connection_t::process_onion_req_v2() {
     // Need to make sure we are not blocking waiting for the response
     delay_response_ = true;
 
-    auto on_response = [wself = std::weak_ptr<connection_t>{
-                            shared_from_this()}](oxen::Response res) {
+    auto on_response = [wself = weak_from_this()](oxen::Response res) {
         OXEN_LOG(debug, "Got an onion response as guard node");
 
         auto self = wself.lock();

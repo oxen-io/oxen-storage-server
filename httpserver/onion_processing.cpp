@@ -351,10 +351,9 @@ std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
                d.ciphertext, d.ephemeral_key, d.next_node);
 }
 
-bool operator==(const RelayToNodeInfo& lhs, const RelayToNodeInfo& rhs) {
-    return (lhs.ciphertext == rhs.ciphertext) &&
-           (lhs.ephemeral_key == rhs.ephemeral_key) &&
-           (lhs.next_node == lhs.next_node);
+bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
+    return std::tie(a.ciphertext, a.ephemeral_key, a.next_node)
+        == std::tie(b.ciphertext, b.ephemeral_key, b.next_node);
 }
 
 } // namespace oxen

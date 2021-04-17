@@ -102,11 +102,12 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
     OXEN_LOG(debug, "Got an onion request over OXENMQ");
 
     auto on_response = [send=message.send_later()](oxen::Response res) {
-        OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
+        if (OXEN_LOG_ENABLED(trace))
+            OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
-        std::string status = std::to_string(static_cast<int>(res.status()));
-
-        send.reply(std::move(status), res.message());
+        send.reply(
+                std::to_string(static_cast<int>(res.status())),
+                std::move(res).message());
     };
 
     if (message.data.size() == 1 && message.data[0] == "ping") {

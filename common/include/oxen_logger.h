@@ -14,6 +14,8 @@
               OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_2)                  \
     (__VA_ARGS__)
 
+#define OXEN_LOG_ENABLED(LVL) spdlog::get("oxen_logger")->should_log(spdlog::level::LVL)
+
 namespace oxen {
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;
 using LogLevelMap = std::vector<LogLevelPair>;

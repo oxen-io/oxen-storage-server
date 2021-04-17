@@ -60,7 +60,9 @@ class Response {
     Response(Status s, std::string m, ContentType ct = ContentType::plaintext)
         : status_(s), message_(std::move(m)), content_type_(ct) {}
 
-    const std::string& message() const { return message_; }
+    const std::string& message() const & { return message_; }
+    std::string&& message() && { return std::move(message_); }
+
     Status status() const { return status_; }
     ContentType content_type() const { return content_type_; }
 };

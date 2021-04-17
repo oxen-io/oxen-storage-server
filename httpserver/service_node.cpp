@@ -150,7 +150,7 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
                 continue;
             }
 
-            const auto sn = sn_record_t{
+            auto sn = sn_record_t{
                 sn_json.at("public_ip").get_ref<const std::string&>(),
                 sn_json.at("storage_port").get<uint16_t>(),
                 sn_json.at("storage_lmq_port").get<uint16_t>(),
@@ -165,11 +165,11 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
             /// Storing decommissioned nodes (with dummy swarm id) in
             /// a separate data structure as it seems less error prone
             if (swarm_id == INVALID_SWARM_ID) {
-                bu.decommissioned_nodes.push_back(sn);
+                bu.decommissioned_nodes.push_back(std::move(sn));
             } else {
-                swarm_map[swarm_id].push_back(sn);
-
                 bu.active_x25519_pubkeys.emplace(sn.pubkey_x25519.view());
+
+                swarm_map[swarm_id].push_back(std::move(sn));
             }
         }
 
@@ -272,26 +272,18 @@ bool ServiceNode::snode_ready(std::string* reason) {
 
     std::lock_guard guard(sn_mutex_);
 
-    bool ready = true;
-    std::string buf;
-    if (hardfork_ < STORAGE_SERVER_HARDFORK) {
-        buf += "not yet on hardfork 12; ";
-        ready = false;
-    }
-    if (!swarm_ || !swarm_->is_valid()) {
-        buf += "not in any swarm; ";
-        ready = false;
-    }
-    if (syncing_) {
-        buf += "not done syncing; ";
-        ready = false;
-    }
+    std::vector<std::string> problems;
+    if (!hf_at_least(STORAGE_SERVER_HARDFORK))
+        problems.push_back("not yet on hardfork " + std::to_string(STORAGE_SERVER_HARDFORK));
+    if (!swarm_ || !swarm_->is_valid())
+        problems.push_back("not in any swarm");
+    if (syncing_)
+        problems.push_back("not done syncing");
 
-    if (reason) {
-        *reason = std::move(buf);
-    }
+    if (reason)
+        *reason = util::join("; ", problems);
 
-    return ready || force_start_;
+    return problems.empty() || force_start_;
 }
 
 void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
@@ -534,8 +526,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     swarm_->set_swarm_id(events.our_swarm_id);
 
-    std::string reason;
-    if (!this->snode_ready(&reason)) {
+    if (std::string reason; !snode_ready(&reason)) {
         OXEN_LOG(warn, "Storage server is still not ready: {}", reason);
         swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
