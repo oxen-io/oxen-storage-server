@@ -12,7 +12,6 @@ class Security {
     Security(const legacy_keypair& key_pair,
              const std::filesystem::path& base_path);
 
-    std::string base64_sign(const std::string& body);
     void generate_cert_signature();
     std::string get_cert_signature() const;
 
