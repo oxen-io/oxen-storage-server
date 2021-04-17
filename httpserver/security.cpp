@@ -25,5 +25,4 @@ void Security::generate_cert_signature() {
     cert_signature_ = oxenmq::to_base64(raw_sig);
 }
 
-std::string Security::get_cert_signature() const { return cert_signature_; }
 } // namespace oxen

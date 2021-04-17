@@ -13,7 +13,9 @@ class Security {
              const std::filesystem::path& base_path);
 
     void generate_cert_signature();
-    std::string get_cert_signature() const;
+    const std::string& get_cert_signature() const {
+        return cert_signature_;
+    }
 
   private:
     const legacy_keypair& key_pair_;
