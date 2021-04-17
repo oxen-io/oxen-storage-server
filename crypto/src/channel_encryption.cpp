@@ -78,7 +78,7 @@ std::string ChannelEncryption::encrypt_cbc(
     // Start the output with the iv, then output space plus an extra possible 'blockSize' (according
     // to libssl docs) for the cipher data.
     const int ivLength = EVP_CIPHER_iv_length(cipher);
-    output.resize(ivLength + plaintext.size() + EVP_CIPHER_CTX_block_size(ctx));
+    output.resize(ivLength + plaintext.size() + EVP_CIPHER_block_size(cipher));
     auto* o = reinterpret_cast<unsigned char*>(output.data());
     randombytes_buf(o, ivLength);
     const auto* iv = o;
@@ -103,8 +103,6 @@ std::string ChannelEncryption::encrypt_cbc(
 
     // Remove excess buffer space
     output.resize(reinterpret_cast<char*>(o) - output.data());
-
-    EVP_CIPHER_CTX_free(ctx);
 
     return output;
 }
@@ -193,7 +191,7 @@ std::string ChannelEncryption::decrypt_cbc(
 
     // libssl docs say we need up to block size of extra buffer space:
     std::string output;
-    output.resize(ciphertext.size() + EVP_CIPHER_CTX_block_size(ctx));
+    output.resize(ciphertext.size() + EVP_CIPHER_block_size(cipher));
 
     // Initialise cipher context
     if (EVP_DecryptInit_ex(ctx, cipher, nullptr, sharedKey.data(), iv.data()) <= 0) {
