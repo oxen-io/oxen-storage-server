@@ -482,13 +482,13 @@ void connection_t::process_storage_test_req(uint64_t height,
     }
 }
 
-static std::optional<x25519_pubkey> extract_x25519_from_hex(std::string_view hex) {
+static x25519_pubkey extract_x25519_from_hex(std::string_view hex) {
     try {
         return x25519_pubkey::from_hex(hex);
     } catch (const std::exception& e) {
         OXEN_LOG(warn, "Failed to decode ephemeral key in onion request: {}", e.what());
+        throw;
     }
-    return std::nullopt;
 }
 
 void connection_t::process_onion_req_v2() {
