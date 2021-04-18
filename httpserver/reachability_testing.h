@@ -60,10 +60,12 @@ class reachability_testing {
 
     // Maximum time without a ping before we start whining about it.
     //
-    // We have a probability of about 0.368 of *not* getting pinged within a second ping interval
-    // (10s), and so the probability of not getting a ping for 2 minutes (i.e. 12 test spans) just
-    // because we haven't been selected is extremely small (0.0000061).  It also coincides nicely
-    // with blockchain time (i.e. two minutes) and our max testing backoff.
+    // We have a probability of about 0.368* of *not* getting pinged within a ping interval (10s),
+    // and so the probability of not getting a ping for 2 minutes (i.e. 12 test spans) just because
+    // we haven't been selected is extremely small (0.0000061).  It also coincides nicely with
+    // blockchain time (i.e. two minutes) and our max testing backoff.
+    //
+    // * = approx value of ((n-1)/n)^n for non-tiny values of n
     inline static constexpr auto MAX_TIME_WITHOUT_PING = 2min;
 
     // How often we whine in the logs about being unreachable
