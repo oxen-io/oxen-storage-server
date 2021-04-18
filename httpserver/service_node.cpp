@@ -598,7 +598,7 @@ void ServiceNode::update_swarms() {
 
     std::lock_guard guard(sn_mutex_);
 
-    OXEN_LOG(trace, "Swarm update triggered");
+    OXEN_LOG(debug, "Swarm update triggered");
 
     json params{
         {"fields", {
@@ -648,8 +648,12 @@ void ServiceNode::update_swarms() {
                     // currently we still need this to deal with the lag).
 
                     auto [missing, total] = count_missing_data(bu);
-                    if (total < (oxen::is_mainnet ? 100 : 10)
-                            || missing > 3*total/100) {
+                    if (total >= (oxen::is_mainnet ? 100 : 10)
+                            && missing < 3*total/100) {
+                        OXEN_LOG(info, "Initialized from oxend with {}/{} SN records",
+                                total-missing, total);
+                        syncing_ = false;
+                    } else {
                         OXEN_LOG(info, "Detected some missing SN data ({}/{}); "
                                 "querying bootstrap nodes for help", missing, total);
                         this->bootstrap_data();
@@ -657,8 +661,10 @@ void ServiceNode::update_swarms() {
 #endif
                 }
 
-                if (!bu.unchanged)
+                if (!bu.unchanged) {
+                    OXEN_LOG(debug, "Blockchain updated, rebuilding swarm list");
                     on_swarm_update(std::move(bu));
+                }
             } catch (const std::exception& e) {
                 OXEN_LOG(error, "Exception caught on swarm update: {}",
                          e.what());
