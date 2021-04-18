@@ -77,6 +77,8 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
     }
 
     auto client_key = extract_x25519_from_hex(message.data[0]);
+    // TODO: Just not returning here is gross: the protocol needs some way to return an error state,
+    // but doesn't currently have one.
     if (!client_key) return;
     const auto& payload = message.data[1];
 
@@ -125,6 +127,8 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
     }
 
     auto eph_key = extract_x25519_from_hex(message.data[0]);
+    // TODO: Just not returning here is gross: the protocol needs some way to return an error state,
+    // but doesn't currently have one.
     if (!eph_key) return;
     const auto& ciphertext = message.data[1];
 
