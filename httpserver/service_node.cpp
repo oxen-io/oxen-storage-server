@@ -959,8 +959,19 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         return false;
     }
 
-    std::sort(members.begin(), members.end(),
-            [](const auto& a, const auto& b) { return a.pubkey_legacy < b.pubkey_legacy; });
+    // Ew ew ew: pre-HF18 sorted via ascii on lower-case hex strings.
+    // TODO: remove this after HF18.
+    if (!hf_at_least(HARDFORK_NO_HEX_SORT_HACK))
+        std::sort(members.begin(), members.end(), [](const auto& a, const auto& b) {
+            std::array<char, 64> a_hex, b_hex;
+            oxenmq::to_hex(a.pubkey_legacy.begin(), a.pubkey_legacy.end(), a_hex.begin());
+            oxenmq::to_hex(b.pubkey_legacy.begin(), b.pubkey_legacy.end(), b_hex.begin());
+            return std::string_view{a_hex.data(), a_hex.size()}
+                <  std::string_view{b_hex.data(), b_hex.size()};
+        });
+    else
+        std::sort(members.begin(), members.end(),
+                [](const auto& a, const auto& b) { return a.pubkey_legacy < b.pubkey_legacy; });
 
     std::string block_hash;
     if (blk_height == block_height_) {
