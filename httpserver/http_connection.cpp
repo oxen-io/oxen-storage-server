@@ -518,18 +518,17 @@ void connection_t::process_onion_req_v2() {
 
     try {
 
-        auto res = parse_combined_payload(req.body());
+        auto [ciphertext, json_req] = parse_combined_payload(req.body());
 
-        const json json_req = json::parse(res.json, nullptr, true);
         auto ephem_key = extract_x25519_from_hex(
                 json_req.at("ephemeral_key").get_ref<const std::string&>());
 
         service_node_.record_onion_request();
-        request_handler_.process_onion_req(res.ciphertext, *ephem_key,
+        request_handler_.process_onion_req(std::move(ciphertext), ephem_key,
                                            on_response, true);
 
     } catch (const std::exception& e) {
-        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
+        auto msg = fmt::format("Error parsing onion request: {}",
                                e.what());
         OXEN_LOG(error, "{}", msg);
         response_.result(http::status::bad_request);
