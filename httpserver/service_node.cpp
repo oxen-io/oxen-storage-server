@@ -133,6 +133,12 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
         const json service_node_states = result.at("service_node_states");
 
         for (const auto& sn_json : service_node_states) {
+            /// We want to include (test) decommissioned nodes, but not
+            /// partially funded ones.
+            if (!sn_json.at("funded").get<bool>()) {
+                continue;
+            }
+
             const auto& pk_x25519_hex =
                 sn_json.at("pubkey_x25519").get_ref<const std::string&>();
             const auto& pk_ed25519_hex =
@@ -141,12 +147,6 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
             if (pk_x25519_hex.empty() || pk_ed25519_hex.empty()) {
                 // These will always either both be present or neither present
                 OXEN_LOG(warn, "ed25519/x25519 pubkeys are missing from service node info");
-                continue;
-            }
-
-            /// We want to include (test) decommissioned nodes, but not
-            /// partially funded ones.
-            if (!sn_json.at("funded").get<bool>()) {
                 continue;
             }
 
