@@ -169,9 +169,9 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
                 auto& sn = other_snode_it->second;
                 // Keep swarms_to_keep but don't overwrite with default IPs/ports
                 bool updated = false;
-                updated += update_if_changed(snode.ip, sn.ip, "0.0.0.0");
-                updated += update_if_changed(snode.port, sn.port, 0);
-                updated += update_if_changed(snode.lmq_port, sn.lmq_port, 0);
+                if (update_if_changed(snode.ip, sn.ip, "0.0.0.0")) updated = true;
+                if (update_if_changed(snode.port, sn.port, 0)) updated = true;
+                if (update_if_changed(snode.lmq_port, sn.lmq_port, 0)) updated = true;
                 if (updated)
                     updates_count++;
             }
