@@ -17,17 +17,14 @@ namespace {
 
 // Derive shared secret from our (ephemeral) `seckey` and the other party's
 // `pubkey`
-std::vector<uint8_t>
+std::array<uint8_t, crypto_scalarmult_BYTES>
 calculate_shared_secret(const x25519_seckey& seckey,
                         const x25519_pubkey& pubkey) {
 
-    std::vector<uint8_t> secret(crypto_scalarmult_BYTES);
-    static_assert(sizeof(pubkey) == crypto_scalarmult_BYTES);
-
-    if (crypto_scalarmult(secret.data(), seckey.data(), pubkey.data()) != 0) {
+    std::array<uint8_t, crypto_scalarmult_BYTES> secret;
+    if (crypto_scalarmult(secret.data(), seckey.data(), pubkey.data()) != 0)
         throw std::runtime_error(
             "Shared key derivation failed (crypto_scalarmult)");
-    }
     return secret;
 }
 
@@ -37,23 +34,23 @@ EncryptType parse_enc_type(std::string_view enc_type) {
     throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
 }
 
-static std::basic_string_view<unsigned char> to_uchar(std::string_view sv) {
+std::basic_string_view<unsigned char> to_uchar(std::string_view sv) {
     return {reinterpret_cast<const unsigned char*>(sv.data()), sv.size()};
 }
 
 inline constexpr std::string_view salt{"LOKI"};
 
-std::vector<uint8_t>
-derive_symmetric_key(const x25519_seckey seckey,
-                     const x25519_pubkey pubkey) {
+std::array<uint8_t, crypto_scalarmult_BYTES> derive_symmetric_key(
+        const x25519_seckey& seckey,
+        const x25519_pubkey& pubkey) {
 
     auto key = calculate_shared_secret(seckey, pubkey);
 
-    const auto* usalt = reinterpret_cast<const unsigned char*>(salt.data());
+    auto usalt = to_uchar(salt);
 
     crypto_auth_hmacsha256_state state;
 
-    crypto_auth_hmacsha256_init(&state, usalt, salt.size());
+    crypto_auth_hmacsha256_init(&state, usalt.data(), usalt.size());
     crypto_auth_hmacsha256_update(&state, key.data(), key.size());
     crypto_auth_hmacsha256_final(&state, key.data());
 
