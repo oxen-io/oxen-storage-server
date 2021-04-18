@@ -43,7 +43,7 @@ constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             std::shared_ptr<request_t> req,
                             http_callback_t&& cb) {
-    OXEN_LOG(warn, "make sn_request to {} @ {}:{}", sn.pubkey_legacy, sn.ip, sn.port);
+    OXEN_LOG(trace, "make sn_request to {} @ {}:{}", sn.pubkey_legacy, sn.ip, sn.port);
     // TODO: Return to using snode address instead of ip
     make_https_request_to_sn(ioc, sn, std::move(req), std::move(cb));
 }
@@ -727,8 +727,6 @@ void ServiceNode::sign_request(request_t& req) const {
     // TODO: investigate why we are not signing headers
     const auto hash = hash_data(req.body());
     const auto signature = generate_signature(hash, {our_address_.pubkey_legacy, our_seckey_});
-    OXEN_LOG(warn, "signing request, double-checking signature: {}",
-            check_signature(signature, hash, our_address_.pubkey_legacy));
     attach_signature(req, signature);
 }
 
