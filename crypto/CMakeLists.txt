@@ -19,9 +19,6 @@ target_include_directories(crypto
 
 target_link_libraries(crypto PUBLIC utils)
 
-add_executable(crypto_test src/test_main.cpp)
-target_link_libraries(crypto_test PRIVATE crypto)
-
 find_package(Threads)
 
 target_link_libraries(crypto

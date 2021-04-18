@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.5)
 
 add_executable (Test
     command_line.cpp
+    encrypt.cpp
     ip_utils.cpp
     main.cpp
     onion_requests.cpp
