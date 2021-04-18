@@ -652,8 +652,8 @@ void ServiceNode::update_swarms() {
     );
 }
 
-void ServiceNode::update_last_ping(bool omq) {
-    reach_records_.incoming_ping(omq);
+void ServiceNode::update_last_ping(ReachType type) {
+    reach_records_.incoming_ping(type);
 }
 
 void ServiceNode::ping_peers() {

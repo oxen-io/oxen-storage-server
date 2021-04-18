@@ -592,7 +592,7 @@ void connection_t::process_swarm_req(std::string_view target) {
         process_storage_test_req(blk_height, tester_pk, msg_hash);
     } else if (target == "/swarms/ping_test/v1") {
         OXEN_LOG(trace, "Received ping_test");
-        service_node_.update_last_ping(false /*not omq*/);
+        service_node_.update_last_ping(ReachType::HTTPS);
         response_.result(http::status::ok);
     }
 }

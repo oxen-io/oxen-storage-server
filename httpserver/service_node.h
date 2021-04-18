@@ -189,7 +189,7 @@ class ServiceNode {
     const sn_record_t& own_address() { return our_address_; }
 
     // Record the time of our last being tested over omq/https
-    void update_last_ping(bool omq);
+    void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
     // might move it out later

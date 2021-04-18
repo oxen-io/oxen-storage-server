@@ -99,7 +99,7 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
 
 void OxenmqServer::handle_ping(oxenmq::Message& message) {
     OXEN_LOG(debug, "Remote pinged me");
-    service_node_->update_last_ping(true /*omq*/);
+    service_node_->update_last_ping(ReachType::OMQ);
     message.send_reply("pong");
 }
 

@@ -48,8 +48,8 @@ void reachability_testing::check_incoming_tests(const time_point_t& now) {
     check_incoming_tests_impl("OxenMQ", now, startup, last_omq);
 }
 
-void reachability_testing::incoming_ping(bool omq, const time_point_t& now) {
-    (omq ? last_omq : last_https).last_test = now;
+void reachability_testing::incoming_ping(ReachType type, const time_point_t& now) {
+    (type == ReachType::OMQ ? last_omq : last_https).last_test = now;
 }
 
 std::optional<sn_record_t> reachability_testing::next_random(

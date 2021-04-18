@@ -34,6 +34,8 @@ struct incoming_test_state {
 
 class Swarm;
 
+enum class ReachType { HTTPS, OMQ };
+
 class reachability_testing {
   public:
     // How often we tick the timer to check whether we need to do any tests.
@@ -125,7 +127,7 @@ class reachability_testing {
     void add_failing_node(const legacy_pubkey& pk, int previous_failures = 0);
 
     // Called when this storage server receives an incoming HTTP or OMQ ping
-    void incoming_ping(bool omq, const time_point_t& now = std::chrono::steady_clock::now());
+    void incoming_ping(ReachType type, const time_point_t& now = std::chrono::steady_clock::now());
 
     // Check whether we received incoming pings recently
     void check_incoming_tests(const time_point_t& now = std::chrono::steady_clock::now());
