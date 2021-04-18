@@ -69,7 +69,7 @@ class ServiceNode {
     boost::asio::io_context& ioc_;
 
     bool syncing_ = true;
-    bool active_ = true;
+    bool active_ = false;
     bool got_first_response_ = false;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
@@ -86,15 +86,6 @@ class ServiceNode {
     /// Cache for block_height/block_hash mapping
     boost::circular_buffer<std::pair<uint64_t, std::string>>
         block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
-
-    boost::asio::steady_timer oxend_ping_timer_;
-
-    boost::asio::steady_timer stats_cleanup_timer_;
-
-    boost::asio::steady_timer peer_ping_timer_;
-
-    /// Used to periodially send messages from relay_buffer_
-    boost::asio::steady_timer relay_timer_;
 
     // Need to make sure we only use this to get OxenMQ object and
     // not call any method that would in turn call a method in SN
@@ -148,14 +139,14 @@ class ServiceNode {
         const std::vector<Message>& messages,
         const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
-    void cleanup_timer_tick();
-
-    void ping_peers_tick();
+    // Conducts any ping peer tests that are due; (this is designed to be called frequently and does
+    // nothing if there are no tests currently due).
+    void ping_peers();
 
     void relay_buffered_messages();
 
-    /// Ping oxend periodically as required for uptime proofs
-    void oxend_ping_timer_tick();
+    /// Pings oxend (as required for uptime proofs)
+    void oxend_ping();
 
     /// Return tester/testee pair based on block_height
     bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,

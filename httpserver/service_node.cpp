@@ -64,10 +64,6 @@ ServiceNode::ServiceNode(
       db_(std::make_unique<Database>(ioc, db_location)),
       our_address_{std::move(address)},
       our_seckey_{skey},
-      oxend_ping_timer_(ioc),
-      stats_cleanup_timer_(ioc),
-      peer_ping_timer_(ioc),
-      relay_timer_(ioc),
       lmq_server_(lmq_server),
       force_start_(force_start) {
 
@@ -79,29 +75,31 @@ ServiceNode::ServiceNode(
     this->syncing_ = false;
 #endif
 
-    cleanup_timer_tick();
+    lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
+            STATS_CLEANUP_INTERVAL);
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
     auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
 
     delay_timer->expires_after(std::chrono::minutes(60));
-    delay_timer->async_wait([this,
-                             delay_timer](const boost::system::error_code& ec) {
-        if (this->syncing_) {
-            OXEN_LOG(
-                warn,
-                "Block syncing is taking too long, activating SS regardless");
-            this->syncing_ = false;
-        }
+    delay_timer->async_wait([this, delay_timer](const auto& /*ec*/) {
+        std::lock_guard lock{sn_mutex_};
+        if (!syncing_)
+            return;
+        OXEN_LOG(warn, "Block syncing is taking too long, activating SS regardless");
+        syncing_ = false;
     });
 }
 
 void ServiceNode::on_oxend_connected() {
     update_swarms();
-    oxend_ping_timer_tick();
-    lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; ping_peers_tick(); },
+    oxend_ping();
+    lmq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
+    lmq_server_->add_timer([this] { ping_peers(); },
             reachability_testing::TESTING_TIMER_INTERVAL);
+    lmq_server_->add_timer([this] { relay_buffered_messages(); },
+            RELAY_INTERVAL);
 }
 
 static block_update_t
@@ -531,18 +529,12 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
         swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
     } else {
-        static bool active = false;
-        if (!active) {
-            // NOTE: because we never reset `active` after we get
+        if (!active_) {
+            // NOTE: because we never reset `active_` after we get
             // decommissioned, this code won't run when the node comes back
             // again
             OXEN_LOG(info, "Storage server is now active!");
-
-            relay_timer_.expires_after(RELAY_INTERVAL);
-            relay_timer_.async_wait(
-                boost::bind(&ServiceNode::relay_buffered_messages, this));
-
-            active = true;
+            active_ = true;
         }
     }
 
@@ -569,11 +561,6 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 void ServiceNode::relay_buffered_messages() {
 
     std::lock_guard guard(sn_mutex_);
-
-    // Should we wait for the response first?
-    relay_timer_.expires_after(RELAY_INTERVAL);
-    relay_timer_.async_wait(
-        boost::bind(&ServiceNode::relay_buffered_messages, this));
 
     if (relay_buffer_.empty())
         return;
@@ -665,22 +652,13 @@ void ServiceNode::update_swarms() {
     );
 }
 
-void ServiceNode::cleanup_timer_tick() {
-
-    std::lock_guard guard(sn_mutex_);
-
-    all_stats_.cleanup();
-
-    stats_cleanup_timer_.expires_after(STATS_CLEANUP_INTERVAL);
-    stats_cleanup_timer_.async_wait(
-        boost::bind(&ServiceNode::cleanup_timer_tick, this));
-}
-
 void ServiceNode::update_last_ping(bool omq) {
     reach_records_.incoming_ping(omq);
 }
 
-void ServiceNode::ping_peers_tick() {
+void ServiceNode::ping_peers() {
+
+    std::lock_guard lock{sn_mutex_};
 
     // TODO: Don't do anything until we are fully funded
 
@@ -767,7 +745,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
         oxenmq::send_option::outgoing{});
 }
 
-void ServiceNode::oxend_ping_timer_tick() {
+void ServiceNode::oxend_ping() {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -818,10 +796,6 @@ void ServiceNode::oxend_ping_timer_tick() {
         else if (result.front() == "ALREADY")
             OXEN_LOG(debug, "Renewed oxend new block notification subscription");
     });
-
-    oxend_ping_timer_.expires_after(OXEND_PING_INTERVAL);
-    oxend_ping_timer_.async_wait(
-        boost::bind(&ServiceNode::oxend_ping_timer_tick, this));
 }
 
 void ServiceNode::attach_signature(request_t& request,
