@@ -41,6 +41,9 @@ class OxenmqServer {
     // v2 indicates whether to use the new (v2) protocol
     void handle_onion_request(oxenmq::Message& message, bool v2);
 
+    // sn.ping - sent by SNs to ping each other.
+    void handle_ping(oxenmq::Message& message);
+
     void handle_get_logs(oxenmq::Message& message);
 
     void handle_get_stats(oxenmq::Message& message);

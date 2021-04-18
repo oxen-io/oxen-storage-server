@@ -750,8 +750,9 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     make_sn_request(ioc_, sn, std::move(req), std::move(http_callback));
 
     // test lmq port:
+    // TODO: remove the backwards compat endpoint alternative ternary after HF18
     lmq_server_->request(
-        sn.pubkey_x25519.view(), "sn.onion_req",
+        sn.pubkey_x25519.view(), hf_at_least(HARDFORK_SN_PING) ? "sn.ping" : "sn.onion_req",
         [this, test_results=std::move(test_results), previous_failures](bool success, const auto&) {
             auto& [sn, result] = *test_results;
 
@@ -761,7 +762,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
             if (result.exchange(success ? TEST_PASSED : TEST_FAILED) != TEST_WAITING)
                 report_reachability(sn, success && result == TEST_PASSED, previous_failures);
         },
-        "ping",
+        "ping", // TODO: remove this after HF18 (it is just ignored by sn.ping)
         // Only use an existing (or new) outgoing connection:
         oxenmq::send_option::outgoing{});
 }

@@ -27,6 +27,8 @@ namespace oxen {
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr int STORAGE_SERVER_HARDFORK = 17;
+// HF in which we start using sn.ping OMQ endpoint
+inline constexpr int HARDFORK_SN_PING = 18;
 
 namespace storage {
 struct Item;

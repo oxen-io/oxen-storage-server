@@ -97,6 +97,12 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
         });
 }
 
+void OxenmqServer::handle_ping(oxenmq::Message& message) {
+    OXEN_LOG(debug, "Remote pinged me");
+    service_node_->update_last_ping(true /*omq*/);
+    message.send_reply("pong");
+}
+
 void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
 
     OXEN_LOG(debug, "Got an onion request over OXENMQ");
@@ -109,17 +115,6 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
                 std::to_string(static_cast<int>(res.status())),
                 std::move(res).message());
     };
-
-    if (message.data.size() == 1 && message.data[0] == "ping") {
-        // Before 2.0.3 we reply with a bad request, below, but reply here to
-        // avoid putting the error message in the log on 2.0.3+ nodes. (the
-        // reply code here doesn't actually matter; the ping test only requires
-        // that we provide *some* response).
-        OXEN_LOG(debug, "Remote pinged me");
-        service_node_->update_last_ping(true /*omq*/);
-        on_response(oxen::Response{Status::OK, "pong"});
-        return;
-    }
 
     if (message.data.size() != 2) {
         OXEN_LOG(error, "Expected 2 message parts, got {}",
@@ -211,7 +206,12 @@ OxenmqServer::OxenmqServer(
     omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false})
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
-        .add_request_command("onion_req", [this](auto& m) { this->handle_onion_request(m, false); })
+        .add_request_command("ping", [this](auto& m) { handle_ping(m); })
+        .add_request_command("onion_req", [this](auto& m) {
+                // TODO: Backwards compat crap to be removed after HF18:
+                if (m.data.size() == 1 && m.data[0] == "ping"sv)
+                    return handle_ping(m);
+                handle_onion_request(m, false); })
         .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
         ;
 
