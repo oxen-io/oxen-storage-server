@@ -420,7 +420,7 @@ void RequestHandler::process_client_req(
 
 Response RequestHandler::wrap_proxy_response(const Response& res,
                                              const x25519_pubkey& client_key,
-                                             bool use_gcm) const {
+                                             EncryptType enc_type) const {
 
     nlohmann::json json_res;
 
@@ -430,14 +430,8 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
     const std::string res_body = json_res.dump();
 
     std::string ciphertext;
-
-    if (use_gcm) {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_gcm(res_body, client_key));
-    } else {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_cbc(res_body, client_key));
-    }
+    channel_cipher_.encrypt(enc_type, res_body, client_key);
+    ciphertext = oxenmq::to_base64(ciphertext);
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};
@@ -502,7 +496,7 @@ void RequestHandler::process_proxy_exit(
 
     if (!service_node_.snode_ready()) {
         auto res = Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"};
-        cb(wrap_proxy_response(res, client_key, false));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -523,7 +517,7 @@ void RequestHandler::process_proxy_exit(
 
         // TODO: since we always seem to encrypt the response, we should
         // do it once one level above instead
-        cb(wrap_proxy_response(res, client_key, false));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -547,7 +541,7 @@ void RequestHandler::process_proxy_exit(
         auto msg = fmt::format("JSON parsing error: {}", e.what());
         OXEN_LOG(debug, "[{}] {}", idx, msg);
         auto res = Response{Status::BAD_REQUEST, msg};
-        cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -560,7 +554,7 @@ void RequestHandler::process_proxy_exit(
             OXEN_LOG(debug, "[{}] proxy about to respond with: {}", idx,
                      res.status());
 
-            cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+            cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         });
 }
 

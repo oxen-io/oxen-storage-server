@@ -31,6 +31,16 @@ calculate_shared_secret(const x25519_seckey& seckey,
     return secret;
 }
 
+EncryptType parse_enc_type(std::string_view enc_type) {
+    if (enc_type == "aes-gcm" || enc_type == "gcm") return EncryptType::aes_gcm;
+    if (enc_type == "aes-cbc" || enc_type == "cbc") return EncryptType::aes_cbc;
+    throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
+}
+
+static std::basic_string_view<unsigned char> to_uchar(std::string_view sv) {
+    return {reinterpret_cast<const unsigned char*>(sv.data()), sv.size()};
+}
+
 inline constexpr std::string_view salt{"LOKI"};
 
 std::vector<uint8_t>
@@ -61,11 +71,26 @@ using aes256cbc_ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, aes256_evp_deleter>;
 
 }
 
+std::string ChannelEncryption::encrypt(EncryptType type, std::string_view plaintext, const x25519_pubkey& pubkey) const {
+    switch (type) {
+        case EncryptType::aes_gcm: return encrypt_gcm(plaintext, pubkey);
+        case EncryptType::aes_cbc: return encrypt_cbc(plaintext, pubkey);
+    }
+    throw std::runtime_error{"Invalid encryption type"};
+}
+
+std::string ChannelEncryption::decrypt(EncryptType type, std::string_view ciphertext, const x25519_pubkey& pubkey) const {
+    switch (type) {
+        case EncryptType::aes_gcm: return decrypt_gcm(ciphertext, pubkey);
+        case EncryptType::aes_cbc: return decrypt_cbc(ciphertext, pubkey);
+    }
+    throw std::runtime_error{"Invalid decryption type"};
+}
+
 std::string ChannelEncryption::encrypt_cbc(
         std::string_view plaintext_, const x25519_pubkey& pubKey) const {
 
-    std::basic_string_view<unsigned char> plaintext{
-        reinterpret_cast<const unsigned char*>(plaintext_.data()), plaintext_.size()};
+    auto plaintext = to_uchar(plaintext_);
 
     const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
 
@@ -110,8 +135,7 @@ std::string ChannelEncryption::encrypt_cbc(
 std::string ChannelEncryption::encrypt_gcm(
         std::string_view plaintext_, const x25519_pubkey& pubKey) const {
 
-    std::basic_string_view<unsigned char> plaintext{
-        reinterpret_cast<const unsigned char*>(plaintext_.data()), plaintext_.size()};
+    auto plaintext = to_uchar(plaintext_);
 
     const auto derived_key = derive_symmetric_key(private_key_, pubKey);
 
@@ -142,8 +166,7 @@ std::string ChannelEncryption::decrypt_gcm(
 
     const auto derived_key = derive_symmetric_key(private_key_, pubKey);
 
-    std::basic_string_view<unsigned char> ciphertext{
-        reinterpret_cast<const unsigned char*>(ciphertext_.data()), ciphertext_.size()};
+    auto ciphertext = to_uchar(ciphertext_);
 
     // Remove the nonce that we stick on the beginning:
     auto nonce = ciphertext.substr(0, crypto_aead_aes256gcm_NPUBBYTES);
@@ -175,8 +198,7 @@ std::string ChannelEncryption::decrypt_gcm(
 std::string ChannelEncryption::decrypt_cbc(
         std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
 
-    std::basic_string_view<unsigned char> ciphertext{
-        reinterpret_cast<const unsigned char*>(ciphertext_.data()), ciphertext_.size()};
+    auto ciphertext = to_uchar(ciphertext_);
 
     const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
 

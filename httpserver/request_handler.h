@@ -12,6 +12,7 @@
 namespace oxen {
 
 class ChannelEncryption;
+enum struct EncryptType;
 class ServiceNode;
 
 enum class Status {
@@ -84,7 +85,7 @@ class RequestHandler {
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
                                  const x25519_pubkey& client_key,
-                                 bool use_gcm) const;
+                                 EncryptType enc_type) const;
 
     // Return the correct swarm for `pubKey`
     Response handle_wrong_swarm(const user_pubkey_t& pubKey);
@@ -137,7 +138,7 @@ class RequestHandler {
                               std::function<void(oxen::Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
-    void process_onion_req(const std::string& ciphertext,
+    void process_onion_req(std::string_view ciphertext,
                            const x25519_pubkey& ephem_key,
                            std::function<void(oxen::Response)> cb,
                            // Whether to use the new v2 protocol

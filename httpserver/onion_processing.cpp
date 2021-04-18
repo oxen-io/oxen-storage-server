@@ -73,7 +73,7 @@ auto process_inner_request(const CiphertextPlusJson& parsed,
 
 static auto
 process_ciphertext_v2(const ChannelEncryption& decryptor,
-                      const std::string& ciphertext,
+                      std::string_view ciphertext,
                       const x25519_pubkey& ephem_key) -> ParsedInfo {
     std::string plaintext;
 
@@ -202,7 +202,7 @@ bool is_server_url_allowed(std::string_view url) {
 }
 
 // FIXME: why is this method definition *here* instead of request_handler.cpp?
-void RequestHandler::process_onion_req(const std::string& ciphertext,
+void RequestHandler::process_onion_req(std::string_view ciphertext,
                                        const x25519_pubkey& ephem_key,
                                        std::function<void(oxen::Response)> cb,
                                        bool v2) {
@@ -216,17 +216,14 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
 
     OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
 
-    ParsedInfo res;
-
-    if (v2) {
-        res =
-            process_ciphertext_v2(this->channel_cipher_, ciphertext, ephem_key);
-    } else {
+    if (!v2) {
         OXEN_LOG(warn, "onion requests v1 are no longer supported");
         cb(oxen::Response{Status::BAD_REQUEST,
                           "onion requests v1 not supported"});
         return;
     }
+
+    ParsedInfo res = process_ciphertext_v2(channel_cipher_, ciphertext, ephem_key);
 
     if (const auto info = std::get_if<FinalDestinationInfo>(&res)) {
 
@@ -235,9 +232,7 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
         this->process_onion_exit(
             ephem_key, info->body,
             [this, ephem_key, cb = std::move(cb)](oxen::Response res) {
-                auto wrapped_res = this->wrap_proxy_response(
-                    res, ephem_key, true /* use aes gcm */);
-                cb(std::move(wrapped_res));
+                cb(wrap_proxy_response(res, ephem_key, EncryptType::aes_gcm));
             });
 
         return;
@@ -258,10 +253,8 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
                                        target, info->payload, std::move(cb));
 
         } else {
-
-            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid url"};
-            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-            cb(std::move(wrapped_res));
+            cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
+                    ephem_key, EncryptType::aes_gcm));
         }
 
     } else if (const auto error = std::get_if<ProcessCiphertextError>(&res)) {
@@ -273,11 +266,8 @@ void RequestHandler::process_onion_req(const std::string& ciphertext,
             break;
         }
         case ProcessCiphertextError::INVALID_JSON: {
-            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid json"};
-
-            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-
-            cb(std::move(wrapped_res));
+            cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
+                    ephem_key, EncryptType::aes_gcm));
             break;
         }
         }
