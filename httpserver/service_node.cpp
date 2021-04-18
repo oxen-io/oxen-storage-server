@@ -788,7 +788,7 @@ void ServiceNode::oxend_ping_timer_tick() {
         {"omq_port", our_address_.lmq_port}};
 
     lmq_server_.oxend_request("admin.storage_server_ping",
-        [](bool success, std::vector<std::string> data) {
+        [this](bool success, std::vector<std::string> data) {
             if (!success)
                 OXEN_LOG(critical, "Could not ping oxend: Request failed ({})", data.front());
             else if (data.size() < 2 || data[1].empty())
@@ -796,10 +796,18 @@ void ServiceNode::oxend_ping_timer_tick() {
             else
                 try {
                     if (const auto status = json::parse(data[1]).at("status").get<std::string>();
-                            status == "OK")
-                        OXEN_LOG(info, "Successfully pinged Oxend");
-                    else
+                            status == "OK") {
+                        auto good_pings = ++oxend_pings_;
+                        if (good_pings == 1) // First ping after startup or after ping failure
+                            OXEN_LOG(info, "Successfully pinged oxend");
+                        else if (good_pings % (1h / OXEND_PING_INTERVAL) == 0) // Once an hour
+                            OXEN_LOG(info, "{} successful oxend pings", good_pings);
+                        else
+                            OXEN_LOG(debug, "Successfully pinged Oxend ({} consecutive times)", good_pings);
+                    } else {
                         OXEN_LOG(critical, "Could not ping oxend: {}", status);
+                        oxend_pings_ = 0;
+                    }
                 } catch (...) {
                     OXEN_LOG(critical, "Could not ping oxend: bad json in response");
                 }

@@ -102,6 +102,8 @@ class ServiceNode {
 
     bool force_start_ = false;
 
+    std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
+
     reachability_testing reach_records_;
 
     /// Container for recently received messages directly from
