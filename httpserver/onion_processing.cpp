@@ -136,13 +136,9 @@ static void relay_to_node(const ServiceNode& service_node,
         return;
     }
 
-    nlohmann::json req_body;
 
-    req_body["ciphertext"] = payload;
-    req_body["ephemeral_key"] = ekey;
-
-    auto on_response = [cb, &service_node](bool success,
-                                           std::vector<std::string> data) {
+    auto on_response = [cb=std::move(cb)](bool success,
+                                          std::vector<std::string> data) {
         // Processing the result we got from upstream
 
         if (!success) {
