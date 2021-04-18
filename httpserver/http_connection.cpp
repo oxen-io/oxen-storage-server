@@ -527,6 +527,7 @@ void connection_t::process_onion_req_v2() {
 
         if (auto it = json_req.find("enc_type"); it != json_req.end())
             data.enc_type = parse_enc_type(it->get_ref<const std::string&>());
+        // Otherwise stay at default aes-gcm
 
         // Allows a fake starting hop number (to make it harder for intermediate hops to know where
         // they are).  If omitted, defaults to 0.

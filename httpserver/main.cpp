@@ -172,7 +172,7 @@ int main(int argc, char* argv[]) {
         OXEN_LOG(info, "- x25519:  {}", me.pubkey_x25519);
         OXEN_LOG(info, "- lokinet: {}", me.pubkey_ed25519.snode_address());
 
-        ChannelEncryption channel_encryption{private_key_x25519};
+        ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).

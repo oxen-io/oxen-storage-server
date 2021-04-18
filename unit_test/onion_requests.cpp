@@ -98,6 +98,7 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
     auto expected = RelayToNodeInfo {
         ciphertext,
         "ephemeral_key",
+        EncryptType::aes_gcm,
         ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
     };
 

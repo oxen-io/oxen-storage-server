@@ -51,12 +51,16 @@ auto process_inner_request(std::string plaintext) -> ParsedInfo {
             else
                 protocol = "https";
         } else {
-            auto& [ctext, eph_key, next] = ret.emplace<RelayToNodeInfo>();
+            auto& [ctext, eph_key, enc_type, next] = ret.emplace<RelayToNodeInfo>();
             ctext = std::move(ciphertext);
             next = ed25519_pubkey::from_hex(
                 inner_json.at("destination").get_ref<const std::string&>());
             eph_key = x25519_pubkey::from_hex(
                 inner_json.at("ephemeral_key").get_ref<const std::string&>());
+            if (auto it = inner_json.find("enc_type"); it != inner_json.end())
+                enc_type = parse_enc_type(it->get_ref<const std::string&>());
+            else
+                enc_type = EncryptType::aes_gcm;
         }
     } catch (const std::exception& e) {
         OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
@@ -77,7 +81,9 @@ process_ciphertext_v2(const ChannelEncryption& decryptor,
     try {
         plaintext = decryptor.decrypt(enc_type, ciphertext, ephem_key);
     } catch (const std::exception& e) {
-        OXEN_LOG(debug, "Error decrypting an onion request: {}", e.what());
+        OXEN_LOG(error, "Error decrypting {} bytes onion request using {}: {}",
+                ciphertext.size(), enc_type,
+                e.what());
     }
     if (!plaintext)
         return ProcessCiphertextError::INVALID_CIPHERTEXT;
@@ -135,7 +141,9 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
         return data.cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
     }
 
-    OXEN_LOG(debug, "process_onion_req");
+    OXEN_LOG(critical, "process_onion_req, ciphertext is {} bytes, my key is {}, ephem key is {}",
+            ciphertext.size(), service_node_.own_address().pubkey_x25519, data.ephem_key
+            );
 
     var::visit([&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
             process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
@@ -155,7 +163,7 @@ void RequestHandler::process_onion_req(FinalDestinationInfo&& info,
 
 void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
         OnionRequestMetadata&& data) {
-    auto& [payload, ekey, dest] = info;
+    auto& [payload, ekey, etype, dest] = info;
 
     auto dest_node = service_node_.find_node(dest);
     if (!dest_node) {
@@ -191,6 +199,7 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
     OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
 
     data.ephem_key = ekey;
+    data.enc_type = etype;
     service_node_.send_onion_to_sn(
             *dest_node, std::move(payload), std::move(data), std::move(on_response));
 }
@@ -290,13 +299,13 @@ bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs) {
 
 std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
     return os << fmt::format(
-               "[\"ciphertext\": {}, \"ephemeral_key\": {}, \"next_node\": {}]",
-               d.ciphertext, d.ephemeral_key, d.next_node);
+               R"("["ciphertext": {}, "ephemeral_key": {}, "enc_type": {}, "next_node": {}])",
+               d.ciphertext, d.ephemeral_key, d.enc_type, d.next_node);
 }
 
 bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
-    return std::tie(a.ciphertext, a.ephemeral_key, a.next_node)
-        == std::tie(b.ciphertext, b.ephemeral_key, b.next_node);
+    return std::tie(a.ciphertext, a.ephemeral_key, a.enc_type, a.next_node)
+        == std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
 }
 
 } // namespace oxen

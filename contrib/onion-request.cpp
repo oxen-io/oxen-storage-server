@@ -15,6 +15,7 @@
 #include <chrono>
 #include <exception>
 #include <iostream>
+#include <random>
 #include <sodium.h>
 #include <oxenmq/hex.h>
 #include <oxenmq/base64.h>
@@ -30,11 +31,16 @@ using namespace oxen;
 int usage(std::string_view argv0, std::string_view err = "") {
     if (!err.empty())
         std::cerr << "\x1b[31;1mError: " << err << "\x1b[0m\n\n";
-    std::cerr << "Usage: " << argv0 << R"( [--mainnet] SNODE_PK [SNODE_PK ...] PAYLOAD CONTROL
+    std::cerr << "Usage: " << argv0 << R"( [--mainnet] [--xchacha20|--aes-gcm|--aes-cbc|--random] SNODE_PK [SNODE_PK ...] PAYLOAD CONTROL
 
 Sends an onion request via the given path
 
-SNODE_PK should be primary (legacy) pubkey(s)
+SNODE_PK should be primary (legacy) pubkey(s) on test (or mainnet if --mainnet is given).
+
+--xchacha20 uses xchacha20+poly1305 encryption (which is the default);
+--aes-gcm and --aes-cbc use aes-gcm and aes-cbc, respectively, instead.
+--random uses a random encryption type for each hop.
+
 PAYLOAD/CONTROL are values to pass to the request and should be:
 
 Onion requests for SS and oxend:
@@ -62,21 +68,22 @@ const oxenmq::address TESTNET_OMQ{"tcp://public.loki.foundation:9999"};
 const oxenmq::address MAINNET_OMQ{"tcp://public.loki.foundation:22029"};
 
 void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
-        bool mainnet, std::string_view payload, std::string_view control);
+        bool mainnet, std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control);
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> pubkeys_hex;
     std::vector<legacy_pubkey> pubkeys;
     auto omq_addr = TESTNET_OMQ;
+    std::optional<EncryptType> enc_type = EncryptType::xchacha20;
     std::string payload, control;
     for (int i = 1; i < argc; i++) {
         std::string_view arg{argv[i]};
-        if (arg == "--mainnet"sv) {
-            omq_addr = MAINNET_OMQ;
-            continue;
-        }
-        if (arg == "--testnet"sv)
-            continue;
+        if (arg == "--mainnet"sv) { omq_addr = MAINNET_OMQ; continue; }
+        if (arg == "--testnet"sv) { omq_addr = TESTNET_OMQ; continue; }
+        if (arg == "--xchacha20"sv) { enc_type = EncryptType::xchacha20; continue; }
+        if (arg == "--aes-gcm"sv) { enc_type = EncryptType::aes_gcm; continue; }
+        if (arg == "--aes-cbc"sv) { enc_type = EncryptType::aes_cbc; continue; }
+        if (arg == "--random"sv) { enc_type = std::nullopt; continue; }
 
         bool hex = arg.size() > 0 && oxenmq::is_hex(arg);
         if (i >= argc - 2) {
@@ -160,7 +167,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error{"Missing IP/port of first hop"};
 
         onion_request(first_ip, first_port, std::move(chain), omq_addr == MAINNET_OMQ,
-                payload, control);
+                enc_type, payload, control);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
@@ -179,8 +186,17 @@ std::string encode_size(uint32_t s) {
     return str;
 }
 
+static std::mt19937_64 rng{std::random_device{}()};
+EncryptType random_etype() {
+    std::uniform_int_distribution<int> dist{0, 2};
+    size_t i = dist(rng);
+    return i == 0 ? EncryptType::aes_cbc :
+        i == 1 ? EncryptType::aes_gcm :
+        EncryptType::xchacha20;
+}
+
 void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys, bool mainnet,
-        std::string_view payload, std::string_view control) {
+        std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control) {
     std::string_view user_pubkey = "05fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
     if (!mainnet) user_pubkey.remove_prefix(2);
 
@@ -207,14 +223,17 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     //
     // This later case continues onion routing by giving us something like:
     //
-    //      {"destination":"ed25519pubkey","ephemeral_key":"x25519-eph-pubkey-for-decryption"}
+    //      {"destination":"ed25519pubkey","ephemeral_key":"x25519-eph-pubkey-for-decryption","enc_type":"xchacha20"}
     //
-    // and we forward this via oxenmq to the given ed25519pubkey (but since oxenmq uses x25519
-    // pubkeys we first have to go look it up), sending an oxenmq request to sn.onion_req_v2 of:
+    // (enc_type can also be aes-gcm, and defaults to that if not specified).  We forward this via
+    // oxenmq to the given ed25519pubkey (but since oxenmq uses x25519 pubkeys we first have to go
+    // look it up), sending an oxenmq request to sn.onion_req_v2 of the following (but bencoded, not
+    // json):
     //
-    //      [eph-key][BLOB]
+    //  { "d": "BLOB", "ek": "ephemeral-key-in-binary", "et": "xchacha20", "nh": N }
     //
-    // where BLOB is the opaque data received from the previous hop.  That next hop decrypts BLOB,
+    // where BLOB is the opaque data received from the previous hop and N is the hop number which
+    // gets incremented at each hop (and terminates if it exceeds 15).  That next hop decrypts BLOB,
     // giving it a value interpreted as the same [N][BLOB]{json} as above, and we recurse.
     //
     // On the *return* trip, the message gets encrypted (once!) at the final destination using the
@@ -226,17 +245,23 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     x25519_seckey a;
     x25519_pubkey final_pubkey;
     x25519_seckey final_seckey;
+    EncryptType last_etype;
+    EncryptType final_etype;
 
     auto it = keys.rbegin();
     {
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a};
+        oxen::ChannelEncryption e{a, A};
 
         auto data = encode_size(payload.size());
         data += payload;
         data += control;
 
-        blob = e.encrypt(EncryptType::aes_gcm, data, keys.back().second);
+        last_etype = final_etype = enc_type.value_or(random_etype());
+#ifndef NDEBUG
+        std::cerr << "Encrypting for final hop using " << to_string(last_etype) << "/" << A << "\n";
+#endif
+        blob = e.encrypt(last_etype, data, keys.back().second);
         // Save these because we need them again to decrypt the final response:
         final_seckey = a;
         final_pubkey = A;
@@ -246,20 +271,27 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
         // Routing data for this hop:
         nlohmann::json routing{
             {"destination", std::prev(it)->first.hex()}, // Next hop's ed25519 key
-            {"ephemeral_key", A.hex()}}; // The x25519 ephemeral_key here is the key for the *next* hop to use
+            {"ephemeral_key", A.hex()}, // The x25519 ephemeral_key here is the key for the *next* hop to use
+            {"enc_type", to_string(last_etype)},
+        };
 
         blob = encode_size(blob.size()) + blob + routing.dump();
 
         // Generate eph key for *this* request and encrypt it:
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a};
+        oxen::ChannelEncryption e{a, A};
+        last_etype = enc_type.value_or(random_etype());
 
-        blob = e.encrypt(EncryptType::aes_gcm, blob, it->second);
+#ifndef NDEBUG
+        std::cerr << "Encrypting for next-last hop using " << to_string(last_etype) << "/" << A << "\n";
+#endif
+        blob = e.encrypt(last_etype, blob, it->second);
     }
 
     // The data going to the first hop needs to be wrapped in one more layer to tell the first hop
     // how to decrypt the initial payload:
-    blob = encode_size(blob.size()) + blob + nlohmann::json{{"ephemeral_key", A.hex()}}.dump();
+    blob = encode_size(blob.size()) + blob + nlohmann::json{
+        {"ephemeral_key", A.hex()}, {"enc_type", to_string(last_etype)}}.dump();
 
     cpr::Url target{"https://" + ip + ":" + std::to_string(port) + "/onion_req/v2"};
     std::cerr << "Posting " << blob.size() << " onion blob to " << target.str() << " for entry node\n";
@@ -282,11 +314,11 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // Nothing in the response tells us how it is encoded so we have to guess; the client normally
     // *does* know because it specifies `"base64": false` if it wants binary, but I don't want to
     // parse and guess what we should do, so we'll just guess.
-    oxen::ChannelEncryption d{final_seckey};
+    oxen::ChannelEncryption d{final_seckey, final_pubkey};
     bool decrypted = false;
     auto body = std::move(res.text);
     auto orig_size = body.size();
-    try { body = d.decrypt(EncryptType::aes_gcm, body, keys.back().second); decrypted = true; }
+    try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
     catch (...) {}
 
     if (decrypted) {
@@ -294,7 +326,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     } else if (oxenmq::is_base64(body)) {
         body = oxenmq::from_base64(body);
         std::cerr << "Body was " << orig_size << " base64 bytes; decoded to " << body.size() << " bytes";
-        try { body = d.decrypt(EncryptType::aes_gcm, body, keys.back().second); decrypted = true; }
+        try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
         catch (...) {}
         if (decrypted)
             std::cerr << "; decrypted to " << body.size() << " bytes:\n";
