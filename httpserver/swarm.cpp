@@ -274,15 +274,12 @@ static uint64_t hex_to_u64(const user_pubkey_t& pk) {
     /// Create a buffer for 16 characters null terminated
     char buf[17] = {};
 
-    /// Note: pk is expected to contain two leading characters
-    /// (05 for the messenger) that do not participate in mapping
+    const auto hexpk = pk.key();
+    assert(hexpk.size() == 64 && oxenmq::is_hex(hexpk));
 
-    /// Note: if conversion is not possible, we will still
-    /// get a value in res (possibly 0 or UINT64_MAX), which
-    /// we are not handling at the moment
     uint64_t res = 0;
-    for (auto it = pk.str().begin() + 2; it < pk.str().end(); it += 16) {
-        memcpy(buf, &(*it), 16);
+    for (size_t i = 0; i < 64; i += 16) {
+        std::memcpy(buf, hexpk.data() + i, 16);
         res ^= strtoull(buf, nullptr, 16);
     }
 
