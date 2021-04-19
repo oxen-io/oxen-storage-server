@@ -13,18 +13,9 @@ namespace oxen {
 using storage::Item;
 
 template <typename T>
-static T deserialize_integer(std::string::const_iterator& it) {
-
-    const auto b1 = reinterpret_cast<const T&>(*it);
-    it += sizeof(T);
-    return boost::endian::little_to_native(b1);
-}
-
-template <typename T>
 static void serialize_integer(std::string& buf, T a) {
     boost::endian::native_to_little_inplace(a);
-    const auto p = reinterpret_cast<const char*>(&a);
-    buf.insert(buf.size(), p, sizeof(T));
+    buf += std::string_view{reinterpret_cast<const char*>(&a), sizeof(T)};
 }
 
 static void serialize(std::string& buf, const std::string& str) {
@@ -81,60 +72,42 @@ serialize_messages(const std::vector<message_t>& msgs);
 template std::vector<std::string>
 serialize_messages(const std::vector<Item>& msgs);
 
-struct string_view {
+template <typename T>
+static std::optional<T> deserialize_integer(std::string_view& slice) {
+    static_assert(std::is_trivial_v<T>);
+    T val;
+    std::memcpy(reinterpret_cast<char*>(&val), slice.data(), sizeof(T));
+    slice.remove_prefix(sizeof(T));
+    boost::endian::native_to_little_inplace(val);
+    return val;
+}
 
-    std::string::const_iterator it;
-    const std::string::const_iterator it_end;
 
-    string_view(const std::string& data)
-        : it(data.begin()), it_end(data.end()) {}
-
-    size_t size() { return it_end - it; }
-
-    bool empty() { return it_end <= it; }
-};
-
-static std::optional<std::string> deserialize_string(string_view& slice,
+static std::optional<std::string> deserialize_string(std::string_view& slice,
                                                      size_t len) {
 
     if (slice.size() < len) {
         return std::nullopt;
     }
 
-    const auto res = std::string(slice.it, slice.it + len);
-    slice.it += len;
-
-    return res;
+    std::string res{slice.substr(0, len)};
+    slice.remove_prefix(len);
+    return std::move(res);
 }
 
-static std::optional<std::string> deserialize_string(string_view& slice) {
-
-    if (slice.size() < sizeof(size_t))
-        return std::nullopt;
-
-    const auto len =
-        deserialize_integer<size_t>(slice.it); // already increments `it`!
-
-    return deserialize_string(slice, len);
+static std::optional<std::string> deserialize_string(std::string_view& slice) {
+    // A uint64_t is stupidly large for a string length, but we can't change it without breaking the
+    // protocol.
+    if (auto len = deserialize_integer<uint64_t>(slice))
+        return deserialize_string(slice, *len);
+    return std::nullopt;
 }
 
-static std::optional<uint64_t> deserialize_uint64(string_view& slice) {
-
-    if (slice.size() < sizeof(uint64_t))
-        return std::nullopt;
-
-    const auto res = deserialize_integer<uint64_t>(slice.it);
-
-    return res;
-}
-
-std::vector<message_t> deserialize_messages(const std::string& blob) {
+std::vector<message_t> deserialize_messages(std::string_view slice) {
 
     OXEN_LOG(trace, "=== Deserializing ===");
 
     std::vector<message_t> result;
-
-    string_view slice{blob};
 
     while (!slice.empty()) {
 
@@ -160,30 +133,33 @@ std::vector<message_t> deserialize_messages(const std::string& blob) {
         }
 
         /// Deserialize TTL
-        auto ttl = deserialize_uint64(slice);
+        auto ttl = deserialize_integer<uint64_t>(slice);
         if (!ttl) {
             OXEN_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
-        auto timestamp = deserialize_uint64(slice);
+        auto timestamp = deserialize_integer<uint64_t>(slice);
         if (!timestamp) {
             OXEN_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
 
         /// Deserialize Nonce
-        /// TODO: Nonce is unused. We don't strictly need to call this, but
-        /// I'm leaving this to be explicit about what is in the protocol.
-        /// If possible, would be good to remove it from the protocol.
-        auto unused_nonce = deserialize_string(slice);
+        /// TODO: Nonce is unused but we have to call this for backwards compat (and if we don't
+        /// pull it off the string we can't read the next element).  It would be good to complete
+        /// replace this completely rigid and undocumented protocol with something extensible that
+        /// also doesn't do dumb things like not having records, sending a Session internal prefix,
+        /// using binary 8-byte string lengths (sometimes, but other times not), sending binary
+        /// values as hex, and using a rigid fixed ordering of fields.
+        [[maybe_unused]] auto unused_nonce = deserialize_string(slice);
 
         OXEN_LOG(trace, "Deserialized data: {}", *data);
 
         OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
 
-        result.emplace_back(*pk, *data, *hash, *ttl, *timestamp);
+        result.emplace_back(std::move(*pk), std::move(*data), std::move(*hash), *ttl, *timestamp);
     }
 
     OXEN_LOG(trace, "=== END ===");
