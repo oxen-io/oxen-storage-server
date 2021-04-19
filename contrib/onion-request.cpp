@@ -158,7 +158,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     //   node as the final hop, and means that the BLOB is actually JSON it should parse to get the
     //   request info (which has "method", "params", etc. in it).
     // - "host"/"target"/"port"/"protocol" asking for an HTTP or HTTPS proxy request to be made
-    //   (though "target" must start with /loki/ or /oxen/ and end with /lsrpc).
+    //   (though "target" must start with /loki/ or /oxen/ and end with /lsrpc).  (There is still a
+    //   blob here, but it is not used and typically empty).
     // - "destination" and "ephemeral_key" to forward the request to the next hop.
     //
     // This later case continues onion routing by giving us something like:
@@ -187,6 +188,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     {
         crypto_box_keypair(A.data(), a.data());
         oxen::ChannelEncryption e{a};
+#if 1
+        // get_snodes_for_pubkey request returns some json:
         auto payload = nlohmann::json{
             {"method", "get_snodes_for_pubkey"},
             {"params", {
@@ -194,8 +197,20 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
                 {"foobar", true},
             }}
         }.dump();
-        auto data = encode_size(payload.size()) + payload +
-            nlohmann::json{{"headers", std::array<int, 0>{}},}.dump();
+
+        auto control = nlohmann::json{
+                {"headers", std::array<int, 0>{}}}.dump();
+
+#else
+        // A proxy request to a target (which must start '/oxen/' or '/loki' and end '/lsrpc'):
+        auto payload = ""s;
+        auto control = nlohmann::json{
+                {"host", "jagerman.com"},
+                {"target", "/oxen/lsrpc"}}.dump();
+#endif
+
+        auto data = encode_size(payload.size()) + payload + control;
+
         blob = e.encrypt(EncryptType::aes_gcm, data, keys.back().second);
         final_seckey = a;
         final_pubkey = A;
