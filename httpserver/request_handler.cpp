@@ -430,9 +430,8 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
 
     const std::string res_body = json_res.dump();
 
-    std::string ciphertext;
-    channel_cipher_.encrypt(enc_type, res_body, client_key);
-    ciphertext = oxenmq::to_base64(ciphertext);
+    std::string ciphertext = oxenmq::to_base64(
+            channel_cipher_.encrypt(enc_type, res_body, client_key));
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};
