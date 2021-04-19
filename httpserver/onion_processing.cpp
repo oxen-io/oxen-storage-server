@@ -163,7 +163,7 @@ static void relay_to_node(const ServiceNode& service_node,
         cb(oxen::Response{make_status(data[0]), std::move(data[1])});
     };
 
-    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", dest_node->pubkey_legacy);
+    OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
 
     if (v2) {
         service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
