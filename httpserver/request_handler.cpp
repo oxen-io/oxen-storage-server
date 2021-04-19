@@ -368,7 +368,8 @@ void RequestHandler::process_client_req(
         cb(Response{Status::BAD_REQUEST, "invalid json\n"});
     }
 
-    OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
+    if (OXEN_LOG_ENABLED(trace))
+        OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
 
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
