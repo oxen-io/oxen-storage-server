@@ -289,24 +289,27 @@ static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
     /// TODO: Make sure no exceptions bubble up from here!
-    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk);
+    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk).swarm_id;
 }
 
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const user_pubkey_t& pk) {
+static const SwarmInfo null_swarm{INVALID_SWARM_ID, {}};
+
+const SwarmInfo& get_swarm_by_pk(
+        const std::vector<SwarmInfo>& all_swarms,
+        const user_pubkey_t& pk) {
 
     const uint64_t res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
 
-    swarm_id_t cur_best = INVALID_SWARM_ID;
+    const SwarmInfo* cur_best = &null_swarm;
     uint64_t cur_min = INVALID_SWARM_ID;
 
     /// We don't require that all_swarms is sorted, so we find
     /// the smallest/largest elements in the same loop
-    swarm_id_t leftmost_id = INVALID_SWARM_ID;
-    swarm_id_t rightmost_id = 0;
+    const SwarmInfo* leftmost = &null_swarm;
+    const SwarmInfo* rightmost = nullptr;
 
     for (const auto& si : all_swarms) {
 
@@ -319,37 +322,40 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
         uint64_t dist =
             (si.swarm_id > res) ? (si.swarm_id - res) : (res - si.swarm_id);
         if (dist < cur_min) {
-            cur_best = si.swarm_id;
+            cur_best = &si;
             cur_min = dist;
         }
 
         /// Find the letfmost
-        if (si.swarm_id < leftmost_id) {
-            leftmost_id = si.swarm_id;
+        if (si.swarm_id < leftmost->swarm_id) {
+            leftmost = &si;
         }
 
-        if (si.swarm_id > rightmost_id) {
-            rightmost_id = si.swarm_id;
+        if (!rightmost || si.swarm_id > rightmost->swarm_id) {
+            rightmost = &si;
         }
     }
 
+    if (!rightmost) // Found no swarms at all
+        return null_swarm;
+
     // handle special case
-    if (res > rightmost_id) {
+    if (res > rightmost->swarm_id) {
         // since rightmost is at least as large as leftmost,
         // res >= leftmost_id in this branch, so the value will
         // not overflow; the same logic applies to the else branch
-        const uint64_t dist = (MAX_ID - res) + leftmost_id;
+        const uint64_t dist = (MAX_ID - res) + leftmost->swarm_id;
         if (dist < cur_min) {
-            cur_best = leftmost_id;
+            cur_best = leftmost;
         }
-    } else if (res < leftmost_id) {
-        const uint64_t dist = res + (MAX_ID - rightmost_id);
+    } else if (res < leftmost->swarm_id) {
+        const uint64_t dist = res + (MAX_ID - rightmost->swarm_id);
         if (dist < cur_min) {
-            cur_best = rightmost_id;
+            cur_best = rightmost;
         }
     }
 
-    return cur_best;
+    return *cur_best;
 }
 
 std::pair<int, int> count_missing_data(const block_update_t& bu) {

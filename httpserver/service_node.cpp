@@ -1176,7 +1176,7 @@ void ServiceNode::bootstrap_swarms(
     }
 
     std::unordered_map<swarm_id_t, size_t> swarm_id_to_idx;
-    for (auto i = 0u; i < all_swarms.size(); ++i) {
+    for (size_t i = 0; i < all_swarms.size(); ++i) {
         swarm_id_to_idx.insert({all_swarms[i].swarm_id, i});
     }
 
@@ -1202,7 +1202,7 @@ void ServiceNode::bootstrap_swarms(
                 continue;
             }
 
-            swarm_id = get_swarm_by_pk(all_swarms, pk);
+            swarm_id = get_swarm_by_pk(all_swarms, pk).swarm_id;
             cache.insert({entry.pub_key, swarm_id});
         } else {
             swarm_id = it->second;
@@ -1446,21 +1446,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
         return {};
     }
 
-    const auto& all_swarms = swarm_->all_valid_swarms();
-
-    swarm_id_t swarm_id = get_swarm_by_pk(all_swarms, pk);
-
-    // TODO: have get_swarm_by_pk return idx into all_swarms instead,
-    // so we don't have to find it again
-
-    for (const auto& si : all_swarms) {
-        if (si.swarm_id == swarm_id)
-            return si.snodes;
-    }
-
-    OXEN_LOG(critical, "Something went wrong in get_snodes_by_pk");
-
-    return {};
+    return get_swarm_by_pk(swarm_->all_valid_swarms(), pk).snodes;
 }
 
 } // namespace oxen

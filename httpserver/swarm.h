@@ -35,8 +35,12 @@ struct block_update_t {
 
 void debug_print(std::ostream& os, const block_update_t& bu);
 
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const user_pubkey_t& pk);
+// Returns a reference to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
+// reference to a null SwarmInfo with swarm_id set to INVALID_SWARM_ID on error (which will only
+// happen if there are no swarms at all).
+const SwarmInfo& get_swarm_by_pk(
+        const std::vector<SwarmInfo>& all_swarms,
+        const user_pubkey_t& pk);
 
 // Takes a swarm update, returns the number of active SN entries with missing
 // IP/port/ed25519/x25519 data and the total number of entries.  (We don't include
