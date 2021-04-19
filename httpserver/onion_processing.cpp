@@ -264,8 +264,8 @@ auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson {
 
     /// First 4 bytes as number
     if (payload.size() < 4) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::runtime_error{"Unexpected payload size"};
+        OXEN_LOG(warn, "Unexpected payload size; expected ciphertext size");
+        throw std::runtime_error{"Unexpected payload size; expected ciphertext size"};
     }
 
     uint32_t n;
@@ -276,8 +276,9 @@ auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson {
     payload.remove_prefix(sizeof(uint32_t));
 
     if (payload.size() < n) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::runtime_error{"Unexpected payload size"};
+        auto msg = fmt::format("Unexpected payload size {}, expected {}", payload.size(), n);
+        OXEN_LOG(warn, "{}", msg);
+        throw std::runtime_error{msg};
     }
 
     CiphertextPlusJson result;

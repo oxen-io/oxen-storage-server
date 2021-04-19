@@ -273,7 +273,7 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
         user_pubkey_t::create(params.at("pubKey").get<std::string>(), success);
     if (!success) {
 
-        auto msg = fmt::format("Pubkey must be {} characters long\n",
+        auto msg = fmt::format("Pubkey must be {} hex digits long\n",
                                get_user_pubkey_size());
         OXEN_LOG(debug, "{}", msg);
         return Response{Status::BAD_REQUEST, std::move(msg)};
