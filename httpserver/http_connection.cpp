@@ -561,7 +561,6 @@ void connection_t::process_swarm_req(std::string_view target) {
         if (body == nlohmann::detail::value_t::discarded) {
             OXEN_LOG(debug, "Bad snode test request: invalid json");
             body_stream_ << "invalid json\n";
-            response_.result(http::status::bad_request);
             return;
         }
 
@@ -574,7 +573,6 @@ void connection_t::process_swarm_req(std::string_view target) {
         } catch (...) {
             this->body_stream_
                 << "Bad snode test request: missing fields in json";
-            response_.result(http::status::bad_request);
             OXEN_LOG(debug, "Bad snode test request: missing fields in json");
             return;
         }
