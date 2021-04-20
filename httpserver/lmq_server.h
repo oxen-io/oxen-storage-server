@@ -5,13 +5,19 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
 #include <oxenmq/oxenmq.h>
+
+#include "sn_record.h"
 
 namespace oxen {
 
 struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
+
+void omq_logger(oxenmq::LogLevel level, const char* file, int line,
+        std::string message);
 
 class OxenmqServer {
 
@@ -35,20 +41,23 @@ class OxenmqServer {
     // v2 indicates whether to use the new (v2) protocol
     void handle_onion_request(oxenmq::Message& message, bool v2);
 
+    // sn.ping - sent by SNs to ping each other.
+    void handle_ping(oxenmq::Message& message);
+
     void handle_get_logs(oxenmq::Message& message);
 
     void handle_get_stats(oxenmq::Message& message);
 
     // Access keys for the 'service' category as binary
-    std::unordered_set<std::string> stats_access_keys;
+    std::unordered_set<std::string> stats_access_keys_;
 
     void connect_oxend(const oxenmq::address& oxend_rpc);
 
   public:
     OxenmqServer(
-            uint16_t port,
-            const oxend_key_pair_t& keypair,
-            const std::vector<std::string>& stats_access_keys_hex);
+            const sn_record_t& me,
+            const x25519_seckey& privkey,
+            const std::vector<x25519_pubkey>& stats_access_keys_hex);
 
     // Initialize oxenmq
     void init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxend_rpc);
@@ -64,7 +73,7 @@ class OxenmqServer {
     // request name and a callback) are forwarded as `omq.request(connid, ...)`.
     template <typename... Args>
     void oxend_request(Args&&... args) {
-        if (!oxend_conn_) { std::abort(); }
+        assert(oxend_conn_);
         omq_.request(oxend_conn(), std::forward<Args>(args)...);
     }
 
@@ -72,7 +81,7 @@ class OxenmqServer {
     // ...)` (and must contain at least a command name).
     template <typename... Args>
     void oxend_send(Args&&... args) {
-        if (!oxend_conn_) { std::abort(); }
+        assert(oxend_conn_);
         omq_.send(oxend_conn(), std::forward<Args>(args)...);
     }
 };

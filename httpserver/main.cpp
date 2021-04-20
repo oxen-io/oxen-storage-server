@@ -34,18 +34,6 @@ extern "C" {
 
 namespace fs = std::filesystem;
 
-#ifdef ENABLE_SYSTEMD
-static void systemd_watchdog_tick(boost::asio::steady_timer& timer,
-                                  const oxen::ServiceNode& sn) {
-    using namespace std::literals;
-    sd_notify(0, ("WATCHDOG=1\nSTATUS=" + sn.get_status_line()).c_str());
-    timer.expires_after(10s);
-    timer.async_wait([&](const boost::system::error_code&) {
-        systemd_watchdog_tick(timer, sn);
-    });
-}
-#endif
-
 constexpr int EXIT_INVALID_PORT = 2;
 
 int main(int argc, char* argv[]) {
@@ -68,7 +56,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (options.print_version) {
-        std::cout << STORAGE_SERVER_VERSION_INFO;
+        std::cout << oxen::STORAGE_SERVER_VERSION_INFO;
         return EXIT_SUCCESS;
     }
 
@@ -97,13 +85,17 @@ int main(int argc, char* argv[]) {
     oxen::init_logging(options.data_dir, log_level);
 
     if (options.testnet) {
-        oxen::set_testnet();
+        oxen::is_mainnet = false;
         OXEN_LOG(warn,
                  "Starting in testnet mode, make sure this is intentional!");
     }
 
     // Always print version for the logs
-    OXEN_LOG(info, "{}", STORAGE_SERVER_VERSION_INFO);
+    OXEN_LOG(info, "{}", oxen::STORAGE_SERVER_VERSION_INFO);
+
+#ifdef INTEGRATION_TEST
+    OXEN_LOG(warn, "Compiled for integration tests; this binary will not function as a regular storage server!");
+#endif
 
     if (options.ip == "127.0.0.1") {
         OXEN_LOG(critical,
@@ -142,87 +134,71 @@ int main(int argc, char* argv[]) {
     }
 
     try {
+        using namespace oxen;
 
+        std::vector<x25519_pubkey> stats_access_keys;
+        for (const auto& key : options.stats_access_keys) {
+            stats_access_keys.push_back(x25519_pubkey::from_hex(key));
+            OXEN_LOG(info, "Stats access key: {}", key);
+        }
 
 #ifndef INTEGRATION_TEST
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            oxen::get_sn_privkeys(options.oxend_omq_rpc);
+            get_sn_privkeys(options.oxend_omq_rpc);
 #else
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
         // command line option:
-        const auto private_key = oxen::oxendKeyFromHex(options.oxend_key);
-        OXEN_LOG(info, "OXEND LEGACY KEY: {}", options.oxend_key);
-
-        const auto private_key_x25519 = oxen::oxendKeyFromHex(options.oxend_x25519_key);
-        OXEN_LOG(info, "x25519 SECRET KEY: {}", options.oxend_x25519_key);
-
-        // Unused at the moment:
-        const auto private_key_ed25519 =
-            oxen::private_key_ed25519_t::from_hex(options.oxend_ed25519_key);
-        OXEN_LOG(info, "ed25519 SECRET KEY: {}", options.oxend_ed25519_key);
+        legacy_seckey private_key{};
+        ed25519_seckey private_key_ed25519{};
+        x25519_seckey private_key_x25519{};
+        try {
+            private_key = legacy_seckey::from_hex(options.oxend_key);
+            private_key_ed25519 = ed25519_seckey::from_hex(options.oxend_ed25519_key);
+            private_key_x25519 = x25519_seckey::from_hex(options.oxend_x25519_key);
+        } catch (...) {
+            OXEN_LOG(critical, "This storage server binary is compiled in integration test mode: "
+                "--oxend-key, --oxend-x25519-key, and --oxend-ed25519-key are required");
+            throw;
+        }
 #endif
 
-        const auto public_key = oxen::derive_pubkey_legacy(private_key);
-        OXEN_LOG(info, "Retrieved keys from Lokid; our SN pubkey is: {}",
-                 oxenmq::to_hex(public_key.begin(), public_key.end()));
+        sn_record_t me{"0.0.0.0", options.port, options.lmq_port,
+                private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
-        // TODO: avoid conversion to vector
-        const std::vector<uint8_t> priv(private_key_x25519.begin(),
-                                        private_key_x25519.end());
-        ChannelEncryption<std::string> channel_encryption(priv);
+        OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
+        OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
+        OXEN_LOG(info, "- ed25519: {}", me.pubkey_ed25519);
+        OXEN_LOG(info, "- x25519:  {}", me.pubkey_x25519);
+        OXEN_LOG(info, "- lokinet: {}", me.pubkey_ed25519.snode_address());
 
-        oxen::oxend_key_pair_t oxend_key_pair{private_key, public_key};
+        ChannelEncryption channel_encryption{private_key_x25519};
 
-        const auto public_key_x25519 =
-            oxen::derive_pubkey_x25519(private_key_x25519);
-
-        OXEN_LOG(info, "SN x25519 pubkey is: {}", oxenmq::to_hex(
-                    public_key_x25519.begin(), public_key_x25519.end()));
-
-        const auto public_key_ed25519 =
-            oxen::derive_pubkey_ed25519(private_key_ed25519);
-
-        const std::string pubkey_ed25519_hex = oxenmq::to_hex(
-                public_key_ed25519.begin(), public_key_ed25519.end());
-
-        OXEN_LOG(info, "SN ed25519 pubkey is: {}", pubkey_ed25519_hex);
-
-        oxen::oxend_key_pair_t oxend_key_pair_x25519{private_key_x25519,
-                                                     public_key_x25519};
-
-        for (const auto& key : options.stats_access_keys) {
-            OXEN_LOG(info, "Stats access key: {}", key);
-        }
-
-        // We pass port early because we want to send it in the first ping to
-        // Oxend (in ServiceNode's constructor), but don't want to initialize
-        // the rest of lmq server before we have a reference to ServiceNode
-        oxen::OxenmqServer oxenmq_server{options.lmq_port,
-                oxend_key_pair_x25519, options.stats_access_keys};
+        // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
+        // instance (because ServiceNode and OxenmqServer reference each other).
+        OxenmqServer oxenmq_server{me, private_key_x25519, stats_access_keys};
 
         // TODO: SN doesn't need oxenmq_server, just the lmq components
-        oxen::ServiceNode service_node(ioc, options.port, options.lmq_port,
-                                       oxenmq_server, oxend_key_pair,
-                                       pubkey_ed25519_hex, options.data_dir,
-                                       options.force_start);
+        ServiceNode service_node(ioc, me, private_key, oxenmq_server,
+                                       options.data_dir, options.force_start);
 
-        oxen::RequestHandler request_handler(ioc, service_node, channel_encryption);
+        RequestHandler request_handler(ioc, service_node, channel_encryption);
 
         oxenmq_server.init(&service_node, &request_handler,
                 oxenmq::address{options.oxend_omq_rpc});
 
         RateLimiter rate_limiter;
 
-        oxen::Security security(oxend_key_pair, options.data_dir);
+        Security security(legacy_keypair{me.pubkey_legacy, private_key}, options.data_dir);
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
-        boost::asio::steady_timer systemd_watchdog_timer(ioc);
-        systemd_watchdog_tick(systemd_watchdog_timer, service_node);
+        oxenmq_server->add_timer([&service_node] {
+            sd_notify(0, ("WATCHDOG=1\nSTATUS=" + service_node.get_status_line()).c_str());
+        }, 10s);
 #endif
 
-        oxen::http_server::run(ioc, options.ip, options.port, options.data_dir,
+        http_server::run(ioc, options.ip, options.port, options.data_dir,
                                service_node, request_handler, rate_limiter,
                                security);
     } catch (const std::exception& e) {

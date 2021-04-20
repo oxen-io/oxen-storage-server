@@ -10,6 +10,7 @@
 
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
+#include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 
@@ -34,7 +35,7 @@ std::string to_string(const Response& res) {
 }
 
 RequestHandler::RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                               const ChannelEncryption<std::string>& ce)
+                               const ChannelEncryption& ce)
     : ioc_(ioc), service_node_(sn), channel_cipher_(ce) {}
 
 static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
@@ -43,13 +44,13 @@ static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
     json snodes_json = json::array();
 
     for (const auto& sn : snodes) {
-        json snode;
-        snode["address"] = sn.sn_address();
-        snode["pubkey_x25519"] = sn.pubkey_x25519_hex();
-        snode["pubkey_ed25519"] = sn.pubkey_ed25519_hex();
-        snode["port"] = std::to_string(sn.port());
-        snode["ip"] = sn.ip();
-        snodes_json.push_back(snode);
+        snodes_json.push_back(json{
+                {"address", oxenmq::to_base32z(sn.pubkey_legacy.view()) + ".snode"}, // Deprecated, use pubkey_legacy instead
+                {"pubkey_legacy", sn.pubkey_legacy.hex()},
+                {"pubkey_x25519", sn.pubkey_x25519.hex()},
+                {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
+                {"port", std::to_string(sn.port)}, // Why is this a string?
+                {"ip", sn.ip}});
     }
 
     res_body["snodes"] = snodes_json;
@@ -57,10 +58,11 @@ static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
     return res_body;
 }
 
-static std::string obfuscate_pubkey(const std::string& pk) {
-    std::string res = pk.substr(0, 2);
+static std::string obfuscate_pubkey(std::string_view pk) {
+    std::string res;
+    res += pk.substr(0, 2);
     res += "...";
-    res += pk.substr(pk.length() - 3, pk.length() - 1);
+    res += pk.substr(pk.length() - 3);
     return res;
 }
 
@@ -271,7 +273,7 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
         user_pubkey_t::create(params.at("pubKey").get<std::string>(), success);
     if (!success) {
 
-        auto msg = fmt::format("Pubkey must be {} characters long\n",
+        auto msg = fmt::format("Pubkey must be {} hex digits long\n",
                                get_user_pubkey_size());
         OXEN_LOG(debug, "{}", msg);
         return Response{Status::BAD_REQUEST, std::move(msg)};
@@ -366,7 +368,8 @@ void RequestHandler::process_client_req(
         cb(Response{Status::BAD_REQUEST, "invalid json\n"});
     }
 
-    OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
+    if (OXEN_LOG_ENABLED(trace))
+        OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
 
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
@@ -417,8 +420,8 @@ void RequestHandler::process_client_req(
 }
 
 Response RequestHandler::wrap_proxy_response(const Response& res,
-                                             const std::string& client_key,
-                                             bool use_gcm) const {
+                                             const x25519_pubkey& client_key,
+                                             EncryptType enc_type) const {
 
     nlohmann::json json_res;
 
@@ -427,15 +430,8 @@ Response RequestHandler::wrap_proxy_response(const Response& res,
 
     const std::string res_body = json_res.dump();
 
-    std::string ciphertext;
-
-    if (use_gcm) {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_gcm(res_body, client_key));
-    } else {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_cbc(res_body, client_key));
-    }
+    std::string ciphertext = oxenmq::to_base64(
+            channel_cipher_.encrypt(enc_type, res_body, client_key));
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};
@@ -480,7 +476,7 @@ void RequestHandler::process_lns_request(
 }
 
 void RequestHandler::process_onion_exit(
-    const std::string& eph_key, const std::string& body,
+    const x25519_pubkey& eph_key, const std::string& body,
     std::function<void(oxen::Response)> cb) {
 
     OXEN_LOG(debug, "Processing onion exit!");
@@ -494,12 +490,13 @@ void RequestHandler::process_onion_exit(
 }
 
 void RequestHandler::process_proxy_exit(
-    const std::string& client_key, const std::string& payload,
-    std::function<void(oxen::Response)> cb) {
+        const x25519_pubkey& client_key,
+        std::string_view payload,
+        std::function<void(oxen::Response)> cb) {
 
     if (!service_node_.snode_ready()) {
         auto res = Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"};
-        cb(wrap_proxy_response(res, client_key, false));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -520,7 +517,7 @@ void RequestHandler::process_proxy_exit(
 
         // TODO: since we always seem to encrypt the response, we should
         // do it once one level above instead
-        cb(wrap_proxy_response(res, client_key, false));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -544,7 +541,7 @@ void RequestHandler::process_proxy_exit(
         auto msg = fmt::format("JSON parsing error: {}", e.what());
         OXEN_LOG(debug, "[{}] {}", idx, msg);
         auto res = Response{Status::BAD_REQUEST, msg};
-        cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+        cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         return;
     }
 
@@ -557,7 +554,7 @@ void RequestHandler::process_proxy_exit(
             OXEN_LOG(debug, "[{}] proxy about to respond with: {}", idx,
                      res.status());
 
-            cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+            cb(wrap_proxy_response(res, client_key, EncryptType::aes_cbc));
         });
 }
 

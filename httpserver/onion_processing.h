@@ -1,13 +1,13 @@
 #pragma once
 
+#include <nlohmann/json_fwd.hpp>
+#include <string>
 #include <variant>
+#include "oxend_key.h"
 
 namespace oxen {
 
-struct CiphertextPlusJson {
-    std::string ciphertext;
-    std::string json;
-};
+using CiphertextPlusJson = std::pair<std::string, nlohmann::json>;
 
 /// The request is to be forwarded to another SS node
 struct RelayToNodeInfo {
@@ -16,7 +16,7 @@ struct RelayToNodeInfo {
     // Key to be forwarded to next node for decryption
     std::string ephemeral_key;
     // Next node's ed25519 key
-    std::string next_node;
+    ed25519_pubkey next_node;
 };
 
 std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& p);
@@ -60,11 +60,9 @@ enum class ProcessCiphertextError {
 using ParsedInfo = std::variant<RelayToNodeInfo, RelayToServerInfo,
                                 FinalDestinationInfo, ProcessCiphertextError>;
 
-// TODO: move this from http_connection.h after refactoring
-auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
+auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson;
 
-auto process_inner_request(const CiphertextPlusJson& parsed,
-                           std::string plaintext) -> ParsedInfo;
+auto process_inner_request(std::string plaintext) -> ParsedInfo;
 
 bool is_server_url_allowed(std::string_view url);
 

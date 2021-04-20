@@ -1,57 +1,58 @@
 #include <boost/test/unit_test.hpp>
 #include <iostream>
 
+#include "oxend_key.h"
 #include "swarm.h"
 #include "request_handler.h"
 
 BOOST_AUTO_TEST_SUITE(service_node_stuff)
 
-static auto create_dummy_sn_record() -> sn_record_t {
+static auto create_dummy_sn_record() -> oxen::sn_record_t {
 
-    const std::string address =
-        "0123456789012345678901234567890123456789012345678901";
-    const std::string pk_hex =
-        "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385";
-    const std::string pk_x25519 =
-        "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414";
-    const std::string pk_x25519_bin = "";
-    const std::string pk_ed25519 =
-        "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a";
+    const auto pk = oxen::legacy_pubkey::from_hex(
+        "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
+    const auto pk_x25519 = oxen::x25519_pubkey::from_hex(
+        "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414");
+    const auto pk_ed25519 = oxen::ed25519_pubkey::from_hex(
+        "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a");
     const std::string ip = "0.0.0.0";
 
-    auto sn = sn_record_t{8080,      8081,          address,    pk_hex,
-                          pk_x25519, pk_x25519_bin, pk_ed25519, ip};
-
-    return sn;
+    return {ip, 8080, 8081, pk, pk_ed25519, pk_x25519};
 }
 
-static auto test_ip_update(const char* old_ip, const char* new_ip,
-                           const char* expected_ip) -> void {
+using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
+
+static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
+                           ip_ports expected) -> void {
+
+    using oxen::sn_record_t;
 
     auto sn = create_dummy_sn_record();
 
-    sn.set_ip(old_ip);
+    std::tie(sn.ip, sn.port, sn.lmq_port) = old_addr;
 
     oxen::SwarmInfo si{0, std::vector<sn_record_t>{sn}};
     auto current = std::vector<oxen::SwarmInfo>{si};
 
-    sn.set_ip(new_ip);
+    std::tie(sn.ip, sn.port, sn.lmq_port) = new_addr;
 
     oxen::SwarmInfo si2{0, std::vector<sn_record_t>{sn}};
     auto incoming = std::vector<oxen::SwarmInfo>{si2};
 
     auto new_records = apply_ips(current, incoming);
 
-    BOOST_CHECK_EQUAL(new_records[0].snodes[0].ip(), expected_ip);
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].ip, std::get<0>(expected));
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].port, std::get<1>(expected));
+    BOOST_CHECK_EQUAL(new_records[0].snodes[0].lmq_port, std::get<2>(expected));
 }
 
 BOOST_AUTO_TEST_CASE(updates_ip_address) {
 
     auto sn = create_dummy_sn_record();
 
-    const auto default_ip = "0.0.0.0";
-    const auto ip1 = "1.1.1.1";
-    const auto ip2 = "1.2.3.4";
+    const auto default_ip = ip_ports{"0.0.0.0", 0, 0};
+    const auto ip1 = ip_ports{"1.1.1.1", 123, 456};
+    const auto ip2 = ip_ports{"1.2.3.4", 123, 456};
 
     // Should update
     test_ip_update(ip1, ip2, ip2);

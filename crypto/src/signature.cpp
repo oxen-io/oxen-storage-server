@@ -2,13 +2,14 @@
 #include "utils.hpp"
 
 extern "C" {
-#include "oxen/crypto-ops/crypto-ops.h"
 #include "oxen/crypto-ops/hash-ops.h"
 }
 
+#include <sodium/crypto_core_ed25519.h>
 #include <sodium/crypto_generichash.h>
-#include <sodium/crypto_generichash_blake2b.h>
+#include <sodium/crypto_scalarmult_ed25519.h>
 #include <sodium/randombytes.h>
+#include <sodium/utils.h>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 
@@ -23,127 +24,160 @@ static_assert(crypto_generichash_BYTES == oxen::HASH_SIZE, "Wrong hash size!");
 
 namespace oxen {
 
-using ec_point = std::array<uint8_t, 32>;
+using ec_point = std::array<unsigned char, 32>;
 struct s_comm {
-    uint8_t h[32];
-    uint8_t key[32];
-    uint8_t comm[32];
+    unsigned char h[32];
+    unsigned char key[32];
+    unsigned char comm[32];
 };
 
-void random_scalar(ec_scalar& k) {
-    for (size_t i = 0; i < k.size() / 4; ++i) {
-        const uint32_t random = randombytes_random();
-        k[i + 0] = (random & 0xFF000000) >> 24;
-        k[i + 1] = (random & 0x00FF0000) >> 16;
-        k[i + 2] = (random & 0x0000FF00) >> 8;
-        k[i + 3] = (random & 0x000000FF) >> 0;
-    }
+static ec_scalar monero_hash_to_scalar(const void* input, size_t size) {
+    // We're trying to be backwards compatible with Monero's approach here, which is to calculate H
+    // mod L from a 32-byte H.  sodium reduces a 64-byte value, however, so will fill it with 0s to
+    // get the same result.  (This is crappy, but to use a 64-byte hash would break backwards
+    // compatibility).
+    unsigned char hash[64] = {0};
+    cn_fast_hash(input, size, reinterpret_cast<char*>(hash));
+    ec_scalar result;
+    crypto_core_ed25519_scalar_reduce(result.data(), hash);
+    return result;
 }
 
-bool hash_to_scalar(const void* input, size_t size, ec_scalar& output) {
-    cn_fast_hash(input, size, reinterpret_cast<char*>(output.data()));
-    sc_reduce32(output.data());
-    return true;
-}
-
-hash hash_data(const std::string& data) {
-    hash hash{{0}};
+hash hash_data(std::string_view data) {
+    hash hash;
     crypto_generichash(hash.data(), hash.size(),
-                       reinterpret_cast<const unsigned char*>(data.c_str()),
-                       data.size(), nullptr, 0);
+        reinterpret_cast<const unsigned char*>(data.data()), data.size(),
+        nullptr, 0);
     return hash;
 }
 
-signature generate_signature(const hash& prefix_hash,
-                             const oxend_key_pair_t& key_pair) {
-    ge_p3 tmp3;
-    ec_scalar k;
-    s_comm buf;
+// Concatenate a bunch of trivial types together into a std::array
+template <typename... T, typename Array = std::array<unsigned char, (sizeof(T) + ...)>>
+static Array concatenate(const T&... v) {
+    static_assert((std::is_trivial_v<T> && ...));
+    Array result;
+    unsigned char* ptr = result.data();
+    (
+     (std::memcpy(ptr, reinterpret_cast<const void*>(&v), sizeof(T)), ptr += sizeof(T)),
+     ...
+    );
+    return result;
+}
+
+// Blake2B hash some trivial types together
+template <size_t S, typename... T>
+static std::array<unsigned char, S> hash_concatenate(const T&... v) {
+    std::array<unsigned char, S> h;
+    crypto_generichash_state state;
+    crypto_generichash_init(&state, nullptr, 0, h.size());
+    (
+     crypto_generichash_update(&state, reinterpret_cast<const unsigned char*>(&v), sizeof(T)),
+     ...
+    );
+    crypto_generichash_final(&state, h.data(), h.size());
+    return h;
+}
+
+// With straight Ed25519 sigs this wouldn't be necessary (because sodium clamps things for us), but
+// Monero sigs require things to be able to be multiplied *without* clamping (because Monero crypto
+// is screwed up by design), so the onus is on the signer to clamp scalars directly.
+void clamp(ec_scalar& s) {
+    s[0] &= 248;
+    s[31] &= 63;
+    s[31] |= 64;
+}
+
+signature generate_signature(
+        const hash& prefix_hash,
+        const legacy_keypair& keys) {
+   /* Generate a non-standard Monero-compatible signature.  This is different from an standard
+    * Ed25519 signature for no good reason (i.e. Monero NIH), but we can't change it because we would
+    * break backwards compatibility.
+    *
+    * Monero generation is as follows:
+    *
+    *     Given M = H(msg)
+    *     x = random scalar
+    *     X = xG
+    *     c = H(M || A || X)
+    *
+    * where H is cn_fast_hash.  The signature for this is computed as:
+    *
+    *     r = x - ac
+    *
+    * with final signature: (c, r)
+    *
+    * But this relies on a random scalar x, which is undesirable; Ed25519, in contrast, gets x from H(S
+    * || M) where S is the second half of the SHA512 hash of the seed.  (Monero keys throw away the
+    * seed and only keep a just because NIH again).
+    *
+    * So we aim to be Ed25519-like in terms of a hash of a deterministic value rather than a random
+    * number, but keeping things Monero compatible, so we do:
+    *
+    *     x = H[512](H[256](a) || A || M)
+    *
+    * where H[N] is a N-bit Blake2b hash; we reduce and clamp the outer hash to get x, and otherwise
+    * keep things the same to remain Monero sig compatible.  (Effectively we are replacing the RNG
+    * with the deterministic hash function).
+    */
     signature sig;
-#if !defined(NDEBUG)
-    {
-        ge_p3 t;
-        public_key_t t2;
-        assert(sc_check(key_pair.private_key.data()) == 0);
-        ge_scalarmult_base(&t, key_pair.private_key.data());
-        ge_p3_tobytes(t2.data(), &t);
-        assert(key_pair.public_key == t2);
-    }
-#endif
-    std::copy(prefix_hash.begin(), prefix_hash.end(), std::begin(buf.h));
-    std::copy(key_pair.public_key.begin(), key_pair.public_key.end(),
-              std::begin(buf.key));
-try_again:
-    random_scalar(k);
-    if (k[7] == 0) // we don't want tiny numbers here
-        goto try_again;
-    ge_scalarmult_base(&tmp3, k.data());
-    ge_p3_tobytes(buf.comm, &tmp3);
-    hash_to_scalar(&buf, sizeof(s_comm), sig.c);
-    if (!sc_isnonzero((const unsigned char*)sig.c.data()))
-        goto try_again;
-    sc_mulsub(sig.r.data(), sig.c.data(), key_pair.private_key.data(),
-              k.data());
-    if (!sc_isnonzero((const unsigned char*)sig.r.data()))
-        goto try_again;
+
+    const auto& [pubkey, seckey] = keys;
+    crypto_generichash(sig.r.data(), sig.r.size(), seckey.data(), seckey.size(), nullptr, 0); // use r as tmp storage
+    auto xH = hash_concatenate<64>(sig.r /*H(a)*/, pubkey /*A*/, prefix_hash /*M*/);
+
+    ec_scalar x;
+    crypto_core_ed25519_scalar_reduce(x.data(), xH.data());
+    clamp(x);
+
+    ec_point X;
+    crypto_scalarmult_ed25519_base_noclamp(X.data(), x.data());
+    auto M_A_X = concatenate(prefix_hash, pubkey, X);
+    sig.c = monero_hash_to_scalar(M_A_X.data(), M_A_X.size());
+    crypto_core_ed25519_scalar_mul(sig.r.data(), seckey.data(), sig.c.data()); // r == ac
+    crypto_core_ed25519_scalar_sub(sig.r.data(), x.data(), sig.r.data()); // r = x - r (= x - ac)
     return sig;
 }
 
 bool check_signature(const signature& sig, const hash& prefix_hash,
-                     const public_key_t& pub) {
-    ge_p2 tmp2;
-    ge_p3 tmp3;
-    ec_scalar c;
-    s_comm buf;
-    //    assert(check_key(pub));
-    std::copy(prefix_hash.begin(), prefix_hash.end(), std::begin(buf.h));
-    std::copy(pub.begin(), pub.end(), std::begin(buf.key));
-    if (ge_frombytes_vartime(&tmp3, pub.data()) != 0) {
+                     const legacy_pubkey& pub) {
+    /* Monero-style signature verification (which is different from Ed25519 because Monero NIH).
+     *
+     * given signature (c, r), message hash M, pubkey A, and basepoint G:
+     *     X = rG + cA
+     *     Check: H(M||A||X) == c
+     */
+    ec_point X, cA;
+    if (0 != crypto_scalarmult_ed25519_base_noclamp(X.data(), sig.r.data()))
         return false;
-    }
-    if (sc_check(sig.c.data()) != 0 || sc_check(sig.r.data()) != 0 ||
-        !sc_isnonzero(sig.c.data())) {
+    if (0 != crypto_scalarmult_ed25519_noclamp(cA.data(), sig.c.data(), pub.data()))
         return false;
-    }
-    ge_double_scalarmult_base_vartime(&tmp2, sig.c.data(), &tmp3, sig.r.data());
-    ge_tobytes(buf.comm, &tmp2);
-    static const ec_point infinity = {{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-    if (memcmp(buf.comm, &infinity, 32) == 0)
+    if (0 != crypto_core_ed25519_add(X.data(), X.data(), cA.data()))
         return false;
-    hash_to_scalar(&buf, sizeof(s_comm), c);
-    sc_sub(c.data(), c.data(), sig.c.data());
-    return sc_isnonzero(c.data()) == 0;
+    if (1 != crypto_core_ed25519_is_valid_point(X.data()))
+        return false;
+
+    // H(M||A||X):
+    auto M_A_X = concatenate(prefix_hash, pub, X);
+    auto expected_c = monero_hash_to_scalar(M_A_X.data(), M_A_X.size());
+    return 0 == sodium_memcmp(expected_c.data(), sig.c.data(), expected_c.size());
 }
 
-bool check_signature(const std::string& signature_b64, const hash& hash,
-                     const std::string& public_key_b32z) {
+signature signature::from_base64(std::string_view signature_b64) {
     if (!oxenmq::is_base64(signature_b64))
-        return false;
+        throw std::runtime_error{"Invalid data: not base64-encoded"};
 
     // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
     if (!(signature_b64.size() == 86 ||
-                (signature_b64.size() == 88 && signature_b64[86] == '=')))
-        return false;
+                (signature_b64.size() == 88 && signature_b64.substr(86) == "==")))
+        throw std::runtime_error{"Invalid data: b64 data size does not match signature size"};
 
     // convert signature
     signature sig;
     static_assert(sizeof(sig) == 64);
     oxenmq::from_base64(signature_b64.begin(), signature_b64.end(),
-            reinterpret_cast<uint8_t*>(&sig));
-
-    // 32 bytes -> 52 base32z encoded characters
-    if (public_key_b32z.size() != 52 || !oxenmq::is_base32z(public_key_b32z))
-        return false;
-
-    // convert public key
-    public_key_t public_key;
-    static_assert(sizeof(public_key) == 32);
-    oxenmq::from_base32z(public_key_b32z.begin(), public_key_b32z.end(),
-            public_key.begin());
-
-    return check_signature(sig, hash, public_key);
+            reinterpret_cast<unsigned char*>(&sig));
+    return sig;
 }
 
 } // namespace oxen

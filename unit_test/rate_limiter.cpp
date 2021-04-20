@@ -1,14 +1,19 @@
 #include "rate_limiter.h"
+#include "oxend_key.h"
 
 #include <boost/test/unit_test.hpp>
 
 #include <chrono>
 
+using oxen::RateLimiter;
+using namespace std::literals;
+
 BOOST_AUTO_TEST_SUITE(snode_request_rate_limiter)
 
 BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
     RateLimiter rate_limiter;
-    const std::string identifier = "mypubkey";
+    auto identifier = oxen::legacy_pubkey::from_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -26,7 +31,8 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 
 BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
     RateLimiter rate_limiter;
-    const std::string identifier = "mypubkey";
+    auto identifier = oxen::legacy_pubkey::from_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
     for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
@@ -39,7 +45,8 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
 
 BOOST_AUTO_TEST_CASE(it_handle_multiple_identifiers) {
     RateLimiter rate_limiter;
-    const std::string identifier1 = "mypubkey";
+    auto identifier1 = oxen::legacy_pubkey::from_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -48,8 +55,10 @@ BOOST_AUTO_TEST_CASE(it_handle_multiple_identifiers) {
     }
     BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit(identifier1, now), true);
 
+    auto identifier2 = oxen::legacy_pubkey::from_hex(
+            "5123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     // other id
-    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit("otherpubkey", now),
+    BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit(identifier2, now),
                       false);
 }
 
@@ -59,7 +68,7 @@ BOOST_AUTO_TEST_SUITE(client_request_rate_limiter)
 
 BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
     RateLimiter rate_limiter;
-    const std::string identifier = "myipaddress";
+    uint32_t identifier = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -78,7 +87,7 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 
 BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
     RateLimiter rate_limiter;
-    const std::string identifier = "myipaddress";
+    uint32_t identifier = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
     for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
@@ -92,7 +101,7 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
 
 BOOST_AUTO_TEST_CASE(it_handles_multiple_identifiers) {
     RateLimiter rate_limiter;
-    const std::string identifier1 = "myipaddress";
+    uint32_t identifier1 = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
     for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -102,27 +111,30 @@ BOOST_AUTO_TEST_CASE(it_handles_multiple_identifiers) {
     BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(identifier1, now),
                       true);
 
+    uint32_t identifier2 = (10<<24) + (1<<16) + (1<<8) + 10;
     // other id
     BOOST_CHECK_EQUAL(
-        rate_limiter.should_rate_limit_client("otheripaddress", now), false);
+        rate_limiter.should_rate_limit_client(identifier2, now), false);
 }
 
 BOOST_AUTO_TEST_CASE(it_limits_too_many_unique_clients) {
     RateLimiter rate_limiter;
     const auto now = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < RateLimiter::MAX_CLIENTS; ++i) {
-        rate_limiter.should_rate_limit_client(std::to_string(i), now);
+    uint32_t ip_start = (10<<24) + 1;
+
+    for (uint32_t i = 0; i < RateLimiter::MAX_CLIENTS; ++i) {
+        rate_limiter.should_rate_limit_client(ip_start + i, now);
     }
+    uint32_t overflow_ip = ip_start + RateLimiter::MAX_CLIENTS;
     BOOST_CHECK_EQUAL(rate_limiter.should_rate_limit_client(
-                          std::to_string(RateLimiter::MAX_CLIENTS + 1), now),
+                          overflow_ip, now),
                       true);
     // Wait for buckets to be filled
-    const auto delta =
-        std::chrono::microseconds(1'000'000ul / RateLimiter::TOKEN_RATE);
+    const auto delta = 1'000'000us / RateLimiter::TOKEN_RATE;
     BOOST_CHECK_EQUAL(
         rate_limiter.should_rate_limit_client(
-            std::to_string(RateLimiter::MAX_CLIENTS + 1), now + delta),
+            overflow_ip, now + delta),
         false);
 }
 

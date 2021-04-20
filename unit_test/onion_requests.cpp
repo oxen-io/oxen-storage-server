@@ -8,19 +8,17 @@ using namespace oxen;
 
 BOOST_AUTO_TEST_SUITE(onion_requests)
 
-constexpr const char* plaintext = "plaintext";
 constexpr const char* ciphertext = "ciphertext";
+const auto prefix = "\x0a\0\0\0ciphertext"s;
 
 // Provided "headers", so the request terminates
 // at a service node.
 BOOST_AUTO_TEST_CASE(final_destination) {
-    const std::string inner_json = R"#({
+    auto data = prefix + R"#({
         "headers": "something"
     })#";
 
-    CiphertextPlusJson combined{ ciphertext, inner_json };
-
-    auto res = process_inner_request(combined, plaintext);
+    auto res = process_inner_request(data);
 
     auto expected = FinalDestinationInfo {
         ciphertext
@@ -35,20 +33,18 @@ BOOST_AUTO_TEST_CASE(final_destination) {
 // to an extrenal server. Default values will
 // be used for port and protocol.
 BOOST_AUTO_TEST_CASE(relay_to_server_legacy) {
-    const std::string inner_json = R"#({
+    auto data = prefix + R"#({
         "host": "host",
         "target": "target"
     })#";
 
-    CiphertextPlusJson combined{ ciphertext, inner_json };
-
-    auto res = process_inner_request(combined, plaintext);
+    auto res = process_inner_request(data);
 
     uint16_t port = 443;
     std::string protocol = "https";
 
     auto expected = RelayToServerInfo {
-        plaintext,
+        data,
         "host",
         port,
         protocol,
@@ -63,22 +59,20 @@ BOOST_AUTO_TEST_CASE(relay_to_server_legacy) {
 // Provided "host", so the request should go
 // to an extrenal server.
 BOOST_AUTO_TEST_CASE(relay_to_server) {
-    const std::string inner_json = R"#({
+    auto data = prefix + R"#({
         "host": "host",
         "target": "target",
         "port": 80,
         "protocol": "http"
     })#";
 
-    CiphertextPlusJson combined{ ciphertext, inner_json };
-
-    auto res = process_inner_request(combined, plaintext);
+    auto res = process_inner_request(data);
 
     uint16_t port = 80;
     std::string protocol = "http";
 
     auto expected = RelayToServerInfo {
-        plaintext,
+        data,
         "host",
         port,
         protocol,
@@ -94,19 +88,17 @@ BOOST_AUTO_TEST_CASE(relay_to_server) {
 /// the request to another node
 BOOST_AUTO_TEST_CASE(relay_to_node) {
 
-    const std::string inner_json = R"#({
-        "destination": "destination",
+    auto data = prefix + R"#({
+        "destination": "ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000",
         "ephemeral_key": "ephemeral_key"
     })#";
 
-    CiphertextPlusJson combined{ ciphertext, inner_json };
-
-    auto res = process_inner_request(combined, plaintext);
+    auto res = process_inner_request(data);
 
     auto expected = RelayToNodeInfo {
         ciphertext,
         "ephemeral_key",
-        "destination"
+        ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
     };
 
     BOOST_REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));

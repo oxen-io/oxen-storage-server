@@ -2,37 +2,41 @@
 #include "net_stats.h"
 #include "oxen_logger.h"
 #include "signature.h"
+#include "sn_record.h"
 
-#include <boost/algorithm/string/erase.hpp>
 #include <openssl/x509.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/base32z.h>
 
 namespace oxen {
 
 using error_code = boost::system::error_code;
 
-void make_https_request_to_sn(boost::asio::io_context& ioc,
-                              const std::string& sn_address, uint16_t port,
-                              const std::string& sn_pubkey_b32z,
-                              const std::shared_ptr<request_t>& req,
-                              http_callback_t&& cb) {
+static ssl::context ctx{ssl::context::tlsv12_client};
+
+void make_https_request_to_sn(
+        boost::asio::io_context& ioc,
+        const sn_record_t& sn,
+        std::shared_ptr<request_t> req,
+        http_callback_t&& cb) {
 
     error_code ec;
     boost::asio::ip::tcp::resolver resolver(ioc);
 #ifdef INTEGRATION_TEST
     const auto resolve_results =
-        resolver.resolve("0.0.0.0", std::to_string(port), ec);
+        resolver.resolve("0.0.0.0", std::to_string(sn.port), ec);
 #else
 
-    if (sn_address == "0.0.0.0") {
+    if (sn.ip == "0.0.0.0" || sn.port == 0) {
         OXEN_LOG(debug, "Could not initiate request to snode (we don't know "
-                        "their IP yet).");
+                        "their IP/port yet).");
 
         cb(sn_response_t{SNodeError::NO_REACH, nullptr});
         return;
     }
 
     const auto resolve_results =
-        resolver.resolve(sn_address, std::to_string(port), ec);
+        resolver.resolve(sn.ip, std::to_string(sn.port), ec);
 #endif
     if (ec) {
         OXEN_LOG(error,
@@ -42,17 +46,18 @@ void make_https_request_to_sn(boost::asio::io_context& ioc,
         return;
     }
 
-    static ssl::context ctx{ssl::context::tlsv12_client};
-
+    std::string hostname = sn.pubkey_ed25519
+        ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
+        : "service-node.snode";
     auto session = std::make_shared<HttpsClientSession>(
-        ioc, ctx, std::move(resolve_results), "service-node", req,
-        std::move(cb), sn_pubkey_b32z);
+        ioc, ctx, std::move(resolve_results), hostname.c_str(), std::move(req),
+        std::move(cb), sn.pubkey_legacy);
 
     session->start();
 }
 
 void make_https_request(boost::asio::io_context& ioc, const std::string& host,
-                        uint16_t port, const std::shared_ptr<request_t>& req,
+                        uint16_t port, std::shared_ptr<request_t> req,
                         http_callback_t&& cb) {
 
     static boost::asio::ip::tcp::resolver resolver(ioc);
@@ -64,10 +69,9 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& host,
         query.erase(0, sizeof(prefix) - 1);
     }
 
-    auto resolve_handler = [&ioc, req, query, host, cb = std::move(cb)](
-                               const boost::system::error_code& ec,
-                               boost::asio::ip::tcp::resolver::results_type
-                                   resolve_results) mutable {
+    auto resolve_handler = [&ioc, req = std::move(req), query, host, cb = std::move(cb)](
+            const boost::system::error_code& ec,
+            boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
         if (ec) {
             OXEN_LOG(error, "DNS resolution error for {}: {}", query,
                      ec.message());
@@ -78,7 +82,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& host,
         static ssl::context ctx{ssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
-            ioc, ctx, std::move(resolve_results), host.c_str(), req,
+            ioc, ctx, std::move(resolve_results), host.c_str(), std::move(req),
             std::move(cb), std::nullopt);
 
         session->start();
@@ -112,11 +116,11 @@ static std::string x509_to_string(X509* x509) {
 HttpsClientSession::HttpsClientSession(
     boost::asio::io_context& ioc, ssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results, const char* host,
-    const std::shared_ptr<request_t>& req, http_callback_t&& cb,
-    std::optional<std::string> sn_pubkey_b32z)
+    std::shared_ptr<request_t> req, http_callback_t&& cb,
+    std::optional<legacy_pubkey> sn_pubkey)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
-      callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_), req_(req),
-      server_pub_key_b32z_(std::move(sn_pubkey_b32z)) {
+      callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_),
+      req_(std::move(req)), server_pubkey_(std::move(sn_pubkey)) {
 
     get_net_stats().https_connections_out++;
 
@@ -200,7 +204,7 @@ void HttpsClientSession::on_connect() {
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
         OXEN_LOG(error, "Failed to perform a handshake with {}: {}",
-                 server_pub_key_b32z_.value_or("(not snode)"), ec.message());
+                 server_pubkey_ ? server_pubkey_->view() : "(not snode)", ec.message());
 
         return;
     }
@@ -231,7 +235,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
 bool HttpsClientSession::verify_signature() {
 
-    if (!server_pub_key_b32z_)
+    if (!server_pubkey_)
         return true;
 
     const auto& response = response_.get();
@@ -239,13 +243,19 @@ bool HttpsClientSession::verify_signature() {
     const auto it = response.find(OXEN_SNODE_SIGNATURE_HEADER);
     if (it == response.end()) {
         OXEN_LOG(warn, "no signature found in header from {}",
-                 *server_pub_key_b32z_);
+                 *server_pubkey_);
         return false;
     }
-    // signature is expected to be base64 enoded
-    const auto signature = it->value().to_string();
-    const auto hash = hash_data(server_cert_);
-    return check_signature(signature, hash, *server_pub_key_b32z_);
+
+    signature sig;
+    try {
+        sig = signature::from_base64(it->value().to_string());
+    } catch (const std::exception&) {
+        OXEN_LOG(warn, "invalid signature (not base64) found in header from {}",
+                *server_pubkey_);
+        return false;
+    }
+    return check_signature(sig, hash_data(server_cert_), *server_pubkey_);
 }
 
 void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
@@ -259,8 +269,8 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
         if (http::to_status_class(response.result_int()) ==
             http::status_class::successful) {
 
-            if (server_pub_key_b32z_ && !verify_signature()) {
-                OXEN_LOG(debug, "Bad signature from {}", *server_pub_key_b32z_);
+            if (server_pubkey_ && !verify_signature()) {
+                OXEN_LOG(debug, "Bad signature from {}", *server_pubkey_);
                 trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
             } else {
                 auto body = std::make_shared<std::string>(response.body());

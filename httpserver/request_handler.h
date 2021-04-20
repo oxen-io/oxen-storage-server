@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oxen_common.h"
+#include "oxend_key.h"
 #include <string>
 #include <string_view>
 
@@ -8,14 +9,11 @@
 
 #include <nlohmann/json_fwd.hpp>
 
-// TODO: move ChannelEncryption to ::oxen
-template <typename T>
-class ChannelEncryption;
-
 namespace oxen {
 
+class ChannelEncryption;
+enum struct EncryptType;
 class ServiceNode;
-class OxendClient;
 
 enum class Status {
     OK = 200,
@@ -63,7 +61,9 @@ class Response {
     Response(Status s, std::string m, ContentType ct = ContentType::plaintext)
         : status_(s), message_(std::move(m)), content_type_(ct) {}
 
-    const std::string& message() const { return message_; }
+    const std::string& message() const & { return message_; }
+    std::string&& message() && { return std::move(message_); }
+
     Status status() const { return status_; }
     ContentType content_type() const { return content_type_; }
 };
@@ -80,12 +80,12 @@ class RequestHandler {
 
     boost::asio::io_context& ioc_;
     ServiceNode& service_node_;
-    const ChannelEncryption<std::string>& channel_cipher_;
+    const ChannelEncryption& channel_cipher_;
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
-                                 const std::string& client_key,
-                                 bool use_gcm) const;
+                                 const x25519_pubkey& client_key,
+                                 EncryptType enc_type) const;
 
     // Return the correct swarm for `pubKey`
     Response handle_wrong_swarm(const user_pubkey_t& pubKey);
@@ -102,7 +102,7 @@ class RequestHandler {
     // Query the database and return requested messages
     Response process_retrieve(const nlohmann::json& params);
 
-    void process_onion_exit(const std::string& eph_key,
+    void process_onion_exit(const x25519_pubkey& eph_key,
                             const std::string& payload,
                             std::function<void(oxen::Response)> cb);
 
@@ -113,7 +113,7 @@ class RequestHandler {
 
   public:
     RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                   const ChannelEncryption<std::string>& ce);
+                   const ChannelEncryption& ce);
 
     // Process all Session client requests
     void process_client_req(const std::string& req_json,
@@ -126,9 +126,10 @@ class RequestHandler {
     Response process_retrieve_all();
 
     // Handle a Session client reqeust sent via SN proxy
-    void process_proxy_exit(const std::string& client_key,
-                            const std::string& payload,
-                            std::function<void(oxen::Response)> cb);
+    void process_proxy_exit(
+            const x25519_pubkey& client_key,
+            std::string_view payload,
+            std::function<void(oxen::Response)> cb);
 
     void process_onion_to_url(const std::string& protocol,
                               const std::string& host, const uint16_t port,
@@ -137,8 +138,8 @@ class RequestHandler {
                               std::function<void(oxen::Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
-    void process_onion_req(const std::string& ciphertext,
-                           const std::string& ephem_key,
+    void process_onion_req(std::string_view ciphertext,
+                           const x25519_pubkey& ephem_key,
                            std::function<void(oxen::Response)> cb,
                            // Whether to use the new v2 protocol
                            bool v2 = false);
