@@ -184,11 +184,11 @@ Response RequestHandler::process_store(const json& params) {
     return Response{Status::OK, res_body.dump(), ContentType::json};
 }
 
+inline const static std::unordered_set<std::string> allowed_oxend_endpoints{{
+    "get_service_nodes"s, "ons_resolve"s}};
+
 void RequestHandler::process_oxend_request(
     const json& params, std::function<void(oxen::Response)> cb) {
-
-    const static auto allowed_endpoints =
-        std::unordered_set{"get_service_nodes", "ons_resolve"};
 
     const auto endpoint_it = params.find("endpoint");
     if (endpoint_it == params.end() || !endpoint_it->is_string()) {
@@ -198,7 +198,7 @@ void RequestHandler::process_oxend_request(
 
     const auto& endpoint_str = endpoint_it->get_ref<const std::string&>();
 
-    if (!allowed_endpoints.count(endpoint_str.c_str())) {
+    if (!allowed_oxend_endpoints.count(endpoint_str)) {
         cb({Status::BAD_REQUEST,
             fmt::format("Endpoint not allowed: {}", endpoint_str)});
         return;
