@@ -190,48 +190,40 @@ inline const static std::unordered_set<std::string> allowed_oxend_endpoints{{
 void RequestHandler::process_oxend_request(
     const json& params, std::function<void(oxen::Response)> cb) {
 
-    const auto endpoint_it = params.find("endpoint");
-    if (endpoint_it == params.end() || !endpoint_it->is_string()) {
-        cb({Status::BAD_REQUEST, "missing 'endpoint'"});
-        return;
+    std::string endpoint;
+    if (auto it = params.find("endpoint");
+            it == params.end() || !it->is_string())
+        return cb({Status::BAD_REQUEST, "missing 'endpoint'"});
+    else
+        endpoint = it->get<std::string>();
+
+    if (!allowed_oxend_endpoints.count(endpoint))
+        return cb({Status::BAD_REQUEST, "Endpoint not allowed: " + endpoint});
+
+    std::optional<std::string> oxend_params;
+    if (auto it = params.find("params"); it != params.end()) {
+        if (!it->is_object())
+            return cb({Status::BAD_REQUEST, "invalid oxend 'params' argument"});
+        oxend_params = it->dump();
     }
-
-    const auto& endpoint_str = endpoint_it->get_ref<const std::string&>();
-
-    if (!allowed_oxend_endpoints.count(endpoint_str)) {
-        cb({Status::BAD_REQUEST,
-            fmt::format("Endpoint not allowed: {}", endpoint_str)});
-        return;
-    }
-
-    const auto oxend_params_it = params.find("oxend_params");
-    if (oxend_params_it == params.end() || !oxend_params_it->is_object()) {
-        cb({Status::BAD_REQUEST, "missing 'oxend_params'"});
-        return;
-    }
-
-    auto rpc_endpoint = fmt::format("rpc.{}", endpoint_str);
 
     service_node_.omq_server().oxend_request(
-        rpc_endpoint,
+        "rpc." + endpoint,
         [cb = std::move(cb)](bool success, auto&& data) {
-            if (success && data.size() >= 2) {
-
-                json res;
-
-                if (data[0] != "200") {
-                    res["error"] = {{"code", data[0]}, {"message", data[1]}};
-                } else {
-                    res["result"] = data[1];
-                }
-
-                cb({Status::OK, res.dump(), ContentType::json});
-
-            } else {
-                cb({Status::BAD_REQUEST, "unknown oxend error"});
-            }
+            std::string err;
+            // Currently we only support json endpoints; if we want to support non-json endpoints
+            // (which end in ".bin") at some point in the future then we'll need to return those
+            // endpoint results differently here.
+            if (success && data.size() >= 2 && data[0] == "200")
+                cb({Status::OK,
+                    R"({"result":)" + std::move(data[1]) + "}",
+                    ContentType::json});
+            else
+                cb({Status::BAD_REQUEST,
+                    data.size() >= 2 && !data[1].empty()
+                        ? std::move(data[1]) : "Unknown oxend error"s});
         },
-        oxend_params_it->dump());
+        oxend_params);
 }
 
 Response RequestHandler::process_retrieve_all() {

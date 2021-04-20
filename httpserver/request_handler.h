@@ -121,6 +121,15 @@ class RequestHandler {
     void process_client_req(const std::string& req_json,
                             std::function<void(oxen::Response)> cb);
 
+    // Forwards a request to oxend RPC. `params` should contain:
+    // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and
+    // `get_service_nodes`.
+    // - params -- optional dict of parameters to pass through to oxend as part of the request
+    //
+    // See oxen-core/rpc/core_rpc_server_command_defs.h for parameters to these endpoints.
+    //
+    // Returns (via the response callback) the oxend JSON object on success; on failure returns
+    // a failure response with a body of the error string.
     void process_oxend_request(const nlohmann::json& params,
                                std::function<void(oxen::Response)> cb);
 
