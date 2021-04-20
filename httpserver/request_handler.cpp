@@ -363,7 +363,7 @@ void RequestHandler::process_client_req(
     OXEN_LOG(trace, "process_client_req str <{}>", req_json);
 
     const json body = json::parse(req_json, nullptr, false);
-    if (body == nlohmann::detail::value_t::discarded) {
+    if (body.is_discarded()) {
         OXEN_LOG(debug, "Bad client request: invalid json");
         cb(Response{Status::BAD_REQUEST, "invalid json\n"});
     }
@@ -421,17 +421,21 @@ void RequestHandler::process_client_req(
 
 Response RequestHandler::wrap_proxy_response(const Response& res,
                                              const x25519_pubkey& client_key,
-                                             EncryptType enc_type) const {
+                                             EncryptType enc_type,
+                                             bool embed_json,
+                                             bool base64) const {
 
-    nlohmann::json json_res;
+    auto status = static_cast<std::underlying_type_t<Status>>(res.status());
+    std::string body;
+    if (embed_json && res.content_type() == ContentType::json)
+        body = fmt::format(R"({{"status":{},"body":{}}})",
+                status, res.message());
+    else
+        body = json{{"status", status}, {"body", res.message()}}.dump();
 
-    json_res["status"] = res.status();
-    json_res["body"] = res.message();
-
-    const std::string res_body = json_res.dump();
-
-    std::string ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt(enc_type, res_body, client_key));
+    std::string ciphertext = channel_cipher_.encrypt(enc_type, body, client_key);
+    if (base64)
+        ciphertext = oxenmq::to_base64(std::move(ciphertext));
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};

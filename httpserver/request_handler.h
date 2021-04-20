@@ -85,7 +85,9 @@ class RequestHandler {
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(const Response& res,
                                  const x25519_pubkey& client_key,
-                                 EncryptType enc_type) const;
+                                 EncryptType enc_type,
+                                 bool json = false,
+                                 bool base64 = true) const;
 
     // Return the correct swarm for `pubKey`
     Response handle_wrong_swarm(const user_pubkey_t& pubKey);

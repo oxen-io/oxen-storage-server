@@ -501,7 +501,7 @@ void connection_t::process_onion_req_v2() {
     delay_response_ = true;
 
     auto on_response = [wself = weak_from_this()](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as guard node");
+        OXEN_LOG(debug, "Got an onion response as edge node");
 
         auto self = wself.lock();
         if (!self) {

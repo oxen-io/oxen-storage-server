@@ -44,7 +44,24 @@ bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs);
 
 /// We are the final destination for this request
 struct FinalDestinationInfo {
+    // Request body
     std::string body;
+
+    // If true, and the response has a content type indicating json, then embed the "body" value as
+    // a direct json value rather than encapsulating it as a json string.  For example, when false
+    // (the default for backwards compatibility) a json response of {"hi": "123"} would get returned
+    // as:
+    //
+    //     {"body":"{\"hi\":\"123\"},"status":200}  // json=false
+    //     {"body":{"hi":"123"},"status":200}       // json=true
+    //
+    // Note that this json isn't actually parsed and so this can result in invalid json if the
+    // supposed-json inner value is not actually json.
+    bool json = false;
+
+    // If true (which is the default for backwards compatibility) then encode the encrypted response
+    // as base64; if false return the encrypted response as-is.
+    bool base64 = true;
 };
 
 std::ostream& operator<<(std::ostream& os, const FinalDestinationInfo& p);

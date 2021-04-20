@@ -28,7 +28,12 @@ auto process_inner_request(std::string plaintext) -> ParsedInfo {
         /// to identify we are the final destination...
         if (inner_json.count("headers")) {
             OXEN_LOG(trace, "Found body: <{}>", ciphertext);
-            ret.emplace<FinalDestinationInfo>().body = std::move(ciphertext);
+            auto& [body, json, b64] = ret.emplace<FinalDestinationInfo>();
+            body = std::move(ciphertext);
+            if (auto it = inner_json.find("json"); it != inner_json.end())
+                json = it->get<bool>();
+            if (auto it = inner_json.find("base64"); it != inner_json.end())
+                b64 = it->get<bool>();
         } else if (auto it = inner_json.find("host"); it != inner_json.end()) {
             auto& [payload, host, port, protocol, target] = ret.emplace<RelayToServerInfo>();
             payload = std::move(plaintext);
@@ -211,11 +216,10 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
         this->process_onion_exit(
             ephem_key, info->body,
-            [this, ephem_key, cb = std::move(cb)](oxen::Response res) {
-                cb(wrap_proxy_response(res, ephem_key, EncryptType::aes_gcm));
+            [this, ephem_key, cb = std::move(cb), json = info->json, b64 = info->base64]
+            (oxen::Response res) {
+                cb(wrap_proxy_response(res, ephem_key, EncryptType::aes_gcm, json, b64));
             });
-
-        return;
 
     } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
 
