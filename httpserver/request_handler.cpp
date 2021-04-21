@@ -357,7 +357,7 @@ void RequestHandler::process_client_req(
     const json body = json::parse(req_json, nullptr, false);
     if (body.is_discarded()) {
         OXEN_LOG(debug, "Bad client request: invalid json");
-        cb(Response{Status::BAD_REQUEST, "invalid json\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json\n"});
     }
 
     if (OXEN_LOG_ENABLED(trace))
@@ -366,7 +366,7 @@ void RequestHandler::process_client_req(
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
         OXEN_LOG(debug, "Bad client request: no method field");
-        cb(Response{Status::BAD_REQUEST, "invalid json: no `method` field\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json: no `method` field\n"});
     }
 
     const auto& method_name = method_it->get_ref<const std::string&>();
@@ -376,7 +376,7 @@ void RequestHandler::process_client_req(
     const auto params_it = body.find("params");
     if (params_it == body.end() || !params_it->is_object()) {
         OXEN_LOG(debug, "Bad client request: no params field");
-        cb(Response{Status::BAD_REQUEST, "invalid json: no `params` field\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json: no `params` field\n"});
     }
 
     if (method_name == "store") {
