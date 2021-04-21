@@ -295,8 +295,8 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
             sn.pubkey_x25519.view(), "sn.onion_req_v2", std::move(cb),
             oxenmq::send_option::request_timeout{30s}, data.ephem_key.hex(), payload);
     } else {
-        // Use the newer (v3, I suppose, though it's internal) where when bencode everything (which
-        // is a bit more compact than sending the eph_key in hex, plus allows other metadata such as
+        // Use the newer (v3, I suppose, though it's internal) where we bencode everything (which is
+        // a bit more compact than sending the eph_key in hex, plus allows other metadata such as
         // the hop number and the encryption type).
         data.hop_no++;
         lmq_server_->request(
