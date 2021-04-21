@@ -498,32 +498,43 @@ void connection_t::process_onion_req_v2() {
     // Need to make sure we are not blocking waiting for the response
     delay_response_ = true;
 
-    auto on_response = [wself = weak_from_this()](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as edge node");
+    OnionRequestMetadata data{
+        x25519_pubkey{},
+        [wself = weak_from_this()](oxen::Response res) {
+            OXEN_LOG(debug, "Got an onion response as edge node");
 
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping onion response");
-            return;
-        }
+            auto self = wself.lock();
+            if (!self) {
+                OXEN_LOG(debug,
+                         "Connection is no longer valid, dropping onion response");
+                return;
+            }
 
-        self->body_stream_ << res.message();
-        self->response_.result(static_cast<int>(res.status()));
+            self->body_stream_ << res.message();
+            self->response_.result(static_cast<int>(res.status()));
 
-        self->write_response();
+            self->write_response();
+        },
+        0, // hopno
+        EncryptType::aes_gcm,
     };
 
     try {
-
         auto [ciphertext, json_req] = parse_combined_payload(req.body());
 
-        auto ephem_key = extract_x25519_from_hex(
+        data.ephem_key = extract_x25519_from_hex(
                 json_req.at("ephemeral_key").get_ref<const std::string&>());
 
+        if (auto it = json_req.find("enc_type"); it != json_req.end())
+            data.enc_type = parse_enc_type(it->get_ref<const std::string&>());
+
+        // Allows a fake starting hop number (to make it harder for intermediate hops to know where
+        // they are).  If omitted, defaults to 0.
+        if (auto it = json_req.find("hop_no"); it != json_req.end())
+            data.hop_no = std::max(0, it->get<int>());
+
         service_node_.record_onion_request();
-        request_handler_.process_onion_req(std::move(ciphertext), ephem_key,
-                                           on_response);
+        request_handler_.process_onion_req(ciphertext, std::move(data));
 
     } catch (const std::exception& e) {
         auto msg = fmt::format("Error parsing onion request: {}",

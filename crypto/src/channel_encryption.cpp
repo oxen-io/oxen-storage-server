@@ -28,12 +28,6 @@ calculate_shared_secret(const x25519_seckey& seckey,
     return secret;
 }
 
-EncryptType parse_enc_type(std::string_view enc_type) {
-    if (enc_type == "aes-gcm" || enc_type == "gcm") return EncryptType::aes_gcm;
-    if (enc_type == "aes-cbc" || enc_type == "cbc") return EncryptType::aes_cbc;
-    throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
-}
-
 std::basic_string_view<unsigned char> to_uchar(std::string_view sv) {
     return {reinterpret_cast<const unsigned char*>(sv.data()), sv.size()};
 }
@@ -66,6 +60,12 @@ struct aes256_evp_deleter {
 using aes256cbc_ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, aes256_evp_deleter>;
 
 
+}
+
+EncryptType parse_enc_type(std::string_view enc_type) {
+    if (enc_type == "aes-gcm" || enc_type == "gcm") return EncryptType::aes_gcm;
+    if (enc_type == "aes-cbc" || enc_type == "cbc") return EncryptType::aes_cbc;
+    throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
 }
 
 std::string ChannelEncryption::encrypt(EncryptType type, std::string_view plaintext, const x25519_pubkey& pubkey) const {

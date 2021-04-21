@@ -1,5 +1,6 @@
 #pragma once
 
+#include "channel_encryption.hpp"
 #include "onion_processing.h"
 #include "oxen_common.h"
 #include "oxend_key.h"
@@ -12,8 +13,6 @@
 
 namespace oxen {
 
-class ChannelEncryption;
-enum struct EncryptType;
 class ServiceNode;
 
 enum class Status {
@@ -77,6 +76,13 @@ std::string computeMessageHash(const std::string& timestamp,
                                const std::string& recipient,
                                const std::string& data);
 
+struct OnionRequestMetadata {
+    x25519_pubkey ephem_key;
+    std::function<void(oxen::Response)> cb;
+    int hop_no = 0;
+    EncryptType enc_type = EncryptType::aes_gcm;
+};
+
 class RequestHandler {
 
     boost::asio::io_context& ioc_;
@@ -105,8 +111,7 @@ class RequestHandler {
     // Query the database and return requested messages
     Response process_retrieve(const nlohmann::json& params);
 
-    void process_onion_exit(const x25519_pubkey& eph_key,
-                            const std::string& payload,
+    void process_onion_exit(std::string_view payload,
                             std::function<void(oxen::Response)> cb);
 
     void process_lns_request(std::string name_hash,
@@ -119,7 +124,7 @@ class RequestHandler {
                    const ChannelEncryption& ce);
 
     // Process all Session client requests
-    void process_client_req(const std::string& req_json,
+    void process_client_req(std::string_view req_json,
                             std::function<void(oxen::Response)> cb);
 
     // Forwards a request to oxend RPC. `params` should contain:
@@ -150,17 +155,12 @@ class RequestHandler {
                               std::function<void(oxen::Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
-    void process_onion_req(std::string_view ciphertext,
-                           const x25519_pubkey& ephem_key,
-                           std::function<void(oxen::Response)> cb);
+    void process_onion_req(std::string_view ciphertext, OnionRequestMetadata data);
 
-    void process_onion_req(FinalDestinationInfo&& res,
-            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
-    void process_onion_req(RelayToNodeInfo&& res,
-            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
-    void process_onion_req(RelayToServerInfo&& res,
-            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
-    void process_onion_req(ProcessCiphertextError&& res,
-            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
+  private:
+    void process_onion_req(FinalDestinationInfo&& res, OnionRequestMetadata&& data);
+    void process_onion_req(RelayToNodeInfo&& res, OnionRequestMetadata&& data);
+    void process_onion_req(RelayToServerInfo&& res, OnionRequestMetadata&& data);
+    void process_onion_req(ProcessCiphertextError&& res, OnionRequestMetadata&& data);
 };
 } // namespace oxen

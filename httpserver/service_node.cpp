@@ -284,24 +284,26 @@ bool ServiceNode::snode_ready(std::string* reason) {
     return problems.empty() || force_start_;
 }
 
-void ServiceNode::send_onion_to_sn_v1(const sn_record_t& sn,
-                                      const std::string& payload,
-                                      const std::string& eph_key,
-                                      ss_client::Callback cb) const {
+void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
+                                   std::string_view payload,
+                                   OnionRequestMetadata&& data,
+                                   ss_client::Callback cb) const {
 
-    lmq_server_->request(sn.pubkey_x25519.view(), "sn.onion_req", std::move(cb),
-                         oxenmq::send_option::request_timeout{30s}, eph_key,
-                         payload);
-}
-
-void ServiceNode::send_onion_to_sn_v2(const sn_record_t& sn,
-                                      const std::string& payload,
-                                      const std::string& eph_key,
-                                      ss_client::Callback cb) const {
-
-    lmq_server_->request(
-        sn.pubkey_x25519.view(), "sn.onion_req_v2", std::move(cb),
-        oxenmq::send_option::request_timeout{30s}, eph_key, payload);
+    if (!hf_at_least(HARDFORK_OMQ_ONION_REQ_BENCODE)) {
+        // use the _v2 endpoint up until the hf:
+        lmq_server_->request(
+            sn.pubkey_x25519.view(), "sn.onion_req_v2", std::move(cb),
+            oxenmq::send_option::request_timeout{30s}, data.ephem_key.hex(), payload);
+    } else {
+        // Use the newer (v3, I suppose, though it's internal) where when bencode everything (which
+        // is a bit more compact than sending the eph_key in hex, plus allows other metadata such as
+        // the hop number and the encryption type).
+        data.hop_no++;
+        lmq_server_->request(
+            sn.pubkey_x25519.view(), "sn.onion_request", std::move(cb),
+            oxenmq::send_option::request_timeout{30s},
+            lmq_server_.encode_onion_data(payload, data));
+    }
 }
 
 // Calls callback on success only?
