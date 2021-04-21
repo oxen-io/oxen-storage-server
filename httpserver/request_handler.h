@@ -1,5 +1,6 @@
 #pragma once
 
+#include "onion_processing.h"
 #include "oxen_common.h"
 #include "oxend_key.h"
 #include <string>
@@ -153,5 +154,13 @@ class RequestHandler {
                            const x25519_pubkey& ephem_key,
                            std::function<void(oxen::Response)> cb);
 
+    void process_onion_req(FinalDestinationInfo&& res,
+            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
+    void process_onion_req(RelayToNodeInfo&& res,
+            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
+    void process_onion_req(RelayToServerInfo&& res,
+            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
+    void process_onion_req(ProcessCiphertextError&& res,
+            const x25519_pubkey& ekey, std::function<void(oxen::Response)> cb);
 };
 } // namespace oxen

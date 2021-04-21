@@ -5,6 +5,7 @@
 #include <boost/endian/conversion.hpp>
 #include <nlohmann/json.hpp>
 #include <oxenmq/base64.h>
+#include <oxenmq/variant.h>
 
 #include "onion_processing.h"
 
@@ -122,13 +123,40 @@ static auto make_status(std::string_view status) -> oxen::Status {
     }
 }
 
-static void relay_to_node(const ServiceNode& service_node,
-                          const RelayToNodeInfo& info,
-                          std::function<void(oxen::Response)> cb) {
+// FIXME: why are these method definitions *here* instead of request_handler.cpp?
+void RequestHandler::process_onion_req(std::string_view ciphertext,
+                                       const x25519_pubkey& ephem_key,
+                                       std::function<void(oxen::Response)> cb) {
+    if (!service_node_.snode_ready()) {
+        auto msg =
+            fmt::format("Snode not ready: {}",
+                        service_node_.own_address().pubkey_ed25519);
+        return cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
+    }
 
-    const auto& [payload, ekey, dest] = info;
+    OXEN_LOG(debug, "process_onion_req");
 
-    auto dest_node = service_node.find_node(dest);
+    var::visit([&](auto&& x) { process_onion_req(std::move(x), ephem_key, std::move(cb)); },
+            process_ciphertext_v2(channel_cipher_, ciphertext, ephem_key));
+}
+
+void RequestHandler::process_onion_req(FinalDestinationInfo&& info,
+        const x25519_pubkey& ephem_key, std::function<void(oxen::Response)> cb) {
+    OXEN_LOG(debug, "We are the final destination in the onion request!");
+
+    process_onion_exit(
+            ephem_key, info.body,
+            [this, ephem_key, cb = std::move(cb), json = info.json, b64 = info.base64]
+            (oxen::Response res) {
+                cb(wrap_proxy_response(std::move(res), ephem_key, EncryptType::aes_gcm, json, b64));
+            });
+}
+
+void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
+        const x25519_pubkey& ephem_key, std::function<void(oxen::Response)> cb) {
+    auto& [payload, ekey, dest] = info;
+
+    auto dest_node = service_node_.find_node(dest);
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
         OXEN_LOG(warn, "{}", msg);
@@ -162,7 +190,7 @@ static void relay_to_node(const ServiceNode& service_node,
 
     OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
 
-    service_node.send_onion_to_sn_v2(
+    service_node_.send_onion_to_sn_v2(
             *dest_node, std::move(payload), ekey, std::move(on_response));
 }
 
@@ -173,54 +201,24 @@ bool is_server_url_allowed(std::string_view url) {
            (url.find('?') == std::string::npos);
 }
 
-// FIXME: why is this method definition *here* instead of request_handler.cpp?
-void RequestHandler::process_onion_req(std::string_view ciphertext,
-                                       const x25519_pubkey& ephem_key,
-                                       std::function<void(oxen::Response)> cb) {
-    if (!service_node_.snode_ready()) {
-        auto msg =
-            fmt::format("Snode not ready: {}",
-                        service_node_.own_address().pubkey_ed25519);
-        return cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
-    }
+void RequestHandler::process_onion_req(RelayToServerInfo&& info,
+        const x25519_pubkey& ephem_key, std::function<void(oxen::Response)> cb) {
+    OXEN_LOG(debug, "We are to forward the request to url: {}{}",
+            info.host, info.target);
 
-    OXEN_LOG(debug, "process_onion_req");
+    // Forward the request to url but only if it ends in `/lsrpc`
+    if (is_server_url_allowed(info.target))
+        return process_onion_to_url(info.protocol, std::move(info.host), info.port,
+                std::move(info.target), std::move(info.payload), std::move(cb));
 
-    ParsedInfo res = process_ciphertext_v2(channel_cipher_, ciphertext, ephem_key);
+    return cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
+            ephem_key, EncryptType::aes_gcm));
+}
 
-    if (const auto info = std::get_if<FinalDestinationInfo>(&res)) {
+void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
+        const x25519_pubkey& ephem_key, std::function<void(oxen::Response)> cb) {
 
-        OXEN_LOG(debug, "We are the final destination in the onion request!");
-
-        return process_onion_exit(
-            ephem_key, info->body,
-            [this, ephem_key, cb = std::move(cb), json = info->json, b64 = info->base64]
-            (oxen::Response res) {
-                cb(wrap_proxy_response(res, ephem_key, EncryptType::aes_gcm, json, b64));
-            });
-
-    } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
-
-        return relay_to_node(this->service_node_, *info, std::move(cb));
-
-    } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
-        OXEN_LOG(debug, "We are to forward the request to url: {}{}",
-                 info->host, info->target);
-
-        const auto& target = info->target;
-
-        // Forward the request to url but only if it ends in `/lsrpc`
-        if (is_server_url_allowed(target)) {
-            return process_onion_to_url(info->protocol, info->host, info->port,
-                                       target, info->payload, std::move(cb));
-
-        } else {
-            return cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
-                    ephem_key, EncryptType::aes_gcm));
-        }
-
-    } else if (const auto error = std::get_if<ProcessCiphertextError>(&res)) {
-        switch (*error) {
+    switch (error) {
         case ProcessCiphertextError::INVALID_CIPHERTEXT:
             // Should this error be propagated back to the client? (No, if we
             // couldn't decrypt, we probably won't be able to encrypt either.)
@@ -228,9 +226,6 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
         case ProcessCiphertextError::INVALID_JSON:
             return cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
                     ephem_key, EncryptType::aes_gcm));
-        }
-    } else {
-        OXEN_LOG(error, "UNKNOWN VARIANT");
     }
 }
 
