@@ -141,9 +141,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
         return data.cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
     }
 
-    OXEN_LOG(critical, "process_onion_req, ciphertext is {} bytes, my key is {}, ephem key is {}",
-            ciphertext.size(), service_node_.own_address().pubkey_x25519, data.ephem_key
-            );
+    OXEN_LOG(debug, "process_onion_req");
 
     var::visit([&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
             process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
