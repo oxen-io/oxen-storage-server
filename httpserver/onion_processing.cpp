@@ -124,8 +124,7 @@ static auto make_status(std::string_view status) -> oxen::Status {
 
 static void relay_to_node(const ServiceNode& service_node,
                           const RelayToNodeInfo& info,
-                          std::function<void(oxen::Response)> cb,
-                          bool v2) {
+                          std::function<void(oxen::Response)> cb) {
 
     const auto& [payload, ekey, dest] = info;
 
@@ -155,21 +154,16 @@ static void relay_to_node(const ServiceNode& service_node,
         }
 
         /// We use http status codes (for now)
-        if (data[0] != "200") {
+        if (data[0] != "200")
             OXEN_LOG(debug, "Onion request relay failed with: {}", data[1]);
-        }
-        cb(oxen::Response{make_status(data[0]), std::move(data[1])});
+
+        cb({make_status(data[0]), std::move(data[1])});
     };
 
     OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
 
-    if (v2) {
-        service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
-                                         on_response);
-    } else {
-        service_node.send_onion_to_sn_v1(*dest_node, payload, ekey,
-                                         on_response);
-    }
+    service_node.send_onion_to_sn_v2(
+            *dest_node, std::move(payload), ekey, std::move(on_response));
 }
 
 bool is_server_url_allowed(std::string_view url) {
@@ -182,8 +176,7 @@ bool is_server_url_allowed(std::string_view url) {
 // FIXME: why is this method definition *here* instead of request_handler.cpp?
 void RequestHandler::process_onion_req(std::string_view ciphertext,
                                        const x25519_pubkey& ephem_key,
-                                       std::function<void(oxen::Response)> cb,
-                                       bool v2) {
+                                       std::function<void(oxen::Response)> cb) {
     if (!service_node_.snode_ready()) {
         auto msg =
             fmt::format("Snode not ready: {}",
@@ -191,12 +184,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
         return cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
     }
 
-    OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
-
-    if (!v2) {
-        OXEN_LOG(warn, "onion requests v1 are no longer supported");
-        return cb({Status::BAD_REQUEST, "onion requests v1 not supported"});
-    }
+    OXEN_LOG(debug, "process_onion_req");
 
     ParsedInfo res = process_ciphertext_v2(channel_cipher_, ciphertext, ephem_key);
 
@@ -213,7 +201,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
     } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
 
-        return relay_to_node(this->service_node_, *info, std::move(cb), v2);
+        return relay_to_node(this->service_node_, *info, std::move(cb));
 
     } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
         OXEN_LOG(debug, "We are to forward the request to url: {}{}",

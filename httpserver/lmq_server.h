@@ -38,8 +38,8 @@ class OxenmqServer {
     // Handle Session client requests arrived via proxy
     void handle_sn_proxy_exit(oxenmq::Message& message);
 
-    // v2 indicates whether to use the new (v2) protocol
-    void handle_onion_request(oxenmq::Message& message, bool v2);
+    // Called for the sn.onion_req_v2 endpoint
+    void handle_onion_request(oxenmq::Message& message);
 
     // sn.ping - sent by SNs to ping each other.
     void handle_ping(oxenmq::Message& message);

@@ -105,9 +105,9 @@ void OxenmqServer::handle_ping(oxenmq::Message& message) {
     message.send_reply("pong");
 }
 
-void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
+void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
 
-    OXEN_LOG(debug, "Got an onion request over OXENMQ");
+    OXEN_LOG(debug, "Got an onion request over OxenMQ");
 
     auto on_response = [send=message.send_later()](oxen::Response res) {
         if (OXEN_LOG_ENABLED(trace))
@@ -131,8 +131,8 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
     }
     const auto& ciphertext = message.data[1];
 
-    request_handler_->process_onion_req(std::string(ciphertext),
-                                        *eph_key, on_response, v2);
+    request_handler_->process_onion_req(
+            std::string{ciphertext}, *eph_key, on_response);
 }
 
 void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
@@ -210,12 +210,15 @@ OxenmqServer::OxenmqServer(
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
+        // TODO: Backwards compat endpoint, can be removed after HF18:
         .add_request_command("onion_req", [this](auto& m) {
-                // TODO: Backwards compat crap to be removed after HF18:
                 if (m.data.size() == 1 && m.data[0] == "ping"sv)
                     return handle_ping(m);
-                handle_onion_request(m, false); })
-        .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
+                m.send_reply(
+                    std::to_string(static_cast<int>(Status::BAD_REQUEST)),
+                    "onion requests v1 not supported");
+        })
+        .add_request_command("onion_req_v2", [this](auto& m) { handle_onion_request(m); })
         ;
 
     omq_.add_category("service", oxenmq::AuthLevel::admin)

@@ -151,8 +151,7 @@ class RequestHandler {
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(std::string_view ciphertext,
                            const x25519_pubkey& ephem_key,
-                           std::function<void(oxen::Response)> cb,
-                           // Whether to use the new v2 protocol
-                           bool v2 = false);
+                           std::function<void(oxen::Response)> cb);
+
 };
 } // namespace oxen

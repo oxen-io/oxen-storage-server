@@ -523,7 +523,7 @@ void connection_t::process_onion_req_v2() {
 
         service_node_.record_onion_request();
         request_handler_.process_onion_req(std::move(ciphertext), ephem_key,
-                                           on_response, true);
+                                           on_response);
 
     } catch (const std::exception& e) {
         auto msg = fmt::format("Error parsing onion request: {}",
