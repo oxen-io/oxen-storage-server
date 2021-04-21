@@ -243,7 +243,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     for (it++; it != keys.rend(); it++) {
         // Routing data for this hop:
         nlohmann::json routing{
-            {"destination", it->first.hex()}, // Next hop's ed25519 key
+            {"destination", std::prev(it)->first.hex()}, // Next hop's ed25519 key
             {"ephemeral_key", A.hex()}}; // The x25519 ephemeral_key here is the key for the *next* hop to use
 
         blob = encode_size(blob.size()) + blob + routing.dump();
