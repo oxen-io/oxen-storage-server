@@ -12,12 +12,13 @@
 
 #include "../crypto/include/channel_encryption.hpp"
 #include "cpr/cpr.h"
-#include "oxenmq/base64.h"
+#include <chrono>
 #include <exception>
+#include <iostream>
 #include <sodium.h>
 #include <oxenmq/hex.h>
+#include <oxenmq/base64.h>
 #include <oxenmq/oxenmq.h>
-#include <iostream>
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -185,6 +186,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
     std::string blob;
 
+    std::cerr << "Building " << (keys.size()-1) << "-hop onion request\n";
     // First hop:
     //
     // [N][ENCRYPTED]{json}
@@ -208,9 +210,9 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     //      {"destination":"ed25519pubkey","ephemeral_key":"x25519-eph-pubkey-for-decryption"}
     //
     // and we forward this via oxenmq to the given ed25519pubkey (but since oxenmq uses x25519
-    // pubkeys we first have to go look it up), sending:
+    // pubkeys we first have to go look it up), sending an oxenmq request to sn.onion_req_v2 of:
     //
-    //      [sn.onion_req_v2][eph-key][BLOB]
+    //      [eph-key][BLOB]
     //
     // where BLOB is the opaque data received from the previous hop.  That next hop decrypts BLOB,
     // giving it a value interpreted as the same [N][BLOB]{json} as above, and we recurse.
@@ -260,12 +262,15 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     blob = encode_size(blob.size()) + blob + nlohmann::json{{"ephemeral_key", A.hex()}}.dump();
 
     cpr::Url target{"https://" + ip + ":" + std::to_string(port) + "/onion_req/v2"};
-    std::cerr << "Posting to " << target.str() << " for entry node\n";
+    std::cerr << "Posting " << blob.size() << " onion blob to " << target.str() << " for entry node\n";
+    auto started = std::chrono::steady_clock::now();
     auto res = cpr::Post(target,
             cpr::Body{blob},
             cpr::VerifySsl{false});
+    auto finished = std::chrono::steady_clock::now();
 
-    std::cerr << "Got " << res.status_line << " response\n";
+    std::cerr << "Got '" << res.status_line << "' onion request response in " <<
+        std::chrono::duration<double>(finished - started).count() << "s\n";
     for (auto& [k, v] : res.header)
         std::cerr << "- " << k << ": " << v << "\n";
 
