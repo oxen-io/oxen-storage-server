@@ -90,14 +90,14 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
 
     auto data = prefix + R"#({
         "destination": "ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000",
-        "ephemeral_key": "ephemeral_key"
+        "ephemeral_key": "0000111122223333444455556666777788889999000011112222333344445555"
     })#";
 
     auto res = process_inner_request(data);
 
     auto expected = RelayToNodeInfo {
         ciphertext,
-        "ephemeral_key",
+        x25519_pubkey::from_hex("0000111122223333444455556666777788889999000011112222333344445555"),
         EncryptType::aes_gcm,
         ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
     };
