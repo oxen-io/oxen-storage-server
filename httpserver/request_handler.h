@@ -83,7 +83,7 @@ class RequestHandler {
     const ChannelEncryption& channel_cipher_;
 
     // Wrap response `res` to an intermediate node
-    Response wrap_proxy_response(const Response& res,
+    Response wrap_proxy_response(Response res,
                                  const x25519_pubkey& client_key,
                                  EncryptType enc_type,
                                  bool json = false,

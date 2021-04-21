@@ -84,10 +84,6 @@ process_ciphertext_v2(const ChannelEncryption& decryptor,
     return process_inner_request(std::move(*plaintext));
 }
 
-static auto gateway_timeout() -> oxen::Response {
-    return oxen::Response{Status::GATEWAY_TIMEOUT, "Request time out"};
-}
-
 static auto make_status(std::string_view status) -> oxen::Status {
 
     int code;
@@ -137,8 +133,7 @@ static void relay_to_node(const ServiceNode& service_node,
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
         OXEN_LOG(warn, "{}", msg);
-        cb({Status::BAD_GATEWAY, std::move(msg)});
-        return;
+        return cb({Status::BAD_GATEWAY, std::move(msg)});
     }
 
 
@@ -148,17 +143,15 @@ static void relay_to_node(const ServiceNode& service_node,
 
         if (!success) {
             OXEN_LOG(debug, "[Onion request] Request time out");
-            cb(gateway_timeout());
-            return;
+            return cb({Status::GATEWAY_TIMEOUT, "Request time out"});
         }
 
         // We only expect a two-part message
         if (data.size() != 2) {
             OXEN_LOG(debug, "[Onion request] Incorrect number of messages: {}",
                      data.size());
-            cb(oxen::Response{Status::INTERNAL_SERVER_ERROR,
-                              "Incorrect number of messages from gateway"});
-            return;
+            return cb({Status::INTERNAL_SERVER_ERROR,
+                    "Incorrect number of messages from gateway"});
         }
 
         /// We use http status codes (for now)
@@ -195,17 +188,14 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
         auto msg =
             fmt::format("Snode not ready: {}",
                         service_node_.own_address().pubkey_ed25519);
-        cb(oxen::Response{Status::SERVICE_UNAVAILABLE, std::move(msg)});
-        return;
+        return cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
     }
 
     OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
 
     if (!v2) {
         OXEN_LOG(warn, "onion requests v1 are no longer supported");
-        cb(oxen::Response{Status::BAD_REQUEST,
-                          "onion requests v1 not supported"});
-        return;
+        return cb({Status::BAD_REQUEST, "onion requests v1 not supported"});
     }
 
     ParsedInfo res = process_ciphertext_v2(channel_cipher_, ciphertext, ephem_key);
@@ -214,7 +204,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
         OXEN_LOG(debug, "We are the final destination in the onion request!");
 
-        this->process_onion_exit(
+        return process_onion_exit(
             ephem_key, info->body,
             [this, ephem_key, cb = std::move(cb), json = info->json, b64 = info->base64]
             (oxen::Response res) {
@@ -223,7 +213,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
     } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
 
-        relay_to_node(this->service_node_, *info, std::move(cb), v2);
+        return relay_to_node(this->service_node_, *info, std::move(cb), v2);
 
     } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
         OXEN_LOG(debug, "We are to forward the request to url: {}{}",
@@ -233,27 +223,23 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
         // Forward the request to url but only if it ends in `/lsrpc`
         if (is_server_url_allowed(target)) {
-            this->process_onion_to_url(info->protocol, info->host, info->port,
+            return process_onion_to_url(info->protocol, info->host, info->port,
                                        target, info->payload, std::move(cb));
 
         } else {
-            cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
+            return cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
                     ephem_key, EncryptType::aes_gcm));
         }
 
     } else if (const auto error = std::get_if<ProcessCiphertextError>(&res)) {
         switch (*error) {
-        case ProcessCiphertextError::INVALID_CIPHERTEXT: {
+        case ProcessCiphertextError::INVALID_CIPHERTEXT:
             // Should this error be propagated back to the client? (No, if we
             // couldn't decrypt, we probably won't be able to encrypt either.)
-            cb({Status::BAD_REQUEST, "Invalid ciphertext"});
-            break;
-        }
-        case ProcessCiphertextError::INVALID_JSON: {
-            cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
+            return cb({Status::BAD_REQUEST, "Invalid ciphertext"});
+        case ProcessCiphertextError::INVALID_JSON:
+            return cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
                     ephem_key, EncryptType::aes_gcm));
-            break;
-        }
         }
     } else {
         OXEN_LOG(error, "UNKNOWN VARIANT");
