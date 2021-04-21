@@ -533,7 +533,7 @@ void RequestHandler::process_proxy_exit(
             }
         }
 
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         auto msg = fmt::format("JSON parsing error: {}", e.what());
         OXEN_LOG(debug, "[{}] {}", idx, msg);
         auto res = Response{Status::BAD_REQUEST, msg};

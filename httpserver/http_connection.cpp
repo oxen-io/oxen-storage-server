@@ -668,7 +668,7 @@ void connection_t::process_request() {
 
             try {
                 process_client_req_rate_limited();
-            } catch (std::exception& e) {
+            } catch (const std::exception& e) {
                 this->body_stream_ << fmt::format(
                     "Exception caught while processing client request: {}",
                     e.what());

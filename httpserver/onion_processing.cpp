@@ -56,7 +56,7 @@ auto process_inner_request(std::string plaintext) -> ParsedInfo {
                 inner_json.at("destination").get_ref<const std::string&>());
             eph_key = inner_json.at("ephemeral_key").get<std::string>();
         }
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
                  e.what());
         ret = ProcessCiphertextError::INVALID_JSON;
