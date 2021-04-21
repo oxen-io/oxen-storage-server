@@ -88,8 +88,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
         if (ec) {
             OXEN_LOG(error, "DNS resolution error for {}: {}", address,
                      ec.message());
-            cb({SNodeError::ERROR_OTHER});
-            return;
+            return cb({SNodeError::ERROR_OTHER});
         }
 
         tcp::endpoint endpoint;
@@ -111,8 +110,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
 
         if (!resolved) {
             OXEN_LOG(error, "[HTTP] DNS resolution error for {}", address);
-            cb({SNodeError::ERROR_OTHER});
-            return;
+            return cb({SNodeError::ERROR_OTHER});
         }
 
         endpoint.port(port);
@@ -501,7 +499,7 @@ void connection_t::process_onion_req_v2() {
     delay_response_ = true;
 
     auto on_response = [wself = weak_from_this()](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as guard node");
+        OXEN_LOG(debug, "Got an onion response as edge node");
 
         auto self = wself.lock();
         if (!self) {
@@ -668,7 +666,7 @@ void connection_t::process_request() {
 
             try {
                 process_client_req_rate_limited();
-            } catch (std::exception& e) {
+            } catch (const std::exception& e) {
                 this->body_stream_ << fmt::format(
                     "Exception caught while processing client request: {}",
                     e.what());

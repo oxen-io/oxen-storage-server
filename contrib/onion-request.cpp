@@ -6,18 +6,19 @@
 // using static cpr from an oxen-core build, SS assets built in ../build, and system-installed
 // libsodium/libssl/nlohmann/oxenmq:
 //
-//     g++ -std=c++17 -O2 onion-request.cpp ../../oxen-core/build/external/libcpr.a \
-//          -loxenmq -lsodium -lcurl ../build/crypto/libcrypto.a -lcrypto
+//     g++ -std=c++17 -O2 onion-request.cpp -o onion-request ../../oxen-core/build/external/libcpr.a \
+//          ../build/crypto/libcrypto.a -loxenmq -lsodium -lcurl -lcrypto
 //
 
 #include "../crypto/include/channel_encryption.hpp"
 #include "cpr/cpr.h"
-#include "oxenmq/base64.h"
+#include <chrono>
 #include <exception>
+#include <iostream>
 #include <sodium.h>
 #include <oxenmq/hex.h>
+#include <oxenmq/base64.h>
 #include <oxenmq/oxenmq.h>
-#include <iostream>
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -26,32 +27,71 @@ extern "C" {
 
 using namespace oxen;
 
-int usage(const char* argv0) {
-    std::cerr << "Usage: " << argv0 << " [--mainnet] SNODE_PK [SNODE_PK ...] -- sends an onion request via the given path\n"
-       << "    SNODE_PK should be primary (legacy) pubkey(s)\n";
+int usage(std::string_view argv0, std::string_view err = "") {
+    if (!err.empty())
+        std::cerr << "\x1b[31;1mError: " << err << "\x1b[0m\n\n";
+    std::cerr << "Usage: " << argv0 << R"( [--mainnet] SNODE_PK [SNODE_PK ...] PAYLOAD CONTROL
+
+Sends an onion request via the given path
+
+SNODE_PK should be primary (legacy) pubkey(s)
+PAYLOAD/CONTROL are values to pass to the request and should be:
+
+Onion requests for SS and oxend:
+
+    Pass '{"headers":[]}' for CONTROL
+
+    PAYLOAD should be the JSON data; for example for an oxend request:
+
+        {"method": "oxend_request", "params": {"endpoint": "get_service_nodes", "params": {"limit": 5}}}
+
+    and for a swarm member lookup:
+
+        {"method": "get_snodes_for_pubkey", {"params": {"pubKey": user_pubkey}}}
+
+Proxy requests should have an whatever data is to be posted in the PAYLOAD string and CONTROL set to
+the connection details such as:
+
+        {"host": "jagerman.com", "target": "/oxen/lsrpc"}
+
+)";
     return 1;
 }
 
 const oxenmq::address TESTNET_OMQ{"tcp://public.loki.foundation:9999"};
 const oxenmq::address MAINNET_OMQ{"tcp://public.loki.foundation:22029"};
 
-void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys, bool mainnet);
+void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
+        bool mainnet, std::string_view payload, std::string_view control);
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> pubkeys_hex;
     std::vector<legacy_pubkey> pubkeys;
     auto omq_addr = TESTNET_OMQ;
+    std::string payload, control;
     for (int i = 1; i < argc; i++) {
-        if (argv[i] == "--mainnet"sv) {
+        std::string_view arg{argv[i]};
+        if (arg == "--mainnet"sv) {
             omq_addr = MAINNET_OMQ;
             continue;
         }
-        auto pk = pubkeys_hex.emplace_back(argv[i]);
-        if (pk.size() != 64 || !oxenmq::is_hex(pk)) {
-            std::cerr << "Invalid pubkey '" << pk << "'\n";
-            return usage(argv[0]);
+        if (arg == "--testnet"sv)
+            continue;
+
+        bool hex = arg.size() > 0 && oxenmq::is_hex(arg);
+        if (i >= argc - 2) {
+            if (hex)
+                return usage(argv[0], "Missing PAYLOAD and CONTROL values");
+
+            // Could parse control to make sure it's valid json here, but it can be useful to
+            // deliberate send invalid json for testing purposes to see how the remote handles it.
+            (i == argc - 2 ? payload : control) = arg;
+        } else {
+            if (!(hex && arg.size() == 64))
+                return usage(argv[0], "Invalid pubkey '" + std::string{arg} + "'");
+            pubkeys_hex.push_back(arg);
+            pubkeys.push_back(legacy_pubkey::from_hex(arg));
         }
-        pubkeys.push_back(legacy_pubkey::from_hex(pk));
     }
     if (pubkeys.empty()) return usage(argv[0]);
 
@@ -114,12 +154,13 @@ int main(int argc, char** argv) {
                 std::cerr << pk << " is not an active SN\n";
         }
         if (chain.size() != pubkeys.size()) throw std::runtime_error{"Missing x25519 pubkeys"};
-        if (chain.size() < 2) throw std::runtime_error{"Need at least two pubkeys"};
+        if (chain.empty()) throw std::runtime_error{"Need at least one SN pubkey"};
 
         if (first_ip.empty() || !first_port)
             throw std::runtime_error{"Missing IP/port of first hop"};
 
-        onion_request(first_ip, first_port, std::move(chain), omq_addr == MAINNET_OMQ);
+        onion_request(first_ip, first_port, std::move(chain), omq_addr == MAINNET_OMQ,
+                payload, control);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
@@ -138,12 +179,14 @@ std::string encode_size(uint32_t s) {
     return str;
 }
 
-void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys, bool mainnet) {
+void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys, bool mainnet,
+        std::string_view payload, std::string_view control) {
     std::string_view user_pubkey = "05fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
     if (!mainnet) user_pubkey.remove_prefix(2);
 
     std::string blob;
 
+    std::cerr << "Building " << (keys.size()-1) << "-hop onion request\n";
     // First hop:
     //
     // [N][ENCRYPTED]{json}
@@ -167,9 +210,9 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     //      {"destination":"ed25519pubkey","ephemeral_key":"x25519-eph-pubkey-for-decryption"}
     //
     // and we forward this via oxenmq to the given ed25519pubkey (but since oxenmq uses x25519
-    // pubkeys we first have to go look it up), sending:
+    // pubkeys we first have to go look it up), sending an oxenmq request to sn.onion_req_v2 of:
     //
-    //      [sn.onion_req_v2][eph-key][BLOB]
+    //      [eph-key][BLOB]
     //
     // where BLOB is the opaque data received from the previous hop.  That next hop decrypts BLOB,
     // giving it a value interpreted as the same [N][BLOB]{json} as above, and we recurse.
@@ -188,30 +231,13 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     {
         crypto_box_keypair(A.data(), a.data());
         oxen::ChannelEncryption e{a};
-#if 1
-        // get_snodes_for_pubkey request returns some json:
-        auto payload = nlohmann::json{
-            {"method", "get_snodes_for_pubkey"},
-            {"params", {
-                {"pubKey", user_pubkey},
-                {"foobar", true},
-            }}
-        }.dump();
 
-        auto control = nlohmann::json{
-                {"headers", std::array<int, 0>{}}}.dump();
-
-#else
-        // A proxy request to a target (which must start '/oxen/' or '/loki' and end '/lsrpc'):
-        auto payload = ""s;
-        auto control = nlohmann::json{
-                {"host", "jagerman.com"},
-                {"target", "/oxen/lsrpc"}}.dump();
-#endif
-
-        auto data = encode_size(payload.size()) + payload + control;
+        auto data = encode_size(payload.size());
+        data += payload;
+        data += control;
 
         blob = e.encrypt(EncryptType::aes_gcm, data, keys.back().second);
+        // Save these because we need them again to decrypt the final response:
         final_seckey = a;
         final_pubkey = A;
     }
@@ -219,8 +245,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     for (it++; it != keys.rend(); it++) {
         // Routing data for this hop:
         nlohmann::json routing{
-            {"destination", it->first.hex()}, // Next hop's ed25519 key
-            {"foobar", "fedcba"},
+            {"destination", std::prev(it)->first.hex()}, // Next hop's ed25519 key
             {"ephemeral_key", A.hex()}}; // The x25519 ephemeral_key here is the key for the *next* hop to use
 
         blob = encode_size(blob.size()) + blob + routing.dump();
@@ -230,37 +255,57 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
         oxen::ChannelEncryption e{a};
 
         blob = e.encrypt(EncryptType::aes_gcm, blob, it->second);
-
-        if (std::next(it) == keys.rend()) {
-            // This is the first hop, so have to add one more layer to tell the first hop how to
-            // decrypt the initial payload:
-            blob = encode_size(blob.size()) + blob +
-                nlohmann::json{{"ephemeral_key", A.hex()}}.dump();
-        }
     }
 
+    // The data going to the first hop needs to be wrapped in one more layer to tell the first hop
+    // how to decrypt the initial payload:
+    blob = encode_size(blob.size()) + blob + nlohmann::json{{"ephemeral_key", A.hex()}}.dump();
+
     cpr::Url target{"https://" + ip + ":" + std::to_string(port) + "/onion_req/v2"};
-    std::cout << "Posting to " << target.str() << " for entry node\n";
+    std::cerr << "Posting " << blob.size() << " onion blob to " << target.str() << " for entry node\n";
+    auto started = std::chrono::steady_clock::now();
     auto res = cpr::Post(target,
             cpr::Body{blob},
             cpr::VerifySsl{false});
+    auto finished = std::chrono::steady_clock::now();
 
-    std::cout << "Got " << res.status_line << " response\n";
-    if (!res.raw_header.empty())
-        std::cout << "Headers:\n" << res.raw_header << "\n\n";
+    std::cerr << "Got '" << res.status_line << "' onion request response in " <<
+        std::chrono::duration<double>(finished - started).count() << "s\n";
+    for (auto& [k, v] : res.header)
+        std::cerr << "- " << k << ": " << v << "\n";
 
-    if (!oxenmq::is_base64(res.text)) {
-        std::cout << "Body (" << res.text.size() << " bytes):\n" << res.text << "\n";
-    } else {
-        auto body = oxenmq::from_base64(res.text);
-        std::cout << "Body is " << res.text.size() << " base64 bytes for " << body.size() << " bytes of data\n";
-        oxen::ChannelEncryption d{final_seckey};
-        try {
-            body = d.decrypt(EncryptType::aes_gcm, body, keys.back().second);
-
-            std::cout << "Body decrypted to " << body.size() << " bytes:\n" << body << "\n";
-        } catch (const std::exception& e) {
-            std::cerr << "Decryption failed: " << e.what() << "\n";
-        }
+    if (res.text.empty()) {
+        std::cerr << "Request returned empty body\n";
+        return;
     }
+
+    // Nothing in the response tells us how it is encoded so we have to guess; the client normally
+    // *does* know because it specifies `"base64": false` if it wants binary, but I don't want to
+    // parse and guess what we should do, so we'll just guess.
+    oxen::ChannelEncryption d{final_seckey};
+    bool decrypted = false;
+    auto body = std::move(res.text);
+    auto orig_size = body.size();
+    try { body = d.decrypt(EncryptType::aes_gcm, body, keys.back().second); decrypted = true; }
+    catch (...) {}
+
+    if (decrypted) {
+        std::cerr << "Body is " << orig_size << " encrypted bytes, decrypted to " << body.size() << " bytes:\n";
+    } else if (oxenmq::is_base64(body)) {
+        body = oxenmq::from_base64(body);
+        std::cerr << "Body was " << orig_size << " base64 bytes; decoded to " << body.size() << " bytes";
+        try { body = d.decrypt(EncryptType::aes_gcm, body, keys.back().second); decrypted = true; }
+        catch (...) {}
+        if (decrypted)
+            std::cerr << "; decrypted to " << body.size() << " bytes:\n";
+        else
+            std::cerr << "; not encrypted (or decryption failed)\n";
+    } else {
+        std::cerr << "Body is " << body.size() << " bytes (not base64-encoded, not encrypted [or decryption failed])\n";
+    }
+    std::cerr << std::flush;
+
+    std::cout << body;
+    if (!body.empty() && body.back() != '\n')
+        std::cout << '\n';
 }

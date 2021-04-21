@@ -62,7 +62,7 @@ oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
 
         try {
             return fut.get();
-        } catch (std::exception& e) {
+        } catch (const std::exception& e) {
             OXEN_LOG(critical, "Error retrieving private keys from oxend: {}; retrying", e.what());
         }
     }

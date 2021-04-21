@@ -121,15 +121,14 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
     if (message.data.size() != 2) {
         OXEN_LOG(error, "Expected 2 message parts, got {}",
                  message.data.size());
-        on_response(oxen::Response{Status::BAD_REQUEST,
-                                   "Incorrect number of messages"});
-        return;
+        return on_response({Status::BAD_REQUEST, "Incorrect number of request parts"});
     }
 
     auto eph_key = extract_x25519_from_hex(message.data[0]);
-    // TODO: Just not returning here is gross: the protocol needs some way to return an error state,
-    // but doesn't currently have one.
-    if (!eph_key) return;
+    if (!eph_key) {
+        OXEN_LOG(error, "no ephemeral key in omq onion request");
+        return on_response({Status::BAD_REQUEST, "Missing ephemeral key"});
+    }
     const auto& ciphertext = message.data[1];
 
     request_handler_->process_onion_req(std::string(ciphertext),
