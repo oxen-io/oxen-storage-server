@@ -246,7 +246,7 @@ xchacha20_shared_key(
         const x25519_pubkey& local_pub,
         const x25519_seckey& local_sec,
         const x25519_pubkey& remote_pub,
-        bool sending) {
+        bool local_first) {
     std::array<unsigned char, crypto_aead_xchacha20poly1305_ietf_KEYBYTES> key;
     static_assert(crypto_aead_xchacha20poly1305_ietf_KEYBYTES >= crypto_scalarmult_BYTES);
     if (0 != crypto_scalarmult(key.data(), local_sec.data(), remote_pub.data())) // Use key as tmp storage for aB
@@ -254,8 +254,8 @@ xchacha20_shared_key(
     crypto_generichash_state h;
     crypto_generichash_init(&h, nullptr, 0, key.size());
     crypto_generichash_update(&h, key.data(), crypto_scalarmult_BYTES);
-    crypto_generichash_update(&h, (sending ? local_pub : remote_pub).data(), local_pub.size());
-    crypto_generichash_update(&h, (sending ? remote_pub : local_pub).data(), local_pub.size());
+    crypto_generichash_update(&h, (local_first ? local_pub : remote_pub).data(), local_pub.size());
+    crypto_generichash_update(&h, (local_first ? remote_pub : local_pub).data(), local_pub.size());
     crypto_generichash_final(&h, key.data(), key.size());
     return key;
 }
@@ -267,7 +267,7 @@ std::string ChannelEncryption::encrypt_xchacha20(std::string_view plaintext_, co
     ciphertext.resize(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES + plaintext.size()
             + crypto_aead_xchacha20poly1305_ietf_ABYTES);
 
-    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, true);
+    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
 
     // Generate random nonce, and stash it at the beginning of ciphertext:
     randombytes_buf(ciphertext.data(), crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
@@ -297,7 +297,7 @@ std::string ChannelEncryption::decrypt_xchacha20(std::string_view ciphertext_, c
     if (ciphertext.size() < crypto_aead_xchacha20poly1305_ietf_ABYTES)
         throw std::runtime_error{"Invalid ciphertext: too short"};
 
-    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, false);
+    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
 
     std::string plaintext;
     plaintext.resize(ciphertext.size() - crypto_aead_xchacha20poly1305_ietf_ABYTES);
