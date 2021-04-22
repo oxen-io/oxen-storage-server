@@ -1,3 +1,9 @@
+oxen-storage-server (2.1.0-1~ubuntu21041) hirsute; urgency=medium
+
+  * Add hirsute debs
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Thu, 22 Apr 2021 14:22:50 -0300
+
 oxen-storage-server (2.1.0-1~ubuntu2010) groovy; urgency=medium
 
   [ Jason Rhinelander ]
