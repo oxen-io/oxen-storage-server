@@ -9,8 +9,6 @@
 namespace oxen {
 using namespace storage;
 
-constexpr auto CLEANUP_PERIOD = std::chrono::seconds(10);
-
 Database::~Database() {
     sqlite3_finalize(save_stmt);
     sqlite3_finalize(save_or_ignore_stmt);
@@ -19,11 +17,11 @@ Database::~Database() {
     sqlite3_finalize(get_stmt);
     sqlite3_finalize(delete_expired_stmt);
     sqlite3_close(db);
-    std::cerr << "~Database\n";
 }
 
-Database::Database(boost::asio::io_context& ioc, const std::string& db_path)
-    : cleanup_timer_(ioc) {
+Database::Database(boost::asio::io_context& ioc, const std::string& db_path,
+                   std::chrono::milliseconds cleanup_period)
+    : cleanup_period(cleanup_period), cleanup_timer_(ioc) {
     open_and_prepare(db_path);
 
     perform_cleanup();
@@ -54,7 +52,7 @@ void Database::perform_cleanup() {
         fprintf(stderr, "sql error: unexpected value from sqlite3_reset");
     }
 
-    cleanup_timer_.expires_after(CLEANUP_PERIOD);
+    cleanup_timer_.expires_after(this->cleanup_period);
     cleanup_timer_.async_wait(std::bind(&Database::perform_cleanup, this));
 }
 

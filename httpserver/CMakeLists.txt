@@ -14,21 +14,22 @@ add_library(httpserver_lib STATIC
     stats.cpp
     security.cpp
     command_line.cpp
-    dns_text_records.cpp
     reachability_testing.cpp
     lmq_server.cpp
     request_handler.cpp
     onion_processing.cpp
+    ip_utils.cpp
+    oxend_rpc.cpp
     )
 
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 add_subdirectory(../vendors/nlohmann_json nlohmann_json)
 
 # TODO: enable more warnings!
-target_compile_options(httpserver_lib PRIVATE -Werror=return-type)
+target_compile_options(httpserver_lib PRIVATE -Wall -Werror)
 
 target_link_libraries(httpserver_lib PUBLIC
-    common storage utils pow crypto
+    common storage utils crypto
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     oxenmq::oxenmq
