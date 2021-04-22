@@ -9,7 +9,7 @@ everywhere, while this is only needed on systems with an older spdlog).
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
-index ff94f11..bd5a4d8 100644
+index ea24ba7..8c4cc90 100644
 --- a/common/CMakeLists.txt
 +++ b/common/CMakeLists.txt
 @@ -6,6 +6,6 @@ add_library(common STATIC
@@ -18,5 +18,5 @@ index ff94f11..bd5a4d8 100644
  
 -find_package(spdlog)
 +add_subdirectory(../vendors/spdlog spdlog)
- target_link_libraries(common PUBLIC spdlog::spdlog filesystem)
+ target_link_libraries(common PUBLIC spdlog::spdlog filesystem oxenmq::oxenmq)
  target_include_directories(common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
