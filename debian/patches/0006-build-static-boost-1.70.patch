@@ -8,10 +8,10 @@ storage server needs boost 1.66+
  1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 45e5912..f82d27f 100644
+index d3bb0d7..f7734d7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -67,8 +67,6 @@ else()
+@@ -66,8 +66,6 @@ else()
    # Need this target export so that loki-mq properly picks up sodium
    export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
  
@@ -20,7 +20,7 @@ index 45e5912..f82d27f 100644
    find_package(OpenSSL REQUIRED)
  endif()
  
-@@ -80,6 +78,18 @@ include(cmake/check_for_std_filesystem.cmake)
+@@ -79,6 +77,18 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
