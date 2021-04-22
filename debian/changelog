@@ -1,3 +1,139 @@
+oxen-storage-server (2.1.0-1~deb10) buster; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Fix version info string
+  * LokiMQ -> OxenMQ rename (and update to 1.2.3)
+  * Rediff patches
+  * Rediff patches
+  * Rediff patches
+  * Rediff patches
+  * Rediff patches
+  * Remove spdlog build dep, add nlohmann
+  * Rediff patches
+  * Drop nlohmann json dep (we need the bundled one)
+
+  [ Maxim Shishmarev ]
+  * Set SNI correctly in outgoing https requests
+  * Fix not updating ip addresses of snodes
+  * Correctly count updated ips
+  * Use a valid host name for service nodes
+
+  [ Jason Rhinelander ]
+  * Reduce oxend ping interval to match lokinet/oxend
+
+  [ Maxim Shishmarev ]
+  * No longer require POW for message storage
+  * Increase limit for the number of messages retrieved at once
+  * Allow http in onion requests to an external server
+  * Address review comments
+
+  [ Jason Rhinelander ]
+  * Remove unwanted endian conversion
+
+  [ Maxim Shishmarev ]
+  * Address review comments
+  * Require loki or oxen prefix in server urls
+
+  [ Jason Rhinelander ]
+  * Remove long-obsolete DNS version check
+  * Remove storage-server blockchain testing
+  * Replace Oxen HTTP RPC with OMQ RPC
+  * Removed unused worker_ioc_
+
+  [ Maxim Shishmarev ]
+  * Fix build
+  * Speed up unit tests for storage
+  * Allow proxying certain requests to oxend
+  * Remove jsonrpc fluff
+
+  [ Jason Rhinelander ]
+  * Remove dead forward declarations
+  * Fix crypto_test
+  * Use oxenmq 1.2.4's send_later() mechanism
+  * Storage server refactoring & ping reporting redesign
+  * Simplification
+  * Fix unit tests
+  * Add fix and tests for ports not getting updated
+  * Integration test compilation fix
+  * Expose OMQ logger wrapper to temp OMQ instance
+  * Make integration test mode more obvious
+  * Misc logging fixes
+  * Make key logging on startup better
+  * Bump SS version
+  * Use ephemeral routing id to talk to oxend
+  * Fix cmake library dependencies
+  * Make the default oxend rpc understand /var/lib/oxen
+  * Fix report json parsing
+  * Properly rate limit random testing
+  * Force logging colours on stdout
+  * Fix logic inversion on is_ip_public
+  * Fix oxend ping arguments
+  * Remove dead code (FailedRequestHandler)
+  * Cleanups
+  * Use lokinet .snode address for Host header
+  * Fewer unnecessary shared_ptrs
+  * Avoid whining about no pings immediately after startup
+  * Add heuristic to significantly avoid bootstrap use
+  * Add trace/debug logging for number of tested nodes
+  * Simplify signature encoding
+  * Remove unused method
+  * Inline simple accessor
+  * Unbreak https cert signing by not storing a reference
+  * Replace Monero crypto with libsodium
+  * Fix sync status when we don't need to bootstrap
+  * Lower oxend ping log frequency
+  * Remove debugging
+  * Fix CBC encryption/decryption
+  * Remove static req index counter
+  * Don't squelch exception if x25519 extraction fails
+  * Misc cleanups and optimizations
+  * Abstract encryption type API
+  * Optimize/cleanup onion request parsing
+  * Remove unused variables/capture
+  * Replace onion_req ping hack with sn.ping endpoint
+  * Sort unit test source files
+  * Add proper encrypt/decrypt unit tests
+  * Skip inactive nodes before warning about missing keys
+  * Replace asio timers with omq repeated timers
+  * Add tester/testee sorting hack for pre-HF18 compatibility
+  * Add comment about probability value
+  * Switch derived values to std::arrays
+  * Undo converting ReachType to a bool
+  * Avoid potentially confusing bool addition
+  * Add FIXME about silent failures
+  * Remove redundant HTTP status
+  * Remove gone reqidx param
+  * Avoid unnecessary json->string conversion
+  * user pubkey tighter restrictions
+  * Serialization: replace ghetto string_view with actual std::string_view
+  * Optimize get_swarm_by_pk to return a SwarmInfo reference instead of id
+  * Don't throw and return "std::exception" as an error string
+  * Fix empty onion request response
+  * Debug message improvements
+  * Added onion request contrib test code
+  * Add ifdef'ed proxy requests code
+  * Fix allowed endpoints unordered_set to be strings
+  * Allow opting out of json-nesting and base64 encoding
+  * Simplifies/unwraps the oxend_request endpoint
+  * Onion request test program improvements
+  * Update oxenmq to tagged version
+  * onion-request test script: fix destination in hops
+  * Add more output, timing info
+  * const exception lvalue refs
+  * Stop processing after invoking the callback
+  * Make all callback invocations return
+  * Remove v2 request parameters from code
+  * Convert run-time variant unpacking into a visit
+  * New internal SS-to-SS onion req endpoint
+  * Add xchacha20 encrypt/decrypt implementatation
+  * Remove debugging
+  * Use longer omq onion req parameter names
+  * Fix test suite
+  * Add direction to xchacha20 shared key
+  * Bump version to 2.1.0
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Thu, 22 Apr 2021 02:23:00 -0300
+
 oxen-storage-server (2.0.8-3~deb10) buster; urgency=medium
 
   * URL fixes
