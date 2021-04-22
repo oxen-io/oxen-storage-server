@@ -1,4 +1,10 @@
-oxen-storage-server (2.1.0-1) unstable; urgency=medium
+oxen-storage-server (2.1.0-1~deb11) bullseye; urgency=medium
+
+  * Add bullseye deb
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Thu, 22 Apr 2021 14:21:39 -0300
+
+oxen-storage-server (2.1.0-0) unstable; urgency=medium
 
   [ Jason Rhinelander ]
   * Fix version info string
