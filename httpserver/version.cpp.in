@@ -1,5 +1,7 @@
 #include "version.h"
 
+namespace oxen {
+
 using namespace std::literals;
 
 const std::array<uint16_t, 3> STORAGE_SERVER_VERSION = {@PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@};
@@ -8,3 +10,5 @@ const std::string_view STORAGE_SERVER_VERSION_STRING = "@PROJECT_VERSION@"sv;
 const std::string_view STORAGE_SERVER_GIT_HASH_STRING = "@SHORT_HASH@"sv;
 const std::string_view STORAGE_SERVER_BUILD_TIME = "@BUILD_TIME@"sv;
 const std::string_view STORAGE_SERVER_VERSION_INFO = "Oxen Storage Server v@PROJECT_VERSION@\n git commit hash: @SHORT_HASH@\n build time: @BUILD_TIME@\n"sv;
+
+}

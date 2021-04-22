@@ -1,14 +1,18 @@
 #include "request_handler.h"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
+#include "lmq_server.h"
 #include "oxen_logger.h"
 #include "service_node.h"
 #include "utils.hpp"
 
 #include "https_client.h"
 
-#include <oxenmq/base64.h>
 #include <nlohmann/json.hpp>
+#include <openssl/sha.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/hex.h>
 
 using nlohmann::json;
 
@@ -31,10 +35,8 @@ std::string to_string(const Response& res) {
 }
 
 RequestHandler::RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                               const OxendClient& oxend_client,
-                               const ChannelEncryption<std::string>& ce)
-    : ioc_(ioc), service_node_(sn), oxend_client_(oxend_client),
-      channel_cipher_(ce) {}
+                               const ChannelEncryption& ce)
+    : ioc_(ioc), service_node_(sn), channel_cipher_(ce) {}
 
 static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 
@@ -42,13 +44,13 @@ static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
     json snodes_json = json::array();
 
     for (const auto& sn : snodes) {
-        json snode;
-        snode["address"] = sn.sn_address();
-        snode["pubkey_x25519"] = sn.pubkey_x25519_hex();
-        snode["pubkey_ed25519"] = sn.pubkey_ed25519_hex();
-        snode["port"] = std::to_string(sn.port());
-        snode["ip"] = sn.ip();
-        snodes_json.push_back(snode);
+        snodes_json.push_back(json{
+                {"address", oxenmq::to_base32z(sn.pubkey_legacy.view()) + ".snode"}, // Deprecated, use pubkey_legacy instead
+                {"pubkey_legacy", sn.pubkey_legacy.hex()},
+                {"pubkey_x25519", sn.pubkey_x25519.hex()},
+                {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
+                {"port", std::to_string(sn.port)}, // Why is this a string?
+                {"ip", sn.ip}});
     }
 
     res_body["snodes"] = snodes_json;
@@ -56,10 +58,11 @@ static json snodes_to_json(const std::vector<sn_record_t>& snodes) {
     return res_body;
 }
 
-static std::string obfuscate_pubkey(const std::string& pk) {
-    std::string res = pk.substr(0, 2);
+static std::string obfuscate_pubkey(std::string_view pk) {
+    std::string res;
+    res += pk.substr(0, 2);
     res += "...";
-    res += pk.substr(pk.length() - 3, pk.length() - 1);
+    res += pk.substr(pk.length() - 3);
     return res;
 }
 
@@ -76,10 +79,23 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
                     ContentType::json};
 }
 
+std::string computeMessageHash(const std::string& timestamp,
+                               const std::string& ttl,
+                               const std::string& recipient,
+                               const std::string& data) {
+    SHA512_CTX ctx;
+    SHA512_Init(&ctx);
+    for (const auto* s : {&timestamp, &ttl, &recipient, &data})
+        SHA512_Update(&ctx, s->data(), s->size());
+
+    unsigned char hashResult[SHA512_DIGEST_LENGTH];
+    SHA512_Final(hashResult, &ctx);
+    return oxenmq::to_hex(std::begin(hashResult), std::end(hashResult));
+}
+
 Response RequestHandler::process_store(const json& params) {
 
-    constexpr const char* fields[] = {"pubKey", "ttl", "nonce", "timestamp",
-                                      "data"};
+    constexpr const char* fields[] = {"pubKey", "ttl", "timestamp", "data"};
 
     for (const auto& field : fields) {
         if (!params.contains(field)) {
@@ -92,7 +108,6 @@ Response RequestHandler::process_store(const json& params) {
     }
 
     const auto& ttl = params.at("ttl").get_ref<const std::string&>();
-    const auto& nonce = params.at("nonce").get_ref<const std::string&>();
     const auto& timestamp =
         params.at("timestamp").get_ref<const std::string&>();
     const auto& data = params.at("data").get_ref<const std::string&>();
@@ -136,31 +151,15 @@ Response RequestHandler::process_store(const json& params) {
                         "Timestamp error: check your clock\n"};
     }
 
-    // Do not store message if the PoW provided is invalid
-    std::string messageHash;
-
-    const bool valid_pow =
-        checkPoW(nonce, timestamp, ttl, pk.str(), data, messageHash,
-                 service_node_.get_curr_pow_difficulty());
-#ifndef DISABLE_POW
-    if (!valid_pow) {
-        OXEN_LOG(debug, "Forbidden. Invalid PoW nonce: {}", nonce);
-
-        json res_body;
-        res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
-
-        return Response{Status::INVALID_POW, res_body.dump(),
-                        ContentType::json};
-    }
-#endif
+    auto messageHash = computeMessageHash(timestamp, ttl, pk.str(), data);
 
     bool success;
 
     try {
         const auto msg =
-            message_t{pk.str(), data, messageHash, ttlInt, timestampInt, nonce};
+            message_t{pk.str(), data, messageHash, ttlInt, timestampInt};
         success = service_node_.process_store(msg);
-    } catch (std::exception e) {
+    } catch (const std::exception& e) {
         OXEN_LOG(critical,
                  "Internal Server Error. Could not store message for {}",
                  obfuscate_pubkey(pk.str()));
@@ -178,9 +177,52 @@ Response RequestHandler::process_store(const json& params) {
              obfuscate_pubkey(pk.str()));
 
     json res_body;
-    res_body["difficulty"] = service_node_.get_curr_pow_difficulty();
+    /// NOTE: difficulty is not longer used by modern clients, but
+    /// we send this to avoid breaking older clients.
+    res_body["difficulty"] = 1;
 
     return Response{Status::OK, res_body.dump(), ContentType::json};
+}
+
+inline const static std::unordered_set<std::string> allowed_oxend_endpoints{{
+    "get_service_nodes"s, "ons_resolve"s}};
+
+void RequestHandler::process_oxend_request(
+    const json& params, std::function<void(oxen::Response)> cb) {
+
+    std::string endpoint;
+    if (auto it = params.find("endpoint");
+            it == params.end() || !it->is_string())
+        return cb({Status::BAD_REQUEST, "missing 'endpoint'"});
+    else
+        endpoint = it->get<std::string>();
+
+    if (!allowed_oxend_endpoints.count(endpoint))
+        return cb({Status::BAD_REQUEST, "Endpoint not allowed: " + endpoint});
+
+    std::optional<std::string> oxend_params;
+    if (auto it = params.find("params"); it != params.end()) {
+        if (!it->is_object())
+            return cb({Status::BAD_REQUEST, "invalid oxend 'params' argument"});
+        oxend_params = it->dump();
+    }
+
+    service_node_.omq_server().oxend_request(
+        "rpc." + endpoint,
+        [cb = std::move(cb)](bool success, auto&& data) {
+            std::string err;
+            // Currently we only support json endpoints; if we want to support non-json endpoints
+            // (which end in ".bin") at some point in the future then we'll need to return those
+            // endpoint results differently here.
+            if (success && data.size() >= 2 && data[0] == "200")
+                return cb({Status::OK,
+                    R"({"result":)" + std::move(data[1]) + "}",
+                    ContentType::json});
+            return cb({Status::BAD_REQUEST,
+                data.size() >= 2 && !data[1].empty()
+                    ? std::move(data[1]) : "Unknown oxend error"s});
+        },
+        oxend_params);
 }
 
 Response RequestHandler::process_retrieve_all() {
@@ -222,7 +264,7 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
         user_pubkey_t::create(params.at("pubKey").get<std::string>(), success);
     if (!success) {
 
-        auto msg = fmt::format("Pubkey must be {} characters long\n",
+        auto msg = fmt::format("Pubkey must be {} hex digits long\n",
                                get_user_pubkey_size());
         OXEN_LOG(debug, "{}", msg);
         return Response{Status::BAD_REQUEST, std::move(msg)};
@@ -307,22 +349,23 @@ Response RequestHandler::process_retrieve(const json& params) {
 }
 
 void RequestHandler::process_client_req(
-    const std::string& req_json, std::function<void(oxen::Response)> cb) {
+    std::string_view req_json, std::function<void(oxen::Response)> cb) {
 
     OXEN_LOG(trace, "process_client_req str <{}>", req_json);
 
     const json body = json::parse(req_json, nullptr, false);
-    if (body == nlohmann::detail::value_t::discarded) {
+    if (body.is_discarded()) {
         OXEN_LOG(debug, "Bad client request: invalid json");
-        cb(Response{Status::BAD_REQUEST, "invalid json\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json\n"});
     }
 
-    OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
+    if (OXEN_LOG_ENABLED(trace))
+        OXEN_LOG(trace, "process_client_req json <{}>", body.dump(2));
 
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
         OXEN_LOG(debug, "Bad client request: no method field");
-        cb(Response{Status::BAD_REQUEST, "invalid json: no `method` field\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json: no `method` field\n"});
     }
 
     const auto& method_name = method_it->get_ref<const std::string&>();
@@ -332,58 +375,56 @@ void RequestHandler::process_client_req(
     const auto params_it = body.find("params");
     if (params_it == body.end() || !params_it->is_object()) {
         OXEN_LOG(debug, "Bad client request: no params field");
-        cb(Response{Status::BAD_REQUEST, "invalid json: no `params` field\n"});
+        return cb(Response{Status::BAD_REQUEST, "invalid json: no `params` field\n"});
     }
 
     if (method_name == "store") {
         OXEN_LOG(debug, "Process client request: store");
-        cb(this->process_store(*params_it));
-
-    } else if (method_name == "retrieve") {
+        return cb(process_store(*params_it));
+    }
+    if (method_name == "retrieve") {
         OXEN_LOG(debug, "Process client request: retrieve");
-        cb(this->process_retrieve(*params_it));
+        return cb(process_retrieve(*params_it));
         // TODO: maybe we should check if (some old) clients requests
         // long-polling and then wait before responding to prevent spam
 
-    } else if (method_name == "get_snodes_for_pubkey") {
-        OXEN_LOG(debug, "Process client request: snodes for pubkey");
-        cb(this->process_snodes_by_pk(*params_it));
-    } else if (method_name == "get_lns_mapping") {
-
-        const auto name_it = params_it->find("name_hash");
-        if (name_it == params_it->end()) {
-            cb(Response{Status::BAD_REQUEST, "Field <name_hash> is missing"});
-        } else {
-            this->process_lns_request(*name_it, std::move(cb));
-        }
-
-    } else {
-        OXEN_LOG(debug, "Bad client request: unknown method '{}'", method_name);
-        cb(Response{Status::BAD_REQUEST,
-                    fmt::format("no method {}", method_name)});
     }
+    if (method_name == "get_snodes_for_pubkey") {
+        OXEN_LOG(debug, "Process client request: snodes for pubkey");
+        return cb(process_snodes_by_pk(*params_it));
+    }
+    if (method_name == "oxend_request") {
+        OXEN_LOG(debug, "Process client request: oxend_request");
+        return process_oxend_request(*params_it, std::move(cb));
+    }
+    if (method_name == "get_lns_mapping") {
+        const auto name_it = params_it->find("name_hash");
+        if (name_it == params_it->end())
+            return cb({Status::BAD_REQUEST, "Field <name_hash> is missing"});
+        return process_lns_request(*name_it, std::move(cb));
+    }
+
+    OXEN_LOG(debug, "Bad client request: unknown method '{}'", method_name);
+    return cb({Status::BAD_REQUEST, "no method " + method_name});
 }
 
-Response RequestHandler::wrap_proxy_response(const Response& res,
-                                             const std::string& client_key,
-                                             bool use_gcm) const {
+Response RequestHandler::wrap_proxy_response(Response res,
+                                             const x25519_pubkey& client_key,
+                                             EncryptType enc_type,
+                                             bool embed_json,
+                                             bool base64) const {
 
-    nlohmann::json json_res;
+    auto status = static_cast<std::underlying_type_t<Status>>(res.status());
+    std::string body;
+    if (embed_json && res.content_type() == ContentType::json)
+        body = fmt::format(R"({{"status":{},"body":{}}})",
+                status, res.message());
+    else
+        body = json{{"status", status}, {"body", res.message()}}.dump();
 
-    json_res["status"] = res.status();
-    json_res["body"] = res.message();
-
-    const std::string res_body = json_res.dump();
-
-    std::string ciphertext;
-
-    if (use_gcm) {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_gcm(res_body, client_key));
-    } else {
-        ciphertext = oxenmq::to_base64(
-            channel_cipher_.encrypt_cbc(res_body, client_key));
-    }
+    std::string ciphertext = channel_cipher_.encrypt(enc_type, body, client_key);
+    if (base64)
+        ciphertext = oxenmq::to_base64(std::move(ciphertext));
 
     // why does this have to be json???
     return Response{Status::OK, std::move(ciphertext), ContentType::json};
@@ -405,49 +446,49 @@ void RequestHandler::process_lns_request(
     array.push_back(entry);
     params["entries"] = array;
 
-    // this should not be called "sn response"
-    auto on_oxend_res = [cb = std::move(cb)](sn_response_t sn) {
-        if (sn.error_code == SNodeError::NO_ERROR && sn.body) {
-            cb({Status::OK, *sn.body});
-        } else {
-            cb({Status::BAD_REQUEST, "unknown oxend error"});
-        }
-    };
-
 #ifdef INTEGRATION_TEST
     // use mainnet seed
-    oxend_client_.make_custom_oxend_request("public.loki.foundation", 22023,
-                                            "lns_names_to_owners", params,
-                                            std::move(on_oxend_res));
+    oxend_json_rpc_request(
+        ioc_, "public.loki.foundation", 22023, "lns_names_to_owners", params,
+        [cb = std::move(cb)](sn_response_t sn) {
+            if (sn.error_code == SNodeError::NO_ERROR && sn.body)
+                cb({Status::OK, *sn.body});
+            else
+                cb({Status::BAD_REQUEST, "unknown oxend error"});
+        });
 #else
-    oxend_client_.make_oxend_request("lns_names_to_owners", params,
-                                     std::move(on_oxend_res));
+    service_node_.omq_server().oxend_request(
+        "rpc.lns_names_to_owners",
+        [cb = std::move(cb)](bool success, auto&& data) {
+            if (success && !data.empty())
+                cb({Status::OK, data.front()});
+            else
+                cb({Status::BAD_REQUEST, "unknown oxend error"});
+        });
 #endif
 }
 
 void RequestHandler::process_onion_exit(
-    const std::string& eph_key, const std::string& body,
+    std::string_view body,
     std::function<void(oxen::Response)> cb) {
 
     OXEN_LOG(debug, "Processing onion exit!");
 
-    if (!service_node_.snode_ready()) {
-        cb({Status::SERVICE_UNAVAILABLE, "Snode not ready"});
-        return;
-    }
+    if (!service_node_.snode_ready())
+        return cb({Status::SERVICE_UNAVAILABLE, "Snode not ready"});
 
     this->process_client_req(body, std::move(cb));
 }
 
 void RequestHandler::process_proxy_exit(
-    const std::string& client_key, const std::string& payload,
-    std::function<void(oxen::Response)> cb) {
+        const x25519_pubkey& client_key,
+        std::string_view payload,
+        std::function<void(oxen::Response)> cb) {
 
-    if (!service_node_.snode_ready()) {
-        auto res = Response{Status::SERVICE_UNAVAILABLE, "Snode not ready"};
-        cb(wrap_proxy_response(res, client_key, false));
-        return;
-    }
+    if (!service_node_.snode_ready())
+        return cb(wrap_proxy_response(
+                {Status::SERVICE_UNAVAILABLE, "Snode not ready"},
+                client_key, EncryptType::aes_cbc));
 
     static int proxy_idx = 0;
 
@@ -462,12 +503,11 @@ void RequestHandler::process_proxy_exit(
     } catch (const std::exception& e) {
         auto msg = fmt::format("Invalid ciphertext: {}", e.what());
         OXEN_LOG(debug, "{}", msg);
-        auto res = Response{Status::BAD_REQUEST, std::move(msg)};
 
         // TODO: since we always seem to encrypt the response, we should
         // do it once one level above instead
-        cb(wrap_proxy_response(res, client_key, false));
-        return;
+        return cb(wrap_proxy_response({Status::BAD_REQUEST, std::move(msg)},
+                    client_key, EncryptType::aes_cbc));
     }
 
     std::string body;
@@ -486,12 +526,11 @@ void RequestHandler::process_proxy_exit(
             }
         }
 
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         auto msg = fmt::format("JSON parsing error: {}", e.what());
         OXEN_LOG(debug, "[{}] {}", idx, msg);
-        auto res = Response{Status::BAD_REQUEST, msg};
-        cb(wrap_proxy_response(res, client_key, false /* use cbc */));
-        return;
+        return cb(wrap_proxy_response(
+                {Status::BAD_REQUEST, std::move(msg)}, client_key, EncryptType::aes_cbc));
     }
 
     if (lp_used) {
@@ -503,13 +542,14 @@ void RequestHandler::process_proxy_exit(
             OXEN_LOG(debug, "[{}] proxy about to respond with: {}", idx,
                      res.status());
 
-            cb(wrap_proxy_response(res, client_key, false /* use cbc */));
+            cb(wrap_proxy_response(std::move(res), client_key, EncryptType::aes_cbc));
         });
 }
 
 void RequestHandler::process_onion_to_url(
-    const std::string& host, const std::string& target,
-    const std::string& payload, std::function<void(oxen::Response)> cb) {
+    const std::string& protocol, const std::string& host, uint16_t port,
+    const std::string& target, const std::string& payload,
+    std::function<void(oxen::Response)> cb) {
 
     // TODO: investigate if the use of a shared pointer is necessary
     auto req = std::make_shared<request_t>();
@@ -531,7 +571,11 @@ void RequestHandler::process_onion_to_url(
         }
     };
 
-    make_https_request(ioc_, host, req, http_cb);
+    if (protocol != "https") {
+        make_http_request(ioc_, host, port, req, http_cb);
+    } else {
+        make_https_request(ioc_, host, port, req, http_cb);
+    }
 }
 
 } // namespace oxen

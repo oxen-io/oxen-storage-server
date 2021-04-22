@@ -7,5 +7,5 @@ add_library(common STATIC
 )
 
 add_subdirectory(../vendors/spdlog spdlog)
-target_link_libraries(common PUBLIC spdlog::spdlog filesystem)
+target_link_libraries(common PUBLIC spdlog::spdlog filesystem oxenmq::oxenmq)
 target_include_directories(common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)

@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
-#include <iostream>
+#include <iosfwd>
 #include <map>
 #include <memory>
 #include <optional>
@@ -17,16 +17,18 @@
 
 #include "oxen_common.h"
 #include "oxend_key.h"
+#include "oxen_logger.h"
 #include "swarm.h"
 
-constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
-constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
-constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
-constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
-constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
+namespace oxen {
 
-template <typename T>
-class ChannelEncryption;
+inline constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
+inline constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
+inline constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
+inline constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
+inline constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
+
+inline constexpr auto SESSION_TIME_LIMIT = 60s;
 
 class RateLimiter;
 
@@ -36,21 +38,13 @@ namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
 using request_t = http::request<http::string_body>;
 using response_t = http::response<http::string_body>;
 
-namespace oxen {
-
-std::shared_ptr<request_t> build_post_request(const char* target,
-                                              std::string&& data);
+std::shared_ptr<request_t> build_post_request(
+        const ed25519_pubkey& host, const char* target, std::string data);
 
 class Security;
 
 class RequestHandler;
 class Response;
-
-namespace storage {
-struct Item;
-}
-
-using storage::Item;
 
 enum class SNodeError { NO_ERROR, ERROR_OTHER, NO_REACH, HTTP_ERROR };
 
@@ -60,65 +54,22 @@ struct sn_response_t {
     std::optional<response_t> raw_response;
 };
 
-template <typename OStream>
-OStream& operator<<(OStream& os, const sn_response_t& res) {
-    switch (res.error_code) {
-    case SNodeError::NO_ERROR:
-        os << "NO_ERROR";
-        break;
-    case SNodeError::ERROR_OTHER:
-        os << "ERROR_OTHER";
-        break;
-    case SNodeError::NO_REACH:
-        os << "NO_REACH";
-        break;
-    case SNodeError::HTTP_ERROR:
-        os << "HTTP_ERROR";
-        break;
-    }
-
-    return os << "(" << (res.body ? *res.body : "n/a") << ")";
-}
-
-struct blockchain_test_answer_t {
-    uint64_t res_height;
-};
-
-/// Blockchain test parameters
-struct bc_test_params_t {
-    uint64_t max_height;
-    uint64_t seed;
-};
+std::ostream& operator<<(std::ostream& os, const sn_response_t& res);
 
 using http_callback_t = std::function<void(sn_response_t)>;
 
-class OxendClient {
-
-    boost::asio::io_context& ioc_;
-    std::string oxend_rpc_ip_;
-    const uint16_t oxend_rpc_port_;
-
-  public:
-    OxendClient(boost::asio::io_context& ioc, std::string ip, uint16_t port);
-    void make_oxend_request(std::string_view method,
-                            const nlohmann::json& params,
-                            http_callback_t&& cb) const;
-    void make_custom_oxend_request(const std::string& daemon_ip,
-                                   const uint16_t daemon_port,
-                                   std::string_view method,
-                                   const nlohmann::json& params,
-                                   http_callback_t&& cb) const;
-    // Synchronously fetches the private key from oxend.  Designed to be called
-    // *before* the io_context has been started (this runs it, waits for a
-    // successful fetch, then restarts it when finished).
-    std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
-    wait_for_privkey();
-};
-
-constexpr auto SESSION_TIME_LIMIT = std::chrono::seconds(60);
+// Makes an HTTP JSON-RPC request to some oxend; this is currently needed only for bootstrap nodes
+// (for a local oxend we speak oxenmq rpc).
+void oxend_json_rpc_request(
+        boost::asio::io_context& ioc,
+        const std::string& daemon_ip,
+        const uint16_t daemon_port,
+        std::string_view method,
+        const nlohmann::json& params,
+        http_callback_t&& cb);
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& ip,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       uint16_t port, std::shared_ptr<request_t> req,
                        http_callback_t&& cb);
 
 class HttpClientSession
@@ -276,27 +227,16 @@ class connection_t : public std::enable_shared_from_this<connection_t> {
 
     void process_swarm_req(std::string_view target);
 
-    /// Process onion request from the client (json)
-    void process_onion_req_v1();
-
-    /// Process onion request from the client (binary)
+    /// Process onion request from the client
     void process_onion_req_v2();
-
-    void process_proxy_req();
-
-    void process_file_proxy_req();
 
     // Check whether we have spent enough time on this connection.
     void register_deadline();
 
     /// Process storage test request and repeat if necessary
     void process_storage_test_req(uint64_t height,
-                                  const std::string& tester_addr,
+                                  const legacy_pubkey& tester_addr,
                                   const std::string& msg_hash);
-
-    void process_blockchain_test_req(uint64_t height,
-                                     const std::string& tester_pk,
-                                     bc_test_params_t params);
 
     void set_response(const Response& res);
 
@@ -328,14 +268,6 @@ constexpr const char* error_string(SNodeError err) {
         return "[UNKNOWN]";
     }
 }
-
-struct CiphertextPlusJson {
-    std::string ciphertext;
-    std::string json;
-};
-
-// TODO: move this from http_connection.h after refactoring
-auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson;
 
 } // namespace oxen
 
