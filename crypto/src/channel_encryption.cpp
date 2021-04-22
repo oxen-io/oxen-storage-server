@@ -132,6 +132,52 @@ std::string ChannelEncryption::encrypt_cbc(
     return output;
 }
 
+std::string ChannelEncryption::decrypt_cbc(
+        std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
+
+    auto ciphertext = to_uchar(ciphertext_);
+
+    const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
+
+    // Initialise cipher context
+    const EVP_CIPHER* cipher = EVP_aes_256_cbc();
+    aes256cbc_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
+    auto* ctx = ctx_ptr.get();
+
+    // We prepend the iv on the beginning of the ciphertext; extract it
+    auto iv = ciphertext.substr(0, EVP_CIPHER_iv_length(cipher));
+    ciphertext.remove_prefix(iv.size());
+
+    // libssl docs say we need up to block size of extra buffer space:
+    std::string output;
+    output.resize(ciphertext.size() + EVP_CIPHER_block_size(cipher));
+
+    // Initialise cipher context
+    if (EVP_DecryptInit_ex(ctx, cipher, nullptr, sharedKey.data(), iv.data()) <= 0) {
+        throw std::runtime_error("Could not initialise decryption context");
+    }
+
+    int len;
+    auto* o = reinterpret_cast<unsigned char*>(output.data());
+
+    // Decrypt every full blocks
+    if (EVP_DecryptUpdate(ctx, o, &len, ciphertext.data(), ciphertext.size()) <= 0) {
+        throw std::runtime_error("Could not decrypt block");
+    }
+    o += len;
+
+    // Decrypt any remaining partial blocks
+    if (EVP_DecryptFinal_ex(ctx, o, &len) <= 0) {
+        throw std::runtime_error("Could not finalise decryption");
+    }
+    o += len;
+
+    // Remove excess buffer space
+    output.resize(reinterpret_cast<char*>(o) - output.data());
+
+    return output;
+}
+
 std::string ChannelEncryption::encrypt_gcm(
         std::string_view plaintext_, const x25519_pubkey& pubKey) const {
 
@@ -191,52 +237,6 @@ std::string ChannelEncryption::decrypt_gcm(
     }
 
     assert(output.size() == decrypted_len);
-
-    return output;
-}
-
-std::string ChannelEncryption::decrypt_cbc(
-        std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
-
-    auto ciphertext = to_uchar(ciphertext_);
-
-    const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
-
-    // Initialise cipher context
-    const EVP_CIPHER* cipher = EVP_aes_256_cbc();
-    aes256cbc_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
-    auto* ctx = ctx_ptr.get();
-
-    // We prepend the iv on the beginning of the ciphertext; extract it
-    auto iv = ciphertext.substr(0, EVP_CIPHER_iv_length(cipher));
-    ciphertext.remove_prefix(iv.size());
-
-    // libssl docs say we need up to block size of extra buffer space:
-    std::string output;
-    output.resize(ciphertext.size() + EVP_CIPHER_block_size(cipher));
-
-    // Initialise cipher context
-    if (EVP_DecryptInit_ex(ctx, cipher, nullptr, sharedKey.data(), iv.data()) <= 0) {
-        throw std::runtime_error("Could not initialise decryption context");
-    }
-
-    int len;
-    auto* o = reinterpret_cast<unsigned char*>(output.data());
-
-    // Decrypt every full blocks
-    if (EVP_DecryptUpdate(ctx, o, &len, ciphertext.data(), ciphertext.size()) <= 0) {
-        throw std::runtime_error("Could not decrypt block");
-    }
-    o += len;
-
-    // Decrypt any remaining partial blocks
-    if (EVP_DecryptFinal_ex(ctx, o, &len) <= 0) {
-        throw std::runtime_error("Could not finalise decryption");
-    }
-    o += len;
-
-    // Remove excess buffer space
-    output.resize(reinterpret_cast<char*>(o) - output.data());
 
     return output;
 }
