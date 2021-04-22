@@ -57,7 +57,7 @@ struct aes256_evp_deleter {
     }
 };
 
-using aes256cbc_ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, aes256_evp_deleter>;
+using aes256_ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, aes256_evp_deleter>;
 
 
 }
@@ -87,16 +87,13 @@ std::string ChannelEncryption::decrypt(EncryptType type, std::string_view cipher
     throw std::runtime_error{"Invalid decryption type"};
 }
 
-std::string ChannelEncryption::encrypt_cbc(
-        std::string_view plaintext_, const x25519_pubkey& pubKey) const {
-
-    auto plaintext = to_uchar(plaintext_);
-
-    const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
+static std::string encrypt_openssl(
+        const EVP_CIPHER* cipher,
+        std::basic_string_view<unsigned char> plaintext,
+        const std::array<uint8_t, crypto_scalarmult_BYTES>& key) {
 
     // Initialise cipher context
-    const EVP_CIPHER* cipher = EVP_aes_256_cbc();
-    aes256cbc_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
+    aes256_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
     auto* ctx = ctx_ptr.get();
 
     std::string output;
@@ -109,7 +106,7 @@ std::string ChannelEncryption::encrypt_cbc(
     const auto* iv = o;
     o += ivLength;
 
-    if (EVP_EncryptInit_ex(ctx, cipher, nullptr, sharedKey.data(), iv) <= 0) {
+    if (EVP_EncryptInit_ex(ctx, cipher, nullptr, key.data(), iv) <= 0) {
         throw std::runtime_error("Could not initialise encryption context");
     }
 
@@ -132,16 +129,13 @@ std::string ChannelEncryption::encrypt_cbc(
     return output;
 }
 
-std::string ChannelEncryption::decrypt_cbc(
-        std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
-
-    auto ciphertext = to_uchar(ciphertext_);
-
-    const auto sharedKey = calculate_shared_secret(private_key_, pubKey);
+static std::string decrypt_openssl(
+        const EVP_CIPHER* cipher,
+        std::basic_string_view<unsigned char> ciphertext,
+        const std::array<uint8_t, crypto_scalarmult_BYTES>& key) {
 
     // Initialise cipher context
-    const EVP_CIPHER* cipher = EVP_aes_256_cbc();
-    aes256cbc_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
+    aes256_ctx_ptr ctx_ptr{EVP_CIPHER_CTX_new()};
     auto* ctx = ctx_ptr.get();
 
     // We prepend the iv on the beginning of the ciphertext; extract it
@@ -153,7 +147,7 @@ std::string ChannelEncryption::decrypt_cbc(
     output.resize(ciphertext.size() + EVP_CIPHER_block_size(cipher));
 
     // Initialise cipher context
-    if (EVP_DecryptInit_ex(ctx, cipher, nullptr, sharedKey.data(), iv.data()) <= 0) {
+    if (EVP_DecryptInit_ex(ctx, cipher, nullptr, key.data(), iv.data()) <= 0) {
         throw std::runtime_error("Could not initialise decryption context");
     }
 
@@ -176,6 +170,22 @@ std::string ChannelEncryption::decrypt_cbc(
     output.resize(reinterpret_cast<char*>(o) - output.data());
 
     return output;
+}
+
+std::string ChannelEncryption::encrypt_cbc(
+        std::string_view plaintext_, const x25519_pubkey& pubKey) const {
+    return encrypt_openssl(
+            EVP_aes_256_cbc(),
+            to_uchar(plaintext_),
+            calculate_shared_secret(private_key_, pubKey));
+}
+
+std::string ChannelEncryption::decrypt_cbc(
+        std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
+    return decrypt_openssl(
+            EVP_aes_256_cbc(),
+            to_uchar(ciphertext_),
+            calculate_shared_secret(private_key_, pubKey));
 }
 
 std::string ChannelEncryption::encrypt_gcm(
