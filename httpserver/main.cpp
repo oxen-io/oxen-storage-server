@@ -34,8 +34,6 @@ extern "C" {
 
 namespace fs = std::filesystem;
 
-constexpr int EXIT_INVALID_PORT = 2;
-
 int main(int argc, char* argv[]) {
 
     oxen::command_line_parser parser;
