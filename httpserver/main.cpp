@@ -14,7 +14,7 @@
 #include "lmq_server.h"
 #include "request_handler.h"
 
-#include <sodium.h>
+#include <sodium/core.h>
 #include <oxenmq/oxenmq.h>
 #include <oxenmq/hex.h>
 
@@ -116,11 +116,6 @@ int main(int argc, char* argv[]) {
 
     if (sodium_init() != 0) {
         OXEN_LOG(error, "Could not initialize libsodium");
-        return EXIT_FAILURE;
-    }
-
-    if (crypto_aead_aes256gcm_is_available() == 0) {
-        OXEN_LOG(error, "AES-256-GCM is not available on this CPU");
         return EXIT_FAILURE;
     }
 
