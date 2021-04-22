@@ -17,8 +17,7 @@ BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
     const auto hash = "hash";
     const uint64_t timestamp = 12345678;
     const uint64_t ttl = 3456000;
-    const auto nonce = "nonce";
-    message_t msg{pub_key, data, hash, ttl, timestamp, nonce};
+    message_t msg{pub_key, data, hash, ttl, timestamp};
     const std::vector<message_t> inputs{msg, msg};
     const std::vector<std::string> batches = serialize_messages(inputs);
     BOOST_CHECK_EQUAL(batches.size(), 1);
@@ -31,7 +30,6 @@ BOOST_AUTO_TEST_CASE(it_serializes_and_deserializes) {
         BOOST_CHECK_EQUAL(messages[i].hash, hash);
         BOOST_CHECK_EQUAL(messages[i].timestamp, timestamp);
         BOOST_CHECK_EQUAL(messages[i].ttl, ttl);
-        BOOST_CHECK_EQUAL(messages[i].nonce, nonce);
     }
 }
 
@@ -42,8 +40,7 @@ BOOST_AUTO_TEST_CASE(it_serialises_in_batches) {
     const auto hash = "hash";
     const uint64_t timestamp = 12345678;
     const uint64_t ttl = 3456000;
-    const auto nonce = "nonce";
-    message_t msg{pub_key, data, hash, ttl, timestamp, nonce};
+    message_t msg{pub_key, data, hash, ttl, timestamp};
     std::string buffer;
     serialize_message(buffer, msg);
     const size_t num_messages = (500000 / buffer.size()) + 10;

@@ -7,13 +7,13 @@
 namespace oxen {
 using http_callback_t = std::function<void(sn_response_t)>;
 
-void make_https_request(boost::asio::io_context& ioc, const std::string& ip,
-                        uint16_t port, const std::string& sn_pubkey_b32z,
-                        const std::shared_ptr<request_t>& req,
-                        http_callback_t&& cb);
+void make_https_request_to_sn(boost::asio::io_context& ioc,
+                              const sn_record_t& sn,
+                              std::shared_ptr<request_t> req,
+                              http_callback_t&& cb);
 
 void make_https_request(boost::asio::io_context& ioc, const std::string& url,
-                        const std::shared_ptr<request_t>& req,
+                        uint16_t port, std::shared_ptr<request_t> req,
                         http_callback_t&& cb);
 
 class HttpsClientSession
@@ -44,7 +44,7 @@ class HttpsClientSession
 
     // Snode's pub key (none if signature verification is not used / not a
     // snode)
-    std::optional<std::string> server_pub_key_b32z_;
+    std::optional<legacy_pubkey> server_pubkey_;
 
     bool used_callback_ = false;
 
@@ -68,9 +68,9 @@ class HttpsClientSession
     // Resolver and socket require an io_context
     HttpsClientSession(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                        tcp::resolver::results_type resolve_results,
-                       const std::shared_ptr<request_t>& req,
+                       const char* host, std::shared_ptr<request_t> req,
                        http_callback_t&& cb,
-                       std::optional<std::string> sn_pubkey_b32z);
+                       std::optional<legacy_pubkey> sn_pubkey);
 
     // initiate the client connection
     void start();

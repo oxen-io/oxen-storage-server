@@ -4,8 +4,6 @@ add_library(crypto STATIC
     src/oxend_key.cpp
     src/channel_encryption.cpp
     src/signature.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/crypto-ops.c
-    ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/crypto-ops-data.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/keccak.c
     ${CMAKE_CURRENT_LIST_DIR}/../vendors/oxen/crypto-ops/hash-ops.c
 )
@@ -21,15 +19,13 @@ target_include_directories(crypto
 
 target_link_libraries(crypto PUBLIC utils)
 
-add_executable(crypto_test src/test_main.cpp)
-target_link_libraries(crypto_test PRIVATE crypto)
-
 find_package(Threads)
 
-target_link_libraries(crypto PRIVATE
+target_link_libraries(crypto
+    PUBLIC
+    common
+    PRIVATE
     sodium
     Boost::boost
-    oxenmq::oxenmq
-    filesystem
     Threads::Threads
     ${CMAKE_DL_LIBS})

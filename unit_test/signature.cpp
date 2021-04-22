@@ -29,20 +29,16 @@ BOOST_AUTO_TEST_CASE(it_generates_hashes) {
     }
 }
 
+static const auto public_key = oxen::legacy_pubkey::from_hex(
+            "e35b7cf5057845284740af496ec323148db68ac2553a05e4677b96f3afdabcd1");
+static const auto secret_key = oxen::legacy_seckey::from_hex(
+            "97fe49c2d436e5a39f8aa2e3374d19b532eecfb2b0367eaa6f703279e34ec102");
+
 BOOST_AUTO_TEST_CASE(it_signs_and_verifies) {
     using namespace oxen;
-
     const auto hash = hash_data("This is the payload");
-    const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
-                                  71,  64,  175, 73,  110, 195, 35,  20,
-                                  141, 182, 138, 194, 85,  58,  5,   228,
-                                  103, 123, 150, 243, 175, 218, 188, 209};
-    const private_key_t secret_key{151, 254, 73,  194, 212, 54, 229, 163,
-                                   159, 138, 162, 227, 55,  77, 25,  181,
-                                   50,  238, 207, 178, 176, 54, 126, 170,
-                                   111, 112, 50,  121, 227, 78, 193, 2};
-    oxend_key_pair_t key_pair{secret_key, public_key};
-    const auto sig = generate_signature(hash, key_pair);
+    BOOST_REQUIRE_EQUAL(secret_key.pubkey(), public_key);
+    const auto sig = generate_signature(hash, {public_key, secret_key});
     const bool verified = check_signature(sig, hash, public_key);
     BOOST_CHECK(verified);
 }
@@ -51,27 +47,17 @@ BOOST_AUTO_TEST_CASE(it_signs_and_verifies_encoded_inputs) {
     using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
-    const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
-                                  71,  64,  175, 73,  110, 195, 35,  20,
-                                  141, 182, 138, 194, 85,  58,  5,   228,
-                                  103, 123, 150, 243, 175, 218, 188, 209};
-    const private_key_t secret_key{151, 254, 73,  194, 212, 54, 229, 163,
-                                   159, 138, 162, 227, 55,  77, 25,  181,
-                                   50,  238, 207, 178, 176, 54, 126, 170,
-                                   111, 112, 50,  121, 227, 78, 193, 2};
-    oxend_key_pair_t key_pair{secret_key, public_key};
-    const auto sig = generate_signature(hash, key_pair);
+    const auto sig = generate_signature(hash, {public_key, secret_key});
 
-    // convert signature to base64 and public key to base32z
+    // convert signature to base64
     std::string raw_sig;
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
     const std::string sig_b64 = oxenmq::to_base64(raw_sig);
 
-    const auto public_key_b32z = oxenmq::to_base32z(public_key.begin(), public_key.end());
-
-    bool verified = check_signature(sig_b64, hash, public_key_b32z);
+    bool verified = check_signature(signature::from_base64(sig_b64), hash,
+            public_key);
     BOOST_CHECK(verified);
 }
 
@@ -79,16 +65,7 @@ BOOST_AUTO_TEST_CASE(it_rejects_wrong_signature) {
     using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
-    const public_key_t public_key{227, 91,  124, 245, 5,   120, 69,  40,
-                                  71,  64,  175, 73,  110, 195, 35,  20,
-                                  141, 182, 138, 194, 85,  58,  5,   228,
-                                  103, 123, 150, 243, 175, 218, 188, 209};
-    const private_key_t secret_key{151, 254, 73,  194, 212, 54, 229, 163,
-                                   159, 138, 162, 227, 55,  77, 25,  181,
-                                   50,  238, 207, 178, 176, 54, 126, 170,
-                                   111, 112, 50,  121, 227, 78, 193, 2};
-    oxend_key_pair_t key_pair{secret_key, public_key};
-    auto sig = generate_signature(hash, key_pair);
+    auto sig = generate_signature(hash, {public_key, secret_key});
 
     // amend signature
     sig.c[4]++;
