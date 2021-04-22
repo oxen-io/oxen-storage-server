@@ -2,12 +2,14 @@
 #include "oxen_logger.h"
 #include "request_handler.h"
 #include "service_node.h"
-#include <oxenmq/base64.h>
+#include <boost/endian/conversion.hpp>
 #include <nlohmann/json.hpp>
+#include <oxenmq/base64.h>
+#include <oxenmq/variant.h>
 
-/// This is only included because of `parse_combined_payload`,
-/// in the future it will be moved
-#include "http_connection.h"
+#include "onion_processing.h"
+
+#include "utils.hpp"
 
 #include <charconv>
 #include <variant>
@@ -16,153 +18,79 @@ using nlohmann::json;
 
 namespace oxen {
 
-/// The request is to be forwarded to another SS node
-struct RelayToNodeInfo {
-    /// Inner ciphertext for next node
-    std::string ciphertext;
-    // Key to be forwarded to next node for decryption
-    std::string ephemeral_key;
-    // Next node's ed25519 key
-    std::string next_node;
-};
+auto process_inner_request(std::string plaintext) -> ParsedInfo {
 
-/// The request is to be forwarded to some non-SS server
-/// that supports our protocol (e.g. Session File Server)
-struct RelayToServerInfo {
-    // Result of decryption (intact)
-    std::string payload;
-    // Server's address
-    std::string host;
-    // Request's target
-    std::string target;
-};
-
-/// We are the final destination for this request
-struct FinalDesitnationInfo {
-    std::string body;
-};
-
-enum class ProcessCiphertextError {
-    INVALID_CIPHERTEXT,
-    INVALID_JSON,
-};
-
-using ParsedInfo = std::variant<RelayToNodeInfo, RelayToServerInfo,
-                                FinalDesitnationInfo, ProcessCiphertextError>;
-
-static auto
-process_ciphertext_v1(const ChannelEncryption<std::string>& decryptor,
-                      const std::string& ciphertext,
-                      const std::string& ephem_key) -> ParsedInfo {
-
-    std::string plaintext;
+    ParsedInfo ret;
 
     try {
-        if (!oxenmq::is_base64(ciphertext))
-            throw std::runtime_error{"cipher text is not base64 encoded"};
-        const std::string ciphertext_bin = oxenmq::from_base64(ciphertext);
-
-        plaintext = decryptor.decrypt_gcm(ciphertext_bin, ephem_key);
-    } catch (const std::exception& e) {
-        OXEN_LOG(debug, "Error decrypting an onion request: {}", e.what());
-        return ProcessCiphertextError::INVALID_CIPHERTEXT;
-    }
-
-    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
-
-    try {
-
-        const json inner_json = json::parse(plaintext, nullptr, true);
-
-        if (inner_json.find("body") != inner_json.end()) {
-
-            auto body = inner_json.at("body").get_ref<const std::string&>();
-
-            OXEN_LOG(debug, "Found body: <{}>", body);
-            return FinalDesitnationInfo{body};
-        } else if (inner_json.find("host") != inner_json.end()) {
-
-            const auto& host =
-                inner_json.at("host").get_ref<const std::string&>();
-            const auto& target =
-                inner_json.at("target").get_ref<const std::string&>();
-            return RelayToServerInfo{plaintext, host, target};
-
-        } else {
-            // We fall back to forwarding a request to the next node
-            const auto& ciphertext =
-                inner_json.at("ciphertext").get_ref<const std::string&>();
-            const auto& dest =
-                inner_json.at("destination").get_ref<const std::string&>();
-            const auto& ekey =
-                inner_json.at("ephemeral_key").get_ref<const std::string&>();
-
-            return RelayToNodeInfo{ciphertext, ekey, dest};
-        }
-
-    } catch (std::exception& e) {
-        OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
-                 e.what());
-        return ProcessCiphertextError::INVALID_JSON;
-    }
-}
-
-static auto
-process_ciphertext_v2(const ChannelEncryption<std::string>& decryptor,
-                      const std::string& ciphertext,
-                      const std::string& ephem_key) -> ParsedInfo {
-    std::string plaintext;
-
-    try {
-        plaintext = decryptor.decrypt_gcm(ciphertext, ephem_key);
-    } catch (const std::exception& e) {
-        OXEN_LOG(debug, "Error decrypting an onion request: {}", e.what());
-        return ProcessCiphertextError::INVALID_CIPHERTEXT;
-    }
-
-    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext.size());
-
-    const auto parsed = parse_combined_payload(plaintext);
-
-    try {
-
-        const json inner_json = json::parse(parsed.json, nullptr, true);
+        auto [ciphertext, inner_json] = parse_combined_payload(plaintext);
 
         /// Kind of unfortunate that we use "headers" (which is empty)
         /// to identify we are the final destination...
-        if (inner_json.find("headers") != inner_json.end()) {
+        if (inner_json.count("headers")) {
+            OXEN_LOG(trace, "Found body: <{}>", ciphertext);
+            auto& [body, json, b64] = ret.emplace<FinalDestinationInfo>();
+            body = std::move(ciphertext);
+            if (auto it = inner_json.find("json"); it != inner_json.end())
+                json = it->get<bool>();
+            if (auto it = inner_json.find("base64"); it != inner_json.end())
+                b64 = it->get<bool>();
+        } else if (auto it = inner_json.find("host"); it != inner_json.end()) {
+            auto& [payload, host, port, protocol, target] = ret.emplace<RelayToServerInfo>();
+            payload = std::move(plaintext);
+            host = it->get<std::string>();
+            target = inner_json.at("target").get<std::string>();
 
-            OXEN_LOG(trace, "Found body: <{}>", parsed.ciphertext);
+            if (auto p = inner_json.find("port"); p != inner_json.end())
+                port = p->get<uint16_t>();
+            else
+                port = 443;
 
-            /// In v2 the body is parsed.ciphertext
-            return FinalDesitnationInfo{parsed.ciphertext};
-        } else if (inner_json.find("host") != inner_json.end()) {
-
-            const auto& host =
-                inner_json.at("host").get_ref<const std::string&>();
-            const auto& target =
-                inner_json.at("target").get_ref<const std::string&>();
-            return RelayToServerInfo{plaintext, host, target};
-
+            if (auto p = inner_json.find("protocol"); p != inner_json.end())
+                protocol = p->get<std::string>();
+            else
+                protocol = "https";
         } else {
-            // We fall back to forwarding a request to the next node
-            const auto& dest =
-                inner_json.at("destination").get_ref<const std::string&>();
-            const auto& ekey =
-                inner_json.at("ephemeral_key").get_ref<const std::string&>();
-
-            return RelayToNodeInfo{parsed.ciphertext, ekey, dest};
+            auto& [ctext, eph_key, enc_type, next] = ret.emplace<RelayToNodeInfo>();
+            ctext = std::move(ciphertext);
+            next = ed25519_pubkey::from_hex(
+                inner_json.at("destination").get_ref<const std::string&>());
+            eph_key = x25519_pubkey::from_hex(
+                inner_json.at("ephemeral_key").get_ref<const std::string&>());
+            if (auto it = inner_json.find("enc_type"); it != inner_json.end())
+                enc_type = parse_enc_type(it->get_ref<const std::string&>());
+            else
+                enc_type = EncryptType::aes_gcm;
         }
-
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}",
                  e.what());
-        return ProcessCiphertextError::INVALID_JSON;
+        ret = ProcessCiphertextError::INVALID_JSON;
     }
+
+    return ret;
 }
 
-static auto gateway_timeout() -> oxen::Response {
-    return oxen::Response{Status::GATEWAY_TIMEOUT, "Request time out"};
+static auto
+process_ciphertext_v2(const ChannelEncryption& decryptor,
+                      std::string_view ciphertext,
+                      const x25519_pubkey& ephem_key,
+                      EncryptType enc_type) -> ParsedInfo {
+    std::optional<std::string> plaintext;
+
+    try {
+        plaintext = decryptor.decrypt(enc_type, ciphertext, ephem_key);
+    } catch (const std::exception& e) {
+        OXEN_LOG(error, "Error decrypting {} bytes onion request using {}: {}",
+                ciphertext.size(), enc_type,
+                e.what());
+    }
+    if (!plaintext)
+        return ProcessCiphertextError::INVALID_CIPHERTEXT;
+
+    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext->size());
+
+    return process_inner_request(std::move(*plaintext));
 }
 
 static auto make_status(std::string_view status) -> oxen::Status {
@@ -203,150 +131,179 @@ static auto make_status(std::string_view status) -> oxen::Status {
     }
 }
 
-static void relay_to_node(const ServiceNode& service_node,
-                          const RelayToNodeInfo& info,
-                          std::function<void(oxen::Response)> cb, int req_idx,
-                          bool v2) {
+// FIXME: why are these method definitions *here* instead of request_handler.cpp?
+void RequestHandler::process_onion_req(std::string_view ciphertext,
+                                       OnionRequestMetadata data) {
+    if (!service_node_.snode_ready()) {
+        auto msg =
+            fmt::format("Snode not ready: {}",
+                        service_node_.own_address().pubkey_ed25519);
+        return data.cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
+    }
 
-    const auto& dest = info.next_node;
-    const auto& payload = info.ciphertext;
-    const auto& ekey = info.ephemeral_key;
+    OXEN_LOG(debug, "process_onion_req");
 
-    auto dest_node = service_node.find_node_by_ed25519_pk(dest);
+    var::visit([&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
+            process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
+}
 
+void RequestHandler::process_onion_req(FinalDestinationInfo&& info,
+        OnionRequestMetadata&& data) {
+    OXEN_LOG(debug, "We are the final destination in the onion request!");
+
+    process_onion_exit(
+            info.body,
+            [this, data = std::move(data), json = info.json, b64 = info.base64]
+            (oxen::Response res) {
+                data.cb(wrap_proxy_response(std::move(res), data.ephem_key, data.enc_type, json, b64));
+            });
+}
+
+void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
+        OnionRequestMetadata&& data) {
+    auto& [payload, ekey, etype, dest] = info;
+
+    auto dest_node = service_node_.find_node(dest);
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
         OXEN_LOG(warn, "{}", msg);
-        auto res = oxen::Response{Status::BAD_GATEWAY, std::move(msg)};
-        cb(std::move(res));
-        return;
+        return data.cb({Status::BAD_GATEWAY, std::move(msg)});
     }
 
-    nlohmann::json req_body;
-
-    req_body["ciphertext"] = payload;
-    req_body["ephemeral_key"] = ekey;
-
-    auto on_response = [cb, &service_node](bool success,
-                                           std::vector<std::string> data) {
+    auto on_response = [cb=std::move(data.cb)](bool success,
+                                          std::vector<std::string> data) {
         // Processing the result we got from upstream
 
         if (!success) {
             OXEN_LOG(debug, "[Onion request] Request time out");
-            cb(gateway_timeout());
-            return;
+            return cb({Status::GATEWAY_TIMEOUT, "Request time out"});
         }
 
         // We only expect a two-part message
         if (data.size() != 2) {
             OXEN_LOG(debug, "[Onion request] Incorrect number of messages: {}",
                      data.size());
-            cb(oxen::Response{Status::INTERNAL_SERVER_ERROR,
-                              "Incorrect number of messages from gateway"});
-            return;
+            return cb({Status::INTERNAL_SERVER_ERROR,
+                    "Incorrect number of messages from gateway"});
         }
 
         /// We use http status codes (for now)
-        if (data[0] != "200") {
+        if (data[0] != "200")
             OXEN_LOG(debug, "Onion request relay failed with: {}", data[1]);
-        }
-        cb(oxen::Response{make_status(data[0]), std::move(data[1])});
+
+        cb({make_status(data[0]), std::move(data[1])});
     };
 
-    OXEN_LOG(debug, "send_onion_to_sn, sn: {} reqidx: {}", *dest_node, req_idx);
+    OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
 
-    if (v2) {
-        service_node.send_onion_to_sn_v2(*dest_node, payload, ekey,
-                                         on_response);
-    } else {
-        service_node.send_onion_to_sn_v1(*dest_node, payload, ekey,
-                                         on_response);
+    data.ephem_key = ekey;
+    data.enc_type = etype;
+    service_node_.send_onion_to_sn(
+            *dest_node, std::move(payload), std::move(data), std::move(on_response));
+}
+
+bool is_server_url_allowed(std::string_view url) {
+    return (util::starts_with(url, "/loki/") ||
+            util::starts_with(url, "/oxen/")) &&
+           util::ends_with(url, "/lsrpc") &&
+           (url.find('?') == std::string::npos);
+}
+
+void RequestHandler::process_onion_req(RelayToServerInfo&& info,
+        OnionRequestMetadata&& data) {
+    OXEN_LOG(debug, "We are to forward the request to url: {}{}",
+            info.host, info.target);
+
+    // Forward the request to url but only if it ends in `/lsrpc`
+    if (is_server_url_allowed(info.target))
+        return process_onion_to_url(info.protocol, std::move(info.host), info.port,
+                std::move(info.target), std::move(info.payload), std::move(data.cb));
+
+    return data.cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
+            data.ephem_key, data.enc_type));
+}
+
+void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
+        OnionRequestMetadata&& data) {
+
+    switch (error) {
+        case ProcessCiphertextError::INVALID_CIPHERTEXT:
+            // Should this error be propagated back to the client? (No, if we
+            // couldn't decrypt, we probably won't be able to encrypt either.)
+            return data.cb({Status::BAD_REQUEST, "Invalid ciphertext"});
+        case ProcessCiphertextError::INVALID_JSON:
+            return data.cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
+                    data.ephem_key, data.enc_type));
     }
 }
 
-void RequestHandler::process_onion_req(const std::string& ciphertext,
-                                       const std::string& ephem_key,
-                                       std::function<void(oxen::Response)> cb,
-                                       bool v2) {
-    if (!service_node_.snode_ready()) {
-        auto msg =
-            fmt::format("Snode not ready: {}",
-                        service_node_.own_address().pubkey_ed25519_hex());
-        cb(oxen::Response{Status::SERVICE_UNAVAILABLE, std::move(msg)});
-        return;
+/// We are expecting a payload of the following shape:
+/// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
+auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson {
+
+    OXEN_LOG(trace, "Parsing payload of length: {}", payload.size());
+
+    /// First 4 bytes as number
+    if (payload.size() < 4) {
+        OXEN_LOG(warn, "Unexpected payload size; expected ciphertext size");
+        throw std::runtime_error{"Unexpected payload size; expected ciphertext size"};
     }
 
-    OXEN_LOG(debug, "process_onion_req, v2: {}", v2);
+    uint32_t n;
+    std::memcpy(&n, payload.data(), sizeof(uint32_t));
+    boost::endian::little_to_native_inplace(n);
+    OXEN_LOG(trace, "Ciphertext length: {}", n);
 
-    static int counter = 0;
+    payload.remove_prefix(sizeof(uint32_t));
 
-    ParsedInfo res;
-
-    if (v2) {
-        res =
-            process_ciphertext_v2(this->channel_cipher_, ciphertext, ephem_key);
-    } else {
-        res =
-            process_ciphertext_v1(this->channel_cipher_, ciphertext, ephem_key);
+    if (payload.size() < n) {
+        auto msg = fmt::format("Unexpected payload size {}, expected {}", payload.size(), n);
+        OXEN_LOG(warn, "{}", msg);
+        throw std::runtime_error{msg};
     }
 
-    if (const auto info = std::get_if<FinalDesitnationInfo>(&res)) {
+    CiphertextPlusJson result;
+    auto& [ciphertext, json] = result;
 
-        OXEN_LOG(debug, "We are the final destination in the onion request!");
+    ciphertext = payload.substr(0, n);
+    OXEN_LOG(debug, "ciphertext length: {}", ciphertext.size());
+    payload.remove_prefix(ciphertext.size());
 
-        this->process_onion_exit(
-            ephem_key, info->body,
-            [this, ephem_key, cb = std::move(cb)](oxen::Response res) {
-                auto wrapped_res = this->wrap_proxy_response(
-                    res, ephem_key, true /* use aes gcm */);
-                cb(std::move(wrapped_res));
-            });
+    json = json::parse(payload);
 
-        return;
+    return result;
+}
 
-    } else if (const auto info = std::get_if<RelayToNodeInfo>(&res)) {
+std::ostream& operator<<(std::ostream& os, const FinalDestinationInfo& d) {
+    return os << fmt::format("[\"body\": {}]", d.body);
+}
 
-        relay_to_node(this->service_node_, *info, std::move(cb), counter++, v2);
+bool operator==(const FinalDestinationInfo& lhs,
+                const FinalDestinationInfo& rhs) {
+    return lhs.body == rhs.body;
+}
 
-    } else if (const auto info = std::get_if<RelayToServerInfo>(&res)) {
-        OXEN_LOG(debug, "We are to forward the request to url: {}{}",
-                 info->host, info->target);
+std::ostream& operator<<(std::ostream& os, const RelayToServerInfo& d) {
+    return os << fmt::format("[\"protocol\": {}, \"host\": {}, \"port\": {}, "
+                             "\"target\": {}, \"payload\": {}]",
+                             d.protocol, d.host, d.port, d.target, d.payload);
+}
 
-        const auto& target = info->target;
+bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs) {
+    return (lhs.protocol == rhs.protocol) && (lhs.host == rhs.host) &&
+           (lhs.port == rhs.port) && (lhs.target == rhs.target) &&
+           (lhs.payload == rhs.payload);
+}
 
-        // Forward the request to url but only if it ends in `/lsrpc`
-        if ((target.rfind("/lsrpc") == target.size() - 6) &&
-            (target.find('?') == std::string::npos)) {
-            this->process_onion_to_url(info->host, target, info->payload,
-                                       std::move(cb));
+std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
+    return os << fmt::format(
+               R"("["ciphertext": {}, "ephemeral_key": {}, "enc_type": {}, "next_node": {}])",
+               d.ciphertext, d.ephemeral_key, d.enc_type, d.next_node);
+}
 
-        } else {
-
-            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid url"};
-            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-            cb(std::move(wrapped_res));
-        }
-
-    } else if (const auto error = std::get_if<ProcessCiphertextError>(&res)) {
-        switch (*error) {
-        case ProcessCiphertextError::INVALID_CIPHERTEXT: {
-            // Should this error be propagated back to the client? (No, if we
-            // couldn't decrypt, we probably won't be able to encrypt either.)
-            cb(oxen::Response{Status::BAD_REQUEST, "Invalid ciphertext"});
-            break;
-        }
-        case ProcessCiphertextError::INVALID_JSON: {
-            auto res = oxen::Response{Status::BAD_REQUEST, "Invalid json"};
-
-            auto wrapped_res = this->wrap_proxy_response(res, ephem_key, true);
-
-            cb(std::move(wrapped_res));
-            break;
-        }
-        }
-    } else {
-        OXEN_LOG(error, "UNKNOWN VARIANT");
-    }
+bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
+    return std::tie(a.ciphertext, a.ephemeral_key, a.enc_type, a.next_node)
+        == std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
 }
 
 } // namespace oxen

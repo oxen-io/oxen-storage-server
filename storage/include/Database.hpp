@@ -3,9 +3,9 @@
 #include "Item.hpp"
 #include "oxen_common.h"
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
-#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -13,13 +13,15 @@
 
 struct sqlite3;
 struct sqlite3_stmt;
-class Timer;
 
 namespace oxen {
 
+constexpr auto DB_CLEANUP_PERIOD = std::chrono::seconds(10);
+
 class Database {
   public:
-    Database(boost::asio::io_context& ioc, const std::string& db_path);
+    Database(boost::asio::io_context& ioc, const std::string& db_path,
+             std::chrono::milliseconds cleanup_period = DB_CLEANUP_PERIOD);
     ~Database();
 
     enum class DuplicateHandling { IGNORE, FAIL };
@@ -61,6 +63,7 @@ class Database {
     sqlite3_stmt* get_by_hash_stmt;
     sqlite3_stmt* delete_expired_stmt;
 
+    const std::chrono::milliseconds cleanup_period;
     boost::asio::steady_timer cleanup_timer_;
 };
 

@@ -60,7 +60,6 @@ format:
 	clang-format -style=file -i --verbose \
 	httpserver/*.cpp httpserver/*.h \
 	crypto/**/*.cpp crypto/**/*.hpp crypto/**/*.h \
-	pow/**/*.cpp pow/**/*.hpp \
 	storage/**/*.cpp storage/**/*.hpp \
 	utils/**/*.cpp utils/**/*.hpp \
 	unit_test/*.cpp \

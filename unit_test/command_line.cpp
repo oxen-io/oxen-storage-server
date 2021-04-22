@@ -85,14 +85,24 @@ BOOST_AUTO_TEST_CASE(it_throw_with_invalid_port) {
                       std::exception);
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_oxend_rpc_port) {
+BOOST_AUTO_TEST_CASE(it_parses_oxend_rpc) {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123", "--oxend-rpc-port",
-                          "12345"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
+    std::array argv = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123", "--oxend-rpc",
+        "ipc:///path/to/oxend.sock"};
+    BOOST_CHECK_NO_THROW(parser.parse_args(argv.size(),
+                                           const_cast<char**>(argv.data())));
     const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.oxend_rpc_port, 12345);
+    BOOST_CHECK_EQUAL(options.oxend_omq_rpc, "ipc:///path/to/oxend.sock");
+}
+
+BOOST_AUTO_TEST_CASE(it_parses_oxend_rpc_tcp) {
+    oxen::command_line_parser parser;
+    std::array argv = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123", "--oxend-rpc",
+        "tcp://127.0.0.2:3456"};
+    BOOST_CHECK_NO_THROW(parser.parse_args(argv.size(),
+                                           const_cast<char**>(argv.data())));
+    const auto options = parser.get_options();
+    BOOST_CHECK_EQUAL(options.oxend_omq_rpc, "tcp://127.0.0.2:3456");
 }
 
 BOOST_AUTO_TEST_CASE(it_parses_data_dir) {

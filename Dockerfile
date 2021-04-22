@@ -1,6 +1,6 @@
 FROM ubuntu:bionic
 
-RUN apt update && apt install -y build-essential curl git cmake libssl-dev libsodium-dev wget pkg-config autoconf libtool g++-8
+RUN apt update && apt install -y build-essential curl git cmake libssl-dev libsodium-dev wget pkg-config autoconf libtool g++-8 libsqlite3-dev
 WORKDIR /usr/src/app
 
 ## Boost
@@ -72,4 +72,4 @@ RUN cd loki-storage-server \
     && cmake .. -DBOOST_ROOT=$BOOST_ROOT -Dsodium_USE_STATIC_LIBS=ON \
     && cmake --build . -- -j8
 
-RUN loki-storage-server/build/httpserver/loki-storage --version 
+RUN loki-storage-server/build/httpserver/oxen-storage --version 
