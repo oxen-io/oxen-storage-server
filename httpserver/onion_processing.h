@@ -4,8 +4,14 @@
 #include <string>
 #include <variant>
 #include "oxend_key.h"
+#include "channel_encryption.hpp"
 
 namespace oxen {
+
+// Maximum onion request hops we'll accept before we return an error; this is deliberately larger
+// than we actually use so that the client can choose to obscure hop positioning by starting at
+// somewhere higher than 0.
+inline constexpr int MAX_ONION_HOPS = 15;
 
 using CiphertextPlusJson = std::pair<std::string, nlohmann::json>;
 
@@ -14,7 +20,9 @@ struct RelayToNodeInfo {
     /// Inner ciphertext for next node
     std::string ciphertext;
     // Key to be forwarded to next node for decryption
-    std::string ephemeral_key;
+    x25519_pubkey ephemeral_key;
+    // The encryption type with which this request was encoded
+    EncryptType enc_type;
     // Next node's ed25519 key
     ed25519_pubkey next_node;
 };

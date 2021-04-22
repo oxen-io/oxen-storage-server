@@ -28,12 +28,6 @@ calculate_shared_secret(const x25519_seckey& seckey,
     return secret;
 }
 
-EncryptType parse_enc_type(std::string_view enc_type) {
-    if (enc_type == "aes-gcm" || enc_type == "gcm") return EncryptType::aes_gcm;
-    if (enc_type == "aes-cbc" || enc_type == "cbc") return EncryptType::aes_cbc;
-    throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
-}
-
 std::basic_string_view<unsigned char> to_uchar(std::string_view sv) {
     return {reinterpret_cast<const unsigned char*>(sv.data()), sv.size()};
 }
@@ -68,8 +62,16 @@ using aes256cbc_ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, aes256_evp_deleter>;
 
 }
 
+EncryptType parse_enc_type(std::string_view enc_type) {
+    if (enc_type == "xchacha20" || enc_type == "xchacha20-poly1305") return EncryptType::xchacha20;
+    if (enc_type == "aes-gcm" || enc_type == "gcm") return EncryptType::aes_gcm;
+    if (enc_type == "aes-cbc" || enc_type == "cbc") return EncryptType::aes_cbc;
+    throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
+}
+
 std::string ChannelEncryption::encrypt(EncryptType type, std::string_view plaintext, const x25519_pubkey& pubkey) const {
     switch (type) {
+        case EncryptType::xchacha20: return encrypt_xchacha20(plaintext, pubkey);
         case EncryptType::aes_gcm: return encrypt_gcm(plaintext, pubkey);
         case EncryptType::aes_cbc: return encrypt_cbc(plaintext, pubkey);
     }
@@ -78,6 +80,7 @@ std::string ChannelEncryption::encrypt(EncryptType type, std::string_view plaint
 
 std::string ChannelEncryption::decrypt(EncryptType type, std::string_view ciphertext, const x25519_pubkey& pubkey) const {
     switch (type) {
+        case EncryptType::xchacha20: return decrypt_xchacha20(ciphertext, pubkey);
         case EncryptType::aes_gcm: return decrypt_gcm(ciphertext, pubkey);
         case EncryptType::aes_cbc: return decrypt_cbc(ciphertext, pubkey);
     }
@@ -236,6 +239,81 @@ std::string ChannelEncryption::decrypt_cbc(
     output.resize(reinterpret_cast<char*>(o) - output.data());
 
     return output;
+}
+
+static std::array<unsigned char, crypto_aead_xchacha20poly1305_ietf_KEYBYTES>
+xchacha20_shared_key(
+        const x25519_pubkey& local_pub,
+        const x25519_seckey& local_sec,
+        const x25519_pubkey& remote_pub,
+        bool local_first) {
+    std::array<unsigned char, crypto_aead_xchacha20poly1305_ietf_KEYBYTES> key;
+    static_assert(crypto_aead_xchacha20poly1305_ietf_KEYBYTES >= crypto_scalarmult_BYTES);
+    if (0 != crypto_scalarmult(key.data(), local_sec.data(), remote_pub.data())) // Use key as tmp storage for aB
+        throw std::runtime_error{"Failed to compute shared key for xchacha20"};
+    crypto_generichash_state h;
+    crypto_generichash_init(&h, nullptr, 0, key.size());
+    crypto_generichash_update(&h, key.data(), crypto_scalarmult_BYTES);
+    crypto_generichash_update(&h, (local_first ? local_pub : remote_pub).data(), local_pub.size());
+    crypto_generichash_update(&h, (local_first ? remote_pub : local_pub).data(), local_pub.size());
+    crypto_generichash_final(&h, key.data(), key.size());
+    return key;
+}
+
+std::string ChannelEncryption::encrypt_xchacha20(std::string_view plaintext_, const x25519_pubkey& pubKey) const {
+    auto plaintext = to_uchar(plaintext_);
+
+    std::string ciphertext;
+    ciphertext.resize(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES + plaintext.size()
+            + crypto_aead_xchacha20poly1305_ietf_ABYTES);
+
+    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
+
+    // Generate random nonce, and stash it at the beginning of ciphertext:
+    randombytes_buf(ciphertext.data(), crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+
+    auto* c = reinterpret_cast<unsigned char*>(ciphertext.data())
+        + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
+    unsigned long long clen;
+
+    crypto_aead_xchacha20poly1305_ietf_encrypt(
+            c, &clen,
+            plaintext.data(), plaintext.size(),
+            nullptr, 0, // additional data
+            nullptr, // nsec (always unused)
+            reinterpret_cast<const unsigned char*>(ciphertext.data()),
+            key.data());
+    assert(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES + clen <= ciphertext.size());
+    ciphertext.resize(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES + clen);
+    return ciphertext;
+}
+
+std::string ChannelEncryption::decrypt_xchacha20(std::string_view ciphertext_, const x25519_pubkey& pubKey) const {
+    auto ciphertext = to_uchar(ciphertext_);
+
+    // Extract nonce from the beginning of the ciphertext:
+    auto nonce = ciphertext.substr(0, crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+    ciphertext.remove_prefix(nonce.size());
+    if (ciphertext.size() < crypto_aead_xchacha20poly1305_ietf_ABYTES)
+        throw std::runtime_error{"Invalid ciphertext: too short"};
+
+    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
+
+    std::string plaintext;
+    plaintext.resize(ciphertext.size() - crypto_aead_xchacha20poly1305_ietf_ABYTES);
+    auto* m = reinterpret_cast<unsigned char*>(plaintext.data());
+    unsigned long long mlen;
+    if (0 != crypto_aead_xchacha20poly1305_ietf_decrypt(
+            m, &mlen,
+            nullptr, // nsec (always unused)
+            ciphertext.data(), ciphertext.size(),
+            nullptr, 0, // additional data
+            nonce.data(),
+            key.data()))
+        throw std::runtime_error{"Could not decrypt (XChaCha20-Poly1305)"};
+    assert(mlen <= plaintext.size());
+    plaintext.resize(mlen);
+    return plaintext;
 }
 
 }

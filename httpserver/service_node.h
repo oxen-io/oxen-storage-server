@@ -31,6 +31,8 @@ inline constexpr int STORAGE_SERVER_HARDFORK = 17;
 inline constexpr int HARDFORK_SN_PING = 18;
 // HF at which we can stop using hex conversion for pubkey sorting for testee/testers.
 inline constexpr int HARDFORK_NO_HEX_SORT_HACK = 18;
+// HF at which we start using the sn.onion_request endpoint instead of sn.onion_req_v2
+inline constexpr int HARDFORK_OMQ_ONION_REQ_BENCODE = 18;
 
 namespace storage {
 struct Item;
@@ -39,6 +41,8 @@ struct Item;
 struct sn_response_t;
 
 class OxenmqServer;
+
+struct OnionRequestMetadata;
 
 namespace ss_client {
 class Request;
@@ -196,16 +200,10 @@ class ServiceNode {
     void record_proxy_request();
     void record_onion_request();
 
-    // This is new, so it does not need to support http, thus new (if temp)
-    // method
-    void send_onion_to_sn_v1(const sn_record_t& sn, const std::string& payload,
-                             const std::string& eph_key,
-                             ss_client::Callback cb) const;
-
-    /// Same as v1, but using the new protocol (ciphertext as binary)
-    void send_onion_to_sn_v2(const sn_record_t& sn, const std::string& payload,
-                             const std::string& eph_key,
-                             ss_client::Callback cb) const;
+    /// Sends an onion request to the next SS
+    void send_onion_to_sn(const sn_record_t& sn, std::string_view payload,
+                          OnionRequestMetadata&& data,
+                          ss_client::Callback cb) const;
 
     // TODO: move this eventually out of SN
     // Send by either http or omq

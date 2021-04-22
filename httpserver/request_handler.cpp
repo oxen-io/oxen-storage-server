@@ -349,7 +349,7 @@ Response RequestHandler::process_retrieve(const json& params) {
 }
 
 void RequestHandler::process_client_req(
-    const std::string& req_json, std::function<void(oxen::Response)> cb) {
+    std::string_view req_json, std::function<void(oxen::Response)> cb) {
 
     OXEN_LOG(trace, "process_client_req str <{}>", req_json);
 
@@ -469,7 +469,7 @@ void RequestHandler::process_lns_request(
 }
 
 void RequestHandler::process_onion_exit(
-    const x25519_pubkey& eph_key, const std::string& body,
+    std::string_view body,
     std::function<void(oxen::Response)> cb) {
 
     OXEN_LOG(debug, "Processing onion exit!");

@@ -15,6 +15,7 @@ namespace oxen {
 struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
+struct OnionRequestMetadata;
 
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
         std::string message);
@@ -38,8 +39,17 @@ class OxenmqServer {
     // Handle Session client requests arrived via proxy
     void handle_sn_proxy_exit(oxenmq::Message& message);
 
-    // v2 indicates whether to use the new (v2) protocol
-    void handle_onion_request(oxenmq::Message& message, bool v2);
+    // Called for the sn.onion_req_v2 endpoint
+    void handle_onion_req_v2(oxenmq::Message& message);
+
+    // Called starting at HF18 for SS-to-SS onion requests
+    void handle_onion_request(oxenmq::Message& message);
+
+    // Handles a decoded onion request
+    void handle_onion_request(
+            std::string_view payload,
+            OnionRequestMetadata&& data,
+            oxenmq::Message::DeferredSend send);
 
     // sn.ping - sent by SNs to ping each other.
     void handle_ping(oxenmq::Message& message);
@@ -84,6 +94,12 @@ class OxenmqServer {
         assert(oxend_conn_);
         omq_.send(oxend_conn(), std::forward<Args>(args)...);
     }
+
+    // Encodes the onion request data that we send for internal SN-to-SN onion requests starting at
+    // HF18.
+    static std::string encode_onion_data(std::string_view payload, const OnionRequestMetadata& data);
+    // Decodes onion request data; throws if invalid formatted or missing required fields.
+    static std::pair<std::string_view, OnionRequestMetadata> decode_onion_data(std::string_view data);
 };
 
 } // namespace oxen

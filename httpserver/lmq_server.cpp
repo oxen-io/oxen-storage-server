@@ -4,6 +4,7 @@
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
+#include "channel_encryption.hpp"
 #include "oxenmq/connections.h"
 #include "oxenmq/oxenmq.h"
 #include "request_handler.h"
@@ -105,11 +106,12 @@ void OxenmqServer::handle_ping(oxenmq::Message& message) {
     message.send_reply("pong");
 }
 
-void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
+void OxenmqServer::handle_onion_request(
+        std::string_view payload,
+        OnionRequestMetadata&& data,
+        oxenmq::Message::DeferredSend send) {
 
-    OXEN_LOG(debug, "Got an onion request over OXENMQ");
-
-    auto on_response = [send=message.send_later()](oxen::Response res) {
+    data.cb = [send](oxen::Response res) {
         if (OXEN_LOG_ENABLED(trace))
             OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
@@ -118,21 +120,54 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message, bool v2) {
                 std::move(res).message());
     };
 
+    if (data.hop_no > MAX_ONION_HOPS)
+        return data.cb({Status::BAD_REQUEST, "onion request max path length exceeded"});
+
+    request_handler_->process_onion_req(payload, std::move(data));
+}
+
+void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
+    std::pair<std::string_view, OnionRequestMetadata> data;
+    try {
+        if (message.data.size() != 1)
+            throw std::runtime_error{"expected 1 part, got " + std::to_string(message.data.size())};
+
+        data = decode_onion_data(message.data[0]);
+    } catch (const std::exception& e) {
+        auto msg = "Invalid internal onion request: "s + e.what();
+        OXEN_LOG(error, "{}", msg);
+        message.send_reply(
+                std::to_string(static_cast<int>(Status::BAD_REQUEST)), msg);
+        return;
+    }
+
+    handle_onion_request(data.first, std::move(data.second), message.send_later());
+}
+
+void OxenmqServer::handle_onion_req_v2(oxenmq::Message& message) {
+
+    OXEN_LOG(debug, "Got a v2 onion request over OxenMQ");
+
+    const int bad_code = static_cast<int>(Status::BAD_REQUEST);
     if (message.data.size() != 2) {
         OXEN_LOG(error, "Expected 2 message parts, got {}",
                  message.data.size());
-        return on_response({Status::BAD_REQUEST, "Incorrect number of request parts"});
+        message.send_reply(std::to_string(bad_code),
+                "Incorrect number of onion request message parts");
+        return;
     }
 
     auto eph_key = extract_x25519_from_hex(message.data[0]);
     if (!eph_key) {
         OXEN_LOG(error, "no ephemeral key in omq onion request");
-        return on_response({Status::BAD_REQUEST, "Missing ephemeral key"});
+        message.send_reply(std::to_string(bad_code), "Missing ephemeral key");
+        return;
     }
-    const auto& ciphertext = message.data[1];
 
-    request_handler_->process_onion_req(std::string(ciphertext),
-                                        *eph_key, on_response, v2);
+    handle_onion_request(
+            message.data[1], // ciphertext
+            {*eph_key, nullptr, 1 /* hopno */, EncryptType::aes_gcm},
+            message.send_later());
 }
 
 void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
@@ -210,12 +245,17 @@ OxenmqServer::OxenmqServer(
         .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
         .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
+        // TODO: Backwards compat endpoint, can be removed after HF18:
         .add_request_command("onion_req", [this](auto& m) {
-                // TODO: Backwards compat crap to be removed after HF18:
                 if (m.data.size() == 1 && m.data[0] == "ping"sv)
                     return handle_ping(m);
-                handle_onion_request(m, false); })
-        .add_request_command("onion_req_v2", [this](auto& m) { this->handle_onion_request(m, true); })
+                m.send_reply(
+                    std::to_string(static_cast<int>(Status::BAD_REQUEST)),
+                    "onion requests v1 not supported");
+        })
+        // TODO: Backwards compat, only used up until HF18
+        .add_request_command("onion_req_v2", [this](auto& m) { handle_onion_req_v2(m); })
+        .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
         ;
 
     omq_.add_category("service", oxenmq::AuthLevel::admin)
@@ -263,6 +303,43 @@ void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxe
     request_handler_ = rh;
     omq_.start();
     connect_oxend(oxend_rpc);
+}
+
+std::string OxenmqServer::encode_onion_data(std::string_view payload, const OnionRequestMetadata& data) {
+    return oxenmq::bt_serialize<oxenmq::bt_dict>({
+            {"data", payload},
+            {"enc_type", to_string(data.enc_type)},
+            {"ephemeral_key", data.ephem_key.view()},
+            {"hop_no", data.hop_no},
+    });
+}
+
+std::pair<std::string_view, OnionRequestMetadata> OxenmqServer::decode_onion_data(std::string_view data) {
+    // NB: stream parsing here is alphabetical (that's also why these keys *aren't* constexprs: that
+    // would potentially be error-prone if someone changed them without noticing the sort order
+    // requirements).
+    std::pair<std::string_view, OnionRequestMetadata> result;
+    auto& [payload, meta] = result;
+    oxenmq::bt_dict_consumer d{data};
+    if (!d.skip_until("data"))
+        throw std::runtime_error{"required data payload not found"};
+    payload = d.consume_string_view();
+
+    if (d.skip_until("enc_type"))
+        meta.enc_type = parse_enc_type(d.consume_string_view());
+    else
+        meta.enc_type = EncryptType::aes_gcm;
+
+    if (!d.skip_until("ephemeral_key"))
+        throw std::runtime_error{"ephemeral key not found"};
+    meta.ephem_key = x25519_pubkey::from_bytes(d.consume_string_view());
+
+    if (d.skip_until("hop_no"))
+        meta.hop_no = d.consume_integer<int>();
+    if (meta.hop_no < 1)
+        meta.hop_no = 1;
+
+    return result;
 }
 
 } // namespace oxen

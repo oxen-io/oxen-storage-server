@@ -17,8 +17,8 @@ const auto bob_pubkey = oxen::x25519_pubkey::from_hex("f7b99da2e25e3c399902641c7
 const auto bob_seckey = oxen::x25519_seckey::from_hex("f512f68e81a932aa2ff6d8723baa260a43a6f789d61c91b71f73e4f284e3600a");
 
 BOOST_AUTO_TEST_CASE(cbc) {
-    ChannelEncryption alice_box{alice_seckey};
-    ChannelEncryption bob_box{bob_seckey};
+    ChannelEncryption alice_box{alice_seckey, alice_pubkey};
+    ChannelEncryption bob_box{bob_seckey, bob_pubkey};
 
     auto ctext_bob = alice_box.encrypt_cbc(plaintext_data, bob_pubkey);
     BOOST_CHECK_EQUAL(ctext_bob.size(), plaintext_data.size() + 29);
@@ -34,8 +34,8 @@ BOOST_AUTO_TEST_CASE(cbc) {
 }
 
 BOOST_AUTO_TEST_CASE(gcm) {
-    ChannelEncryption alice_box{alice_seckey};
-    ChannelEncryption bob_box{bob_seckey};
+    ChannelEncryption alice_box{alice_seckey, alice_pubkey};
+    ChannelEncryption bob_box{bob_seckey, bob_pubkey};
 
     auto ctext_bob = alice_box.encrypt_gcm(plaintext_data, bob_pubkey);
     BOOST_CHECK_EQUAL(ctext_bob.size(), plaintext_data.size() + 28);
@@ -48,6 +48,54 @@ BOOST_AUTO_TEST_CASE(gcm) {
     auto ptext_alice = alice_box.decrypt_gcm(ctext_alice, bob_pubkey);
 
     BOOST_CHECK_EQUAL(ptext_alice, plaintext_data);
+}
+
+BOOST_AUTO_TEST_CASE(xchacha20) {
+    ChannelEncryption alice_server{alice_seckey, alice_pubkey};
+    ChannelEncryption alice_client{alice_seckey, alice_pubkey, false};
+    ChannelEncryption bob_server{bob_seckey, bob_pubkey};
+    ChannelEncryption bob_client{bob_seckey, bob_pubkey, false};
+
+    auto ctext_bob = alice_client.encrypt_xchacha20(plaintext_data, bob_pubkey);
+    BOOST_CHECK_EQUAL(ctext_bob.size(), plaintext_data.size() + 40);
+    auto ptext_bob = bob_server.decrypt_xchacha20(ctext_bob, alice_pubkey);
+
+    BOOST_CHECK_EQUAL(ptext_bob, plaintext_data);
+
+    BOOST_CHECK_THROW(
+            bob_client.decrypt_xchacha20(ctext_bob, alice_pubkey),
+            std::runtime_error);
+
+    auto ctext_alice = bob_client.encrypt_xchacha20(plaintext_data, alice_pubkey);
+    BOOST_CHECK_EQUAL(ctext_alice.size(), plaintext_data.size() + 40);
+    auto ptext_alice = alice_server.decrypt_xchacha20(ctext_alice, bob_pubkey);
+
+    BOOST_CHECK_EQUAL(ptext_alice, plaintext_data);
+
+    BOOST_CHECK_THROW(
+            alice_client.decrypt_xchacha20(ctext_alice, bob_pubkey),
+            std::runtime_error);
+
+    ctext_bob = alice_server.encrypt_xchacha20(plaintext_data, bob_pubkey);
+    BOOST_CHECK_EQUAL(ctext_bob.size(), plaintext_data.size() + 40);
+    ptext_bob = bob_client.decrypt_xchacha20(ctext_bob, alice_pubkey);
+
+    BOOST_CHECK_EQUAL(ptext_bob, plaintext_data);
+
+    BOOST_CHECK_THROW(
+            bob_server.decrypt_xchacha20(ctext_bob, alice_pubkey),
+            std::runtime_error);
+
+    ctext_alice = bob_server.encrypt_xchacha20(plaintext_data, alice_pubkey);
+    BOOST_CHECK_EQUAL(ctext_alice.size(), plaintext_data.size() + 40);
+    ptext_alice = alice_client.decrypt_xchacha20(ctext_alice, bob_pubkey);
+
+    BOOST_CHECK_EQUAL(ptext_alice, plaintext_data);
+
+    BOOST_CHECK_THROW(
+            alice_server.decrypt_xchacha20(ctext_alice, bob_pubkey),
+            std::runtime_error);
+
 }
 
 BOOST_AUTO_TEST_SUITE_END()
