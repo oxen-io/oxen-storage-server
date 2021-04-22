@@ -1,6 +1,5 @@
 #include "http_connection.h"
 #include "Database.hpp"
-#include "Item.hpp"
 
 #include "net_stats.h"
 #include "rate_limiter.h"
@@ -13,103 +12,126 @@
 // needed for proxy requests
 #include "https_client.h"
 
+#include "ip_utils.h"
+#include "onion_processing.h"
 #include "request_handler.h"
 
-#include <boost/endian/conversion.hpp>
-#include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <openssl/sha.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/hex.h>
 #include <sodium.h>
 #include <sstream>
 #include <string>
 #include <thread>
 
+/// +===========================================
+
+namespace oxen {
+
+using error_code = boost::system::error_code;
 using json = nlohmann::json;
-using namespace std::chrono_literals;
 
 using tcp = boost::asio::ip::tcp;    // from <boost/asio.hpp>
 namespace http = boost::beast::http; // from <boost/beast/http.hpp>
 
-/// +===========================================
 
-static constexpr auto OXEN_FILE_SERVER_TARGET_HEADER =
-    "X-Loki-File-Server-Target";
-static constexpr auto OXEN_FILE_SERVER_VERB_HEADER = "X-Loki-File-Server-Verb";
-static constexpr auto OXEN_FILE_SERVER_HEADERS_HEADER =
-    "X-Loki-File-Server-Headers";
+std::ostream& operator<<(std::ostream& os, const sn_response_t& res) {
+    switch (res.error_code) {
+    case SNodeError::NO_ERROR:
+        os << "NO_ERROR";
+        break;
+    case SNodeError::ERROR_OTHER:
+        os << "ERROR_OTHER";
+        break;
+    case SNodeError::NO_REACH:
+        os << "NO_REACH";
+        break;
+    case SNodeError::HTTP_ERROR:
+        os << "HTTP_ERROR";
+        break;
+    }
 
-using oxen::storage::Item;
-
-using error_code = boost::system::error_code;
-
-namespace oxen {
+    return os << "(" << (res.body ? *res.body : "n/a") << ")";
+}
 
 constexpr auto TEST_RETRY_PERIOD = std::chrono::milliseconds(50);
 
-std::shared_ptr<request_t> build_post_request(const char* target,
-                                              std::string&& data) {
+std::shared_ptr<request_t> build_post_request(
+        const ed25519_pubkey& host, const char* target, std::string data) {
     auto req = std::make_shared<request_t>();
     req->body() = std::move(data);
     req->method(http::verb::post);
-    req->set(http::field::host, "service node");
+    req->set(http::field::host,
+            (host ? oxenmq::to_base32z(host.view()) : "service-node") + ".snode");
     req->target(target);
     req->prepare_payload();
     return req;
 }
 
 void make_http_request(boost::asio::io_context& ioc, const std::string& address,
-                       uint16_t port, const std::shared_ptr<request_t>& req,
+                       uint16_t port, std::shared_ptr<request_t> req,
                        http_callback_t&& cb) {
 
-    error_code ec;
-    tcp::endpoint endpoint;
-    tcp::resolver resolver(ioc);
+    auto resolver = std::make_shared<tcp::resolver>(ioc);
 
-    tcp::resolver::iterator destination = resolver.resolve(address, "http", ec);
-
-    if (ec) {
-        OXEN_LOG(error,
-                 "http: Failed to parse the IP address <{}>. Error code = {}. "
-                 "Message: {}",
-                 address, ec.value(), ec.message());
-        return;
-    }
-    while (destination != tcp::resolver::iterator()) {
-        const tcp::endpoint thisEndpoint = (destination++)->endpoint();
-        if (!thisEndpoint.address().is_v4()) {
-            continue;
+    auto resolve_handler = [&ioc, address, port, req=std::move(req), resolver,
+                            cb = std::move(cb)](
+                               const boost::system::error_code& ec,
+                               boost::asio::ip::tcp::resolver::results_type
+                                   resolve_results) mutable {
+        if (ec) {
+            OXEN_LOG(error, "DNS resolution error for {}: {}", address,
+                     ec.message());
+            return cb({SNodeError::ERROR_OTHER});
         }
-        endpoint = thisEndpoint;
-    }
-    endpoint.port(port);
 
-    auto session =
-        std::make_shared<HttpClientSession>(ioc, endpoint, req, std::move(cb));
+        tcp::endpoint endpoint;
 
-    session->start();
+        bool resolved = false;
+
+        while (resolve_results != tcp::resolver::iterator()) {
+            const tcp::endpoint ep = (resolve_results++)->endpoint();
+
+#ifndef INTEGRATION_TEST
+            if (!ep.address().is_v4() || !is_ip_public(ep.address().to_v4())) {
+                continue;
+            }
+#endif
+            endpoint = ep;
+            resolved = true;
+            break;
+        }
+
+        if (!resolved) {
+            OXEN_LOG(error, "[HTTP] DNS resolution error for {}", address);
+            return cb({SNodeError::ERROR_OTHER});
+        }
+
+        endpoint.port(port);
+
+        auto session = std::make_shared<HttpClientSession>(ioc, endpoint, req,
+                                                           std::move(cb));
+
+        session->start();
+    };
+
+    resolver->async_resolve(
+        address, std::to_string(port),
+        boost::asio::ip::tcp::resolver::query::numeric_service,
+        resolve_handler);
 }
 
-// ======================== Oxend Client ========================
-OxendClient::OxendClient(boost::asio::io_context& ioc, std::string ip,
-                         uint16_t port)
-    : ioc_(ioc), oxend_rpc_ip_(std::move(ip)), oxend_rpc_port_(port) {}
-
-void OxendClient::make_oxend_request(std::string_view method,
-                                     const nlohmann::json& params,
-                                     http_callback_t&& cb) const {
-
-    make_custom_oxend_request(oxend_rpc_ip_, oxend_rpc_port_, method, params,
-                              std::move(cb));
-}
-
-void OxendClient::make_custom_oxend_request(const std::string& daemon_ip,
-                                            const uint16_t daemon_port,
-                                            std::string_view method,
-                                            const nlohmann::json& params,
-                                            http_callback_t&& cb) const {
+void oxend_json_rpc_request(boost::asio::io_context& ioc,
+                            const std::string& daemon_ip,
+                            const uint16_t daemon_port, std::string_view method,
+                            const nlohmann::json& params,
+                            http_callback_t&& cb) {
 
     auto req = std::make_shared<request_t>();
 
@@ -128,78 +150,7 @@ void OxendClient::make_custom_oxend_request(const std::string& daemon_ip,
 
     OXEN_LOG(trace, "Making oxend request, method: {}", std::string(method));
 
-    make_http_request(ioc_, daemon_ip, daemon_port, req, std::move(cb));
-}
-
-static bool validateHexKey(const std::string& key,
-                           const size_t key_length = oxen::KEY_LENGTH) {
-    return key.size() == 2 * key_length &&
-           std::all_of(key.begin(), key.end(), [](char c) {
-               return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-           });
-}
-
-std::tuple<private_key_t, private_key_ed25519_t, private_key_t>
-OxendClient::wait_for_privkey() {
-    // fetch SN private key from oxend; do this synchronously because we can't
-    // finish startup until we have it.
-    oxen::private_key_t private_key;
-    oxen::private_key_ed25519_t private_key_ed;
-    oxen::private_key_t private_key_x;
-    OXEN_LOG(info, "Retrieving SN key from oxend");
-    boost::asio::steady_timer delay{ioc_};
-    std::function<void(oxen::sn_response_t && res)> key_fetch;
-    key_fetch = [&](oxen::sn_response_t res) {
-        try {
-            if (res.error_code != oxen::SNodeError::NO_ERROR)
-                throw std::runtime_error(oxen::error_string(res.error_code));
-            else if (!res.body)
-                throw std::runtime_error("empty body");
-            else {
-                auto r = nlohmann::json::parse(*res.body);
-                const auto& legacy_privkey = r.at("result")
-                                                 .at("service_node_privkey")
-                                                 .get_ref<const std::string&>();
-                const auto& privkey_ed = r.at("result")
-                                             .at("service_node_ed25519_privkey")
-                                             .get_ref<const std::string&>();
-                const auto& privkey_x = r.at("result")
-                                            .at("service_node_x25519_privkey")
-                                            .get_ref<const std::string&>();
-                if (!validateHexKey(legacy_privkey) ||
-                    !validateHexKey(privkey_ed,
-                                    private_key_ed25519_t::LENGTH) ||
-                    !validateHexKey(privkey_x))
-                    throw std::runtime_error("returned value is not hex");
-                else {
-                    private_key = oxen::oxendKeyFromHex(legacy_privkey);
-                    // TODO: check that one is derived from the other as a
-                    // sanity check?
-                    private_key_ed =
-                        private_key_ed25519_t::from_hex(privkey_ed);
-                    private_key_x = oxen::oxendKeyFromHex(privkey_x);
-                    // run out of work, which will end the event loop
-                }
-            }
-        } catch (const std::exception& e) {
-            OXEN_LOG(critical,
-                     "Error retrieving SN privkey from oxend @ {}:{}: {}.  Is "
-                     "oxend running?  Retrying in 5s",
-                     oxend_rpc_ip_, oxend_rpc_port_, e.what());
-
-            delay.expires_after(std::chrono::seconds{5});
-            delay.async_wait([this,
-                              &key_fetch](const boost::system::error_code&) {
-                make_oxend_request("get_service_node_privkey", {}, key_fetch);
-            });
-        }
-    };
-    make_oxend_request("get_service_node_privkey", {}, key_fetch);
-    ioc_.run(); // runs until we get success above
-    ioc_.restart();
-
-    return std::tuple<private_key_t, private_key_ed25519_t, private_key_t>{
-        private_key, private_key_ed, private_key_x};
+    make_http_request(ioc, daemon_ip, daemon_port, req, std::move(cb));
 }
 
 // =============================================================
@@ -288,10 +239,9 @@ connection_t::connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
                            RequestHandler& rh, RateLimiter& rate_limiter,
                            const Security& security)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), socket_(std::move(socket)),
-      stream_(socket_, ssl_ctx_), service_node_(sn), request_handler_(rh),
-      rate_limiter_(rate_limiter), repeat_timer_(ioc),
-      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt},
-      security_(security) {
+      stream_(socket_, ssl_ctx_), security_(security), service_node_(sn),
+      request_handler_(rh), rate_limiter_(rate_limiter), repeat_timer_(ioc),
+      deadline_(ioc, SESSION_TIME_LIMIT), notification_ctx_{std::nullopt} {
 
     static uint64_t instance_counter = 0;
     conn_idx = instance_counter++;
@@ -401,12 +351,22 @@ void connection_t::read_request() {
     http::async_read(stream_, buffer_, request_, on_data);
 }
 
-// This doesn't need to be a method...
-static bool verify_signature(const std::string& payload,
-                             const std::string& signature,
-                             const std::string& public_key_b32z) {
-    const auto body_hash = hash_data(payload);
-    return check_signature(signature, body_hash, public_key_b32z);
+// Parse a pubkey string value as either base32z (deprecated!), b64, or hex.  Returns a null pk
+// (i.e. operator bool() returns false) and warns on invalid input.
+static legacy_pubkey parse_pubkey(std::string_view public_key_in) {
+    legacy_pubkey pk{};
+    if (public_key_in.size() == 64 && oxenmq::is_hex(public_key_in))
+        oxenmq::from_hex(public_key_in.begin(), public_key_in.end(), pk.begin());
+    else if ((public_key_in.size() == 43 || (public_key_in.size() == 44 && public_key_in.back() == '='))
+            && oxenmq::is_base64(public_key_in))
+        oxenmq::from_base64(public_key_in.begin(), public_key_in.end(), pk.begin());
+    else if (public_key_in.size() == 52 && oxenmq::is_base32z(public_key_in))
+        oxenmq::from_base32z(public_key_in.begin(), public_key_in.end(), pk.begin());
+    else {
+        OXEN_LOG(warn, "Invalid public key header: not hex, b64, or b32z encoded");
+        OXEN_LOG(debug, "Received public key encoded value: {}", public_key_in);
+    }
+    return pk;
 }
 
 bool connection_t::validate_snode_request() {
@@ -415,27 +375,37 @@ bool connection_t::validate_snode_request() {
         OXEN_LOG(debug, "Missing signature headers for a Service Node request");
         return false;
     }
-    const auto& signature = header_[OXEN_SNODE_SIGNATURE_HEADER];
-    const auto& public_key_b32z = header_[OXEN_SENDER_SNODE_PUBKEY_HEADER];
+    const auto& signature_b64 = header_[OXEN_SNODE_SIGNATURE_HEADER];
+    legacy_pubkey public_key = parse_pubkey(header_[OXEN_SENDER_SNODE_PUBKEY_HEADER]);
+    if (!public_key)
+        return false;
+
+    signature sig;
+    try {
+        sig = signature::from_base64(signature_b64);
+    } catch (const std::exception&) {
+        OXEN_LOG(warn, "invalid signature (not base64) found in header from {}",
+                public_key);
+        return false;
+    }
 
     /// Known service node
-    const std::string snode_address = public_key_b32z + ".snode";
-    if (!service_node_.is_snode_address_known(snode_address)) {
+    if (!service_node_.find_node(public_key)) {
         body_stream_ << "Unknown service node\n";
         OXEN_LOG(debug, "Discarding signature from unknown service node: {}",
-                 public_key_b32z);
+                 public_key);
         response_.result(http::status::unauthorized);
         return false;
     }
 
-    if (!verify_signature(request_.get().body(), signature, public_key_b32z)) {
-        constexpr auto msg = "Could not verify batch signature";
+    if (!check_signature(sig, hash_data(request_.get().body()), public_key)) {
+        constexpr auto msg = "Could not verify snode signature"sv;
         OXEN_LOG(debug, "{}", msg);
         body_stream_ << msg;
         response_.result(http::status::unauthorized);
         return false;
     }
-    if (rate_limiter_.should_rate_limit(public_key_b32z)) {
+    if (rate_limiter_.should_rate_limit(public_key)) {
         this->body_stream_ << "Too many requests\n";
         response_.result(http::status::too_many_requests);
         return false;
@@ -444,7 +414,7 @@ bool connection_t::validate_snode_request() {
 }
 
 void connection_t::process_storage_test_req(uint64_t height,
-                                            const std::string& tester_pk,
+                                            const legacy_pubkey& tester_pk,
                                             const std::string& msg_hash) {
 
     OXEN_LOG(trace, "Performing storage test, attempt: {}", repetition_count_);
@@ -510,34 +480,12 @@ void connection_t::process_storage_test_req(uint64_t height,
     }
 }
 
-void connection_t::process_blockchain_test_req(uint64_t,
-                                               const std::string& tester_pk,
-                                               bc_test_params_t params) {
-
-    // Note: `height` can be 0, which is the default value for old SS, allowed
-    // pre HF13
-
-    OXEN_LOG(debug, "Performing blockchain test");
-
-    auto callback = [this](blockchain_test_answer_t answer) {
-        this->response_.result(http::status::ok);
-
-        nlohmann::json json_res;
-        json_res["res_height"] = answer.res_height;
-
-        this->body_stream_ << json_res.dump();
-        this->write_response();
-    };
-
-    /// TODO: this should first check if tester/testee are correct! (use
-    /// `height`)
-    service_node_.perform_blockchain_test(params, std::move(callback));
-}
-
-static void print_headers(const request_t& req) {
-    OXEN_LOG(info, "HEADERS:");
-    for (const auto& field : req) {
-        OXEN_LOG(info, "    [{}]: {}", field.name_string(), field.value());
+static x25519_pubkey extract_x25519_from_hex(std::string_view hex) {
+    try {
+        return x25519_pubkey::from_hex(hex);
+    } catch (const std::exception& e) {
+        OXEN_LOG(warn, "Failed to decode ephemeral key in onion request: {}", e.what());
+        throw;
     }
 }
 
@@ -550,283 +498,53 @@ void connection_t::process_onion_req_v2() {
     // Need to make sure we are not blocking waiting for the response
     delay_response_ = true;
 
-    auto on_response = [wself = std::weak_ptr<connection_t>{
-                            shared_from_this()}](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as guard node");
-
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping onion response");
-            return;
-        }
-
-        self->body_stream_ << res.message();
-        self->response_.result(static_cast<int>(res.status()));
-
-        self->write_response();
-    };
-
-    try {
-
-        auto res = parse_combined_payload(req.body());
-
-        const json json_req = json::parse(res.json, nullptr, true);
-        // hex
-        const auto& ephem_key =
-            json_req.at("ephemeral_key").get_ref<const std::string&>();
-
-        service_node_.record_onion_request();
-        request_handler_.process_onion_req(res.ciphertext, ephem_key,
-                                           on_response, true);
-
-    } catch (const std::exception& e) {
-        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
-                               e.what());
-        OXEN_LOG(error, "{}", msg);
-        response_.result(http::status::bad_request);
-        this->body_stream_ << std::move(msg);
-        this->write_response();
-    }
-}
-
-void connection_t::process_onion_req_v1() {
-
-    OXEN_LOG(debug, "Processing an onion request from client (v1)");
-
-    const request_t& req = this->request_.get();
-
-    // We are not expecting any headers, all parameters are in json body
-
-    // Need to make sure we are not blocking waiting for the response
-    delay_response_ = true;
-
-    auto on_response = [wself = std::weak_ptr<connection_t>{
-                            shared_from_this()}](oxen::Response res) {
-        OXEN_LOG(debug, "Got an onion response as guard node");
-
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping onion response");
-            return;
-        }
-
-        self->body_stream_ << res.message();
-        self->response_.result(static_cast<int>(res.status()));
-
-        self->write_response();
-    };
-
-    try {
-
-        const json json_req = json::parse(req.body(), nullptr, true);
-        // base64
-        const auto& ciphertext =
-            json_req.at("ciphertext").get_ref<const std::string&>();
-        // hex
-        const auto& ephem_key =
-            json_req.at("ephemeral_key").get_ref<const std::string&>();
-
-        service_node_.record_onion_request();
-        request_handler_.process_onion_req(ciphertext, ephem_key, on_response);
-
-    } catch (const std::exception& e) {
-        auto msg = fmt::format("Error parsing outer JSON in onion request: {}",
-                               e.what());
-        OXEN_LOG(error, "{}", msg);
-        response_.result(http::status::bad_request);
-        this->body_stream_ << std::move(msg);
-        this->write_response();
-    }
-}
-
-void connection_t::process_proxy_req() {
-
-    static int req_counter = 0;
-
-    const int req_idx = req_counter;
-
-    OXEN_LOG(debug, "[{}] Processing proxy request: we are first hop", req_idx);
-
-    service_node_.record_proxy_request();
-
-    const request_t& req = this->request_.get();
-
-#ifdef INTEGRATION_TEST
-    // print_headers(req);
-#endif
-
-    if (!parse_header(OXEN_SENDER_KEY_HEADER, OXEN_TARGET_SNODE_KEY)) {
-        OXEN_LOG(debug, "Missing headers for a proxy request");
-        return;
-    }
-
-    delay_response_ = true;
-
-    const auto& sender_key = header_[OXEN_SENDER_KEY_HEADER];
-    const auto& target_snode_key = header_[OXEN_TARGET_SNODE_KEY];
-
-    OXEN_LOG(debug, "[{}] Destination: {}", req_idx, target_snode_key);
-
-    auto sn = service_node_.find_node_by_ed25519_pk(target_snode_key);
-
-    // TODO: make an https response out of what we got back
-    auto on_proxy_response =
-        [wself = std::weak_ptr<connection_t>{shared_from_this()},
-         req_idx](bool success, std::vector<std::string> data) {
-            OXEN_LOG(debug, "on proxy response: {}",
-                     success ? "success" : "failure");
+    OnionRequestMetadata data{
+        x25519_pubkey{},
+        [wself = weak_from_this()](oxen::Response res) {
+            OXEN_LOG(debug, "Got an onion response as edge node");
 
             auto self = wself.lock();
             if (!self) {
-                OXEN_LOG(
-                    debug,
-                    "Connection is no longer valid, dropping proxy response");
+                OXEN_LOG(debug,
+                         "Connection is no longer valid, dropping onion response");
                 return;
             }
 
-            if (!success) {
-                OXEN_LOG(debug, "Proxy response FAILED (timeout), idx: {}",
-                         req_idx);
-                self->response_.result(http::status::gateway_timeout);
-            } else if (data.size() == 2) {
-                OXEN_LOG(debug, "Proxy respose with status, idx: {}", req_idx);
+            self->body_stream_ << res.message();
+            self->response_.result(static_cast<int>(res.status()));
 
-                try {
-                    int status = std::stoi(data[0]);
-                    self->response_.result(status);
-                    self->body_stream_ << data[1];
-                } catch (const std::exception&) {
-                    self->response_.result(http::status::internal_server_error);
-                }
-
-            } else if (data.size() != 1) {
-                OXEN_LOG(debug,
-                         "Proxy response FAILED (wrong data size), idx: {}",
-                         req_idx);
-                self->response_.result(http::status::internal_server_error);
-            } else {
-                OXEN_LOG(debug, "PROXY RESPONSE OK, idx: {}", req_idx);
-                self->body_stream_ << data[0];
-                self->response_.result(http::status::ok);
-            }
-
-            // This will return an empty, but failed response to the client
-            // if the raw_response is empty (we should provide better errors)
             self->write_response();
-        };
-
-    if (!sn) {
-        OXEN_LOG(debug, "Could not find target snode for proxy: {}",
-                 target_snode_key);
-        on_proxy_response(false, {});
-        return;
-    }
-
-    OXEN_LOG(debug, "Target Snode: {}", target_snode_key);
-
-    // Send this request to SN over either HTTP or OXENMQ
-    auto sn_req =
-        ss_client::Request{req.body(), {{OXEN_SENDER_KEY_HEADER, sender_key}}};
-
-    OXEN_LOG(debug, "About to send a proxy exit requst, idx: {}", req_counter);
-    req_counter += 1;
-
-    service_node_.send_to_sn(*sn, ss_client::ReqMethod::PROXY_EXIT,
-                             std::move(sn_req), on_proxy_response);
-}
-
-void connection_t::process_file_proxy_req() {
-
-    OXEN_LOG(debug, "Processing a file proxy request: we are first hop");
-
-    const request_t& original_req = this->request_.get();
-
-    delay_response_ = true;
-
-    if (!parse_header(OXEN_FILE_SERVER_TARGET_HEADER,
-                      OXEN_FILE_SERVER_VERB_HEADER,
-                      OXEN_FILE_SERVER_HEADERS_HEADER)) {
-        OXEN_LOG(error, "Missing headers for a file proxy request");
-        // TODO: The connection should be closed by the timer if we return
-        // early, but need to double-check that! (And close it early if
-        // possible)
-        return;
-    }
-
-    const auto& target = header_[OXEN_FILE_SERVER_TARGET_HEADER];
-    const auto& verb_str = header_[OXEN_FILE_SERVER_VERB_HEADER];
-    const auto& headers_str = header_[OXEN_FILE_SERVER_HEADERS_HEADER];
-
-    OXEN_LOG(trace, "Target: {}", target);
-    OXEN_LOG(trace, "Verb: {}", verb_str);
-    OXEN_LOG(trace, "Headers json: {}", headers_str);
-
-    const json headers_json = json::parse(headers_str, nullptr, false);
-
-    if (headers_json.is_discarded()) {
-        OXEN_LOG(debug, "Bad file proxy request: invalid header json");
-        response_.result(http::status::bad_request);
-        return;
-    }
-
-    auto req = std::make_shared<request_t>();
-
-    namespace http = boost::beast::http;
-
-    if (verb_str == "POST") {
-        req->method(http::verb::post);
-    } else if (verb_str == "PATCH") {
-        req->method(http::verb::patch);
-    } else if (verb_str == "PUT") {
-        req->method(http::verb::put);
-    } else if (verb_str == "DELETE") {
-        req->method(http::verb::delete_);
-    } else {
-        req->method(http::verb::get);
-    }
-
-    {
-        const auto it = original_req.find(http::field::content_type);
-        if (it != original_req.end()) {
-            OXEN_LOG(trace, "Content-Type: {}", it->value().to_string());
-            req->set(http::field::content_type, it->value().to_string());
-        }
-    }
-
-    req->body() = std::move(original_req.body());
-    req->target(target);
-    req->set(http::field::host, "file.lokinet.org");
-
-    req->prepare_payload();
-
-    for (auto& el : headers_json.items()) {
-        req->insert(el.key(), (std::string) el.value());
-    }
-
-    auto cb = [wself = std::weak_ptr<connection_t>{shared_from_this()}](
-                  sn_response_t res) {
-        OXEN_LOG(trace, "Successful file proxy request!");
-
-        auto self = wself.lock();
-        if (!self) {
-            OXEN_LOG(debug,
-                     "Connection is no longer valid, dropping proxy response");
-            return;
-        }
-
-        if (res.raw_response) {
-            self->response_ = *res.raw_response;
-            OXEN_LOG(trace, "Response: {}", self->response_);
-        } else {
-            OXEN_LOG(debug, "No response from file server!");
-        }
-
-        self->write_response();
+        },
+        0, // hopno
+        EncryptType::aes_gcm,
     };
 
-    make_https_request(ioc_, "https://file.lokinet.org", req, cb);
+    try {
+        auto [ciphertext, json_req] = parse_combined_payload(req.body());
+
+        data.ephem_key = extract_x25519_from_hex(
+                json_req.at("ephemeral_key").get_ref<const std::string&>());
+
+        if (auto it = json_req.find("enc_type"); it != json_req.end())
+            data.enc_type = parse_enc_type(it->get_ref<const std::string&>());
+        // Otherwise stay at default aes-gcm
+
+        // Allows a fake starting hop number (to make it harder for intermediate hops to know where
+        // they are).  If omitted, defaults to 0.
+        if (auto it = json_req.find("hop_no"); it != json_req.end())
+            data.hop_no = std::max(0, it->get<int>());
+
+        service_node_.record_onion_request();
+        request_handler_.process_onion_req(ciphertext, std::move(data));
+
+    } catch (const std::exception& e) {
+        auto msg = fmt::format("Error parsing onion request: {}",
+                               e.what());
+        OXEN_LOG(error, "{}", msg);
+        response_.result(http::status::bad_request);
+        this->body_stream_ << std::move(msg);
+        this->write_response();
+    }
 }
 
 void connection_t::process_swarm_req(std::string_view target) {
@@ -840,12 +558,7 @@ void connection_t::process_swarm_req(std::string_view target) {
 
     response_.set(OXEN_SNODE_SIGNATURE_HEADER, security_.get_cert_signature());
 
-    if (target == "/swarms/push_batch/v1") {
-
-        response_.result(http::status::ok);
-        service_node_.process_push_batch(req.body());
-
-    } else if (target == "/swarms/storage_test/v1") {
+    if (target == "/swarms/storage_test/v1") {
 
         /// Set to "bad request" by default
         response_.result(http::status::bad_request);
@@ -858,7 +571,6 @@ void connection_t::process_swarm_req(std::string_view target) {
         if (body == nlohmann::detail::value_t::discarded) {
             OXEN_LOG(debug, "Bad snode test request: invalid json");
             body_stream_ << "invalid json\n";
-            response_.result(http::status::bad_request);
             return;
         }
 
@@ -871,64 +583,24 @@ void connection_t::process_swarm_req(std::string_view target) {
         } catch (...) {
             this->body_stream_
                 << "Bad snode test request: missing fields in json";
-            response_.result(http::status::bad_request);
             OXEN_LOG(debug, "Bad snode test request: missing fields in json");
             return;
         }
 
         const auto it = header_.find(OXEN_SENDER_SNODE_PUBKEY_HEADER);
-        if (it != header_.end()) {
-            const std::string& tester_pk = it->second;
-            this->process_storage_test_req(blk_height, tester_pk, msg_hash);
-        } else {
+        if (it == header_.end()) {
             OXEN_LOG(debug, "Ignoring test request, no pubkey present");
-        }
-    } else if (target == "/swarms/blockchain_test/v1") {
-        OXEN_LOG(debug, "Got blockchain test request");
-
-        using nlohmann::json;
-
-        const json body = json::parse(req.body(), nullptr, false);
-
-        if (body.is_discarded()) {
-            OXEN_LOG(debug, "Bad snode test request: invalid json");
-            response_.result(http::status::bad_request);
             return;
         }
-
-        bc_test_params_t params;
-
-        // Height that should be used to check derive tester/testee
-        uint64_t height = 0;
-
-        try {
-            params.max_height = body.at("max_height").get<uint64_t>();
-            params.seed = body.at("seed").get<uint64_t>();
-
-            if (body.find("height") != body.end()) {
-                height = body.at("height").get<uint64_t>();
-            } else {
-                OXEN_LOG(debug, "No tester height, defaulting to {}", height);
-            }
-        } catch (...) {
-            response_.result(http::status::bad_request);
-            OXEN_LOG(debug, "Bad snode test request: missing fields in json");
+        auto tester_pk = parse_pubkey(it->second);
+        if (!tester_pk) {
+            OXEN_LOG(debug, "Ignoring test request, invalid pubkey");
             return;
         }
-
-        /// TODO: only check pubkey field once (in validate snode req)
-        const auto it = header_.find(OXEN_SENDER_SNODE_PUBKEY_HEADER);
-        if (it != header_.end()) {
-            const std::string& tester_pk = it->second;
-            delay_response_ = true;
-            this->process_blockchain_test_req(height, tester_pk, params);
-        } else {
-            OXEN_LOG(debug, "Ignoring test request, no pubkey present");
-        }
-
+        process_storage_test_req(blk_height, tester_pk, msg_hash);
     } else if (target == "/swarms/ping_test/v1") {
         OXEN_LOG(trace, "Received ping_test");
-        service_node_.update_last_ping(ReachType::HTTP);
+        service_node_.update_last_ping(ReachType::HTTPS);
         response_.result(http::status::ok);
     }
 }
@@ -1006,7 +678,7 @@ void connection_t::process_request() {
 
             try {
                 process_client_req_rate_limited();
-            } catch (std::exception& e) {
+            } catch (const std::exception& e) {
                 this->body_stream_ << fmt::format(
                     "Exception caught while processing client request: {}",
                     e.what());
@@ -1018,14 +690,8 @@ void connection_t::process_request() {
 
         } else if (is_swarm_req) {
             this->process_swarm_req(target);
-        } else if (target == "/proxy") {
-            this->process_proxy_req();
-        } else if (target == "/onion_req") {
-            this->process_onion_req_v1();
         } else if (target == "/onion_req/v2") {
             this->process_onion_req_v2();
-        } else if (target == "/file_proxy") {
-            this->process_file_proxy_req();
         }
 #ifdef INTEGRATION_TEST
         else if (target == "/retrieve_all") {
@@ -1095,7 +761,8 @@ void connection_t::write_response() {
         this->response_modifier_(response_);
     }
 
-    response_.set(http::field::content_length, std::to_string(response_.body().size()));
+    response_.set(http::field::content_length,
+                  std::to_string(response_.body().size()));
 
     /// This attempts to write all data to a stream
     /// TODO: handle the case when we are trying to send too much
@@ -1138,9 +805,15 @@ void connection_t::process_client_req_rate_limited() {
 
     const request_t& req = this->request_.get();
     std::string plain_text = req.body();
-    const std::string client_ip =
-        socket_.remote_endpoint().address().to_string();
-    if (rate_limiter_.should_rate_limit_client(client_ip)) {
+    auto addr = socket_.remote_endpoint().address();
+    if (!addr.is_v4()) {
+        // We don't (currently?) support IPv6 at all (SS published IPs are only IPv4) so if we
+        // somehow get an IPv6 address then it isn't a proper SS request so just drop it.
+        response_.result(http::status::bad_request);
+        OXEN_LOG(warn, "incoming client request is not IPv4; dropping it");
+        return;
+    }
+    if (rate_limiter_.should_rate_limit_client(addr.to_v4().to_uint())) {
         this->body_stream_ << "too many requests\n";
         response_.result(http::status::too_many_requests);
         OXEN_LOG(debug, "Rate limiting client request.");
@@ -1177,7 +850,7 @@ void connection_t::process_client_req_rate_limited() {
                                  plaintext = std::move(plain_text)](
                                     const error_code& ec) {
             self->request_handler_.process_client_req(
-                plaintext, [wself = std::weak_ptr<connection_t>{self}](
+                plaintext, [wself = std::weak_ptr{self}](
                                oxen::Response res) {
                     auto self = wself.lock();
                     if (!self) {
@@ -1195,8 +868,7 @@ void connection_t::process_client_req_rate_limited() {
 
     } else {
         request_handler_.process_client_req(
-            plain_text, [wself = std::weak_ptr<connection_t>{
-                             shared_from_this()}](oxen::Response res) {
+            plain_text, [wself = weak_from_this()](oxen::Response res) {
                 // // A connection could have been destroyed by the deadline
                 // timer
                 auto self = wself.lock();
@@ -1444,43 +1116,6 @@ HttpClientSession::~HttpClientSession() {
     get_net_stats().http_connections_out--;
 
     this->clean_up();
-}
-
-/// We are expecting a payload of the following shape:
-/// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
-auto parse_combined_payload(const std::string& payload) -> CiphertextPlusJson {
-
-    OXEN_LOG(trace, "Parsing payload of length: {}", payload.size());
-
-    auto it = payload.begin();
-
-    /// First 4 bytes as number
-    if (payload.size() < 4) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::exception();
-    }
-
-    const auto b1 = reinterpret_cast<const uint32_t&>(*it);
-    const auto n = boost::endian::little_to_native(b1);
-
-    OXEN_LOG(trace, "Ciphertext length: {}", n);
-
-    if (payload.size() < 4 + n) {
-        OXEN_LOG(warn, "Unexpected payload size");
-        throw std::exception();
-    }
-
-    it += sizeof(uint32_t);
-
-    const auto ciphertext = std::string(it, it + n);
-
-    OXEN_LOG(debug, "ciphertext length: {}", ciphertext.size());
-
-    const auto json_blob = std::string(it + n, payload.end());
-
-    OXEN_LOG(debug, "json blob: (len: {})", json_blob.size());
-
-    return CiphertextPlusJson{ciphertext, json_blob};
 }
 
 } // namespace oxen

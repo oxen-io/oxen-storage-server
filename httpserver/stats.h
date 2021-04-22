@@ -1,6 +1,8 @@
 #pragma once
 
 #include "oxen_common.h"
+#include "sn_record.h"
+
 #include <atomic>
 #include <deque>
 #include <unordered_map>
@@ -44,8 +46,6 @@ struct peer_stats_t {
     uint64_t pushes_failed = 0;
 
     std::deque<test_result_t> storage_tests;
-
-    std::deque<test_result_t> blockchain_tests;
 };
 
 class all_stats_t {
@@ -87,25 +87,19 @@ class all_stats_t {
 
   public:
     // stats per every peer in our swarm (including former peers)
-    std::unordered_map<sn_record_t, peer_stats_t> peer_report_;
+    std::unordered_map<legacy_pubkey, peer_stats_t> peer_report_;
 
-    void record_request_failed(const sn_record_t& sn) {
+    void record_request_failed(const legacy_pubkey& sn) {
         peer_report_[sn].requests_failed++;
     }
 
-    void record_push_failed(const sn_record_t& sn) {
+    void record_push_failed(const legacy_pubkey& sn) {
         peer_report_[sn].pushes_failed++;
     }
 
-    void record_storage_test_result(const sn_record_t& sn, ResultType result) {
+    void record_storage_test_result(const legacy_pubkey& sn, ResultType result) {
         test_result_t res = {std::time(nullptr), result};
         peer_report_[sn].storage_tests.push_back(res);
-    }
-
-    void record_blockchain_test_result(const sn_record_t& sn,
-                                       ResultType result) {
-        test_result_t t = {std::time(nullptr), result};
-        peer_report_[sn].blockchain_tests.push_back(t);
     }
 
     // remove old test entries and reset counters, update reset time
