@@ -4,8 +4,8 @@
 
 #include "service_node.h"
 
+#include <cstdlib>
 #include <ostream>
-#include <stdlib.h>
 #include <unordered_map>
 
 #include "utils.hpp"
@@ -134,36 +134,46 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     cur_swarm_id_ = sid;
 }
 
-static std::unordered_map<std::string, sn_record_t>
-get_snode_map_from_swarms(const all_swarms_t& swarms) {
+static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
 
-    std::unordered_map<std::string, sn_record_t> snode_map;
+    std::unordered_map<legacy_pubkey, sn_record_t> snode_map;
     for (const auto& swarm : swarms) {
         for (const auto& snode : swarm.snodes) {
-            snode_map.insert({snode.sn_address(), snode});
+            snode_map.emplace(snode.pubkey_legacy, snode);
         }
     }
     return snode_map;
 }
 
-static all_swarms_t apply_ips(const all_swarms_t& swarms_to_keep,
-                              const all_swarms_t& other_swarms) {
+template <typename T>
+bool update_if_changed(T& val, const T& new_val, const std::common_type_t<T>& ignore_val) {
+    if (new_val != ignore_val && new_val != val) {
+        val = new_val;
+        return true;
+    }
+    return false;
+}
+
+auto apply_ips(const all_swarms_t& swarms_to_keep,
+               const all_swarms_t& other_swarms) -> all_swarms_t {
 
     all_swarms_t result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
 
     int updates_count = 0;
-    for (auto& swarm : result_swarms) {
-        for (auto& snode : swarm.snodes) {
+    for (auto& [swarm_id, snodes] : result_swarms) {
+        for (auto& snode : snodes) {
             const auto other_snode_it =
-                other_snode_map.find(snode.sn_address());
+                other_snode_map.find(snode.pubkey_legacy);
             if (other_snode_it != other_snode_map.end()) {
-                const auto& other_snode = other_snode_it->second;
-                // Keep swarms_to_keep but don't overwrite with default IPs
-                if (snode.ip() == "0.0.0.0") {
-                    snode.set_ip(other_snode.ip());
+                auto& sn = other_snode_it->second;
+                // Keep swarms_to_keep but don't overwrite with default IPs/ports
+                bool updated = false;
+                if (update_if_changed(snode.ip, sn.ip, "0.0.0.0")) updated = true;
+                if (update_if_changed(snode.port, sn.port, 0)) updated = true;
+                if (update_if_changed(snode.lmq_port, sn.lmq_port, 0)) updated = true;
+                if (updated)
                     updates_count++;
-                }
             }
         }
     }
@@ -192,7 +202,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
         }
 
         for (const sn_record_t& sn : events.new_snodes) {
-            OXEN_LOG(info, "EVENT: detected new SN: {}", sn);
+            OXEN_LOG(info, "EVENT: detected new SN: {}", sn.pubkey_legacy);
         }
 
         for (swarm_id_t swarm : events.new_swarms) {
@@ -219,73 +229,43 @@ void Swarm::update_state(const all_swarms_t& swarms,
 
     // Store a copy of every node in a separate data structure
     all_funded_nodes_.clear();
+    all_funded_ed25519_.clear();
+    all_funded_x25519_.clear();
 
     for (const auto& si : swarms) {
         for (const auto& sn : si.snodes) {
-            all_funded_nodes_.push_back(sn);
+            all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
         }
     }
 
     for (const auto& sn : decommissioned) {
-        all_funded_nodes_.push_back(sn);
+        all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
+    }
+
+    for (const auto& [pk, sn] : all_funded_nodes_) {
+        all_funded_ed25519_.emplace(sn.pubkey_ed25519, pk);
+        all_funded_x25519_.emplace(sn.pubkey_x25519, pk);
     }
 }
 
-std::optional<sn_record_t> Swarm::choose_funded_node() const {
-
-    if (all_funded_nodes_.empty())
-        return std::nullopt;
-
-    const auto idx =
-        util::uniform_distribution_portable(all_funded_nodes_.size());
-
-    // Note: this can return our own node which should be fine
-    return all_funded_nodes_[idx];
-}
-
-std::optional<sn_record_t> Swarm::find_node_by_port(uint16_t port) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.port() == port) {
-            return sn;
-        }
-    }
-
+std::optional<sn_record_t>
+Swarm::find_node(const legacy_pubkey& pk) const {
+    if (auto it = all_funded_nodes_.find(pk); it != all_funded_nodes_.end())
+        return it->second;
     return std::nullopt;
 }
 
 std::optional<sn_record_t>
-Swarm::find_node_by_ed25519_pk(const std::string& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pubkey_ed25519_hex() == pk) {
-            return sn;
-        }
-    }
-
+Swarm::find_node(const ed25519_pubkey& pk) const {
+    if (auto it = all_funded_ed25519_.find(pk); it != all_funded_ed25519_.end())
+        return find_node(it->second);
     return std::nullopt;
 }
 
 std::optional<sn_record_t>
-Swarm::find_node_by_x25519_bin(const std::string& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pubkey_x25519_bin() == pk) {
-            return sn;
-        }
-    }
-
-    return std::nullopt;
-}
-
-std::optional<sn_record_t> Swarm::get_node_by_pk(const sn_pub_key_t& pk) const {
-
-    for (const auto& sn : all_funded_nodes_) {
-        if (sn.pub_key_base32z() == pk) {
-            return sn;
-        }
-    }
-
+Swarm::find_node(const x25519_pubkey& pk) const {
+    if (auto it = all_funded_x25519_.find(pk); it != all_funded_x25519_.end())
+        return find_node(it->second);
     return std::nullopt;
 }
 
@@ -294,15 +274,12 @@ static uint64_t hex_to_u64(const user_pubkey_t& pk) {
     /// Create a buffer for 16 characters null terminated
     char buf[17] = {};
 
-    /// Note: pk is expected to contain two leading characters
-    /// (05 for the messenger) that do not participate in mapping
+    const auto hexpk = pk.key();
+    assert(hexpk.size() == 64 && oxenmq::is_hex(hexpk));
 
-    /// Note: if conversion is not possible, we will still
-    /// get a value in res (possibly 0 or UINT64_MAX), which
-    /// we are not handling at the moment
     uint64_t res = 0;
-    for (auto it = pk.str().begin() + 2; it < pk.str().end(); it += 16) {
-        memcpy(buf, &(*it), 16);
+    for (size_t i = 0; i < 64; i += 16) {
+        std::memcpy(buf, hexpk.data() + i, 16);
         res ^= strtoull(buf, nullptr, 16);
     }
 
@@ -312,32 +289,27 @@ static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
 
     /// TODO: Make sure no exceptions bubble up from here!
-    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk);
+    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk).swarm_id;
 }
 
-bool Swarm::is_fully_funded_node(const std::string& sn_address) const {
+static const SwarmInfo null_swarm{INVALID_SWARM_ID, {}};
 
-    return std::any_of(all_funded_nodes_.begin(), all_funded_nodes_.end(),
-                       [&sn_address](const sn_record_t& sn) {
-                           return sn.sn_address() == sn_address;
-                       });
-}
-
-swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
-                           const user_pubkey_t& pk) {
+const SwarmInfo& get_swarm_by_pk(
+        const std::vector<SwarmInfo>& all_swarms,
+        const user_pubkey_t& pk) {
 
     const uint64_t res = hex_to_u64(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
 
-    swarm_id_t cur_best = INVALID_SWARM_ID;
+    const SwarmInfo* cur_best = &null_swarm;
     uint64_t cur_min = INVALID_SWARM_ID;
 
     /// We don't require that all_swarms is sorted, so we find
     /// the smallest/largest elements in the same loop
-    swarm_id_t leftmost_id = INVALID_SWARM_ID;
-    swarm_id_t rightmost_id = 0;
+    const SwarmInfo* leftmost = &null_swarm;
+    const SwarmInfo* rightmost = nullptr;
 
     for (const auto& si : all_swarms) {
 
@@ -350,41 +322,58 @@ swarm_id_t get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms,
         uint64_t dist =
             (si.swarm_id > res) ? (si.swarm_id - res) : (res - si.swarm_id);
         if (dist < cur_min) {
-            cur_best = si.swarm_id;
+            cur_best = &si;
             cur_min = dist;
         }
 
         /// Find the letfmost
-        if (si.swarm_id < leftmost_id) {
-            leftmost_id = si.swarm_id;
+        if (si.swarm_id < leftmost->swarm_id) {
+            leftmost = &si;
         }
 
-        if (si.swarm_id > rightmost_id) {
-            rightmost_id = si.swarm_id;
+        if (!rightmost || si.swarm_id > rightmost->swarm_id) {
+            rightmost = &si;
         }
     }
 
+    if (!rightmost) // Found no swarms at all
+        return null_swarm;
+
     // handle special case
-    if (res > rightmost_id) {
+    if (res > rightmost->swarm_id) {
         // since rightmost is at least as large as leftmost,
         // res >= leftmost_id in this branch, so the value will
         // not overflow; the same logic applies to the else branch
-        const uint64_t dist = (MAX_ID - res) + leftmost_id;
+        const uint64_t dist = (MAX_ID - res) + leftmost->swarm_id;
         if (dist < cur_min) {
-            cur_best = leftmost_id;
+            cur_best = leftmost;
         }
-    } else if (res < leftmost_id) {
-        const uint64_t dist = res + (MAX_ID - rightmost_id);
+    } else if (res < leftmost->swarm_id) {
+        const uint64_t dist = res + (MAX_ID - rightmost->swarm_id);
         if (dist < cur_min) {
-            cur_best = rightmost_id;
+            cur_best = rightmost;
         }
     }
 
-    return cur_best;
+    return *cur_best;
 }
 
-const std::vector<sn_record_t>& Swarm::other_nodes() const {
-    return swarm_peers_;
+std::pair<int, int> count_missing_data(const block_update_t& bu) {
+    auto result = std::make_pair(0, 0);
+    auto& [missing, total] = result;
+
+    for (auto& swarm : bu.swarms) {
+        for (auto& snode : swarm.snodes) {
+            total++;
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.lmq_port ||
+                    !snode.pubkey_ed25519 || !snode.pubkey_x25519)
+            { OXEN_LOG(warn, "well wtf {} {} {} {} {}",
+                    snode.ip, snode.port, snode.lmq_port, snode.pubkey_ed25519, snode.pubkey_x25519);
+                missing++;
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace oxen

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "spdlog/spdlog.h"
+#include "spdlog/fmt/ostr.h" // for operator<< overload
 
 #define OXEN_LOG_N(LVL, msg, ...)                                              \
     spdlog::get("oxen_logger")->LVL("[{}] " msg, __func__, __VA_ARGS__)
@@ -12,6 +13,8 @@
     GET_MACRO(__VA_ARGS__, OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_N,     \
               OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_N, OXEN_LOG_2)                  \
     (__VA_ARGS__)
+
+#define OXEN_LOG_ENABLED(LVL) spdlog::get("oxen_logger")->should_log(spdlog::level::LVL)
 
 namespace oxen {
 using LogLevelPair = std::pair<std::string, spdlog::level::level_enum>;

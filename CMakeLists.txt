@@ -13,7 +13,7 @@ endif()
 cmake_minimum_required(VERSION 3.10)
 
 project(storage_server
-    VERSION 2.0.8
+    VERSION 2.1.0
     LANGUAGES CXX C)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
@@ -42,7 +42,6 @@ else()
 endif()
 
 if (INTEGRATION_TEST)
-    add_definitions(-DDISABLE_POW)
     add_definitions(-DINTEGRATION_TEST)
 endif()
 
@@ -80,7 +79,6 @@ endif()
 add_subdirectory(common)
 add_subdirectory(utils)
 add_subdirectory(crypto)
-add_subdirectory(pow)
 add_subdirectory(storage)
 add_subdirectory(httpserver)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build

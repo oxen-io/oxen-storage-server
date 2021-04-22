@@ -1,69 +1,60 @@
 #include "oxend_key.h"
-#include "utils.hpp"
+
+#include <cstring>
+#include <type_traits>
 
 #include <sodium.h>
+#include <oxenmq/base32z.h>
 #include <oxenmq/hex.h>
-
-#include <exception>
-#include <fstream>
-#include <iterator>
 
 namespace oxen {
 
-private_key_t oxendKeyFromHex(const std::string& private_key_hex) {
-    if (!oxenmq::is_hex(private_key_hex) || private_key_hex.size() != KEY_LENGTH * 2)
-        throw std::runtime_error("Oxend key data is invalid: expected " +
-                                 std::to_string(KEY_LENGTH) + " hex digits not " +
-                                 std::to_string(private_key_hex.size()) +
-                                 " bytes");
+namespace detail {
 
-    private_key_t private_key;
-    oxenmq::from_hex(private_key_hex.begin(), private_key_hex.end(), private_key.begin());
-
-    return private_key;
+void load_from_hex(void* buffer, size_t length, std::string_view hex) {
+    if (!oxenmq::is_hex(hex))
+        throw std::runtime_error{"Hex key data is invalid: data is not hex"};
+    if (hex.size() != 2*length)
+        throw std::runtime_error{
+            "Hex key data is invalid: expected " + std::to_string(length) +
+                " hex digits, received " + std::to_string(hex.size())};
+    oxenmq::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
 }
 
-private_key_ed25519_t
-private_key_ed25519_t::from_hex(const std::string& sc_hex) {
-    if (sc_hex.size() != private_key_ed25519_t::LENGTH * 2)
-        throw std::runtime_error("Oxend key data is invalid: expected " +
-                                 std::to_string(private_key_ed25519_t::LENGTH) +
-                                 " hex digits not " + std::to_string(sc_hex.size()) +
-                                 " bytes");
-
-    private_key_ed25519_t key;
-    oxenmq::from_hex(sc_hex.begin(), sc_hex.end(), key.data.begin());
-
-    return key;
+void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
+    if (bytes.size() != length)
+        throw std::runtime_error{
+            "Key data is invalid: expected " + std::to_string(length) +
+                " bytes, received " + std::to_string(bytes.size())};
+    std::memmove(buffer, bytes.data(), length);
 }
 
-public_key_t derive_pubkey_legacy(const private_key_t& private_key) {
-    public_key_t publicKey;
-    crypto_scalarmult_ed25519_base_noclamp(publicKey.data(),
-                                           private_key.data());
-
-    return publicKey;
+std::string to_hex(const unsigned char* buffer, size_t length) {
+    return oxenmq::to_hex(buffer, buffer + length);
 }
 
-public_key_t derive_pubkey_x25519(const private_key_t& seckey) {
-
-    public_key_t pubkey;
-    crypto_scalarmult_curve25519_base(pubkey.data(), seckey.data());
-
-    return pubkey;
 }
 
-public_key_t derive_pubkey_ed25519(const private_key_ed25519_t& seckey) {
-
-    public_key_t pubkey;
-    crypto_sign_ed25519_sk_to_pk(pubkey.data(), seckey.data.data());
-
-    return pubkey;
+std::string ed25519_pubkey::snode_address() const {
+    auto addr = oxenmq::to_base32z(begin(), end());
+    addr += ".snode";
+    return addr;
 }
 
-std::string key_to_string(const std::array<uint8_t, oxen::KEY_LENGTH>& key) {
-    auto pk = reinterpret_cast<const char*>(&key);
-    return std::string{pk, oxen::KEY_LENGTH};
-}
+legacy_pubkey legacy_seckey::pubkey() const {
+    legacy_pubkey pk;
+    crypto_scalarmult_ed25519_base_noclamp(pk.data(), data());
+    return pk;
+};
+ed25519_pubkey ed25519_seckey::pubkey() const {
+    ed25519_pubkey pk;
+    crypto_sign_ed25519_sk_to_pk(pk.data(), data());
+    return pk;
+};
+x25519_pubkey x25519_seckey::pubkey() const {
+    x25519_pubkey pk;
+    crypto_scalarmult_curve25519_base(pk.data(), data());
+    return pk;
+};
 
 } // namespace oxen
