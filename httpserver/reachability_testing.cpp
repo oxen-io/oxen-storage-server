@@ -118,10 +118,12 @@ void reachability_testing::add_failing_node(const legacy_pubkey& pk, int previou
     using namespace std::chrono;
 
     if (previous_failures < 0) previous_failures = 0;
-    auto next_test = steady_clock::now() + duration_cast<time_point_t::duration>(
+    auto next_test_in = duration_cast<time_point_t::duration>(
             previous_failures * TESTING_BACKOFF + fseconds{TESTING_INTERVAL(util::rng())});
+    if (next_test_in > TESTING_BACKOFF_MAX)
+        next_test_in = TESTING_BACKOFF_MAX;
 
-    failing_queue.emplace(pk, next_test, previous_failures + 1);
+    failing_queue.emplace(pk, steady_clock::now() + next_test_in, previous_failures + 1);
 }
 
 } // namespace oxen
