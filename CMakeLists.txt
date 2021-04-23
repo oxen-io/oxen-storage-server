@@ -59,12 +59,29 @@ if(BUILD_STATIC_DEPS)
   include(StaticBuild)
 else()
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium>=1.0.17)
-  add_library(sodium INTERFACE)
-  target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
 
-  # Need this target export so that loki-mq properly picks up sodium
-  export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+  if(NOT TARGET sodium)
+    # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
+    option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
+    if(NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
+      pkg_check_modules(SODIUM libsodium>=1.0.18 IMPORTED_TARGET)
+    endif()
+
+    add_library(sodium INTERFACE)
+    if(SODIUM_FOUND AND NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
+      target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
+    else()
+      if(NOT DOWNLOAD_SODIUM AND NOT BUILD_STATIC_DEPS)
+        message(FATAL_ERROR "Could not find libsodium >= 1.0.18; either install it on your system or use -DDOWNLOAD_SODIUM=ON to download and build an internal copy")
+      endif()
+      message(STATUS "Sodium >= 1.0.18 not found, but DOWNLOAD_SODIUM specified, so downloading it")
+      include(DownloadLibSodium)
+      target_link_libraries(sodium INTERFACE sodium_vendor)
+    endif()
+
+    # Need this target export so that loki-mq properly picks up sodium
+    export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+  endif()
 
   find_package(Boost REQUIRED system program_options)
 
