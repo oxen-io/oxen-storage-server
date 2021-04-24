@@ -4,6 +4,8 @@ local default_deps_base='libsystemd-dev libboost-program-options-dev libboost-sy
 local default_deps='g++ ' + default_deps_base; // g++ sometimes needs replacement
 
 local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1'];
+local docker_base = 'registry.oxen.rocks/lokinet-ci-';
+
 local submodules = {
     name: 'submodules',
     image: 'drone/git',
@@ -11,7 +13,6 @@ local submodules = {
 };
 
 local apt_get_quiet = 'apt-get -o=Dpkg::Use-Pty=0 -q';
-
 
 // Regular build on a debian-like system:
 local debian_pipeline(name, image,
@@ -109,13 +110,13 @@ local static_build_deps='autoconf automake make file libtool pkg-config patch op
 
 [
     // Various debian builds
-    debian_pipeline("Debian (w/ tests) (amd64)", "debian:sid", lto=true, run_tests=true),
+    debian_pipeline("Debian (w/ tests) (amd64)", docker_base+"debian-sid", lto=true, run_tests=true),
     debian_pipeline("Debian Debug (amd64)", "debian:sid", build_type='Debug'),
-    debian_pipeline("Debian clang-11 (amd64)", "debian:sid", deps='clang-11 '+default_deps_base,
+    debian_pipeline("Debian clang-11 (amd64)", docker_base+"debian-sid", deps='clang-11 '+default_deps_base,
                     cmake_extra='-DCMAKE_C_COMPILER=clang-11 -DCMAKE_CXX_COMPILER=clang++-11 ', lto=true),
     debian_pipeline("Debian buster (i386)", "i386/debian:buster", deps=default_deps+' file',
                     cmake_extra='-DDOWNLOAD_SODIUM=ON'),
-    debian_pipeline("Ubuntu focal (amd64)", "ubuntu:focal"),
+    debian_pipeline("Ubuntu focal (amd64)", docker_base+"ubuntu-focal"),
 
     // ARM builds (ARM64 and armhf)
     debian_pipeline("Debian (ARM64)", "debian:sid", arch="arm64", build_tests=false),
@@ -123,7 +124,7 @@ local static_build_deps='autoconf automake make file libtool pkg-config patch op
                     cmake_extra='-DDOWNLOAD_SODIUM=ON', deps=default_deps+' file'),
 
     // Static build (on bionic) which gets uploaded to oxen.rocks:
-    debian_pipeline("Static (bionic amd64)", "ubuntu:bionic", deps='g++-8 '+static_build_deps,
+    debian_pipeline("Static (bionic amd64)", docker_base+"ubuntu-bionic", deps='g++-8 '+static_build_deps,
                     cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8',
                     build_tests=false, lto=true, extra_cmds=static_check_and_upload),
 
