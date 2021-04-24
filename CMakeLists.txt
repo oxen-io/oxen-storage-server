@@ -59,33 +59,32 @@ if(BUILD_STATIC_DEPS)
   include(StaticBuild)
 else()
   find_package(PkgConfig REQUIRED)
+  find_package(Boost REQUIRED system program_options)
+  find_package(OpenSSL REQUIRED)
+endif()
 
-  if(NOT TARGET sodium)
-    # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
-    option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
-    if(NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-      pkg_check_modules(SODIUM libsodium>=1.0.18 IMPORTED_TARGET)
-    endif()
-
-    add_library(sodium INTERFACE)
-    if(SODIUM_FOUND AND NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-      target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
-    else()
-      if(NOT DOWNLOAD_SODIUM AND NOT BUILD_STATIC_DEPS)
-        message(FATAL_ERROR "Could not find libsodium >= 1.0.18; either install it on your system or use -DDOWNLOAD_SODIUM=ON to download and build an internal copy")
-      endif()
-      message(STATUS "Sodium >= 1.0.18 not found, but DOWNLOAD_SODIUM specified, so downloading it")
-      include(DownloadLibSodium)
-      target_link_libraries(sodium INTERFACE sodium_vendor)
-    endif()
-
-    # Need this target export so that loki-mq properly picks up sodium
-    export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+if(NOT TARGET sodium)
+  # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
+  option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
+  if(NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SODIUM libsodium>=1.0.18 IMPORTED_TARGET)
   endif()
 
-  find_package(Boost REQUIRED system program_options)
+  add_library(sodium INTERFACE)
+  if(SODIUM_FOUND AND NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
+    target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
+  else()
+    if(NOT DOWNLOAD_SODIUM AND NOT BUILD_STATIC_DEPS)
+      message(FATAL_ERROR "Could not find libsodium >= 1.0.18; either install it on your system or use -DDOWNLOAD_SODIUM=ON to download and build an internal copy")
+    endif()
+    message(STATUS "Sodium >= 1.0.18 not found, but DOWNLOAD_SODIUM specified, so downloading it")
+    include(DownloadLibSodium)
+    target_link_libraries(sodium INTERFACE sodium_vendor)
+  endif()
 
-  find_package(OpenSSL REQUIRED)
+  # Need this target export so that loki-mq properly picks up sodium
+  export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
 endif()
 
 include(cmake/check_for_std_filesystem.cmake)
@@ -98,8 +97,25 @@ add_subdirectory(utils)
 add_subdirectory(crypto)
 add_subdirectory(storage)
 add_subdirectory(httpserver)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
-add_subdirectory(vendors/loki-mq)
+
+
+
+option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
+if(NOT FORCE_OXENMQ_SUBMODULE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(OXENMQ liboxenmq>=1.2.5)
+endif()
+if(OXENMQ_FOUND)
+  add_library(oxenmq INTERFACE)
+  link_dep_libs(oxenmq INTERFACE "${OXENMQ_LIBRARY_DIRS}" ${OXENMQ_LIBRARIES})
+  target_include_directories(oxenmq INTERFACE ${OXENMQ_INCLUDE_DIRS})
+  add_library(oxenmq::oxenmq ALIAS oxenmq)
+  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
+else()
+  message(STATUS "using oxenmq submodule")
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
+  add_subdirectory(vendors/loki-mq)
+endif()
 
 if (BUILD_TESTS)
     add_subdirectory(unit_test)
