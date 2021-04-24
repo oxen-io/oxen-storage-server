@@ -1,11 +1,11 @@
 
 local default_deps_base='libsystemd-dev libboost-program-options-dev libboost-system-dev libboost-test-dev ' +
     'libsqlite3-dev libsodium-dev libssl-dev pkg-config';
-local default_deps='g++ ' + default_deps_base; // g++ sometimes needs replacement
-
-local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1'];
+local default_deps_nocxx='libsodium-dev ' + default_deps_base; // libsodium-dev needs to be >= 1.0.18
+local default_deps='g++ ' + default_deps_nocxx; // g++ sometimes needs replacement
 local docker_base = 'registry.oxen.rocks/lokinet-ci-';
 
+local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1'];
 local submodules = {
     name: 'submodules',
     image: 'drone/git',
@@ -114,14 +114,14 @@ local static_build_deps='autoconf automake make file libtool pkg-config patch op
     debian_pipeline("Debian Debug (amd64)", "debian:sid", build_type='Debug'),
     debian_pipeline("Debian clang-11 (amd64)", docker_base+"debian-sid", deps='clang-11 '+default_deps_base,
                     cmake_extra='-DCMAKE_C_COMPILER=clang-11 -DCMAKE_CXX_COMPILER=clang++-11 ', lto=true),
-    debian_pipeline("Debian buster (i386)", "i386/debian:buster", deps=default_deps+' file',
+    debian_pipeline("Debian buster (i386)", "i386/debian:buster", deps=default_deps_base+' g++ file',
                     cmake_extra='-DDOWNLOAD_SODIUM=ON'),
     debian_pipeline("Ubuntu focal (amd64)", docker_base+"ubuntu-focal"),
 
     // ARM builds (ARM64 and armhf)
     debian_pipeline("Debian (ARM64)", "debian:sid", arch="arm64", build_tests=false),
     debian_pipeline("Debian buster (armhf)", "arm32v7/debian:buster", arch="arm64", build_tests=false,
-                    cmake_extra='-DDOWNLOAD_SODIUM=ON', deps=default_deps+' file'),
+                    cmake_extra='-DDOWNLOAD_SODIUM=ON', deps=default_deps_base+' g++ file'),
 
     // Static build (on bionic) which gets uploaded to oxen.rocks:
     debian_pipeline("Static (bionic amd64)", docker_base+"ubuntu-bionic", deps='g++-8 '+static_build_deps,
