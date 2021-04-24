@@ -35,9 +35,6 @@ namespace oxen {
 
 using storage::Item;
 
-constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
-    1s, 5s, 10s, 20s, 40s, 80s, 160s, 320s};
-
 constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
