@@ -21,7 +21,7 @@ local debian_pipeline(name, image,
         build_type='Release',
         lto=false,
         build_tests=true,
-        run_tests=false, # Runs full test suite
+        run_tests=true, # Runs full test suite
         test_oxen_storage=true, # Makes sure oxen-storage --version runs
         cmake_extra='',
         extra_cmds=[],
@@ -67,7 +67,8 @@ local mac_builder(name,
         build_type='Release',
         lto=false,
         build_tests=true,
-        run_tests=false,
+        run_tests=true,
+        test_oxen_storage=true, # Makes sure oxen-storage --version runs
         cmake_extra='',
         extra_cmds=[],
         extra_steps=[],
@@ -94,6 +95,7 @@ local mac_builder(name,
                     cmake_extra,
                 'ninja -j' + jobs + ' -v'
             ] +
+            (if test_oxen_storage then ['./httpserver/oxen-storage --version'] else []) +
             (if run_tests then ['./unit_test/Test'] else []) +
             extra_cmds,
         }
@@ -112,7 +114,7 @@ local static_build_deps='autoconf automake make file libtool pkg-config patch op
 
 [
     // Various debian builds
-    debian_pipeline("Debian (w/ tests) (amd64)", docker_base+"debian-sid", lto=true, run_tests=true),
+    debian_pipeline("Debian (amd64)", docker_base+"debian-sid", lto=true),
     debian_pipeline("Debian Debug (amd64)", "debian:sid", build_type='Debug'),
     debian_pipeline("Debian clang-11 (amd64)", docker_base+"debian-sid", deps='clang-11 '+default_deps_base,
                     cmake_extra='-DCMAKE_C_COMPILER=clang-11 -DCMAKE_CXX_COMPILER=clang++-11 ', lto=true),
@@ -121,18 +123,18 @@ local static_build_deps='autoconf automake make file libtool pkg-config patch op
     debian_pipeline("Ubuntu focal (amd64)", docker_base+"ubuntu-focal"),
 
     // ARM builds (ARM64 and armhf)
-    debian_pipeline("Debian (ARM64)", "debian:sid", arch="arm64", build_tests=false),
-    debian_pipeline("Debian buster (armhf)", "arm32v7/debian:buster", arch="arm64", build_tests=false,
+    debian_pipeline("Debian (ARM64)", "debian:sid", arch="arm64"),
+    debian_pipeline("Debian buster (armhf)", "arm32v7/debian:buster", arch="arm64",
                     cmake_extra='-DDOWNLOAD_SODIUM=ON', deps=default_deps_base+' g++ make file'),
 
     // Static build (on bionic) which gets uploaded to oxen.rocks:
     debian_pipeline("Static (bionic amd64)", docker_base+"ubuntu-bionic", deps='g++-8 '+static_build_deps,
                     cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8',
-                    build_tests=false, lto=true, extra_cmds=static_check_and_upload),
+                    lto=true, extra_cmds=static_check_and_upload),
 
     // Macos builds:
     mac_builder('macOS (Static)', cmake_extra='-DBUILD_STATIC_DEPS=ON',
-                build_tests=false, lto=true, extra_cmds=static_check_and_upload),
-    mac_builder('macOS (Release)', run_tests=true),
-    mac_builder('macOS (Debug)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
+                lto=true, extra_cmds=static_check_and_upload),
+    mac_builder('macOS (Release)'),
+    mac_builder('macOS (Debug)', build_type='Debug'),
 ]
