@@ -22,6 +22,7 @@ local debian_pipeline(name, image,
         lto=false,
         build_tests=true,
         run_tests=false, # Runs full test suite
+        test_oxen_storage=true, # Makes sure oxen-storage --version runs
         cmake_extra='',
         extra_cmds=[],
         extra_steps=[],
@@ -54,6 +55,7 @@ local debian_pipeline(name, image,
                     cmake_extra,
                 'ninja -j' + jobs + ' -v',
             ] +
+            (if test_oxen_storage then ['./httpserver/oxen-storage --version'] else []) +
             (if run_tests then ['./unit_test/Test'] else []) +
             extra_cmds,
         }
