@@ -848,7 +848,7 @@ void connection_t::process_client_req_rate_limited() {
                                  plaintext = std::move(plain_text)](
                                     const error_code& ec) {
             self->request_handler_.process_client_req(
-                plaintext, [wself = std::weak_ptr{self}](
+                plaintext, [wself = std::weak_ptr<connection_t>{self}](
                                oxen::Response res) {
                     auto self = wself.lock();
                     if (!self) {
