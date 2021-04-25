@@ -55,10 +55,10 @@ ServiceNode::ServiceNode(
         sn_record_t address,
         const legacy_seckey& skey,
         OxenmqServer& lmq_server,
-        const std::string& db_location,
+        const std::filesystem::path& db_location,
         const bool force_start)
     : ioc_(ioc),
-      db_(std::make_unique<Database>(ioc, db_location)),
+      db_(std::make_unique<Database>(db_location)),
       our_address_{std::move(address)},
       our_seckey_{skey},
       lmq_server_(lmq_server),
@@ -71,6 +71,9 @@ ServiceNode::ServiceNode(
 #ifdef INTEGRATION_TEST
     this->syncing_ = false;
 #endif
+
+    lmq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
+            Database::CLEANUP_PERIOD);
 
     lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
