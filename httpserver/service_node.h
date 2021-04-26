@@ -186,7 +186,7 @@ class ServiceNode {
                 sn_record_t address,
                 const legacy_seckey& skey,
                 OxenmqServer& omq_server,
-                const std::string& db_location,
+                const std::filesystem::path& db_location,
                 bool force_start);
 
     // Return info about this node as it is advertised to other nodes
