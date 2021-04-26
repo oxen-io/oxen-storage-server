@@ -1,3 +1,34 @@
+oxen-storage-server (2.1.1-1) unstable; urgency=medium
+
+  * Rediff patches
+  * Cosmetic: move decrypt_cbc to be beside encrypt_cbc
+  * Abstract openssl encrypt/decryption call
+  * Switch aes-gcm implementation to openssl
+  * Remove unused variables
+  * Avoid clang copy warning & simplify
+  * Update dependencies
+  * Update dependencies
+  * Update dependencies
+  * Actually apply the testing backoff max time
+  * Only warn about missing pubkeys if above threshold
+  * Fix master -> stable branch rename
+  * Updated required libsodium to 1.0.18, add download option
+  * Buster deps fix (maybe?)
+  * Use our preloaded docker base images
+  * Try more buster stuff
+  * Sync up sodium includes with lokinet
+  * Add simple test
+  * macos compilation fixes
+  * Namespace encrypt unit test to avoid macos symbol conflict
+  * Build and run tests everywhere
+  * Fix serialize on 32-bit arches
+  * Separate Database from boost::asio
+  * Fix arg for boost unit test static build
+  * Bump SS version to 2.1.1
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 26 Apr 2021 12:52:47 -0300
+
 oxen-storage-server (2.1.0-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
