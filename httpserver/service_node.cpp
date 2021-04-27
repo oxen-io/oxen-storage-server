@@ -35,10 +35,12 @@ namespace oxen {
 
 using storage::Item;
 
-constexpr std::array<std::chrono::seconds, 8> RETRY_INTERVALS = {
-    1s, 5s, 10s, 20s, 40s, 80s, 160s, 320s};
-
 constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
+
+// Threshold of missing data records at which we start warning and consult bootstrap nodes (mainly
+// so that we don't bother producing warning spam or going to the bootstrap just for a few new nodes
+// that will often have missing info for a few minutes).
+using MISSING_PUBKEY_THRESHOLD = std::ratio<3, 100>;
 
 static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
                             std::shared_ptr<request_t> req,
@@ -58,10 +60,10 @@ ServiceNode::ServiceNode(
         sn_record_t address,
         const legacy_seckey& skey,
         OxenmqServer& lmq_server,
-        const std::string& db_location,
+        const std::filesystem::path& db_location,
         const bool force_start)
     : ioc_(ioc),
-      db_(std::make_unique<Database>(ioc, db_location)),
+      db_(std::make_unique<Database>(db_location)),
       our_address_{std::move(address)},
       our_seckey_{skey},
       lmq_server_(lmq_server),
@@ -74,6 +76,9 @@ ServiceNode::ServiceNode(
 #ifdef INTEGRATION_TEST
     this->syncing_ = false;
 #endif
+
+    lmq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
+            Database::CLEANUP_PERIOD);
 
     lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
@@ -130,6 +135,8 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
 
         const json service_node_states = result.at("service_node_states");
 
+        int missing_aux_pks = 0, total = 0;
+
         for (const auto& sn_json : service_node_states) {
             /// We want to include (test) decommissioned nodes, but not
             /// partially funded ones.
@@ -137,14 +144,19 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
                 continue;
             }
 
+            total++;
+            const auto& pk_hex = sn_json.at("service_node_pubkey").get_ref<const std::string&>();
             const auto& pk_x25519_hex =
                 sn_json.at("pubkey_x25519").get_ref<const std::string&>();
             const auto& pk_ed25519_hex =
                 sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
 
             if (pk_x25519_hex.empty() || pk_ed25519_hex.empty()) {
-                // These will always either both be present or neither present
-                OXEN_LOG(warn, "ed25519/x25519 pubkeys are missing from service node info");
+                // These will always either both be present or neither present.  If they are missing
+                // there isn't much we can do: it means the remote hasn't transmitted them yet (or
+                // our local oxend hasn't received them yet).
+                missing_aux_pks++;
+                OXEN_LOG(debug, "ed25519/x25519 pubkeys are missing from service node info {}", pk_hex);
                 continue;
             }
 
@@ -152,8 +164,7 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
                 sn_json.at("public_ip").get_ref<const std::string&>(),
                 sn_json.at("storage_port").get<uint16_t>(),
                 sn_json.at("storage_lmq_port").get<uint16_t>(),
-                legacy_pubkey::from_hex(
-                        sn_json.at("service_node_pubkey").get_ref<const std::string&>()),
+                legacy_pubkey::from_hex(pk_hex),
                 ed25519_pubkey::from_hex(pk_ed25519_hex),
                 x25519_pubkey::from_hex(pk_x25519_hex)};
 
@@ -169,6 +180,12 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
 
                 swarm_map[swarm_id].push_back(std::move(sn));
             }
+        }
+
+        if (missing_aux_pks >
+                MISSING_PUBKEY_THRESHOLD::num*total/MISSING_PUBKEY_THRESHOLD::den) {
+            OXEN_LOG(warn, "Missing ed25519/x25519 pubkeys for {}/{} service nodes; "
+                    "oxend may be out of sync with the network", missing_aux_pks, total);
         }
 
     } catch (const std::exception& e) {
@@ -576,6 +593,11 @@ void ServiceNode::relay_buffered_messages() {
 
 void ServiceNode::update_swarms() {
 
+    if (updating_swarms_.exchange(true)) {
+        OXEN_LOG(debug, "Swarm update already in progress, not sending another update request");
+        return;
+    }
+
     std::lock_guard guard(sn_mutex_);
 
     OXEN_LOG(debug, "Swarm update triggered");
@@ -601,6 +623,7 @@ void ServiceNode::update_swarms() {
 
     lmq_server_.oxend_request("rpc.get_service_nodes",
         [this](bool success, std::vector<std::string> data) {
+            updating_swarms_ = false;
             if (!success || data.size() < 2) {
                 OXEN_LOG(critical, "Failed to contact local oxend for service node list");
                 return;
@@ -629,7 +652,8 @@ void ServiceNode::update_swarms() {
 
                     auto [missing, total] = count_missing_data(bu);
                     if (total >= (oxen::is_mainnet ? 100 : 10)
-                            && missing < 3*total/100) {
+                            && missing <
+                                MISSING_PUBKEY_THRESHOLD::num*total/MISSING_PUBKEY_THRESHOLD::den) {
                         OXEN_LOG(info, "Initialized from oxend with {}/{} SN records",
                                 total-missing, total);
                         syncing_ = false;

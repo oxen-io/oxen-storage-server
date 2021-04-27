@@ -102,6 +102,11 @@ class ServiceNode {
 
     std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
 
+    // Will be set to true while we have an outstanding update_swarms() call so that we squelch
+    // other update_swarms() until it finishes (or fails), to avoid spamming oxend (particularly
+    // when syncing when we get tons of block notifications quickly).
+    std::atomic<bool> updating_swarms_ = false;
+
     reachability_testing reach_records_;
 
     /// Container for recently received messages directly from
@@ -186,7 +191,7 @@ class ServiceNode {
                 sn_record_t address,
                 const legacy_seckey& skey,
                 OxenmqServer& omq_server,
-                const std::string& db_location,
+                const std::filesystem::path& db_location,
                 bool force_start);
 
     // Return info about this node as it is advertised to other nodes
