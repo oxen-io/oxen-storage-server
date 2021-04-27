@@ -4,24 +4,26 @@
 #include "oxen_common.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <boost/asio.hpp>
 
 struct sqlite3;
 struct sqlite3_stmt;
 
 namespace oxen {
 
-constexpr auto DB_CLEANUP_PERIOD = std::chrono::seconds(10);
-
+// Storage database class.
 class Database {
   public:
-    Database(boost::asio::io_context& ioc, const std::string& db_path,
-             std::chrono::milliseconds cleanup_period = DB_CLEANUP_PERIOD);
+    // Recommended period for calling clean_expired()
+    inline static constexpr auto CLEANUP_PERIOD = 10s;
+
+    // Constructor.  Note that you *must* also set up a timer that runs periodically (every
+    // CLEANUP_PERIOD is recommended) and calls clean_expired().
+    explicit Database(const std::filesystem::path& db_path);
     ~Database();
 
     enum class DuplicateHandling { IGNORE, FAIL };
@@ -46,12 +48,13 @@ class Database {
     // Get message by `msg_hash`, return true if found
     bool retrieve_by_hash(const std::string& msg_hash, storage::Item& item);
 
-  private:
-    sqlite3_stmt* prepare_statement(const std::string& query);
-    void open_and_prepare(const std::string& db_path);
-    void perform_cleanup();
+    // Removes expired messages from the database; the Database owner should call this periodically.
+    void clean_expired();
 
   private:
+    sqlite3_stmt* prepare_statement(const std::string& query);
+    void open_and_prepare(const std::filesystem::path& db_path);
+
     sqlite3* db;
     sqlite3_stmt* save_stmt;
     sqlite3_stmt* save_or_ignore_stmt;
@@ -62,9 +65,6 @@ class Database {
     sqlite3_stmt* get_by_index_stmt;
     sqlite3_stmt* get_by_hash_stmt;
     sqlite3_stmt* delete_expired_stmt;
-
-    const std::chrono::milliseconds cleanup_period;
-    boost::asio::steady_timer cleanup_timer_;
 };
 
 } // namespace oxen

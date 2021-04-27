@@ -19,15 +19,13 @@ Database::~Database() {
     sqlite3_close(db);
 }
 
-Database::Database(boost::asio::io_context& ioc, const std::string& db_path,
-                   std::chrono::milliseconds cleanup_period)
-    : cleanup_period(cleanup_period), cleanup_timer_(ioc) {
+Database::Database(const std::filesystem::path& db_path) {
     open_and_prepare(db_path);
 
-    perform_cleanup();
+    clean_expired();
 }
 
-void Database::perform_cleanup() {
+void Database::clean_expired() {
     const auto now_ms = util::get_time_ms();
 
     sqlite3_bind_int64(delete_expired_stmt, 1, now_ms);
@@ -51,9 +49,6 @@ void Database::perform_cleanup() {
     if (reset_rc != SQLITE_OK && reset_rc != rc) {
         fprintf(stderr, "sql error: unexpected value from sqlite3_reset");
     }
-
-    cleanup_timer_.expires_after(this->cleanup_period);
-    cleanup_timer_.async_wait(std::bind(&Database::perform_cleanup, this));
 }
 
 sqlite3_stmt* Database::prepare_statement(const std::string& query) {
@@ -139,9 +134,9 @@ static void check_page_size(sqlite3* db) {
     }
 }
 
-void Database::open_and_prepare(const std::string& db_path) {
-    const std::string file_path = db_path + "/storage.db";
-    int rc = sqlite3_open_v2(file_path.c_str(), &db,
+void Database::open_and_prepare(const std::filesystem::path& db_path) {
+    const auto file_path = db_path / "storage.db";
+    int rc = sqlite3_open_v2(file_path.u8string().c_str(), &db,
                              SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
                                  SQLITE_OPEN_FULLMUTEX,
                              NULL);

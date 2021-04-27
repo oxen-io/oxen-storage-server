@@ -5,7 +5,7 @@
 #include "oxend_key.h"
 #include "channel_encryption.hpp"
 
-using namespace oxen;
+namespace oxen {
 
 BOOST_AUTO_TEST_SUITE(encrypt)
 
@@ -99,3 +99,5 @@ BOOST_AUTO_TEST_CASE(xchacha20) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+}

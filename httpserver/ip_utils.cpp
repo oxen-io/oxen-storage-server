@@ -47,10 +47,10 @@ std::array bogonRanges = { FromIPv4(0, 0, 0, 0, 8),
 
 static bool is_ip_public_inner(const uint32_t ip)
 {
-  for(const auto ipRange: bogonRanges) {
-    uint32_t netstart = (std::get<0>(ipRange) & std::get<1>(ipRange)); // first ip in subnet
-    uint32_t netend = (netstart | ~std::get<1>(ipRange)); // last ip in subnet
-    if ((ip >= netstart) && (ip <= netend))
+  for(const auto& [block, netmask]: bogonRanges) {
+    uint32_t netstart = block & netmask; // first ip in subnet
+    uint32_t netend = netstart | ~netmask; // last ip in subnet
+    if (ip >= netstart && ip <= netend)
       return false;
   }
   return true;

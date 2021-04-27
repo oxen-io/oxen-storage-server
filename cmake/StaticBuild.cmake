@@ -5,18 +5,18 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 1.1.1i CACHE STRING "openssl version")
+set(OPENSSL_VERSION 1.1.1k CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=e8be6a35fe41d10603c3cc635e93289ed00bf34b79671a3a4de64fcee00d5242
+set(OPENSSL_HASH SHA256=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df33fbaee5
     CACHE STRING "openssl source hash")
 
-set(BOOST_VERSION 1.75.0 CACHE STRING "boost version")
+set(BOOST_VERSION 1.76.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://dl.bintray.com/boostorg/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=953db31e016db7bb207f11432bef7df100516eeb746843fa0486a222e3fd49cb
+set(BOOST_HASH SHA256=f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
     CACHE STRING "boost source hash")
 
 set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
@@ -28,18 +28,18 @@ set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
 set(SODIUM_HASH SHA512=17e8638e46d8f6f7d024fe5559eccf2b8baf23e143fadd472a7d29d228b186d86686a5e6920385fe2020729119a5f12f989c3a782afbd05a8db4819bb18666ef
   CACHE STRING "libsodium source hash")
 
-set(SQLITE3_VERSION 3340000 CACHE STRING "sqlite3 version")
-set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2020
+set(SQLITE3_VERSION 3350500 CACHE STRING "sqlite3 version")
+set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2021
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=75a1a2d86ab41354941b8574e780b1eae09c3c01f8da4b08f606b96962b80550f739ec7e9b1ceb07bba1cedced6d18a1408e4c10ff645eb1829d368ad308cf2f
+set(SQLITE3_HASH SHA512=039af796f79fc4517be0bd5ba37886264d49da309e234ae6fccdb488ef0109ed2b917fc3e6c1fc7224dff4f736824c653aaf8f0a37550c5ebc14d035cb8ac737
     CACHE STRING "sqlite3 source hash")
 
-set(ZMQ_VERSION 4.3.3 CACHE STRING "libzmq version")
+set(ZMQ_VERSION 4.3.4 CACHE STRING "libzmq version")
 set(ZMQ_MIRROR ${LOCAL_MIRROR} https://github.com/zeromq/libzmq/releases/download/v${ZMQ_VERSION}
     CACHE STRING "libzmq mirror(s)")
 set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
-set(ZMQ_HASH SHA512=4c18d784085179c5b1fcb753a93813095a12c8d34970f2e1bfca6499be6c9d67769c71c68b7ca54ff181b20390043170e89733c22f76ff1ea46494814f7095b1
+set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
     CACHE STRING "libzmq source hash")
 
 
@@ -192,7 +192,7 @@ set(OPENSSL_VERSION 1.1.1)
 
 
 set(boost_threadapi "pthread")
-set(boost_bootstrap_cxx "CXX=${deps_cxx}")
+set(boost_bootstrap_cxx "--cxx=${deps_cxx}")
 set(boost_toolset "")
 set(boost_extra "")
 if(USE_LTO)
@@ -226,8 +226,10 @@ if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
 endif()
 
 set(boost_libs program_options system)
+set(boost_with_libs_extra)
 if(BUILD_TESTS)
     list(APPEND boost_libs unit_test_framework)
+    list(APPEND boost_with_libs_extra --with-test)
 endif()
 string(REPLACE ";" "," boost_with_libraries "${boost_libs}")
 set(boost_static_libraries)
@@ -238,14 +240,15 @@ endforeach()
 build_external(boost
   #  PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam tools/build/src/user-config.jam
   CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} -E env ${boost_bootstrap_cxx}
-    ./bootstrap.sh --without-icu --prefix=${DEPS_DESTDIR} --with-toolset=${boost_toolset}
-      --with-libraries=${boost_with_libraries}
-  BUILD_COMMAND true
+    ./tools/build/src/engine/build.sh ${boost_toolset} ${boost_bootstrap_cxx}
+  BUILD_COMMAND
+    cp tools/build/src/engine/b2 .
   INSTALL_COMMAND
     ./b2 -d0 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
-      threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=14 visibility=global
+      threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
       --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam
+      --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
+      --with-program_options --with-system ${boost_with_libs_extra}
       install
   BUILD_BYPRODUCTS
     ${boost_static_libraries}
@@ -255,9 +258,9 @@ add_library(boost_core INTERFACE)
 add_dependencies(boost_core INTERFACE boost_external)
 target_include_directories(boost_core SYSTEM INTERFACE ${DEPS_DESTDIR}/include)
 add_library(Boost::boost ALIAS boost_core)
-foreach(lib ${boost_libs})
-  add_static_target(Boost::${lib} boost_external libboost_${lib}.a)
-  target_link_libraries(Boost::${lib} INTERFACE boost_core)
+foreach(boostlib ${boost_libs})
+  add_static_target(Boost::${boostlib} boost_external libboost_${boostlib}.a)
+  target_link_libraries(Boost::${boostlib} INTERFACE boost_core)
 endforeach()
 set(Boost_FOUND ON)
 set(Boost_VERSION ${BOOST_VERSION})
@@ -275,7 +278,7 @@ build_external(sodium)
 add_static_target(sodium sodium_external libsodium.a)
 
 
-if(ZMQ_VERSION VERSION_LESS 4.3.4 AND CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
+if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   set(zmq_patch PATCH_COMMAND patch -p1 -i ${PROJECT_SOURCE_DIR}/utils/build_scripts/libzmq-mingw-closesocket.patch)
 endif()
 
