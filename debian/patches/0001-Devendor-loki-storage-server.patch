@@ -3,16 +3,16 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- CMakeLists.txt            |  5 +++--
+ CMakeLists.txt            | 22 +++-------------------
  common/CMakeLists.txt     |  2 +-
  httpserver/CMakeLists.txt | 16 +---------------
- 3 files changed, 5 insertions(+), 18 deletions(-)
+ 3 files changed, 5 insertions(+), 35 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 7f68de5..dc29efe 100644
+index 7670cf2..72f7811 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -76,13 +76,14 @@ include(cmake/check_for_std_filesystem.cmake)
+@@ -92,31 +92,15 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
@@ -24,11 +24,29 @@ index 7f68de5..dc29efe 100644
  add_subdirectory(crypto)
  add_subdirectory(storage)
  add_subdirectory(httpserver)
--set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells loki-mq to do a static build
--add_subdirectory(vendors/loki-mq)
  
+-
+-
+-option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
+-if(NOT FORCE_OXENMQ_SUBMODULE)
+-  find_package(PkgConfig REQUIRED)
+-  pkg_check_modules(OXENMQ liboxenmq>=1.2.5)
+-endif()
+-if(OXENMQ_FOUND)
+-  add_library(oxenmq INTERFACE)
+-  link_dep_libs(oxenmq INTERFACE "${OXENMQ_LIBRARY_DIRS}" ${OXENMQ_LIBRARIES})
+-  target_include_directories(oxenmq INTERFACE ${OXENMQ_INCLUDE_DIRS})
+-  add_library(oxenmq::oxenmq ALIAS oxenmq)
+-  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
+-else()
+-  message(STATUS "using oxenmq submodule")
+-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
+-  add_subdirectory(vendors/loki-mq)
+-endif()
+-
  if (BUILD_TESTS)
      add_subdirectory(unit_test)
+ endif ()
 diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
 index 8c4cc90..ea24ba7 100644
 --- a/common/CMakeLists.txt
