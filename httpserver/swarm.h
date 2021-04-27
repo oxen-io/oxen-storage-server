@@ -3,6 +3,7 @@
 #include <iostream>
 #include <oxenmq/auth.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "oxen_common.h"

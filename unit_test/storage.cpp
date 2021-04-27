@@ -33,8 +33,7 @@ BOOST_AUTO_TEST_SUITE(storage)
 BOOST_AUTO_TEST_CASE(it_creates_the_database_file) {
     StorageRAIIFixture fixture;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
     BOOST_CHECK(std::filesystem::exists("storage.db"));
 }
 
@@ -48,15 +47,13 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
     {
-        boost::asio::io_context ioc;
-        Database storage(ioc, ".");
+        Database storage{"."};
         BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
         // the database is closed when storage goes out of scope
     }
     {
         // re-open the database
-        boost::asio::io_context ioc;
-        Database storage(ioc, ".");
+        Database storage{"."};
 
         std::vector<Item> items;
         const auto lastHash = "";
@@ -82,8 +79,7 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash, FAIL is default behaviour
@@ -102,8 +98,7 @@ BOOST_AUTO_TEST_CASE(
     const uint64_t ttl = 123456;
     const uint64_t timestamp = util::get_time_ms();
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
@@ -114,8 +109,7 @@ BOOST_AUTO_TEST_CASE(
 BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
     StorageRAIIFixture fixture;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
@@ -142,8 +136,7 @@ BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
 BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     StorageRAIIFixture fixture;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
@@ -176,14 +169,7 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
 
     const auto pubkey = "mypubkey";
 
-    boost::asio::io_context ioc;
-
-    Database storage(ioc, ".", 100ms);
-
-    /// Note: `Database` is not thread safe
-    /// and not meant to be used in this way;
-    /// However, it should be fine for tests
-    std::thread t([&]() { ioc.run(); });
+    Database storage{"."};
 
     BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
@@ -195,11 +181,8 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
         BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
         BOOST_CHECK_EQUAL(items.size(), 2);
     }
-    // the timer kicks in every 10 seconds
-    // give 100ms to perform the cleanup
-    std::cout << "waiting for cleanup timer..." << std::endl;
-    std::this_thread::sleep_for(100ms + 100ms);
-
+    std::this_thread::sleep_for(5ms);
+    storage.clean_expired();
     {
         std::vector<Item> items;
         const auto lastHash = "";
@@ -207,9 +190,6 @@ BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
         BOOST_CHECK_EQUAL(items.size(), 1);
         BOOST_CHECK_EQUAL(items[0].hash, "hash0");
     }
-
-    ioc.stop();
-    t.join();
 }
 
 BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
@@ -223,8 +203,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
 
     const size_t num_items = 100;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     // bulk store
     {
@@ -257,8 +236,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 
     const size_t num_items = 100;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     // insert existing
     BOOST_CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
@@ -286,8 +264,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
 BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
     StorageRAIIFixture fixture;
 
-    boost::asio::io_context ioc;
-    Database storage(ioc, ".");
+    Database storage{"."};
 
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {

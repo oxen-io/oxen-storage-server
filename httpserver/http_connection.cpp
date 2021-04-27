@@ -794,8 +794,6 @@ bool connection_t::parse_header(const char* first, Args... args) {
     return parse_header(first) && parse_header(args...);
 }
 
-constexpr auto LONG_POLL_TIMEOUT = std::chrono::milliseconds(20000);
-
 /// Move this out of `connection_t` Process client request
 /// Decouple responding from http
 
@@ -850,7 +848,7 @@ void connection_t::process_client_req_rate_limited() {
                                  plaintext = std::move(plain_text)](
                                     const error_code& ec) {
             self->request_handler_.process_client_req(
-                plaintext, [wself = std::weak_ptr{self}](
+                plaintext, [wself = std::weak_ptr<connection_t>{self}](
                                oxen::Response res) {
                     auto self = wself.lock();
                     if (!self) {
