@@ -19,9 +19,7 @@ static void serialize_integer(std::string& buf, T a) {
 }
 
 static void serialize(std::string& buf, const std::string& str) {
-
-    buf.reserve(buf.size() + str.size() + 4);
-    serialize_integer(buf, str.size());
+    serialize_integer<uint64_t>(buf, str.size());
     buf += str;
 }
 
