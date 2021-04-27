@@ -26,8 +26,9 @@ oxen-storage-server (2.1.1-1~deb10) buster; urgency=medium
   * Fix arg for boost unit test static build
   * Bump SS version to 2.1.1
   * Rediff patches
+  * Squelch duplicate swarm updates
 
- -- Jason Rhinelander <jason@imaginary.ca>  Tue, 27 Apr 2021 00:56:05 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 27 Apr 2021 15:01:35 -0300
 
 oxen-storage-server (2.1.0-1~deb10) buster; urgency=medium
 
