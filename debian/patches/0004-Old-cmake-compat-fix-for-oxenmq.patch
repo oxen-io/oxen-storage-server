@@ -7,10 +7,10 @@ Subject: Old cmake compat fix for oxenmq
  1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index dc29efe..00f60b6 100644
+index 72f7811..6dd326a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -76,8 +76,10 @@ include(cmake/check_for_std_filesystem.cmake)
+@@ -92,8 +92,10 @@ include(cmake/check_for_std_filesystem.cmake)
  if(NOT BUILD_STATIC_DEPS)
  endif()
  
