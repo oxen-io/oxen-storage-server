@@ -593,6 +593,11 @@ void ServiceNode::relay_buffered_messages() {
 
 void ServiceNode::update_swarms() {
 
+    if (updating_swarms_.exchange(true)) {
+        OXEN_LOG(debug, "Swarm update already in progress, not sending another update request");
+        return;
+    }
+
     std::lock_guard guard(sn_mutex_);
 
     OXEN_LOG(debug, "Swarm update triggered");
@@ -618,6 +623,7 @@ void ServiceNode::update_swarms() {
 
     lmq_server_.oxend_request("rpc.get_service_nodes",
         [this](bool success, std::vector<std::string> data) {
+            updating_swarms_ = false;
             if (!success || data.size() < 2) {
                 OXEN_LOG(critical, "Failed to contact local oxend for service node list");
                 return;
