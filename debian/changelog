@@ -26,8 +26,9 @@ oxen-storage-server (2.1.1-1~ubuntu2004) focal; urgency=medium
   * Fix arg for boost unit test static build
   * Bump SS version to 2.1.1
   * Rediff patches
+  * Squelch duplicate swarm updates
 
- -- Jason Rhinelander <jason@imaginary.ca>  Tue, 27 Apr 2021 00:56:30 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 27 Apr 2021 15:02:07 -0300
 
 oxen-storage-server (2.1.0-1~ubuntu2004) focal; urgency=medium
 
