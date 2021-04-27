@@ -102,6 +102,11 @@ class ServiceNode {
 
     std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
 
+    // Will be set to true while we have an outstanding update_swarms() call so that we squelch
+    // other update_swarms() until it finishes (or fails), to avoid spamming oxend (particularly
+    // when syncing when we get tons of block notifications quickly).
+    std::atomic<bool> updating_swarms_ = false;
+
     reachability_testing reach_records_;
 
     /// Container for recently received messages directly from
