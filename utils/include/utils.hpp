@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <iosfwd>
 #include <optional>
 #include <random>
 #include <string>
@@ -43,10 +44,12 @@ inline bool starts_with(std::string_view str, std::string_view prefix) {
 }
 
 /// Joins [begin, end) with a delimiter and returns the resulting string.  Elements can be anything
-/// that can be sent to an ostream via `<<`.
-template <typename It>
+/// that can be sent to an ostream via `<<`.  The OSS template here is mainly to trick the compiler
+/// (especially macos clang) into being happy with this include even when std::ostringstream isn't
+/// yet available (and to put the include responsibility on the caller).
+template <typename It, typename OSS = std::ostringstream>
 std::string join(std::string_view delimiter, It begin, It end) {
-    std::ostringstream o;
+    OSS o;
     if (begin != end)
         o << *begin++;
     while (begin != end)
