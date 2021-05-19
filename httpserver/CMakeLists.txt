@@ -22,9 +22,6 @@ add_library(httpserver_lib STATIC
     oxend_rpc.cpp
     )
 
-set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-add_subdirectory(../vendors/nlohmann_json nlohmann_json)
-
 # TODO: enable more warnings!
 target_compile_options(httpserver_lib PRIVATE -Wall -Werror)
 
