@@ -20,6 +20,7 @@ add_library(httpserver_lib STATIC
     onion_processing.cpp
     ip_utils.cpp
     oxend_rpc.cpp
+    server_certificates.cpp
     )
 
 # TODO: enable more warnings!
