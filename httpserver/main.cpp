@@ -58,20 +58,22 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    std::filesystem::path data_dir;
     if (options.data_dir.empty()) {
         if (auto home_dir = util::get_home_dir()) {
-            if (options.testnet) {
-                options.data_dir =
-                    (*home_dir / ".oxen" / "testnet" / "storage").u8string();
-            } else {
-                options.data_dir = (*home_dir / ".oxen" / "storage").u8string();
-            }
+            data_dir = options.testnet
+                ? *home_dir / ".oxen" / "testnet" / "storage"
+                : *home_dir / ".oxen" / "storage";
+        } else {
+            std::cerr << "Could not determine your home directory; please use --data-dir to specify a data directory\n";
+            return EXIT_FAILURE;
         }
+    } else {
+        data_dir = std::filesystem::u8path(options.data_dir);
     }
 
-    if (!fs::exists(options.data_dir)) {
-        fs::create_directories(options.data_dir);
-    }
+    if (!fs::exists(data_dir))
+        fs::create_directories(data_dir);
 
     oxen::LogLevel log_level;
     if (!oxen::parse_log_level(options.log_level, log_level)) {
@@ -80,7 +82,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    oxen::init_logging(options.data_dir, log_level);
+    oxen::init_logging(data_dir, log_level);
 
     if (options.testnet) {
         oxen::is_mainnet = false;
@@ -103,7 +105,7 @@ int main(int argc, char* argv[]) {
     }
 
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
-    OXEN_LOG(info, "Setting database location to {}", options.data_dir);
+    OXEN_LOG(info, "Setting database location to {}", data_dir);
     OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
     OXEN_LOG(info, "HTTPS server is listening at {}:{}", options.ip,
              options.port);
@@ -173,7 +175,7 @@ int main(int argc, char* argv[]) {
 
         // TODO: SN doesn't need oxenmq_server, just the lmq components
         ServiceNode service_node(ioc, me, private_key, oxenmq_server,
-                                       options.data_dir, options.force_start);
+                                       data_dir, options.force_start);
 
         RequestHandler request_handler(ioc, service_node, channel_encryption);
 
@@ -182,7 +184,7 @@ int main(int argc, char* argv[]) {
 
         RateLimiter rate_limiter;
 
-        Security security(legacy_keypair{me.pubkey_legacy, private_key}, options.data_dir);
+        Security security(legacy_keypair{me.pubkey_legacy, private_key}, data_dir);
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
@@ -191,7 +193,7 @@ int main(int argc, char* argv[]) {
         }, 10s);
 #endif
 
-        http_server::run(ioc, options.ip, options.port, options.data_dir,
+        http_server::run(ioc, options.ip, options.port, data_dir,
                                service_node, request_handler, rate_limiter,
                                security);
     } catch (const std::exception& e) {
