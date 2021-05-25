@@ -133,7 +133,7 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
         data = decode_onion_data(message.data[0]);
     } catch (const std::exception& e) {
         auto msg = "Invalid internal onion request: "s + e.what();
-        OXEN_LOG(error, "{}", msg);
+        OXEN_LOG(err, msg);
         message.send_reply(std::to_string(http::BAD_REQUEST.first), msg);
         return;
     }
@@ -147,7 +147,7 @@ void OxenmqServer::handle_onion_req_v2(oxenmq::Message& message) {
 
     constexpr int bad_code = http::BAD_REQUEST.first;
     if (message.data.size() != 2) {
-        OXEN_LOG(error, "Expected 2 message parts, got {}",
+        OXEN_LOG(err, "Expected 2 message parts, got {}",
                  message.data.size());
         message.send_reply(std::to_string(bad_code),
                 "Incorrect number of onion request message parts");
@@ -156,7 +156,7 @@ void OxenmqServer::handle_onion_req_v2(oxenmq::Message& message) {
 
     auto eph_key = extract_x25519_from_hex(message.data[0]);
     if (!eph_key) {
-        OXEN_LOG(error, "no ephemeral key in omq onion request");
+        OXEN_LOG(err, "no ephemeral key in omq onion request");
         message.send_reply(std::to_string(bad_code), "Missing ephemeral key");
         return;
     }
@@ -204,7 +204,7 @@ void omq_logger(oxenmq::LogLevel level, const char* file, int line,
 
     switch (level) {
         LMQ_LOG_MAP(fatal, critical);
-        LMQ_LOG_MAP(error, error);
+        LMQ_LOG_MAP(error, err);
         LMQ_LOG_MAP(warn, warn);
         LMQ_LOG_MAP(info, info);
         LMQ_LOG_MAP(trace, trace);

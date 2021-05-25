@@ -618,7 +618,7 @@ void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                 request_handler_.process_onion_req(ciphertext, std::move(onion));
             } catch (const std::exception& e) {
                 auto msg = fmt::format("Error parsing onion request: {}", e.what());
-                OXEN_LOG(error, "{}", msg);
+                OXEN_LOG(err, "{}", msg);
                 queue_response(std::move(data), {http::BAD_REQUEST, msg});
             }
         });

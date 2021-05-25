@@ -72,14 +72,14 @@ static void set_page_count(sqlite3* db) {
 
     auto cb = [](void* a_param, int argc, char** argv, char** column) -> int {
         if (argc == 0) {
-            OXEN_LOG(error, "Failed to set the page count limit");
+            OXEN_LOG(err, "Failed to set the page count limit");
             return 0;
         }
 
         int res = strtol(argv[0], NULL, 10);
 
         if (res == 0) {
-            OXEN_LOG(error, "Failed to convert page limit ({}) to a number",
+            OXEN_LOG(err, "Failed to convert page limit ({}) to a number",
                      argv[0]);
             return 0;
         }
@@ -95,7 +95,7 @@ static void set_page_count(sqlite3* db) {
 
     if (rc) {
         if (errMsg) {
-            OXEN_LOG(error, "Query error: {}", errMsg);
+            OXEN_LOG(err, "Query error: {}", errMsg);
         }
     }
 }
@@ -106,13 +106,13 @@ static void check_page_size(sqlite3* db) {
 
     auto cb = [](void* a_param, int argc, char** argv, char** column) -> int {
         if (argc == 0) {
-            OXEN_LOG(error, "Could not get DB page size");
+            OXEN_LOG(err, "Could not get DB page size");
         }
 
         int res = strtol(argv[0], NULL, 10);
 
         if (res == 0) {
-            OXEN_LOG(error, "Failed to convert page size ({}) to a number",
+            OXEN_LOG(err, "Failed to convert page size ({}) to a number",
                      argv[0]);
             return 0;
         }
@@ -129,7 +129,7 @@ static void check_page_size(sqlite3* db) {
     int rc = sqlite3_exec(db, "PRAGMA page_size;", cb, nullptr, &errMsg);
     if (rc) {
         if (errMsg) {
-            OXEN_LOG(error, "Query error: {}", errMsg);
+            OXEN_LOG(err, "Query error: {}", errMsg);
         }
     }
 }
@@ -380,7 +380,7 @@ bool Database::store(const std::string& hash, const std::string& pubKey,
             break;
         } else if (rc == SQLITE_FULL) {
             if (db_full_counter % DB_FULL_FREQUENCY == 0) {
-                OXEN_LOG(error, "Failed to store message: database is full");
+                OXEN_LOG(err, "Failed to store message: database is full");
                 ++db_full_counter;
             }
             break;

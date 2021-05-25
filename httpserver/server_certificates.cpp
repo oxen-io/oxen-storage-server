@@ -144,7 +144,7 @@ void generate_dh_pem(const std::filesystem::path& dh_path) {
     const int generator = DH_GENERATOR_2;
     DH* dh = DH_new();
     if (dh == NULL) {
-        OXEN_LOG(error, "Alloc for dh failed");
+        OXEN_LOG(err, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
@@ -154,7 +154,7 @@ void generate_dh_pem(const std::filesystem::path& dh_path) {
         DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
-        OXEN_LOG(error, "Alloc for dh failed");
+        OXEN_LOG(err, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
