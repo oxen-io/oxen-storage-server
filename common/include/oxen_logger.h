@@ -4,9 +4,9 @@
 #include "spdlog/fmt/ostr.h" // for operator<< overload
 
 #define OXEN_LOG_N(LVL, msg, ...)                                              \
-    spdlog::get("oxen_logger")->LVL("[{}] " msg, __func__, __VA_ARGS__)
+    spdlog::get("oxen_logger")->LVL("[{}:{}] " msg, __FILE__, __LINE__, __VA_ARGS__)
 #define OXEN_LOG_2(LVL, msg)                                                   \
-    spdlog::get("oxen_logger")->LVL("[{}] " msg, __func__)
+    spdlog::get("oxen_logger")->LVL("[{}:{}] " msg, __FILE__, __LINE__)
 
 #define GET_MACRO(_1, _2, _3, _4, _5, _6, _7, _8, _9, NAME, ...) NAME
 #define OXEN_LOG(...)                                                          \
