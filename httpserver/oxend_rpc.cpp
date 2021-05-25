@@ -1,6 +1,6 @@
 #include "oxen_logger.h"
 #include "oxend_rpc.h"
-#include "lmq_server.h"
+#include "omq_server.h"
 
 #include <chrono>
 #include <exception>

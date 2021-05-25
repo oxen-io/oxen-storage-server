@@ -14,7 +14,7 @@ add_library(httpserver_lib STATIC
     stats.cpp
     command_line.cpp
     reachability_testing.cpp
-    lmq_server.cpp
+    omq_server.cpp
     request_handler.cpp
     onion_processing.cpp
     ip_utils.cpp

@@ -87,7 +87,7 @@ class ServiceNode {
     // Need to make sure we only use this to get OxenMQ object and
     // not call any method that would in turn call a method in SN
     // causing a deadlock
-    OxenmqServer& lmq_server_;
+    OxenmqServer& omq_server_;
 
     std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
 
@@ -268,7 +268,7 @@ class ServiceNode {
     // Called when oxend notifies us of a new block to update swarm info
     void update_swarms();
 
-    OxenmqServer& omq_server() { return lmq_server_; }
+    OxenmqServer& omq_server() { return omq_server_; }
 
     boost::asio::io_context& ioc() { return ioc_; }
 };

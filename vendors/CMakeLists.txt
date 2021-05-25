@@ -59,7 +59,7 @@ if(OXENMQ_FOUND)
 else()
   message(STATUS "using oxenmq submodule")
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
-  add_subdirectory(loki-mq)
+  add_subdirectory(oxen-mq)
 endif()
 
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use

@@ -171,7 +171,7 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
                 bool updated = false;
                 if (update_if_changed(snode.ip, sn.ip, "0.0.0.0")) updated = true;
                 if (update_if_changed(snode.port, sn.port, 0)) updated = true;
-                if (update_if_changed(snode.lmq_port, sn.lmq_port, 0)) updated = true;
+                if (update_if_changed(snode.omq_port, sn.omq_port, 0)) updated = true;
                 if (updated)
                     updates_count++;
             }
@@ -365,10 +365,10 @@ std::pair<int, int> count_missing_data(const block_update_t& bu) {
     for (auto& swarm : bu.swarms) {
         for (auto& snode : swarm.snodes) {
             total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.lmq_port ||
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
                     !snode.pubkey_ed25519 || !snode.pubkey_x25519)
             { OXEN_LOG(warn, "well wtf {} {} {} {} {}",
-                    snode.ip, snode.port, snode.lmq_port, snode.pubkey_ed25519, snode.pubkey_x25519);
+                    snode.ip, snode.port, snode.omq_port, snode.pubkey_ed25519, snode.pubkey_x25519);
                 missing++;
             }
         }

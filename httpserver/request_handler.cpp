@@ -1,7 +1,7 @@
 #include "request_handler.h"
 #include "channel_encryption.hpp"
 #include "http_connection.h"
-#include "lmq_server.h"
+#include "omq_server.h"
 #include "oxen_logger.h"
 #include "signature.h"
 #include "service_node.h"

@@ -11,7 +11,7 @@
 #include "utils.hpp"
 #include "version.h"
 
-#include "lmq_server.h"
+#include "omq_server.h"
 #include "request_handler.h"
 
 #include <sodium/core.h>
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
     OXEN_LOG(info, "HTTPS server is listening at {}:{}", options.ip,
              options.port);
     OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
-             options.lmq_port);
+             options.omq_port);
 
     if (sodium_init() != 0) {
         OXEN_LOG(error, "Could not initialize libsodium");
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
-        sn_record_t me{"0.0.0.0", options.port, options.lmq_port,
+        sn_record_t me{"0.0.0.0", options.port, options.omq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
