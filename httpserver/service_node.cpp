@@ -81,7 +81,10 @@ ServiceNode::ServiceNode(
     omq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
 
-    ioc_.run();
+    // boost asio's event loop exits immediately if there isn't an active job on it.  The "solution"
+    // is to put this fake work object on it.  Yuck.
+    ioc_fake_work_ = std::make_unique<boost::asio::io_service::work>(ioc_);
+    ioc_thread_ = std::thread{[this] { ioc_.run(); }};
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
@@ -285,7 +288,10 @@ void ServiceNode::bootstrap_data() {
 
 void ServiceNode::shutdown() {
     shutting_down_ = true;
+    ioc_fake_work_.reset();
     ioc_.stop();
+    if (ioc_thread_.joinable())
+        ioc_thread_.join();
 }
 
 bool ServiceNode::snode_ready(std::string* reason) {

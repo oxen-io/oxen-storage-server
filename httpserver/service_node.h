@@ -62,6 +62,8 @@ enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 /// All service node logic that is not network-specific
 class ServiceNode {
     boost::asio::io_context ioc_{1};
+    std::thread ioc_thread_;
+    std::unique_ptr<boost::asio::io_service::work> ioc_fake_work_;
 
     bool syncing_ = true;
     bool active_ = false;
