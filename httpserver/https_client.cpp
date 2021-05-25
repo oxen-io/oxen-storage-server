@@ -39,7 +39,7 @@ void make_https_request_to_sn(
         resolver.resolve(sn.ip, std::to_string(sn.port), ec);
 #endif
     if (ec) {
-        OXEN_LOG(error,
+        OXEN_LOG(err,
                  "https: Failed to parse the IP address. Error code = {}. "
                  "Message: {}",
                  ec.value(), ec.message());
@@ -73,7 +73,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& host,
             const boost::system::error_code& ec,
             boost::asio::ip::tcp::resolver::results_type resolve_results) mutable {
         if (ec) {
-            OXEN_LOG(error, "DNS resolution error for {}: {}", query,
+            OXEN_LOG(err, "DNS resolution error for {}: {}", query,
                      ec.message());
             cb({SNodeError::ERROR_OTHER});
             return;
@@ -163,7 +163,7 @@ void HttpsClientSession::start() {
         [self = shared_from_this()](const error_code& ec) {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
-                    OXEN_LOG(error,
+                    OXEN_LOG(err,
                              "Deadline timer failed in https client session "
                              "[{}: {}]",
                              ec.value(), ec.message());
@@ -200,7 +200,7 @@ void HttpsClientSession::on_connect() {
 
 void HttpsClientSession::on_handshake(boost::system::error_code ec) {
     if (ec) {
-        OXEN_LOG(error, "Failed to perform a handshake with {}: {}",
+        OXEN_LOG(err, "Failed to perform a handshake with {}: {}",
                  server_pubkey_ ? server_pubkey_->view() : "(not snode)", ec.message());
 
         return;
@@ -216,7 +216,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     OXEN_LOG(trace, "on write");
     if (ec) {
-        OXEN_LOG(error, "Https error on write, ec: {}. Message: {}", ec.value(),
+        OXEN_LOG(err, "Https error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
@@ -285,7 +285,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
         /// Do we need to handle `operation aborted` separately here (due to
         /// deadline timer)?
-        OXEN_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+        OXEN_LOG(err, "Error on read: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr, response);
     }
@@ -296,7 +296,7 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
 
-        OXEN_LOG(error, "ec: {}. Message: {}", ec.value(), ec.message());
+        OXEN_LOG(err, "ec: {}. Message: {}", ec.value(), ec.message());
         return;
     }
 

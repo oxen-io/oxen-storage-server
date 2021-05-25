@@ -253,12 +253,12 @@ void ServiceNode::bootstrap_data() {
                         OXEN_LOG(info, "Bootstrapped from {}", addr);
                     } catch (const std::exception& e) {
                         OXEN_LOG(
-                            error,
+                            err,
                             "Exception caught while bootstrapping from {}: {}",
                             addr, e.what());
                     }
                 } else {
-                    OXEN_LOG(error, "Failed to contact bootstrap node {}", addr);
+                    OXEN_LOG(err, "Failed to contact bootstrap node {}", addr);
                 }
 
                 (*req_counter)++;
@@ -368,7 +368,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::ONION_REQUEST: {
         // Onion reqeusts always use oxenmq, so they use it
         // directly, no need for the "send_to_sn" abstraction
-        OXEN_LOG(error, "Onion requests should not use this interface");
+        OXEN_LOG(err, "Onion requests should not use this interface");
         assert(false);
         break;
     }
@@ -382,7 +382,7 @@ void ServiceNode::relay_data_reliable(const std::string& blob,
 
     send_to_sn(sn, ss_client::ReqMethod::DATA, Request{blob},
             [](bool success, auto&& data) {
-                if (!success) OXEN_LOG(error, "Failed to send batch data: time-out");
+                if (!success) OXEN_LOG(err, "Failed to send batch data: time-out");
             });
 }
 
@@ -398,7 +398,7 @@ bool ServiceNode::process_store(const message_t& msg) {
     /// only accept a message if we are in a swarm
     if (!swarm_) {
         // This should never be printed now that we have "snode_ready"
-        OXEN_LOG(error, "error: my swarm in not initialized");
+        OXEN_LOG(err, "error: my swarm in not initialized");
         return false;
     }
 
@@ -429,7 +429,7 @@ void ServiceNode::save_bulk(const std::vector<Item>& items) {
     std::lock_guard guard(sn_mutex_);
 
     if (!db_->bulk_store(items)) {
-        OXEN_LOG(error, "failed to save batch to the database");
+        OXEN_LOG(err, "failed to save batch to the database");
         return;
     }
 
@@ -673,7 +673,7 @@ void ServiceNode::update_swarms() {
                     on_swarm_update(std::move(bu));
                 }
             } catch (const std::exception& e) {
-                OXEN_LOG(error, "Exception caught on swarm update: {}",
+                OXEN_LOG(err, "Exception caught on swarm update: {}",
                          e.what());
             }
         },
@@ -954,7 +954,7 @@ void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int
                 OXEN_LOG(warn, "Could not report node: {}", status);
             }
         } catch (...) {
-            OXEN_LOG(error,
+            OXEN_LOG(err,
                      "Could not report node status: bad json in response");
         }
     };
@@ -1031,7 +1031,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
 
     uint64_t seed;
     if (block_hash.size() < sizeof(seed)) {
-        OXEN_LOG(error, "Could not initiate peer test: invalid block hash");
+        OXEN_LOG(err, "Could not initiate peer test: invalid block hash");
         return false;
     }
 
@@ -1075,7 +1075,7 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
         this->derive_tester_testee(blk_height, tester, testee);
 
         if (testee != our_address_) {
-            OXEN_LOG(error, "We are NOT the testee for height: {}", blk_height);
+            OXEN_LOG(err, "We are NOT the testee for height: {}", blk_height);
             return {MessageTestStatus::WRONG_REQ, ""};
         }
 
@@ -1105,7 +1105,7 @@ std::optional<Item> ServiceNode::select_random_message() {
 
     uint64_t message_count;
     if (!db_->get_message_count(message_count)) {
-        OXEN_LOG(error, "Could not count messages in the database");
+        OXEN_LOG(err, "Could not count messages in the database");
         return {};
     }
 
@@ -1122,7 +1122,7 @@ std::optional<Item> ServiceNode::select_random_message() {
 
     auto item = std::make_optional<Item>();
     if (!db_->retrieve_by_index(msg_idx, *item)) {
-        OXEN_LOG(error, "Could not retrieve message by index: {}", msg_idx);
+        OXEN_LOG(err, "Could not retrieve message by index: {}", msg_idx);
         return {};
     }
 
@@ -1194,7 +1194,7 @@ void ServiceNode::bootstrap_swarms(
 
     std::vector<Item> all_entries;
     if (!get_all_messages(all_entries)) {
-        OXEN_LOG(error, "Could not retrieve entries from the database");
+        OXEN_LOG(err, "Could not retrieve entries from the database");
         return;
     }
 
@@ -1220,7 +1220,7 @@ void ServiceNode::bootstrap_swarms(
             auto pk = user_pubkey_t::create(entry.pub_key, success);
 
             if (!success) {
-                OXEN_LOG(error, "Invalid pubkey in a message while "
+                OXEN_LOG(err, "Invalid pubkey in a message while "
                                 "bootstrapping other nodes");
                 continue;
             }
@@ -1456,7 +1456,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        OXEN_LOG(error, "Swarm data missing");
+        OXEN_LOG(err, "Swarm data missing");
         return false;
     }
     return swarm_->is_pubkey_for_us(pk);
@@ -1468,7 +1468,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        OXEN_LOG(error, "Swarm data missing");
+        OXEN_LOG(err, "Swarm data missing");
         return {};
     }
 

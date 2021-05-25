@@ -79,7 +79,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
                                boost::asio::ip::tcp::resolver::results_type
                                    resolve_results) mutable {
         if (ec) {
-            OXEN_LOG(error, "DNS resolution error for {}: {}", address,
+            OXEN_LOG(err, "DNS resolution error for {}: {}", address,
                      ec.message());
             return cb({SNodeError::ERROR_OTHER});
         }
@@ -102,7 +102,7 @@ void make_http_request(boost::asio::io_context& ioc, const std::string& address,
         }
 
         if (!resolved) {
-            OXEN_LOG(error, "[HTTP] DNS resolution error for {}", address);
+            OXEN_LOG(err, "[HTTP] DNS resolution error for {}", address);
             return cb({SNodeError::ERROR_OTHER});
         }
 
@@ -169,7 +169,7 @@ void HttpClientSession::on_write(error_code ec, size_t bytes_transferred) {
 
     OXEN_LOG(trace, "on write");
     if (ec) {
-        OXEN_LOG(error, "Http error on write, ec: {}. Message: {}", ec.value(),
+        OXEN_LOG(err, "Http error on write, ec: {}. Message: {}", ec.value(),
                  ec.message());
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
         return;
@@ -195,7 +195,7 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
                 std::make_shared<std::string>(res_.body());
             trigger_callback(SNodeError::NO_ERROR, std::move(body));
         } else {
-            OXEN_LOG(error, "Http request failed, error code: {}",
+            OXEN_LOG(err, "Http request failed, error code: {}",
                      res_.result_int());
             trigger_callback(SNodeError::HTTP_ERROR, nullptr);
         }
@@ -203,7 +203,7 @@ void HttpClientSession::on_read(error_code ec, size_t bytes_transferred) {
     } else {
 
         if (ec != boost::asio::error::operation_aborted) {
-            OXEN_LOG(error, "Error on read: {}. Message: {}", ec.value(),
+            OXEN_LOG(err, "Error on read: {}. Message: {}", ec.value(),
                      ec.message());
         }
         trigger_callback(SNodeError::ERROR_OTHER, nullptr);
@@ -225,7 +225,7 @@ void HttpClientSession::start() {
                          endpoint_.address().to_string(), endpoint_.port(),
                          ec.message(), ec.value());
             } else {
-                OXEN_LOG(error,
+                OXEN_LOG(err,
                          "[http client]: could not connect to {}:{}, message: "
                          "{} ({})",
                          endpoint_.address().to_string(), endpoint_.port(),
@@ -245,7 +245,7 @@ void HttpClientSession::start() {
             if (ec) {
                 if (ec != boost::asio::error::operation_aborted) {
                     OXEN_LOG(
-                        error,
+                        err,
                         "Deadline timer failed in http client session [{}: {}]",
                         ec.value(), ec.message());
                 }
@@ -289,7 +289,7 @@ void HttpClientSession::clean_up() {
     socket_.shutdown(tcp::socket::shutdown_both, ec);
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != boost::system::errc::not_connected) {
-        OXEN_LOG(error, "Socket shutdown failure [{}: {}]", ec.value(),
+        OXEN_LOG(err, "Socket shutdown failure [{}: {}]", ec.value(),
                  ec.message());
     }
 
@@ -297,7 +297,7 @@ void HttpClientSession::clean_up() {
     socket_.close(ec);
 
     if (ec) {
-        OXEN_LOG(error, "Closing socket {} failed [{}: {}]", sockfd, ec.value(),
+        OXEN_LOG(err, "Closing socket {} failed [{}: {}]", sockfd, ec.value(),
                  ec.message());
     } else {
         OXEN_LOG(trace, "Close http socket: {}", sockfd);

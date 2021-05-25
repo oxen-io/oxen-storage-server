@@ -82,7 +82,7 @@ process_ciphertext_v2(const ChannelEncryption& decryptor,
     try {
         plaintext = decryptor.decrypt(enc_type, ciphertext, ephem_key);
     } catch (const std::exception& e) {
-        OXEN_LOG(error, "Error decrypting {} bytes onion request using {}: {}",
+        OXEN_LOG(err, "Error decrypting {} bytes onion request using {}: {}",
                 ciphertext.size(), enc_type,
                 e.what());
     }

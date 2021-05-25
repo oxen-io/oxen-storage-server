@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
              options.omq_port);
 
     if (sodium_init() != 0) {
-        OXEN_LOG(error, "Could not initialize libsodium");
+        OXEN_LOG(err, "Could not initialize libsodium");
         return EXIT_FAILURE;
     }
 
