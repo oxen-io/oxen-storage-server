@@ -1,4 +1,4 @@
-#include "lmq_server.h"
+#include "omq_server.h"
 
 #include "dev_sink.h"
 #include "http.h"
@@ -28,7 +28,7 @@ std::string OxenmqServer::peer_lookup(std::string_view pubkey_bin) const {
     std::memcpy(pubkey.data(), pubkey_bin.data(), sizeof(x25519_pubkey));
 
     if (auto sn = service_node_->find_node(pubkey))
-        return fmt::format("tcp://{}:{}", sn->ip, sn->lmq_port);
+        return fmt::format("tcp://{}:{}", sn->ip, sn->omq_port);
 
     OXEN_LOG(debug, "[LMQ] peer node not found via x25519 pubkey {}!", pubkey);
     return "";
@@ -228,10 +228,10 @@ OxenmqServer::OxenmqServer(
     for (const auto& key : stats_access_keys)
         stats_access_keys_.emplace(key.view());
 
-    OXEN_LOG(info, "OxenMQ is listenting on port {}", me.lmq_port);
+    OXEN_LOG(info, "OxenMQ is listenting on port {}", me.omq_port);
 
     omq_.listen_curve(
-        fmt::format("tcp://0.0.0.0:{}", me.lmq_port),
+        fmt::format("tcp://0.0.0.0:{}", me.omq_port),
         [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
             return stats_access_keys_.count(std::string{pk})
                 ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;

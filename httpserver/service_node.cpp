@@ -5,7 +5,7 @@
 #include "http.h"
 #include "http_connection.h"
 #include "https_client.h"
-#include "lmq_server.h"
+#include "omq_server.h"
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
@@ -58,14 +58,14 @@ constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 ServiceNode::ServiceNode(
         sn_record_t address,
         const legacy_seckey& skey,
-        OxenmqServer& lmq_server,
+        OxenmqServer& omq_server,
         const std::filesystem::path& db_location,
         const bool force_start) :
       force_start_{force_start},
       db_{std::make_unique<Database>(db_location)},
       our_address_{std::move(address)},
       our_seckey_{skey},
-      lmq_server_{lmq_server} {
+      omq_server_{omq_server} {
 
     swarm_ = std::make_unique<Swarm>(our_address_);
 
@@ -75,10 +75,10 @@ ServiceNode::ServiceNode(
     this->syncing_ = false;
 #endif
 
-    lmq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
+    omq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
             Database::CLEANUP_PERIOD);
 
-    lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
+    omq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
 
     ioc_.run();
@@ -100,10 +100,10 @@ ServiceNode::ServiceNode(
 void ServiceNode::on_oxend_connected() {
     update_swarms();
     oxend_ping();
-    lmq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
-    lmq_server_->add_timer([this] { ping_peers(); },
+    omq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
+    omq_server_->add_timer([this] { ping_peers(); },
             reachability_testing::TESTING_TIMER_INTERVAL);
-    lmq_server_->add_timer([this] { relay_buffered_messages(); },
+    omq_server_->add_timer([this] { relay_buffered_messages(); },
             RELAY_INTERVAL);
 }
 
@@ -318,7 +318,7 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
 
     if (!hf_at_least(HARDFORK_OMQ_ONION_REQ_BENCODE)) {
         // use the _v2 endpoint up until the hf:
-        lmq_server_->request(
+        omq_server_->request(
             sn.pubkey_x25519.view(), "sn.onion_req_v2", std::move(cb),
             oxenmq::send_option::request_timeout{30s}, data.ephem_key.hex(), payload);
     } else {
@@ -326,10 +326,10 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
         // a bit more compact than sending the eph_key in hex, plus allows other metadata such as
         // the hop number and the encryption type).
         data.hop_no++;
-        lmq_server_->request(
+        omq_server_->request(
             sn.pubkey_x25519.view(), "sn.onion_request", std::move(cb),
             oxenmq::send_option::request_timeout{30s},
-            lmq_server_.encode_onion_data(payload, data));
+            omq_server_.encode_onion_data(payload, data));
     }
 }
 
@@ -343,7 +343,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
     case ss_client::ReqMethod::DATA: {
         OXEN_LOG(debug, "Sending sn.data request to {}",
                  oxenmq::to_hex(sn.pubkey_x25519.view()));
-        lmq_server_->request(sn.pubkey_x25519.view(), "sn.data", std::move(cb),
+        omq_server_->request(sn.pubkey_x25519.view(), "sn.data", std::move(cb),
                              req.body);
         break;
     }
@@ -355,7 +355,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         if (client_key != req.headers.end()) {
             OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
                      oxenmq::to_hex(sn.pubkey_x25519.view()));
-            lmq_server_->request(sn.pubkey_x25519.view(), "sn.proxy_exit",
+            omq_server_->request(sn.pubkey_x25519.view(), "sn.proxy_exit",
                                  std::move(cb), client_key->second, req.body);
         } else {
             OXEN_LOG(debug, "Developer error: no {} passed in headers",
@@ -445,7 +445,7 @@ void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
     target_height_ = std::max(target_height_, bu.height);
 
     if (syncing_)
-        lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
+        omq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 }
 
 template <typename OStream>
@@ -531,7 +531,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
         return;
     }
 
-    lmq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
+    omq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
 
     const SwarmEvents events = swarm_->derive_swarm_events(bu.swarms);
 
@@ -624,7 +624,7 @@ void ServiceNode::update_swarms() {
     if (!got_first_response_ && !block_hash_.empty())
         params["poll_block_hash"] = block_hash_;
 
-    lmq_server_.oxend_request("rpc.get_service_nodes",
+    omq_server_.oxend_request("rpc.get_service_nodes",
         [this](bool success, std::vector<std::string> data) {
             updating_swarms_ = false;
             if (!success || data.size() < 2) {
@@ -756,9 +756,9 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     this->sign_request(*req);
     make_sn_request(ioc_, sn, std::move(req), std::move(http_callback));
 
-    // test lmq port:
+    // test omq port:
     // TODO: remove the backwards compat endpoint alternative ternary after HF18
-    lmq_server_->request(
+    omq_server_->request(
         sn.pubkey_x25519.view(), hf_at_least(HARDFORK_SN_PING) ? "sn.ping" : "sn.onion_req",
         [this, test_results=std::move(test_results), previous_failures](bool success, const auto&) {
             auto& [sn, result] = *test_results;
@@ -782,9 +782,9 @@ void ServiceNode::oxend_ping() {
     json params{
         {"version", STORAGE_SERVER_VERSION},
         {"https_port", our_address_.port},
-        {"omq_port", our_address_.lmq_port}};
+        {"omq_port", our_address_.omq_port}};
 
-    lmq_server_.oxend_request("admin.storage_server_ping",
+    omq_server_.oxend_request("admin.storage_server_ping",
         [this](bool success, std::vector<std::string> data) {
             if (!success)
                 OXEN_LOG(critical, "Could not ping oxend: Request failed ({})", data.front());
@@ -816,7 +816,7 @@ void ServiceNode::oxend_ping() {
     // oxend start firing notify.block messages at as whenever new blocks arrive, but we have to
     // renew the subscription within 30min to keep it alive, so do it here (it doesn't hurt anything
     // for it to be much faster than 30min).
-    lmq_server_.oxend_request("sub.block", [](bool success, auto&& result) {
+    omq_server_.oxend_request("sub.block", [](bool success, auto&& result) {
         if (!success || result.empty())
             OXEN_LOG(critical, "Failed to subscribe to oxend block notifications: {}",
                     result.empty() ? "response is empty" : result.front());
@@ -965,7 +965,7 @@ void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int
         {"passed", reachable}
     };
 
-    lmq_server_.oxend_request("admin.report_peer_storage_server_status",
+    omq_server_.oxend_request("admin.report_peer_storage_server_status",
             std::move(cb), params.dump());
 
     if (!reachable) {
