@@ -655,7 +655,7 @@ void ServiceNode::update_swarms() {
 
                     auto [missing, total] = count_missing_data(bu);
                     if (total >= (oxen::is_mainnet ? 100 : 10)
-                            && missing <
+                            && missing <=
                                 MISSING_PUBKEY_THRESHOLD::num*total/MISSING_PUBKEY_THRESHOLD::den) {
                         OXEN_LOG(info, "Initialized from oxend with {}/{} SN records",
                                 total-missing, total);
