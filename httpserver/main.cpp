@@ -1,11 +1,11 @@
 #include "channel_encryption.hpp"
 #include "command_line.h"
 #include "http_connection.h"
+#include "https_server.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "oxend_rpc.h"
-#include "rate_limiter.h"
-#include "security.h"
+#include "server_certificates.h"
 #include "service_node.h"
 #include "swarm.h"
 #include "utils.hpp"
@@ -34,7 +34,15 @@ extern "C" {
 
 namespace fs = std::filesystem;
 
+std::atomic<int> signalled = 0;
+extern "C" void handle_signal(int sig) {
+    signalled = sig;
+}
+
 int main(int argc, char* argv[]) {
+
+    std::signal(SIGINT, handle_signal);
+    std::signal(SIGTERM, handle_signal);
 
     oxen::command_line_parser parser;
 
@@ -112,8 +120,6 @@ int main(int argc, char* argv[]) {
     OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
              options.lmq_port);
 
-    boost::asio::io_context ioc{1};
-
     if (sodium_init() != 0) {
         OXEN_LOG(error, "Could not initialize libsodium");
         return EXIT_FAILURE;
@@ -169,22 +175,37 @@ int main(int argc, char* argv[]) {
 
         ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
+        auto ssl_cert = data_dir / "cert.pem";
+        auto ssl_key = data_dir / "key.pem";
+        auto ssl_dh = data_dir / "dh.pem";
+        if (!exists(ssl_cert) || !exists(ssl_key))
+            generate_cert(ssl_cert, ssl_key);
+        if (!exists(ssl_dh))
+            generate_dh_pem(ssl_dh);
+
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).
-        OxenmqServer oxenmq_server{me, private_key_x25519, stats_access_keys};
+        auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
+        auto& oxenmq_server = *oxenmq_server_ptr;
 
-        // TODO: SN doesn't need oxenmq_server, just the lmq components
-        ServiceNode service_node(ioc, me, private_key, oxenmq_server,
-                                       data_dir, options.force_start);
+        // Add a category for handling incoming https requests
+        auto https_threads = std::max<unsigned>(std::thread::hardware_concurrency(), 3);
+        oxenmq_server->add_category("https",
+                oxenmq::AuthLevel::basic, https_threads, 1000 /* max queued requests */);
 
-        RequestHandler request_handler(ioc, service_node, channel_encryption);
+        ServiceNode service_node{
+            me, private_key, oxenmq_server, data_dir, options.force_start};
+
+        RequestHandler request_handler{service_node, channel_encryption};
+
+        HTTPSServer https_server{service_node, request_handler, {{options.ip, options.port, true}},
+            ssl_cert, ssl_key, ssl_dh, {me.pubkey_legacy, private_key}};
+
 
         oxenmq_server.init(&service_node, &request_handler,
                 oxenmq::address{options.oxend_omq_rpc});
 
-        RateLimiter rate_limiter;
-
-        Security security(legacy_keypair{me.pubkey_legacy, private_key}, data_dir);
+        https_server.start();
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
@@ -193,9 +214,16 @@ int main(int argc, char* argv[]) {
         }, 10s);
 #endif
 
-        http_server::run(ioc, options.ip, options.port, data_dir,
-                               service_node, request_handler, rate_limiter,
-                               security);
+        while (signalled.load() == 0)
+            std::this_thread::sleep_for(100ms);
+
+        OXEN_LOG(warn, "Received signal {}; shutting down...", signalled.load());
+        service_node.shutdown();
+        OXEN_LOG(info, "Stopping https server");
+        https_server.shutdown(true);
+        OXEN_LOG(info, "Stopping omq server");
+        oxenmq_server_ptr.reset();
+        OXEN_LOG(info, "Shutting down");
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...

@@ -12,7 +12,6 @@ add_library(httpserver_lib STATIC
     rate_limiter.cpp
     https_client.cpp
     stats.cpp
-    security.cpp
     command_line.cpp
     reachability_testing.cpp
     lmq_server.cpp
@@ -21,6 +20,7 @@ add_library(httpserver_lib STATIC
     ip_utils.cpp
     oxend_rpc.cpp
     server_certificates.cpp
+    https_server.cpp
     )
 
 # TODO: enable more warnings!
@@ -28,6 +28,7 @@ target_compile_options(httpserver_lib PRIVATE -Wall -Werror)
 
 target_link_libraries(httpserver_lib PUBLIC
     common storage utils crypto
+    uWebSockets
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     oxenmq::oxenmq

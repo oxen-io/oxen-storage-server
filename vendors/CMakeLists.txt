@@ -21,7 +21,7 @@ if(SPDLOG_FOUND)
 else()
   add_subdirectory(spdlog)
 endif()
-  
+
 
 if(NOT TARGET sodium)
   # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
@@ -49,7 +49,7 @@ endif()
 
 option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
 if(NOT STATIC AND NOT FORCE_OXENMQ_SUBMODULE)
-  pkg_check_modules(OXENMQ liboxenmq>=1.2.5 IMPORTED_TARGET)
+  pkg_check_modules(OXENMQ liboxenmq>=1.2.6 IMPORTED_TARGET)
 endif()
 if(OXENMQ_FOUND)
   add_library(oxenmq INTERFACE)
@@ -72,3 +72,41 @@ add_library(oxen-crypto-ops STATIC
 target_include_directories(oxen-crypto-ops PUBLIC .)
 
 
+# uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
+# ourselves.
+if (NOT CMAKE_VERSION VERSION_LESS 3.12)
+    set(conf_depends "CONFIGURE_DEPENDS")
+else()
+    set(conf_depends "")
+endif()
+file(GLOB usockets_src ${conf_depends}
+    uWebSockets/uSockets/src/*.c
+    uWebSockets/uSockets/src/eventing/*.c
+    uWebSockets/uSockets/src/crypto/*.c
+    uWebSockets/uSockets/src/crypto/*.cpp)
+file(COPY uWebSockets/uSockets/src/libusockets.h DESTINATION uWebSockets)
+add_library(uSockets STATIC EXCLUDE_FROM_ALL ${usockets_src})
+target_include_directories(uSockets PRIVATE uWebSockets/uSockets/src)
+target_compile_definitions(uSockets PRIVATE LIBUS_USE_OPENSSL)
+target_compile_features(uSockets PRIVATE c_std_11 cxx_std_17)
+target_link_libraries(uSockets OpenSSL::SSL OpenSSL::Crypto)
+
+# On Windows uSockets uses libuv for its event loop; on Mac kqueue is the default, but that seems to
+# not be reliable on older macos versions (like 10.12), so we use libuv on macos as well.
+if (WIN32 OR (APPLE AND NOT IOS))
+  add_subdirectory(libuv EXCLUDE_FROM_ALL)
+  target_link_libraries(uSockets uv_a)
+  target_compile_definitions(uSockets PUBLIC LIBUS_USE_LIBUV)
+endif()
+
+
+# The uWebSockets C++ layer is header-only but isn't actually prefixed in the repository itself, but
+# rather only on install (which, as above, is just a very simple Makefile).  This is unfortunate
+# because it means that we can't use `#include <uWebSockets/App.h>` directly with the repo; so
+# instead we emulate the installation process into the build directory and include it (with the
+# prefix) from there.
+file(COPY uWebSockets/src/ DESTINATION uWebSockets/uWebSockets FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+add_library(uWebSockets INTERFACE)
+target_include_directories(uWebSockets SYSTEM INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
+target_link_libraries(uWebSockets INTERFACE uSockets)
+target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)

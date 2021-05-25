@@ -25,7 +25,7 @@ class HttpsClientSession
     using tcp = boost::asio::ip::tcp;
 
     boost::asio::io_context& ioc_;
-    ssl::context& ssl_ctx_;
+    bssl::context& ssl_ctx_;
     tcp::resolver::results_type resolve_results_;
     http_callback_t callback_;
     boost::asio::steady_timer deadline_timer_;
@@ -33,14 +33,14 @@ class HttpsClientSession
     // keep the cert in memory for post-handshake verification
     std::string server_cert_;
 
-    ssl::stream<tcp::socket> stream_;
+    bssl::stream<tcp::socket> stream_;
     boost::beast::flat_buffer buffer_;
     /// NOTE: this needs to be a shared pointer since
     /// it is very common for the same request to be
     /// sent to multiple snodes
     std::shared_ptr<request_t> req_;
 
-    http::response_parser<http::string_body> response_;
+    bhttp::response_parser<bhttp::string_body> response_;
 
     // Snode's pub key (none if signature verification is not used / not a
     // snode)
@@ -66,7 +66,7 @@ class HttpsClientSession
 
   public:
     // Resolver and socket require an io_context
-    HttpsClientSession(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
+    HttpsClientSession(boost::asio::io_context& ioc, bssl::context& ssl_ctx,
                        tcp::resolver::results_type resolve_results,
                        const char* host, std::shared_ptr<request_t> req,
                        http_callback_t&& cb,

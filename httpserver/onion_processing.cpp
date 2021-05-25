@@ -1,4 +1,5 @@
 #include "channel_encryption.hpp"
+#include "http.h"
 #include "oxen_logger.h"
 #include "request_handler.h"
 #include "service_node.h"
@@ -10,8 +11,8 @@
 #include "onion_processing.h"
 
 #include "utils.hpp"
+#include "string_utils.hpp"
 
-#include <charconv>
 #include <variant>
 
 using nlohmann::json;
@@ -93,53 +94,13 @@ process_ciphertext_v2(const ChannelEncryption& decryptor,
     return process_inner_request(std::move(*plaintext));
 }
 
-static auto make_status(std::string_view status) -> oxen::Status {
-
-    int code;
-    auto res =
-        std::from_chars(status.data(), status.data() + status.size(), code);
-
-    if (res.ec == std::errc::invalid_argument ||
-        res.ec == std::errc::result_out_of_range) {
-        return Status::INTERNAL_SERVER_ERROR;
-    }
-
-    switch (code) {
-
-    case 200:
-        return Status::OK;
-    case 400:
-        return Status::BAD_REQUEST;
-    case 403:
-        return Status::FORBIDDEN;
-    case 406:
-        return Status::NOT_ACCEPTABLE;
-    case 421:
-        return Status::MISDIRECTED_REQUEST;
-    case 432:
-        return Status::INVALID_POW;
-    case 500:
-        return Status::INTERNAL_SERVER_ERROR;
-    case 502:
-        return Status::BAD_GATEWAY;
-    case 503:
-        return Status::SERVICE_UNAVAILABLE;
-    case 504:
-        return Status::GATEWAY_TIMEOUT;
-    default:
-        return Status::INTERNAL_SERVER_ERROR;
-    }
-}
-
 // FIXME: why are these method definitions *here* instead of request_handler.cpp?
 void RequestHandler::process_onion_req(std::string_view ciphertext,
                                        OnionRequestMetadata data) {
-    if (!service_node_.snode_ready()) {
-        auto msg =
-            fmt::format("Snode not ready: {}",
-                        service_node_.own_address().pubkey_ed25519);
-        return data.cb({Status::SERVICE_UNAVAILABLE, std::move(msg)});
-    }
+    if (!service_node_.snode_ready())
+        return data.cb({
+            http::SERVICE_UNAVAILABLE,
+            fmt::format("Snode not ready: {}", service_node_.own_address().pubkey_ed25519)});
 
     OXEN_LOG(debug, "process_onion_req");
 
@@ -167,31 +128,32 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
         OXEN_LOG(warn, "{}", msg);
-        return data.cb({Status::BAD_GATEWAY, std::move(msg)});
+        return data.cb({http::BAD_GATEWAY, std::move(msg)});
     }
 
-    auto on_response = [cb=std::move(data.cb)](bool success,
-                                          std::vector<std::string> data) {
+    auto on_response = [cb=std::move(data.cb)](bool success, std::vector<std::string> data) {
         // Processing the result we got from upstream
 
         if (!success) {
             OXEN_LOG(debug, "[Onion request] Request time out");
-            return cb({Status::GATEWAY_TIMEOUT, "Request time out"});
+            return cb({http::GATEWAY_TIMEOUT, "Request time out"});
         }
 
-        // We only expect a two-part message
-        if (data.size() != 2) {
-            OXEN_LOG(debug, "[Onion request] Incorrect number of messages: {}",
-                     data.size());
-            return cb({Status::INTERNAL_SERVER_ERROR,
-                    "Incorrect number of messages from gateway"});
+        // We expect a two-part message, but for forwards compatibility allow extra parts
+        if (data.size() < 2) {
+            OXEN_LOG(debug, "[Onion request] Invalid response; expected at least 2 parts");
+            return cb({http::INTERNAL_SERVER_ERROR, "Invalid response from snode"});
         }
+
+        Response res{http::INTERNAL_SERVER_ERROR, std::move(data[1]), http::json};
+        if (int code; util::parse_int(data[0], code))
+            res.status = http::from_code(code);
 
         /// We use http status codes (for now)
-        if (data[0] != "200")
-            OXEN_LOG(debug, "Onion request relay failed with: {}", data[1]);
+        if (res.status != http::OK)
+            OXEN_LOG(debug, "Onion request relay failed with: {}", res.body);
 
-        cb({make_status(data[0]), std::move(data[1])});
+        cb(std::move(res));
     };
 
     OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
@@ -203,14 +165,14 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
 }
 
 bool is_server_url_allowed(std::string_view url) {
-    return (util::starts_with(url, "/loki/") ||
-            util::starts_with(url, "/oxen/")) &&
-           util::ends_with(url, "/lsrpc") &&
-           (url.find('?') == std::string::npos);
+    return
+        (util::starts_with(url, "/loki/") || util::starts_with(url, "/oxen/")) &&
+        util::ends_with(url, "/lsrpc") &&
+        url.find('?') == std::string::npos;
 }
 
-void RequestHandler::process_onion_req(RelayToServerInfo&& info,
-        OnionRequestMetadata&& data) {
+void RequestHandler::process_onion_req(
+        RelayToServerInfo&& info, OnionRequestMetadata&& data) {
     OXEN_LOG(debug, "We are to forward the request to url: {}{}",
             info.host, info.target);
 
@@ -219,7 +181,7 @@ void RequestHandler::process_onion_req(RelayToServerInfo&& info,
         return process_onion_to_url(info.protocol, std::move(info.host), info.port,
                 std::move(info.target), std::move(info.payload), std::move(data.cb));
 
-    return data.cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid url"},
+    return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"},
             data.ephem_key, data.enc_type));
 }
 
@@ -228,11 +190,9 @@ void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
 
     switch (error) {
         case ProcessCiphertextError::INVALID_CIPHERTEXT:
-            // Should this error be propagated back to the client? (No, if we
-            // couldn't decrypt, we probably won't be able to encrypt either.)
-            return data.cb({Status::BAD_REQUEST, "Invalid ciphertext"});
+            return data.cb({http::BAD_REQUEST, "Invalid ciphertext"});
         case ProcessCiphertextError::INVALID_JSON:
-            return data.cb(wrap_proxy_response({Status::BAD_REQUEST, "Invalid json"},
+            return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid json"},
                     data.ephem_key, data.enc_type));
     }
 }
@@ -250,14 +210,13 @@ auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson {
     }
 
     uint32_t n;
-    std::memcpy(&n, payload.data(), sizeof(uint32_t));
+    std::memcpy(&n, payload.data(), 4);
+    payload.remove_prefix(4);
     boost::endian::little_to_native_inplace(n);
     OXEN_LOG(trace, "Ciphertext length: {}", n);
 
-    payload.remove_prefix(sizeof(uint32_t));
-
     if (payload.size() < n) {
-        auto msg = fmt::format("Unexpected payload size {}, expected {}", payload.size(), n);
+        auto msg = fmt::format("Unexpected payload size {}, expected >= {}", payload.size(), n);
         OXEN_LOG(warn, "{}", msg);
         throw std::runtime_error{msg};
     }
