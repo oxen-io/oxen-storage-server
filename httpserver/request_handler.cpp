@@ -60,6 +60,9 @@ std::string obfuscate_pubkey(std::string_view pk) {
     return res;
 }
 
+} // anon. namespace
+
+
 std::string computeMessageHash(std::vector<std::string_view> parts, bool hex) {
     SHA512_CTX ctx;
     SHA512_Init(&ctx);
@@ -73,8 +76,6 @@ std::string computeMessageHash(std::vector<std::string_view> parts, bool hex) {
         hashResult = oxenmq::to_hex(hashResult);
     return hashResult;
 }
-
-} // anon. namespace
 
 
 RequestHandler::RequestHandler(

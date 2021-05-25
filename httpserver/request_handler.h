@@ -47,6 +47,9 @@ struct Response {
 
 std::string to_string(const Response& res);
 
+/// Compute message's hash based on its constituents.
+std::string computeMessageHash(std::vector<std::string_view> parts, bool hex);
+
 /// Parse a pubkey string value as either base32z (deprecated!), b64, or hex.  Returns a null pk
 /// (i.e. operator bool() returns false) and warns on invalid input.
 legacy_pubkey parse_pubkey(std::string_view public_key_in);

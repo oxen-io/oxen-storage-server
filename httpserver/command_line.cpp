@@ -106,7 +106,7 @@ void command_line_parser::parse_args(int argc, char* argv[]) {
         };
     }
 
-    if (!vm.count("omq-port")) {
+    if (!vm.count("omq-port") && !vm.count("lmq-port")) {
         throw std::runtime_error(
             "omq-port command line option is not specified");
     }
