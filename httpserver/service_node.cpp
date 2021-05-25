@@ -2,15 +2,16 @@
 
 #include "Database.hpp"
 #include "Item.hpp"
+#include "http.h"
 #include "http_connection.h"
 #include "https_client.h"
 #include "lmq_server.h"
-#include "net_stats.h"
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "serialization.h"
 #include "signature.h"
+#include "string_utils.hpp"
 #include "utils.hpp"
 #include "version.h"
 #include <nlohmann/json.hpp>
@@ -23,7 +24,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <fstream>
 #include <string_view>
 
 #include <boost/bind/bind.hpp>
@@ -56,18 +56,16 @@ constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 ServiceNode::ServiceNode(
-        boost::asio::io_context& ioc,
         sn_record_t address,
         const legacy_seckey& skey,
         OxenmqServer& lmq_server,
         const std::filesystem::path& db_location,
-        const bool force_start)
-    : ioc_(ioc),
-      db_(std::make_unique<Database>(db_location)),
+        const bool force_start) :
+      force_start_{force_start},
+      db_{std::make_unique<Database>(db_location)},
       our_address_{std::move(address)},
       our_seckey_{skey},
-      lmq_server_(lmq_server),
-      force_start_(force_start) {
+      lmq_server_{lmq_server} {
 
     swarm_ = std::make_unique<Swarm>(our_address_);
 
@@ -82,6 +80,8 @@ ServiceNode::ServiceNode(
 
     lmq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
+
+    ioc_.run();
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
@@ -283,11 +283,21 @@ void ServiceNode::bootstrap_data() {
     }
 }
 
+void ServiceNode::shutdown() {
+    shutting_down_ = true;
+    ioc_.stop();
+}
+
 bool ServiceNode::snode_ready(std::string* reason) {
+    if (shutting_down()) {
+        if (reason) *reason = "shutting down";
+        return false;
+    }
 
     std::lock_guard guard(sn_mutex_);
 
     std::vector<std::string> problems;
+
     if (!hf_at_least(STORAGE_SERVER_HARDFORK))
         problems.push_back("not yet on hardfork " + std::to_string(STORAGE_SERVER_HARDFORK));
     if (!swarm_ || !swarm_->is_valid())
@@ -325,8 +335,7 @@ void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
 
 // Calls callback on success only?
 void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
-                             ss_client::Request req,
-                             ss_client::Callback cb) const {
+                             Request req, ss_client::Callback cb) const {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -339,7 +348,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
         break;
     }
     case ss_client::ReqMethod::PROXY_EXIT: {
-        auto client_key = req.headers.find(OXEN_SENDER_KEY_HEADER);
+        auto client_key = req.headers.find(http::SENDER_KEY_HEADER);
 
         // I could just always assume that we are passing the right
         // parameters...
@@ -350,7 +359,7 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
                                  std::move(cb), client_key->second, req.body);
         } else {
             OXEN_LOG(debug, "Developer error: no {} passed in headers",
-                     OXEN_SENDER_KEY_HEADER);
+                     http::SENDER_KEY_HEADER);
             // TODO: call cb?
             assert(false);
         }
@@ -369,18 +378,12 @@ void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
 void ServiceNode::relay_data_reliable(const std::string& blob,
                                       const sn_record_t& sn) const {
 
-    auto reply_callback = [](bool success, std::vector<std::string> data) {
-        if (!success) {
-            OXEN_LOG(error, "Failed to send batch data: time-out");
-        }
-    };
-
     OXEN_LOG(debug, "Relaying data to: {}", sn.pubkey_legacy);
 
-    auto req = ss_client::Request{blob, {}};
-
-    this->send_to_sn(sn, ss_client::ReqMethod::DATA, std::move(req),
-                     reply_callback);
+    send_to_sn(sn, ss_client::ReqMethod::DATA, Request{blob},
+            [](bool success, auto&& data) {
+                if (!success) OXEN_LOG(error, "Failed to send batch data: time-out");
+            });
 }
 
 void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
@@ -833,9 +836,9 @@ void ServiceNode::attach_signature(request_t& request,
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
 
     const std::string sig_b64 = oxenmq::to_base64(raw_sig);
-    request.set(OXEN_SNODE_SIGNATURE_HEADER, sig_b64);
+    request.set(http::SNODE_SIGNATURE_HEADER, sig_b64);
 
-    request.set(OXEN_SENDER_SNODE_PUBKEY_HEADER,
+    request.set(http::SNODE_SENDER_HEADER,
                  oxenmq::to_base32z(our_address_.pubkey_legacy.view()));
 }
 
@@ -1049,9 +1052,10 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     return true;
 }
 
-MessageTestStatus ServiceNode::process_storage_test_req(
-    uint64_t blk_height, const legacy_pubkey& tester_pk,
-    const std::string& msg_hash, std::string& answer) {
+std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
+    uint64_t blk_height,
+    const legacy_pubkey& tester_pk,
+    const std::string& msg_hash) {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -1061,7 +1065,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     if (blk_height > block_height_) {
         OXEN_LOG(debug, "Our blockchain is behind, height: {}, requested: {}",
                  block_height_, blk_height);
-        return MessageTestStatus::RETRY;
+        return {MessageTestStatus::RETRY, ""};
     }
 
     // 2. Check tester/testee pair
@@ -1072,7 +1076,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
 
         if (testee != our_address_) {
             OXEN_LOG(error, "We are NOT the testee for height: {}", blk_height);
-            return MessageTestStatus::WRONG_REQ;
+            return {MessageTestStatus::WRONG_REQ, ""};
         }
 
         if (tester.pubkey_legacy != tester_pk) {
@@ -1082,7 +1086,7 @@ MessageTestStatus ServiceNode::process_storage_test_req(
             OXEN_LOG(critical, "ABORT in integration test");
             std::abort();
 #endif
-            return MessageTestStatus::WRONG_REQ;
+            return {MessageTestStatus::WRONG_REQ, ""};
         } else {
             OXEN_LOG(trace, "Tester is valid: {}", tester_pk);
         }
@@ -1091,38 +1095,38 @@ MessageTestStatus ServiceNode::process_storage_test_req(
     // 3. If for a current/past block, try to respond right away
     Item item;
     if (!db_->retrieve_by_hash(msg_hash, item)) {
-        return MessageTestStatus::RETRY;
+        return {MessageTestStatus::RETRY, ""};
     }
 
-    answer = item.data;
-    return MessageTestStatus::SUCCESS;
+    return {MessageTestStatus::SUCCESS, std::move(item.data)};
 }
 
-bool ServiceNode::select_random_message(Item& item) {
+std::optional<Item> ServiceNode::select_random_message() {
 
     uint64_t message_count;
     if (!db_->get_message_count(message_count)) {
         OXEN_LOG(error, "Could not count messages in the database");
-        return false;
+        return {};
     }
 
     OXEN_LOG(debug, "total messages: {}", message_count);
 
     if (message_count == 0) {
         OXEN_LOG(debug, "No messages in the database to initiate a peer test");
-        return false;
+        return {};
     }
 
     // SNodes don't have to agree on this, rather they should use different
     // messages
     const auto msg_idx = util::uniform_distribution_portable(message_count);
 
-    if (!db_->retrieve_by_index(msg_idx, item)) {
+    auto item = std::make_optional<Item>();
+    if (!db_->retrieve_by_index(msg_idx, *item)) {
         OXEN_LOG(error, "Could not retrieve message by index: {}", msg_idx);
-        return false;
+        return {};
     }
 
-    return true;
+    return item;
 }
 
 void ServiceNode::initiate_peer_test() {
@@ -1158,19 +1162,12 @@ void ServiceNode::initiate_peer_test() {
         return;
     }
 
-    /// 2. Storage Testing
-    {
-        // 2.1. Select a message
-        Item item;
-        if (!this->select_random_message(item)) {
-            OXEN_LOG(debug, "Could not select a message for testing");
-        } else {
-            OXEN_LOG(trace, "Selected random message: {}, {}", item.hash,
-                     item.data);
-
-            // 2.2. Initiate testing request
-            this->send_storage_test_req(testee, test_height, item);
-        }
+    /// 2. Storage Testing: initiate a testing request with a randomly selected message
+    if (auto item = select_random_message()) {
+        OXEN_LOG(trace, "Selected random message: {}, {}", item->hash, item->data);
+        send_storage_test_req(testee, test_height, *item);
+    } else {
+        OXEN_LOG(debug, "Could not select a message for testing");
     }
 }
 
@@ -1364,9 +1361,11 @@ std::string ServiceNode::get_stats() const {
         val["total_stored"] = total_stored;
     }
 
-    val["connections_in"] = get_net_stats().connections_in.load();
-    val["http_connections_out"] = get_net_stats().http_connections_out.load();
-    val["https_connections_out"] = get_net_stats().https_connections_out.load();
+    // TODO: figure out some more interesting stats (these counters don't tell us much at all except
+    // for, maybe, a slow loris attack in progress, and so were removed)
+    val["connections_in"] = -1;
+    val["http_connections_out"] = -1;
+    val["https_connections_out"] = -1;
 
     /// we want pretty (indented) json, but might change that in the future
     constexpr bool PRETTY = true;
@@ -1405,9 +1404,10 @@ std::string ServiceNode::get_status_line() const {
         s << "; " << total_stored << " msgs";
     s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/'
       << all_stats_.get_total_retrieve_requests();
-    s << "; conns(in/http/https): " << get_net_stats().connections_in << '/'
+    // FIXME: something better?
+    /*s << "; conns(in/http/https): " << get_net_stats().connections_in << '/'
       << get_net_stats().http_connections_out << '/'
-      << get_net_stats().https_connections_out;
+      << get_net_stats().https_connections_out;*/
     return s.str();
 }
 

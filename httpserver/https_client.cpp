@@ -1,8 +1,8 @@
 #include "https_client.h"
-#include "net_stats.h"
 #include "oxen_logger.h"
 #include "signature.h"
 #include "sn_record.h"
+#include "request_handler.h"
 
 #include <openssl/x509.h>
 #include <oxenmq/base64.h>
@@ -12,7 +12,7 @@ namespace oxen {
 
 using error_code = boost::system::error_code;
 
-static ssl::context ctx{ssl::context::tlsv12_client};
+static bssl::context ctx{bssl::context::tlsv12_client};
 
 void make_https_request_to_sn(
         boost::asio::io_context& ioc,
@@ -79,7 +79,7 @@ void make_https_request(boost::asio::io_context& ioc, const std::string& host,
             return;
         }
 
-        static ssl::context ctx{ssl::context::tlsv12_client};
+        static bssl::context ctx{bssl::context::tlsv12_client};
 
         auto session = std::make_shared<HttpsClientSession>(
             ioc, ctx, std::move(resolve_results), host.c_str(), std::move(req),
@@ -114,15 +114,13 @@ static std::string x509_to_string(X509* x509) {
 }
 
 HttpsClientSession::HttpsClientSession(
-    boost::asio::io_context& ioc, ssl::context& ssl_ctx,
+    boost::asio::io_context& ioc, bssl::context& ssl_ctx,
     tcp::resolver::results_type resolve_results, const char* host,
     std::shared_ptr<request_t> req, http_callback_t&& cb,
     std::optional<legacy_pubkey> sn_pubkey)
     : ioc_(ioc), ssl_ctx_(ssl_ctx), resolve_results_(resolve_results),
       callback_(cb), deadline_timer_(ioc), stream_(ioc, ssl_ctx_),
       req_(std::move(req)), server_pubkey_(std::move(sn_pubkey)) {
-
-    get_net_stats().https_connections_out++;
 
     response_.body_limit(1024 * 1024 * 10); // 10 mb
 
@@ -182,12 +180,11 @@ void HttpsClientSession::on_connect() {
 
     const auto sockfd = stream_.lowest_layer().native_handle();
     OXEN_LOG(trace, "Open https client socket: {}", sockfd);
-    get_net_stats().record_socket_open(sockfd);
 
-    stream_.set_verify_mode(ssl::verify_none);
+    stream_.set_verify_mode(bssl::verify_none);
 
     stream_.set_verify_callback(
-        [this](bool preverified, ssl::verify_context& ctx) -> bool {
+        [this](bool preverified, bssl::verify_context& ctx) -> bool {
             if (!preverified) {
                 X509_STORE_CTX* handle = ctx.native_handle();
                 X509* x509 = X509_STORE_CTX_get0_cert(handle);
@@ -195,7 +192,7 @@ void HttpsClientSession::on_connect() {
             }
             return true;
         });
-    stream_.async_handshake(ssl::stream_base::client,
+    stream_.async_handshake(bssl::stream_base::client,
                             std::bind(&HttpsClientSession::on_handshake,
                                       shared_from_this(),
                                       std::placeholders::_1));
@@ -209,7 +206,7 @@ void HttpsClientSession::on_handshake(boost::system::error_code ec) {
         return;
     }
 
-    http::async_write(stream_, *req_,
+    bhttp::async_write(stream_, *req_,
                       std::bind(&HttpsClientSession::on_write,
                                 shared_from_this(), std::placeholders::_1,
                                 std::placeholders::_2));
@@ -228,7 +225,7 @@ void HttpsClientSession::on_write(error_code ec, size_t bytes_transferred) {
     OXEN_LOG(trace, "Successfully transferred {} bytes.", bytes_transferred);
 
     // Receive the HTTP response
-    http::async_read(stream_, buffer_, response_,
+    bhttp::async_read(stream_, buffer_, response_,
                      std::bind(&HttpsClientSession::on_read, shared_from_this(),
                                std::placeholders::_1, std::placeholders::_2));
 }
@@ -240,7 +237,7 @@ bool HttpsClientSession::verify_signature() {
 
     const auto& response = response_.get();
 
-    const auto it = response.find(OXEN_SNODE_SIGNATURE_HEADER);
+    const auto it = response.find(http::SNODE_SIGNATURE_HEADER);
     if (it == response.end()) {
         OXEN_LOG(warn, "no signature found in header from {}",
                  *server_pubkey_);
@@ -264,10 +261,10 @@ void HttpsClientSession::on_read(error_code ec, size_t bytes_transferred) {
 
     const auto& response = response_.get();
 
-    if (!ec || (ec == http::error::end_of_stream)) {
+    if (!ec || (ec == bhttp::error::end_of_stream)) {
 
-        if (http::to_status_class(response.result_int()) ==
-            http::status_class::successful) {
+        if (bhttp::to_status_class(response.result_int()) ==
+            bhttp::status_class::successful) {
 
             if (server_pubkey_ && !verify_signature()) {
                 OXEN_LOG(debug, "Bad signature from {}", *server_pubkey_);
@@ -339,7 +336,6 @@ void HttpsClientSession::on_shutdown(boost::system::error_code ec) {
 
     const auto sockfd = stream_.lowest_layer().native_handle();
     OXEN_LOG(trace, "Close https socket: {}", sockfd);
-    get_net_stats().record_socket_close(sockfd);
 
     stream_.lowest_layer().close();
 
@@ -355,7 +351,5 @@ HttpsClientSession::~HttpsClientSession() {
         ioc_.post(std::bind(callback_,
                             sn_response_t{SNodeError::ERROR_OTHER, nullptr}));
     }
-
-    get_net_stats().https_connections_out--;
 }
 } // namespace oxen

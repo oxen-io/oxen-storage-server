@@ -1,9 +1,11 @@
 #pragma once
 
 #include "channel_encryption.hpp"
+#include "http.h"
 #include "onion_processing.h"
 #include "oxen_common.h"
 #include "oxend_key.h"
+#include "string_utils.hpp"
 #include <string>
 #include <string_view>
 
@@ -13,25 +15,9 @@
 
 namespace oxen {
 
+constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit
+
 class ServiceNode;
-
-enum class Status {
-    OK = 200,
-    BAD_REQUEST = 400,
-    FORBIDDEN = 403,
-    NOT_ACCEPTABLE = 406,
-    MISDIRECTED_REQUEST = 421,
-    INVALID_POW = 432, // unassigned http code
-    SERVICE_UNAVAILABLE = 503,
-    INTERNAL_SERVER_ERROR = 500,
-    BAD_GATEWAY = 502,
-    GATEWAY_TIMEOUT = 504,
-};
-
-enum class ContentType {
-    plaintext,
-    json,
-};
 
 namespace ss_client {
 
@@ -41,60 +27,50 @@ enum class ReqMethod {
     ONION_REQUEST,
 };
 
-class Request {
-
-  public:
-    std::string body;
-    // Might change this to a vector later
-    std::map<std::string, std::string> headers;
-};
-
 }; // namespace ss_client
 
-class Response {
-
-    Status status_;
-    std::string message_;
-    ContentType content_type_;
-
-  public:
-    Response(Status s, std::string m, ContentType ct = ContentType::plaintext)
-        : status_(s), message_(std::move(m)), content_type_(ct) {}
-
-    const std::string& message() const & { return message_; }
-    std::string&& message() && { return std::move(message_); }
-
-    Status status() const { return status_; }
-    ContentType content_type() const { return content_type_; }
+// Simpler wrappers that work for most of our requests
+struct Request {
+    std::string body;
+    http::headers headers;
+    std::string remote_addr;
+    std::string uri;
 };
+
+struct Response {
+    http::response_code status = http::OK;
+    std::string body;
+    std::string_view content_type = http::plaintext;
+    std::vector<std::pair<std::string, std::string>> headers;
+};
+
 
 std::string to_string(const Response& res);
 
-/// Compute message's hash based on its constituents.
-std::string computeMessageHash(const std::string& timestamp,
-                               const std::string& ttl,
-                               const std::string& recipient,
-                               const std::string& data);
+/// Parse a pubkey string value as either base32z (deprecated!), b64, or hex.  Returns a null pk
+/// (i.e. operator bool() returns false) and warns on invalid input.
+legacy_pubkey parse_pubkey(std::string_view public_key_in);
+
 
 struct OnionRequestMetadata {
     x25519_pubkey ephem_key;
-    std::function<void(oxen::Response)> cb;
+    std::function<void(Response)> cb;
     int hop_no = 0;
     EncryptType enc_type = EncryptType::aes_gcm;
 };
 
 class RequestHandler {
 
-    boost::asio::io_context& ioc_;
     ServiceNode& service_node_;
     const ChannelEncryption& channel_cipher_;
 
     // Wrap response `res` to an intermediate node
-    Response wrap_proxy_response(Response res,
-                                 const x25519_pubkey& client_key,
-                                 EncryptType enc_type,
-                                 bool json = false,
-                                 bool base64 = true) const;
+    Response wrap_proxy_response(
+            Response res,
+            const x25519_pubkey& client_key,
+            EncryptType enc_type,
+            bool json = false,
+            bool base64 = true) const;
 
     // Return the correct swarm for `pubKey`
     Response handle_wrong_swarm(const user_pubkey_t& pubKey);
@@ -112,20 +88,33 @@ class RequestHandler {
     Response process_retrieve(const nlohmann::json& params);
 
     void process_onion_exit(std::string_view payload,
-                            std::function<void(oxen::Response)> cb);
+                            std::function<void(Response)> cb);
 
     void process_lns_request(std::string name_hash,
-                             std::function<void(oxen::Response)> cb);
+                             std::function<void(Response)> cb);
 
     // ===================================
 
   public:
-    RequestHandler(boost::asio::io_context& ioc, ServiceNode& sn,
-                   const ChannelEncryption& ce);
+    RequestHandler(ServiceNode& sn, const ChannelEncryption& ce);
 
     // Process all Session client requests
     void process_client_req(std::string_view req_json,
-                            std::function<void(oxen::Response)> cb);
+                            std::function<void(Response)> cb);
+
+    /// Verifies snode pubkey and signature values in a request; returns the sender pubkey on
+    /// success or a filled-out error Response if verification fails.
+    ///
+    /// `prevalidate` - if true, do a "pre-validation": check that the required header values
+    /// (pubkey, signature) are present and valid (including verifying that the pubkey is a valid
+    /// snode) but don't actually verify the signature against the body (note that this is *not*
+    /// signature verification but is used as a pre-check before reading a body to ensure the
+    /// required headers are present).
+    std::variant<legacy_pubkey, Response> validate_snode_signature(
+            const Request& r, bool headers_only = false);
+
+    // Processes a swarm test request
+    Response process_storage_test_req(Request r);
 
     // Forwards a request to oxend RPC. `params` should contain:
     // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and
@@ -137,7 +126,7 @@ class RequestHandler {
     // Returns (via the response callback) the oxend JSON object on success; on failure returns
     // a failure response with a body of the error string.
     void process_oxend_request(const nlohmann::json& params,
-                               std::function<void(oxen::Response)> cb);
+                               std::function<void(Response)> cb);
 
     // Test only: retrieve all db entires
     Response process_retrieve_all();
@@ -146,13 +135,13 @@ class RequestHandler {
     void process_proxy_exit(
             const x25519_pubkey& client_key,
             std::string_view payload,
-            std::function<void(oxen::Response)> cb);
+            std::function<void(Response)> cb);
 
     void process_onion_to_url(const std::string& protocol,
                               const std::string& host, const uint16_t port,
                               const std::string& target,
                               const std::string& payload,
-                              std::function<void(oxen::Response)> cb);
+                              std::function<void(Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(std::string_view ciphertext, OnionRequestMetadata data);

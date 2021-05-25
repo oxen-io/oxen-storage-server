@@ -2,12 +2,8 @@
 
 #include <Database.hpp>
 #include <chrono>
-#include <fstream>
-#include <iostream>
 #include <memory>
 #include <optional>
-#include <thread>
-#include <unordered_map>
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
@@ -19,8 +15,8 @@
 #include "stats.h"
 #include "swarm.h"
 
-namespace http = boost::beast::http;
-using request_t = http::request<http::string_body>;
+namespace bhttp = boost::beast::http;
+using request_t = bhttp::request<bhttp::string_body>;
 
 namespace oxen {
 
@@ -44,20 +40,15 @@ class OxenmqServer;
 
 struct OnionRequestMetadata;
 
-namespace ss_client {
 class Request;
+
+namespace ss_client {
 enum class ReqMethod;
 using Callback = std::function<void(bool success, std::vector<std::string>)>;
 
 } // namespace ss_client
 
-namespace http_server {
-class connection_t;
-}
-
 struct oxend_key_pair_t;
-
-using connection_ptr = std::shared_ptr<http_server::connection_t>;
 
 class Swarm;
 
@@ -70,13 +61,13 @@ enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
-    using listeners_t = std::vector<connection_ptr>;
-
-    boost::asio::io_context& ioc_;
+    boost::asio::io_context ioc_{1};
 
     bool syncing_ = true;
     bool active_ = false;
     bool got_first_response_ = false;
+    bool force_start_ = false;
+    std::atomic<bool> shutting_down_ = false;
     int hardfork_ = 0;
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
@@ -97,8 +88,6 @@ class ServiceNode {
     // not call any method that would in turn call a method in SN
     // causing a deadlock
     OxenmqServer& lmq_server_;
-
-    bool force_start_ = false;
 
     std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
 
@@ -175,8 +164,8 @@ class ServiceNode {
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
 
-    // Select a random message from our database, return false on error
-    bool select_random_message(storage::Item& item); // mutex not needed
+    /// Select a random message from our database, return nullopt on error
+    std::optional<storage::Item> select_random_message(); // mutex not needed
 
     // Initiate node ping tests
     void test_reachability(const sn_record_t& sn, int previous_failures);
@@ -187,8 +176,7 @@ class ServiceNode {
     void sign_request(request_t& req) const;
 
   public:
-    ServiceNode(boost::asio::io_context& ioc,
-                sn_record_t address,
+    ServiceNode(sn_record_t address,
                 const legacy_seckey& skey,
                 OxenmqServer& omq_server,
                 const std::filesystem::path& db_location,
@@ -213,12 +201,28 @@ class ServiceNode {
     // TODO: move this eventually out of SN
     // Send by either http or omq
     void send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
-                    ss_client::Request req, ss_client::Callback cb) const;
+                    Request req, ss_client::Callback cb) const;
 
     bool hf_at_least(int hardfork) const { return hardfork_ >= hardfork; }
 
-    // Return true if the service node is ready to start running
+    // Return true if the service node is ready to handle requests, which means the storage server
+    // is fully initialized (and not trying to shut down), the service node is active and assigned
+    // to a swarm and is not syncing.
+    //
+    // Teturns false and (if `reason` is non-nullptr) sets a reason string during initialization and
+    // while shutting down.
+    //
+    // If this ServiceNode was created with force_start enabled then this function always returns
+    // true (except when shutting down); the reason string is still set (when non-null) when errors
+    // would have occured without force_start.
     bool snode_ready(std::string* reason = nullptr);
+
+    // Puts the storage server into shutdown mode; this operation is irreversible and should only be
+    // used during storage server shutdown.
+    void shutdown();
+
+    // Returns true if the storage server is currently shutting down.
+    bool shutting_down() const { return shutting_down_; }
 
     /// Process message received from a client, return false if not in a swarm
     bool process_store(const message_t& msg);
@@ -227,10 +231,9 @@ class ServiceNode {
     void process_push_batch(const std::string& blob);
 
     // Attempt to find an answer (message body) to the storage test
-    MessageTestStatus process_storage_test_req(uint64_t blk_height,
+    std::pair<MessageTestStatus, std::string> process_storage_test_req(uint64_t blk_height,
                                                const legacy_pubkey& tester_addr,
-                                               const std::string& msg_hash,
-                                               std::string& answer);
+                                               const std::string& msg_hash);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
@@ -266,6 +269,8 @@ class ServiceNode {
     void update_swarms();
 
     OxenmqServer& omq_server() { return lmq_server_; }
+
+    boost::asio::io_context& ioc() { return ioc_; }
 };
 
 } // namespace oxen

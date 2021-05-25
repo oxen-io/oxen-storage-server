@@ -1,6 +1,7 @@
 #include "lmq_server.h"
 
 #include "dev_sink.h"
+#include "http.h"
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
@@ -78,24 +79,23 @@ void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
     }
 
     auto client_key = extract_x25519_from_hex(message.data[0]);
-    // TODO: Just not returning here is gross: the protocol needs some way to return an error state,
-    // but doesn't currently have one.
+    // TODO: Just not returning any response here is gross: the protocol needs some way to return an
+    // error state, but doesn't currently have one.
     if (!client_key) return;
     const auto& payload = message.data[1];
 
     request_handler_->process_proxy_exit(
         *client_key, payload,
         [send=message.send_later()](oxen::Response res) {
-            OXEN_LOG(debug, "    Proxy exit status: {}", res.status());
+            OXEN_LOG(debug, "    Proxy exit status: {}", res.status.first);
 
-            if (res.status() == Status::OK) {
-                send.reply(res.message());
+            if (res.status == http::OK) {
+                send.reply(res.body);
             } else {
                 // We reply with 2 message parts which will be treated as
                 // an error (rather than timeout)
-                send.reply(fmt::format("{}", res.status()), res.message());
-                OXEN_LOG(debug, "Error: status is not OK for proxy_exit: {}",
-                         res.status());
+                send.reply(std::to_string(res.status.first), res.body);
+                OXEN_LOG(debug, "Error: status {} != OK for proxy_exit", res.status.first);
             }
         });
 }
@@ -115,13 +115,11 @@ void OxenmqServer::handle_onion_request(
         if (OXEN_LOG_ENABLED(trace))
             OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
-        send.reply(
-                std::to_string(static_cast<int>(res.status())),
-                std::move(res).message());
+        send.reply(std::to_string(res.status.first), std::move(res).body);
     };
 
     if (data.hop_no > MAX_ONION_HOPS)
-        return data.cb({Status::BAD_REQUEST, "onion request max path length exceeded"});
+        return data.cb({http::BAD_REQUEST, "onion request max path length exceeded"});
 
     request_handler_->process_onion_req(payload, std::move(data));
 }
@@ -136,8 +134,7 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
     } catch (const std::exception& e) {
         auto msg = "Invalid internal onion request: "s + e.what();
         OXEN_LOG(error, "{}", msg);
-        message.send_reply(
-                std::to_string(static_cast<int>(Status::BAD_REQUEST)), msg);
+        message.send_reply(std::to_string(http::BAD_REQUEST.first), msg);
         return;
     }
 
@@ -148,7 +145,7 @@ void OxenmqServer::handle_onion_req_v2(oxenmq::Message& message) {
 
     OXEN_LOG(debug, "Got a v2 onion request over OxenMQ");
 
-    const int bad_code = static_cast<int>(Status::BAD_REQUEST);
+    constexpr int bad_code = http::BAD_REQUEST.first;
     if (message.data.size() != 2) {
         OXEN_LOG(error, "Expected 2 message parts, got {}",
                  message.data.size());
@@ -250,7 +247,7 @@ OxenmqServer::OxenmqServer(
                 if (m.data.size() == 1 && m.data[0] == "ping"sv)
                     return handle_ping(m);
                 m.send_reply(
-                    std::to_string(static_cast<int>(Status::BAD_REQUEST)),
+                    std::to_string(http::BAD_REQUEST.first),
                     "onion requests v1 not supported");
         })
         // TODO: Backwards compat, only used up until HF18

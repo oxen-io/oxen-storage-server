@@ -1,7 +1,5 @@
 #include "server_certificates.h"
 
-#include <boost/asio/buffer.hpp>
-
 extern "C" {
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
@@ -15,7 +13,6 @@ extern "C" {
 #include "oxen_logger.h"
 
 #include <cstddef>
-#include <fstream>
 
 namespace oxen {
 
@@ -202,40 +199,6 @@ err:
 
     //    CRYPTO_mem_leaks(bio_err);
     BIO_free(bio_err);
-}
-
-void load_server_certificate(const std::filesystem::path& base_path,
-                                    boost::asio::ssl::context& ctx) {
-    /*
-        The certificate was generated from CMD.EXE on Windows 10 using:
-
-        winpty openssl dhparam -out dh.pem 2048
-        winpty openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days
-       10000 -out cert.pem -subj "//C=US\ST=CA\L=Los
-       Angeles\O=Beast\CN=www.example.com"
-    */
-    const auto cert_path = base_path / "cert.pem";
-    const auto key_path = base_path / "key.pem";
-    const auto dh_path = base_path / "dh.pem";
-
-    if (!std::filesystem::exists(cert_path) ||
-        !std::filesystem::exists(key_path)) {
-        generate_cert(cert_path, key_path);
-    }
-    if (!std::filesystem::exists(dh_path)) {
-        generate_dh_pem(dh_path);
-    }
-
-    ctx.set_options(boost::asio::ssl::context::default_workarounds |
-                    boost::asio::ssl::context::no_sslv2 |
-                    boost::asio::ssl::context::single_dh_use);
-
-    ctx.use_certificate_chain_file(cert_path.u8string());
-
-    ctx.use_private_key_file(key_path.u8string(),
-                             boost::asio::ssl::context::file_format::pem);
-
-    ctx.use_tmp_dh_file(dh_path.u8string());
 }
 
 }

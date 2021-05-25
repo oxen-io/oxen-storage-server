@@ -22,21 +22,15 @@
 
 namespace oxen {
 
-inline constexpr auto OXEN_SENDER_SNODE_PUBKEY_HEADER = "X-Loki-Snode-PubKey";
-inline constexpr auto OXEN_SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
-inline constexpr auto OXEN_SENDER_KEY_HEADER = "X-Sender-Public-Key";
-inline constexpr auto OXEN_TARGET_SNODE_KEY = "X-Target-Snode-Key";
-inline constexpr auto OXEN_LONG_POLL_HEADER = "X-Loki-Long-Poll";
-
 inline constexpr auto SESSION_TIME_LIMIT = 60s;
 
 class RateLimiter;
 
-namespace http = boost::beast::http; // from <boost/beast/http.hpp>
-namespace ssl = boost::asio::ssl;    // from <boost/asio/ssl.hpp>
+namespace bhttp = boost::beast::http;
+namespace bssl = boost::asio::ssl;
 
-using request_t = http::request<http::string_body>;
-using response_t = http::response<http::string_body>;
+using request_t = bhttp::request<bhttp::string_body>;
+using response_t = bhttp::response<bhttp::string_body>;
 
 std::shared_ptr<request_t> build_post_request(
         const ed25519_pubkey& host, const char* target, std::string data);
@@ -115,144 +109,6 @@ class HttpClientSession
 
     ~HttpClientSession();
 };
-
-namespace http_server {
-
-class connection_t : public std::enable_shared_from_this<connection_t> {
-
-    using tcp = boost::asio::ip::tcp;
-
-  private:
-    boost::asio::io_context& ioc_;
-    ssl::context& ssl_ctx_;
-
-    // The socket for the currently connected client.
-    tcp::socket socket_;
-
-    // The buffer for performing reads.
-    boost::beast::flat_buffer buffer_{8192};
-    ssl::stream<tcp::socket&> stream_;
-    const Security& security_;
-
-    // Contains the request message
-    http::request_parser<http::string_body> request_;
-
-    // The response message.
-    response_t response_;
-
-    // whether the response should be sent asyncronously,
-    // as opposed to directly after connection_t::process_request
-    bool delay_response_ = false;
-
-    // TODO: remove SN, only use Reqeust Handler as a mediator
-    ServiceNode& service_node_;
-
-    RequestHandler& request_handler_;
-
-    RateLimiter& rate_limiter_;
-
-    // The timer for repeating an action within one connection
-    boost::asio::steady_timer repeat_timer_;
-    int repetition_count_ = 0;
-    std::chrono::time_point<std::chrono::steady_clock> start_timestamp_;
-
-    // The timer for putting a deadline on connection processing.
-    boost::asio::steady_timer deadline_;
-
-    /// TODO: move these if possible
-    std::map<std::string, std::string> header_;
-
-    std::stringstream body_stream_;
-
-    // Note that we are only sending a single message through the
-    // notification mechanism. If we somehow accumulated multiple
-    // messages before notification event happens (unlikely), the
-    // following messages will be delivered with the client's
-    // consequent (and immediate) retrieve request
-    struct notification_context_t {
-        // The timer used for internal db polling
-        boost::asio::steady_timer timer;
-        // the message is stored here momentarily; needed because
-        // we can't pass it using current notification mechanism
-        std::optional<message_t> message;
-        // Messenger public key that this connection is registered for
-        std::string pubkey;
-    };
-
-    std::optional<notification_context_t> notification_ctx_;
-
-    // If present, this function will be called just before
-    // writing the response
-    std::function<void(response_t&)> response_modifier_;
-
-  public:
-    connection_t(boost::asio::io_context& ioc, ssl::context& ssl_ctx,
-                 tcp::socket socket, ServiceNode& sn, RequestHandler& rh,
-                 RateLimiter& rate_limiter, const Security& security);
-
-    ~connection_t();
-
-    // Connection index, mainly used for debugging
-    uint64_t conn_idx;
-
-    /// Initiate the asynchronous operations associated with the connection.
-    void start();
-
-    void notify(const message_t* msg);
-
-  private:
-    void do_handshake();
-    void on_handshake(boost::system::error_code ec);
-    /// Asynchronously receive a complete request message.
-    void read_request();
-
-    void do_close();
-    void on_shutdown(boost::system::error_code ec);
-
-    /// process GET /get_stats/v1
-    void on_get_stats();
-
-    /// Determine what needs to be done with the request message
-    /// (synchronously).
-    void process_request();
-
-    /// Unsubscribe listener (if any) and shutdown the connection
-    void clean_up();
-
-    /// Asynchronously transmit the response message.
-    void write_response();
-
-    /// Syncronously (?) process client store/load requests
-    void process_client_req_rate_limited();
-
-    void process_swarm_req(std::string_view target);
-
-    /// Process onion request from the client
-    void process_onion_req_v2();
-
-    // Check whether we have spent enough time on this connection.
-    void register_deadline();
-
-    /// Process storage test request and repeat if necessary
-    void process_storage_test_req(uint64_t height,
-                                  const legacy_pubkey& tester_addr,
-                                  const std::string& msg_hash);
-
-    void set_response(const Response& res);
-
-    bool parse_header(const char* key);
-
-    template <typename... Args>
-    bool parse_header(const char* first, Args... args);
-
-    bool validate_snode_request();
-};
-
-void run(boost::asio::io_context& ioc, const std::string& ip, uint16_t port,
-         const std::filesystem::path& base_path, ServiceNode& sn,
-         RequestHandler& rh, RateLimiter& rate_limiter, Security&);
-
-} // namespace http_server
 
 constexpr const char* error_string(SNodeError err) {
     switch (err) {

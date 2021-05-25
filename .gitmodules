@@ -7,3 +7,6 @@
 [submodule "vendors/nlohmann_json"]
 	path = vendors/nlohmann_json
 	url = https://github.com/nlohmann/json.git
+[submodule "vendors/uWebSockets"]
+	path = vendors/uWebSockets
+	url = https://github.com/uNetworking/uWebSockets.git
