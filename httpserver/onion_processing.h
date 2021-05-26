@@ -85,10 +85,19 @@ enum class ProcessCiphertextError {
 using ParsedInfo = std::variant<RelayToNodeInfo, RelayToServerInfo,
                                 FinalDestinationInfo, ProcessCiphertextError>;
 
+ParsedInfo process_ciphertext_v2(
+        const ChannelEncryption& decryptor,
+        std::string_view ciphertext,
+        const x25519_pubkey& ephem_key,
+        EncryptType enc_type);
+
 auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson;
 
 auto process_inner_request(std::string plaintext) -> ParsedInfo;
 
-bool is_server_url_allowed(std::string_view url);
+// Returns true if `target` is a permitted target for proxying http/https requests through an onion
+// request.  Requires that the target start with /oxen/, end with /lsrpc, and does not contain a
+// query string.
+bool is_onion_url_target_allowed(std::string_view uri);
 
 } // namespace oxen
