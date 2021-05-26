@@ -216,7 +216,7 @@ namespace {
         if (!data || data->replied) return;
         data->replied = true;
         data->https.loop_defer([data=std::move(data), res=std::move(res), force_close] () mutable {
-            if (data->aborted || data->replied)
+            if (data->aborted)
                 return;
             queue_response_internal(data->https, data->res, std::move(res), force_close);
         });
@@ -583,7 +583,9 @@ void HTTPSServer::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
 void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
     handle_request(*this, omq_, req, res, [this, started=std::chrono::steady_clock::now()]
             (std::shared_ptr<call_data> data) mutable {
-        data->omq.inject_task("https", "https:" + data->request.uri, data->request.remote_addr,
+        auto& omq = data->omq;
+        auto& request = data->request;
+        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data), started] () mutable {
 
             if (data->replied || data->aborted) return;
@@ -591,7 +593,8 @@ void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
             OnionRequestMetadata onion{
                 x25519_pubkey{},
                 [data, started](Response res) {
-                    OXEN_LOG(debug, "Got an onion response as edge node (after {})",
+                    OXEN_LOG(debug, "Got an onion response ({} {}) as edge node (after {})",
+                            res.status.first, res.status.second,
                             util::friendly_duration(std::chrono::steady_clock::now() - started));
                     queue_response(std::move(data), std::move(res));
                 },
