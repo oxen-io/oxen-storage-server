@@ -1,7 +1,6 @@
 #include "channel_encryption.hpp"
 #include "http.h"
 #include "oxen_logger.h"
-#include "request_handler.h"
 #include "service_node.h"
 #include <boost/endian/conversion.hpp>
 #include <nlohmann/json.hpp>
@@ -72,11 +71,12 @@ auto process_inner_request(std::string plaintext) -> ParsedInfo {
     return ret;
 }
 
-static auto
-process_ciphertext_v2(const ChannelEncryption& decryptor,
-                      std::string_view ciphertext,
-                      const x25519_pubkey& ephem_key,
-                      EncryptType enc_type) -> ParsedInfo {
+ParsedInfo process_ciphertext_v2(
+        const ChannelEncryption& decryptor,
+        std::string_view ciphertext,
+        const x25519_pubkey& ephem_key,
+        EncryptType enc_type) {
+
     std::optional<std::string> plaintext;
 
     try {
@@ -94,107 +94,11 @@ process_ciphertext_v2(const ChannelEncryption& decryptor,
     return process_inner_request(std::move(*plaintext));
 }
 
-// FIXME: why are these method definitions *here* instead of request_handler.cpp?
-void RequestHandler::process_onion_req(std::string_view ciphertext,
-                                       OnionRequestMetadata data) {
-    if (!service_node_.snode_ready())
-        return data.cb({
-            http::SERVICE_UNAVAILABLE,
-            fmt::format("Snode not ready: {}", service_node_.own_address().pubkey_ed25519)});
-
-    OXEN_LOG(debug, "process_onion_req");
-
-    var::visit([&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
-            process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
-}
-
-void RequestHandler::process_onion_req(FinalDestinationInfo&& info,
-        OnionRequestMetadata&& data) {
-    OXEN_LOG(debug, "We are the final destination in the onion request!");
-
-    process_onion_exit(
-            info.body,
-            [this, data = std::move(data), json = info.json, b64 = info.base64]
-            (oxen::Response res) {
-                data.cb(wrap_proxy_response(std::move(res), data.ephem_key, data.enc_type, json, b64));
-            });
-}
-
-void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
-        OnionRequestMetadata&& data) {
-    auto& [payload, ekey, etype, dest] = info;
-
-    auto dest_node = service_node_.find_node(dest);
-    if (!dest_node) {
-        auto msg = fmt::format("Next node not found: {}", dest);
-        OXEN_LOG(warn, "{}", msg);
-        return data.cb({http::BAD_GATEWAY, std::move(msg)});
-    }
-
-    auto on_response = [cb=std::move(data.cb)](bool success, std::vector<std::string> data) {
-        // Processing the result we got from upstream
-
-        if (!success) {
-            OXEN_LOG(debug, "[Onion request] Request time out");
-            return cb({http::GATEWAY_TIMEOUT, "Request time out"});
-        }
-
-        // We expect a two-part message, but for forwards compatibility allow extra parts
-        if (data.size() < 2) {
-            OXEN_LOG(debug, "[Onion request] Invalid response; expected at least 2 parts");
-            return cb({http::INTERNAL_SERVER_ERROR, "Invalid response from snode"});
-        }
-
-        Response res{http::INTERNAL_SERVER_ERROR, std::move(data[1]), http::json};
-        if (int code; util::parse_int(data[0], code))
-            res.status = http::from_code(code);
-
-        /// We use http status codes (for now)
-        if (res.status != http::OK)
-            OXEN_LOG(debug, "Onion request relay failed with: {}", res.body);
-
-        cb(std::move(res));
-    };
-
-    OXEN_LOG(debug, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
-
-    data.ephem_key = ekey;
-    data.enc_type = etype;
-    service_node_.send_onion_to_sn(
-            *dest_node, std::move(payload), std::move(data), std::move(on_response));
-}
-
-bool is_server_url_allowed(std::string_view url) {
+bool is_onion_url_target_allowed(std::string_view target) {
     return
-        (util::starts_with(url, "/loki/") || util::starts_with(url, "/oxen/")) &&
-        util::ends_with(url, "/lsrpc") &&
-        url.find('?') == std::string::npos;
-}
-
-void RequestHandler::process_onion_req(
-        RelayToServerInfo&& info, OnionRequestMetadata&& data) {
-    OXEN_LOG(debug, "We are to forward the request to url: {}{}",
-            info.host, info.target);
-
-    // Forward the request to url but only if it ends in `/lsrpc`
-    if (is_server_url_allowed(info.target))
-        return process_onion_to_url(info.protocol, std::move(info.host), info.port,
-                std::move(info.target), std::move(info.payload), std::move(data.cb));
-
-    return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"},
-            data.ephem_key, data.enc_type));
-}
-
-void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
-        OnionRequestMetadata&& data) {
-
-    switch (error) {
-        case ProcessCiphertextError::INVALID_CIPHERTEXT:
-            return data.cb({http::BAD_REQUEST, "Invalid ciphertext"});
-        case ProcessCiphertextError::INVALID_JSON:
-            return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid json"},
-                    data.ephem_key, data.enc_type));
-    }
+        (util::starts_with(target, "/loki/") || util::starts_with(target, "/oxen/")) &&
+        util::ends_with(target, "/lsrpc") &&
+        target.find('?') == std::string::npos;
 }
 
 /// We are expecting a payload of the following shape:
