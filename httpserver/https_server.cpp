@@ -466,7 +466,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
 
             legacy_pubkey tester_pk;
             if (auto it = req.headers.find(http::SNODE_SENDER_HEADER); it != req.headers.end()) {
-                if (tester_pk = parse_pubkey(it->second); !tester_pk) {
+                if (tester_pk = parse_legacy_pubkey(it->second); !tester_pk) {
                     OXEN_LOG(debug, "Invalid test request: invalid pubkey");
                     return queue_response(std::move(data), {http::BAD_REQUEST, "invalid tester pubkey header"});
                 }
