@@ -1,5 +1,4 @@
 #include "swarm.h"
-#include "http_connection.h"
 #include "oxen_logger.h"
 
 #include "service_node.h"

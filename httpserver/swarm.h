@@ -9,10 +9,6 @@
 #include "oxen_common.h"
 #include "sn_record.h"
 
-namespace boost::asio {
-class io_context;
-} // namespace boost::asio
-
 namespace oxen {
 
 class ServiceNode;

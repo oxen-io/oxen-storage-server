@@ -1,5 +1,6 @@
 #include "https_server.h"
 
+#include "file.hpp"
 #include "http.h"
 #include "oxen_logger.h"
 #include "request_handler.h"
@@ -7,11 +8,9 @@
 #include "omq_server.h"
 #include "signature.h"
 #include "string_utils.hpp"
-#include "file.hpp"
 
 #include <boost/endian/conversion.hpp>
 #include <chrono>
-#include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 #include <oxenmq/oxenmq.h>
@@ -57,15 +56,24 @@ HTTPSServer::HTTPSServer(
         const std::filesystem::path& ssl_cert,
         const std::filesystem::path& ssl_key,
         const std::filesystem::path& ssl_dh,
-        const legacy_keypair& sn_keys
+        legacy_keypair legacy_keys
         ) :
     service_node_{sn},
     omq_{*service_node_.omq_server()},
     request_handler_{rh},
+    legacy_keys_{std::move(legacy_keys)},
     cert_signature_{oxenmq::to_base64(util::view_guts(
-        generate_signature(hash_data(slurp_file(ssl_cert)), sn_keys)
+        generate_signature(hash_data(slurp_file(ssl_cert)), legacy_keys_)
     ))}
 {
+
+    // Add a category for handling incoming https requests
+    omq_.add_category("https",
+            oxenmq::AuthLevel::basic,
+            2, // minimum # of threads reserved threads for this category
+            1000 // max queued requests
+    );
+
 
     // uWS is designed to work from a single thread, which is good (we pull off the requests and
     // then stick them into the LMQ job queue to be scheduled along with other jobs).  But as a
@@ -158,10 +166,32 @@ bool HTTPSServer::check_ready(HttpResponse& res) {
 
 void HTTPSServer::add_generic_headers(HttpResponse& res) const {
     res.writeHeader("Server", server_header());
-    res.writeHeader("X-Loki-Snode-Signature", cert_signature_);
 }
 
+// Queues a response with the uWebSockets response object; this must only be called from the
+// http thread (typically you want to use `queue_response` instead).
+void queue_response_internal(HTTPSServer& https, HttpResponse& r, Response res, bool force_close = false) {
+    r.cork([&https, &r, res=std::move(res), force_close] {
+        r.writeStatus(std::to_string(res.status.first) + " " + std::string{res.status.second});
+        https.add_generic_headers(r);
+        if (!res.content_type.empty())
+            r.writeHeader("Content-Type", res.content_type);
+        for (const auto& [h, v] : res.headers)
+            r.writeHeader(h, v);
+
+        r.end(res.body, force_close || https.closing());
+    });
+}
+
+
 namespace {
+
+    struct Request {
+        std::string body;
+        http::headers headers;
+        std::string remote_addr;
+        std::string uri;
+    };
 
     struct call_data {
         HTTPSServer& https;
@@ -194,20 +224,6 @@ namespace {
             return https.error_response(std::forward<T>(args)...);
         }
     };
-
-    // Queues a response with the uWebSockets response object; this must only be called from the
-    // http thread (typically you want to use `queue_response` instead).
-    void queue_response_internal(HTTPSServer& https, HttpResponse& r, Response res, bool force_close = false) {
-        r.cork([&https, &r, res=std::move(res), force_close] {
-            r.writeStatus(std::to_string(res.status.first) + " " + std::string{res.status.second});
-            https.add_generic_headers(r);
-            if (!res.content_type.empty())
-                r.writeHeader("Content-Type", res.content_type);
-            for (const auto& [h, v] : res.headers)
-                r.writeHeader(h, v);
-            r.end(res.body, force_close || https.closing());
-        });
-    }
 
     // Queues a response for the HTTP thread to handle; the response can be in multiple string pieces
     // to be concatenated together.
@@ -338,16 +354,26 @@ namespace {
 
 void HTTPSServer::create_endpoints(uWS::SSLApp& https)
 {
+    // Legacy target, can be removed post-HF19:
     https.post("/swarms/ping_test/v1", [this](HttpResponse* res, HttpRequest* req) {
-        OXEN_LOG(trace, "Received https ping_test");
+        OXEN_LOG(trace, "Received (old) https ping_test");
         service_node_.update_last_ping(ReachType::HTTPS);
-        add_generic_headers(*res);
-        res->end();
+        Response resp{http::OK};
+        resp.headers.emplace_back(http::SNODE_SIGNATURE_HEADER, cert_signature_);
+        queue_response_internal(*this, *res, std::move(resp));
     });
 
+    https.post("/ping_test/v1", [this](HttpResponse* res, HttpRequest* req) {
+        OXEN_LOG(trace, "Received https ping_test");
+        service_node_.update_last_ping(ReachType::HTTPS);
+        Response resp{http::OK};
+        resp.headers.emplace_back(http::SNODE_PUBKEY_HEADER, oxenmq::to_base64(legacy_keys_.first.hex()));
+        queue_response_internal(*this, *res, std::move(resp));
+    });
+
+    // Legacy storage testing over HTTPS; can be removed after HF19
     https.post("/swarms/storage_test/v1", [this](HttpResponse* res, HttpRequest* req) {
         if (!check_ready(*res)) return;
-
         process_storage_test_req(*req, *res);
     });
     https.post("/storage_rpc/v1", [this](HttpResponse* res, HttpRequest* req) {
@@ -363,7 +389,10 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
     });
     https.get("/get_stats/v1", [this](HttpResponse* res, HttpRequest* req) {
         queue_response_internal(*this, *res, Response{
-            http::OK, nlohmann::json{{"version", STORAGE_SERVER_VERSION_STRING}}.dump()});
+            http::OK,
+            nlohmann::json{{"version", STORAGE_SERVER_VERSION_STRING}}.dump(),
+            http::json
+        });
     });
 
         
@@ -401,43 +430,56 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
 }
 
 
-static void handle_storage_test_impl(
-        std::shared_ptr<call_data> data,
-        MessageTestStatus status,
-        std::string answer,
-        std::chrono::nanoseconds elapsed) {
-    switch (status) {
-        case MessageTestStatus::SUCCESS:
-            OXEN_LOG(debug, "Storage test success after {}",
-                    util::friendly_duration(elapsed));
-            return queue_response(std::move(data), {http::OK,
-                json{
-                    {"status", "OK"},
-                    {"value", std::move(answer)}
-                }.dump()});
-        case MessageTestStatus::WRONG_REQ:
-            return queue_response(std::move(data), {http::OK,
-                json{
-                    {"status", "wrong request"}
-                }.dump()});
-        case MessageTestStatus::RETRY:
-            [[fallthrough]]; // If we're getting called then a retry ran out of time
-        case MessageTestStatus::ERROR:
-            // Promote this to `error` once we enforce storage testing
-            OXEN_LOG(debug, "Failed storage test, tried for {}", util::friendly_duration(elapsed));
-            return queue_response(std::move(data), {http::OK,
-                json{
-                    {"status", "other"}
-                }.dump()});
+/// Verifies snode pubkey and signature values in a request; returns the sender pubkey on
+/// success or a filled-out error Response if verification fails.
+///
+/// `prevalidate` - if true, do a "pre-validation": check that the required header values
+/// (pubkey, signature) are present and valid (including verifying that the pubkey is a valid
+/// snode) but don't actually verify the signature against the body (note that this is *not*
+/// signature verification but is used as a pre-check before reading a body to ensure the
+///
+/// Deprecated; can be removed after HF19
+static std::variant<legacy_pubkey, Response> validate_snode_signature(ServiceNode& sn, const Request& r, bool prevalidate = false) {
+    legacy_pubkey pubkey;
+    if (auto it = r.headers.find(http::SNODE_SENDER_HEADER); it != r.headers.end())
+        pubkey = parse_legacy_pubkey(it->second);
+    if (!pubkey) {
+        OXEN_LOG(debug, "Missing or invalid pubkey header for request");
+        return Response{http::BAD_REQUEST, "missing/invalid pubkey header"};
     }
+    signature sig;
+    if (auto it = r.headers.find(http::SNODE_SIGNATURE_HEADER); it != r.headers.end()) {
+        try { sig = signature::from_base64(it->second); }
+        catch (...) {
+            OXEN_LOG(warn, "invalid signature (not b64) found in header from {}", pubkey);
+            return Response{http::BAD_REQUEST, "Invalid signature"};
+        }
+    } else {
+        OXEN_LOG(debug, "Missing required signature header for request");
+        return Response{http::BAD_REQUEST, "missing signature header"};
+    }
+
+    if (!sn.find_node(pubkey)) {
+        OXEN_LOG(debug, "Rejecting signature from unknown service node: {}", pubkey);
+        return Response{http::UNAUTHORIZED, "Unknown service node"};
+    }
+
+    if (!prevalidate) {
+        if (!check_signature(sig, hash_data(r.body), pubkey)) {
+            OXEN_LOG(debug, "snode signature verification failed for pubkey {}", pubkey);
+            return Response{http::UNAUTHORIZED, "snode signature verification failed"};
+        }
+    }
+    return pubkey;
 }
+
 
 void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
 
     auto check_snode_headers = [this, &res](call_data& data) {
         // Before we read the body make sure we have the required headers (so that we can reject bad
         // requests earlier).
-        if (auto prevalidate = request_handler_.validate_snode_signature(data.request, true);
+        if (auto prevalidate = validate_snode_signature(service_node_, data.request, true);
                 std::holds_alternative<Response>(prevalidate)) {
             queue_response_internal(*this, res, std::move(std::get<Response>(prevalidate)));
             data.replied = true;
@@ -453,7 +495,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
 
     handle_request(*this, omq_, req, res, [this](std::shared_ptr<call_data> data) mutable {
         // Now that we have the body, fully validate the snode signature:
-        if (auto validate = request_handler_.validate_snode_signature(data->request);
+        if (auto validate = validate_snode_signature(service_node_, data->request);
                 std::holds_alternative<Response>(validate))
             return queue_response(std::move(data), std::move(std::get<Response>(validate)));
 
@@ -464,21 +506,27 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
 
             auto& req = data->request;
 
+            Response resp{http::BAD_REQUEST};
+            resp.headers.emplace_back(http::SNODE_SIGNATURE_HEADER, cert_signature_);
+
             legacy_pubkey tester_pk;
             if (auto it = req.headers.find(http::SNODE_SENDER_HEADER); it != req.headers.end()) {
                 if (tester_pk = parse_legacy_pubkey(it->second); !tester_pk) {
                     OXEN_LOG(debug, "Invalid test request: invalid pubkey");
-                    return queue_response(std::move(data), {http::BAD_REQUEST, "invalid tester pubkey header"});
+                    resp.body = "invalid tester pubkey header";
+                    return queue_response(std::move(data), std::move(resp));
                 }
             } else {
                 OXEN_LOG(debug, "Invalid test request: missing pubkey");
-                return queue_response(std::move(data), {http::BAD_REQUEST, "missing tester pubkey header"});
+                resp.body = "missing tester pubkey header";
+                return queue_response(std::move(data), std::move(resp));
             }
 
             auto body = json::parse(data->request.body, nullptr, false);
             if (body.is_discarded()) {
                 OXEN_LOG(debug, "Bad snode test request: invalid json");
-                return queue_response(std::move(data), {http::BAD_REQUEST, "invalid json"});
+                resp.body = "invalid json";
+                return queue_response(std::move(data), std::move(resp));
             }
 
             uint64_t height;
@@ -487,47 +535,37 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                 height = body.at("height").get<uint64_t>();
                 msg_hash = body.at("hash").get<std::string>();
             } catch (...) {
-                std::string msg = "Bad snode test request: missing fields in json"s;
-                OXEN_LOG(debug, "{}", msg);
-                return queue_response(std::move(data), {http::BAD_REQUEST, std::move(msg)});
+                resp.body = "Bad snode test request: missing fields in json";
+                OXEN_LOG(debug, resp.body);
+                return queue_response(std::move(data), std::move(resp));
             }
 
+            request_handler_.process_storage_test_req(height, tester_pk, msg_hash,
+                [data=std::move(data), resp=std::move(resp)]
+                (MessageTestStatus status, std::string answer, std::chrono::steady_clock::duration elapsed) mutable {
+                    resp.status = http::OK;
+                    resp.content_type = http::json;
+                    switch (status) {
+                        case MessageTestStatus::SUCCESS:
+                            OXEN_LOG(debug, "Storage test success after {}",
+                                    util::friendly_duration(elapsed));
+                            resp.body = json{
+                                    {"status", "OK"},
+                                    {"value", std::move(answer)}}.dump();
+                            return queue_response(std::move(data), std::move(resp));
+                        case MessageTestStatus::WRONG_REQ:
+                            resp.body = json{{"status", "wrong request"}}.dump();
+                            return queue_response(std::move(data), std::move(resp));
+                        case MessageTestStatus::RETRY:
+                            [[fallthrough]]; // If we're getting called then a retry ran out of time
+                        case MessageTestStatus::ERROR:
+                            // Promote this to `error` once we enforce storage testing
+                            OXEN_LOG(debug, "Failed storage test, tried for {}", util::friendly_duration(elapsed));
+                            resp.body = json{{"status", "other"}}.dump();
+                            return queue_response(std::move(data), std::move(resp));
+                    }
+                });
 
-            /// TODO: we never actually test that `height` is within any reasonable
-            /// time window (or that it is not repeated multiple times), we should do
-            /// that! This is done implicitly to some degree using
-            /// `block_hashes_cache_`, which holds a limited number of recent blocks
-            /// only and fails if an earlier block is requested
-
-            auto started = std::chrono::steady_clock::now();
-            auto [status, answer] = service_node_.process_storage_test_req(
-                    height, tester_pk, msg_hash);
-
-            // FIXME: need to cancel this timer if we're trying to shut down so that we don't have to
-            // wait up to a minute for it.
-            if (status == MessageTestStatus::RETRY) {
-                // Our first attempt returned a RETRY, so set up a timer to keep retrying
-
-                auto timer = std::make_shared<oxenmq::TimerID>();
-                auto& timer_ref = *timer;
-                data->omq.add_timer(timer_ref, [this, data=std::move(data), timer=std::move(timer), height, tester_pk, msg_hash, started] {
-                    if (data->replied || data->aborted)
-                        return data->omq.cancel_timer(*timer);
-
-                    auto elapsed = std::chrono::steady_clock::now() - started;
-                    OXEN_LOG(trace, "Performing storage test retry, {} since started",
-                            util::friendly_duration(elapsed));
-
-                    auto [status, answer] = service_node_.process_storage_test_req(
-                            height, tester_pk, msg_hash);
-                    if (status == MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD)
-                        return; // Still retrying so wait for the next call
-                    data->omq.cancel_timer(*timer);
-                    handle_storage_test_impl(std::move(data), status, std::move(answer), elapsed);
-                }, TEST_RETRY_INTERVAL);
-            } else {
-                handle_storage_test_impl(std::move(data), status, std::move(answer), 0s);
-            }
         });
     }, std::move(check_snode_headers));
 }

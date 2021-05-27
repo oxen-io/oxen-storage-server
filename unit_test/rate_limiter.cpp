@@ -2,6 +2,7 @@
 #include "oxend_key.h"
 
 #include <boost/test/unit_test.hpp>
+#include <oxenmq/oxenmq.h>
 
 #include <chrono>
 
@@ -11,7 +12,8 @@ using namespace std::literals;
 BOOST_AUTO_TEST_SUITE(snode_request_rate_limiter)
 
 BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     auto identifier = oxen::legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
@@ -30,7 +32,8 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 }
 
 BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     auto identifier = oxen::legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
@@ -44,7 +47,8 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
 }
 
 BOOST_AUTO_TEST_CASE(it_handle_multiple_identifiers) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     auto identifier1 = oxen::legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
@@ -67,7 +71,8 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(client_request_rate_limiter)
 
 BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     uint32_t identifier = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
@@ -86,7 +91,8 @@ BOOST_AUTO_TEST_CASE(it_ratelimits_only_with_empty_bucket) {
 }
 
 BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     uint32_t identifier = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
@@ -100,7 +106,8 @@ BOOST_AUTO_TEST_CASE(it_fills_up_bucket_steadily) {
 }
 
 BOOST_AUTO_TEST_CASE(it_handles_multiple_identifiers) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     uint32_t identifier1 = (10<<24) + (1<<16) + (1<<8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
@@ -118,7 +125,8 @@ BOOST_AUTO_TEST_CASE(it_handles_multiple_identifiers) {
 }
 
 BOOST_AUTO_TEST_CASE(it_limits_too_many_unique_clients) {
-    RateLimiter rate_limiter;
+    oxenmq::OxenMQ omq;
+    RateLimiter rate_limiter{omq};
     const auto now = std::chrono::steady_clock::now();
 
     uint32_t ip_start = (10<<24) + 1;

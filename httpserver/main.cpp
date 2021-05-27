@@ -1,6 +1,5 @@
 #include "channel_encryption.hpp"
 #include "command_line.h"
-#include "http_connection.h"
 #include "https_server.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
@@ -18,6 +17,7 @@
 #include <oxenmq/oxenmq.h>
 #include <oxenmq/hex.h>
 
+#include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -188,18 +188,15 @@ int main(int argc, char* argv[]) {
         auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
         auto& oxenmq_server = *oxenmq_server_ptr;
 
-        // Add a category for handling incoming https requests
-        auto https_threads = std::max<unsigned>(std::thread::hardware_concurrency(), 3);
-        oxenmq_server->add_category("https",
-                oxenmq::AuthLevel::basic, https_threads, 1000 /* max queued requests */);
-
         ServiceNode service_node{
             me, private_key, oxenmq_server, data_dir, options.force_start};
 
         RequestHandler request_handler{service_node, channel_encryption};
 
-        HTTPSServer https_server{service_node, request_handler, {{options.ip, options.port, true}},
-            ssl_cert, ssl_key, ssl_dh, {me.pubkey_legacy, private_key}};
+        HTTPSServer https_server{service_node, request_handler,
+            {{options.ip, options.port, true}},
+            ssl_cert, ssl_key, ssl_dh,
+            {me.pubkey_legacy, private_key}};
 
 
         oxenmq_server.init(&service_node, &request_handler,

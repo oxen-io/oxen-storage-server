@@ -54,6 +54,9 @@ class OxenmqServer {
     // sn.ping - sent by SNs to ping each other.
     void handle_ping(oxenmq::Message& message);
 
+    // sn.storage_test
+    void handle_storage_test(oxenmq::Message& message);
+
     void handle_get_logs(oxenmq::Message& message);
 
     void handle_get_stats(oxenmq::Message& message);

@@ -1,14 +1,13 @@
 #pragma once
 
-#include <boost/circular_buffer.hpp>
-
 #include <chrono>
 #include <cstdint>
-#include <string>
+#include <mutex>
 #include <unordered_map>
-#include <utility> // for std::pair
 
 #include "oxend_key.h"
+
+namespace oxenmq { class OxenMQ; }
 
 /// https://en.wikipedia.org/wiki/Token_bucket
 
@@ -24,6 +23,9 @@ class RateLimiter {
     inline constexpr static uint32_t TOKEN_RATE_SN = 600;
     inline constexpr static uint32_t MAX_CLIENTS = 10000;
 
+    RateLimiter() = delete;
+    RateLimiter(oxenmq::OxenMQ& omq);
+
     bool should_rate_limit(
             const legacy_pubkey& pubkey,
             std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
@@ -37,16 +39,12 @@ class RateLimiter {
         std::chrono::steady_clock::time_point last_time_point;
     };
 
-    boost::circular_buffer<std::pair<legacy_pubkey, TokenBucket>> buckets_{128};
+    std::mutex mutex_;
 
+    std::unordered_map<legacy_pubkey, TokenBucket> snode_buckets_;
     std::unordered_map<uint32_t, TokenBucket> client_buckets_;
 
-    void clean_client_buckets(std::chrono::steady_clock::time_point now);
-
-    // Add tokens based on the amount of time elapsed
-    void fill_bucket(TokenBucket& bucket,
-                     std::chrono::steady_clock::time_point now,
-                     bool service_node = false);
+    void clean_buckets(std::chrono::steady_clock::time_point now);
 };
 
 }
