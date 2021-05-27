@@ -17,13 +17,6 @@ namespace oxen {
 
 using namespace std::literals;
 
-// When a storage test returns a "retry" response, we retry again after this interval:
-inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
-
-// If a storage test is still returning "retry" after this long since the initial request then we
-// give up and send an error response back to the requestor:
-inline constexpr auto TEST_RETRY_PERIOD = 55s;
-
 // Maximum incoming HTTPS request size, in bytes.
 inline constexpr uint64_t MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024;
 
@@ -46,7 +39,7 @@ public:
         const std::filesystem::path& ssl_cert,
         const std::filesystem::path& ssl_key,
         const std::filesystem::path& ssl_dh,
-        const legacy_keypair& sn_keys
+        legacy_keypair legacy_keys
         );
 
     ~HTTPSServer();
@@ -87,6 +80,8 @@ public:
 
     bool closing() const { return closing_; }
 
+    ServiceNode& service_node() { return service_node_; }
+
 private:
 
     // Checks whether the snode is ready; if not, sets an error message and returns false (the
@@ -97,6 +92,7 @@ private:
 
     bool should_rate_limit_client(std::string_view addr);
 
+    // Deprecated storage test over HTTPS; can be removed after HF19
     void process_storage_test_req(HttpRequest& req, HttpResponse& res);
     void process_storage_rpc_req(HttpRequest& req, HttpResponse& res);
     void process_onion_req_v2(HttpRequest& req, HttpResponse& res);
@@ -133,10 +129,18 @@ private:
     oxenmq::OxenMQ& omq_;
     // Request handler
     RequestHandler& request_handler_;
+    // Keys for signing responses
+    legacy_keypair legacy_keys_;
     // Rate limiter for direct client requests
-    RateLimiter rate_limiter_{};
-    // Certificate signature of the cert.pem so that the client can verify who they are talking to
+    RateLimiter rate_limiter_{omq_};
+    // Certificate signature of the cert.pem so that the client can verify who they are receiving a
+    // reply from (deprecated, to be removed after HF19).  This was a mistake: it doesn't provide
+    // any assurance *before* sending data, and is almost impossible to verify without rolling your
+    // own low-level SSL sockets.  Everything that needs encrypted data is now done over encrypted,
+    // authenticated zmq or onion requests.
     std::string cert_signature_;
+
+    friend void queue_response_internal(HTTPSServer& https, HttpResponse& r, Response res, bool force_close);
 };
 
 } // namespace oxen

@@ -3,31 +3,24 @@
 #include "Database.hpp"
 #include "Item.hpp"
 #include "http.h"
-#include "http_connection.h"
-#include "https_client.h"
 #include "omq_server.h"
-#include "oxen_common.h"
 #include "oxen_logger.h"
-#include "oxend_key.h"
+#include "request_handler.h"
 #include "serialization.h"
 #include "signature.h"
 #include "string_utils.hpp"
 #include "utils.hpp"
 #include "version.h"
+
+#include <boost/endian/conversion.hpp>
+#include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 #include <oxenmq/oxenmq.h>
 
-#include "request_handler.h"
-
 #include <algorithm>
-#include <chrono>
-#include <string_view>
-
-#include <boost/bind/bind.hpp>
-#include <boost/endian/conversion.hpp>
 
 using json = nlohmann::json;
 
@@ -41,14 +34,6 @@ constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 // so that we don't bother producing warning spam or going to the bootstrap just for a few new nodes
 // that will often have missing info for a few minutes).
 using MISSING_PUBKEY_THRESHOLD = std::ratio<3, 100>;
-
-static void make_sn_request(boost::asio::io_context& ioc, const sn_record_t& sn,
-                            std::shared_ptr<request_t> req,
-                            http_callback_t&& cb) {
-    OXEN_LOG(trace, "make sn_request to {} @ {}:{}", sn.pubkey_legacy, sn.ip, sn.port);
-    // TODO: Return to using snode address instead of ip
-    make_https_request_to_sn(ioc, sn, std::move(req), std::move(cb));
-}
 
 /// TODO: there should be config.h to store constants like these
 constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
@@ -81,23 +66,24 @@ ServiceNode::ServiceNode(
     omq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
             STATS_CLEANUP_INTERVAL);
 
-    // boost asio's event loop exits immediately if there isn't an active job on it.  The "solution"
-    // is to put this fake work object on it.  Yuck.
-    ioc_fake_work_ = std::make_unique<boost::asio::io_service::work>(ioc_);
-    ioc_thread_ = std::thread{[this] { ioc_.run(); }};
+    // Periodically clean up any https request futures
+    omq_server_->add_timer([this] {
+        outstanding_https_reqs_.remove_if(
+                [](auto& f) { return f.wait_for(0ms) == std::future_status::ready; });
+    }, 1s);
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate SN regardless
-    auto delay_timer = std::make_shared<boost::asio::steady_timer>(ioc_);
-
-    delay_timer->expires_after(std::chrono::minutes(60));
-    delay_timer->async_wait([this, delay_timer](const auto& /*ec*/) {
+    auto delay_timer = std::make_shared<oxenmq::TimerID>();
+    auto& dtimer = *delay_timer; // Get reference before we move away the shared_ptr
+    omq_server_->add_timer(dtimer, [this, timer=std::move(delay_timer)] {
+        omq_server_->cancel_timer(*timer);
         std::lock_guard lock{sn_mutex_};
         if (!syncing_)
             return;
         OXEN_LOG(warn, "Block syncing is taking too long, activating SS regardless");
         syncing_ = false;
-    });
+    }, 1h);
 }
 
 void ServiceNode::on_oxend_connected() {
@@ -111,7 +97,7 @@ void ServiceNode::on_oxend_connected() {
 }
 
 static block_update_t
-parse_swarm_update(const std::string& response_body, bool from_json_rpc = false) {
+parse_swarm_update(const std::string& response_body) {
 
     if (response_body.empty()) {
         OXEN_LOG(critical, "Bad oxend rpc response: no response body");
@@ -125,8 +111,6 @@ parse_swarm_update(const std::string& response_body, bool from_json_rpc = false)
 
     try {
         json result = json::parse(response_body, nullptr, true);
-        if (from_json_rpc)
-            result = result.at("result");
 
         bu.height = result.at("height").get<uint64_t>();
         bu.block_hash = result.at("block_hash").get<std::string>();
@@ -209,7 +193,7 @@ void ServiceNode::bootstrap_data() {
 
     OXEN_LOG(trace, "Bootstrapping peer data");
 
-    json params{
+    std::string params = json{
         {"fields", {
             {"service_node_pubkey", true},
             {"swarm_id", true},
@@ -223,75 +207,86 @@ void ServiceNode::bootstrap_data() {
             {"pubkey_ed25519", true},
             {"storage_lmq_port", true}
         }}
-    };
+    }.dump();
 
-    std::vector<std::pair<std::string, uint16_t>> seed_nodes;
+    std::vector<oxenmq::address> seed_nodes;
     if (oxen::is_mainnet) {
-        seed_nodes = {{{"public.loki.foundation", 22023},
-                       {"storage.seed1.loki.network", 22023},
-                       {"storage.seed3.loki.network", 22023},
-                       {"imaginary.stream", 22023}}};
+        seed_nodes = {{
+            "curve://public.loki.foundation:22027/3c157ed3c675f56280dc5d8b2f00b327b5865c127bf2c6c42becc3ca73d9132b",
+            "curve://imaginary.stream:22027/449a8011d3abcb97f5db6d91529b1106b0590d2f2a86635104fe7059ffeeef47",
+            //"curve://storage.seed1.loki.network:22027/???",
+            //"curve://storage.seed3.loki.network:22027/???",
+        }};
     } else {
-        seed_nodes = {{{"public.loki.foundation", 38157}}};
+        seed_nodes = {{
+            "curve://public.loki.foundation:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45",
+        }};
     }
 
-    auto req_counter = std::make_shared<size_t>(0);
+    auto req_counter = std::make_shared<std::atomic<int>>(0);
 
-    for (const auto& [addr, port] : seed_nodes) {
-        oxend_json_rpc_request(
-            ioc_, addr, port, "get_service_nodes", params,
-            [this, addr=addr, req_counter, node_count = seed_nodes.size()]
-            (sn_response_t&& res) {
-                if (res.error_code == SNodeError::NO_ERROR && res.body) {
-                    OXEN_LOG(info, "Parsing response from seed {}", addr);
+    for (const auto& addr : seed_nodes) {
+
+        auto connid = omq_server_->connect_remote(addr,
+                [addr](oxenmq::ConnectionID) {
+                    OXEN_LOG(debug, "Connected to bootstrap node {}", addr);
+                },
+                [addr](oxenmq::ConnectionID, auto reason) {
+                    OXEN_LOG(debug, "Failed to connect to bootstrap node {}: {}", addr, reason);
+                },
+                oxenmq::connect_option::ephemeral_routing_id{true},
+                oxenmq::connect_option::timeout{BOOTSTRAP_TIMEOUT}
+        );
+        omq_server_->request(connid, "rpc.get_service_nodes",
+            [this, connid, addr, req_counter, node_count=(int)seed_nodes.size()](bool success, auto data) {
+                if (!success)
+                    OXEN_LOG(err, "Failed to contact bootstrap node {}: request timed out", addr);
+                else if (data.empty())
+                    OXEN_LOG(err, "Failed to request bootstrap node data from {}: request returned no data",
+                            addr);
+                else if (data[0] != "200")
+                    OXEN_LOG(err, "Failed to request bootstrap node data from {}: request returned failure status {}",
+                            data[0]);
+                else {
+                    OXEN_LOG(info, "Parsing response from bootstrap node {}", addr);
                     try {
-                        block_update_t bu = parse_swarm_update(*res.body, true);
-
-                        // TODO: this should be disabled in the "testnet" mode
-                        // (or changed to point to testnet seeds)
-                        if (!bu.unchanged) {
-                            this->on_bootstrap_update(std::move(bu));
-                        }
-
+                        auto update = parse_swarm_update(data[1]);
+                        if (!update.unchanged)
+                            on_bootstrap_update(std::move(update));
                         OXEN_LOG(info, "Bootstrapped from {}", addr);
                     } catch (const std::exception& e) {
-                        OXEN_LOG(
-                            err,
+                        OXEN_LOG(err,
                             "Exception caught while bootstrapping from {}: {}",
                             addr, e.what());
                     }
-                } else {
-                    OXEN_LOG(err, "Failed to contact bootstrap node {}", addr);
                 }
 
-                (*req_counter)++;
+                omq_server_->disconnect(connid);
 
-                if (*req_counter == node_count) {
+                if (++(*req_counter) == node_count) {
                     OXEN_LOG(info, "Bootstrapping done");
-                    if (this->target_height_ > 0) {
+                    if (target_height_ > 0)
                         update_swarms();
-                    } else {
+                    else {
                         // If target height is still 0 after having contacted
                         // (successfully or not) all seed nodes, just assume we have
                         // finished syncing. (Otherwise we will never get a chance
                         // to update syncing status.)
-                        OXEN_LOG(
-                            warn,
-                            "Could not contact any of the seed nodes to get target "
-                            "height. Going to assume our height is correct.");
-                        this->syncing_ = false;
+                        OXEN_LOG(warn,
+                            "Could not contact any bootstrap nodes to get target "
+                            "height. Assuming our local height is correct.");
+                        syncing_ = false;
                     }
                 }
-            });
+            },
+            params,
+            oxenmq::send_option::request_timeout{BOOTSTRAP_TIMEOUT}
+        );
     }
 }
 
 void ServiceNode::shutdown() {
     shutting_down_ = true;
-    ioc_fake_work_.reset();
-    ioc_.stop();
-    if (ioc_thread_.joinable())
-        ioc_thread_.join();
 }
 
 bool ServiceNode::snode_ready(std::string* reason) {
@@ -317,79 +312,35 @@ bool ServiceNode::snode_ready(std::string* reason) {
     return problems.empty() || force_start_;
 }
 
-void ServiceNode::send_onion_to_sn(const sn_record_t& sn,
-                                   std::string_view payload,
-                                   OnionRequestMetadata&& data,
-                                   ss_client::Callback cb) const {
+void ServiceNode::send_onion_to_sn(
+        const sn_record_t& sn,
+        std::string_view payload,
+        OnionRequestMetadata&& data,
+        std::function<void(bool success, std::vector<std::string> data)> cb) const {
 
-    if (!hf_at_least(HARDFORK_OMQ_ONION_REQ_BENCODE)) {
-        // use the _v2 endpoint up until the hf:
-        omq_server_->request(
-            sn.pubkey_x25519.view(), "sn.onion_req_v2", std::move(cb),
-            oxenmq::send_option::request_timeout{30s}, data.ephem_key.hex(), payload);
-    } else {
-        // Use the newer (v3, I suppose, though it's internal) where we bencode everything (which is
-        // a bit more compact than sending the eph_key in hex, plus allows other metadata such as
-        // the hop number and the encryption type).
-        data.hop_no++;
-        omq_server_->request(
-            sn.pubkey_x25519.view(), "sn.onion_request", std::move(cb),
-            oxenmq::send_option::request_timeout{30s},
-            omq_server_.encode_onion_data(payload, data));
-    }
-}
-
-// Calls callback on success only?
-void ServiceNode::send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
-                             Request req, ss_client::Callback cb) const {
-
-    std::lock_guard guard(sn_mutex_);
-
-    switch (method) {
-    case ss_client::ReqMethod::DATA: {
-        OXEN_LOG(debug, "Sending sn.data request to {}",
-                 oxenmq::to_hex(sn.pubkey_x25519.view()));
-        omq_server_->request(sn.pubkey_x25519.view(), "sn.data", std::move(cb),
-                             req.body);
-        break;
-    }
-    case ss_client::ReqMethod::PROXY_EXIT: {
-        auto client_key = req.headers.find(http::SENDER_KEY_HEADER);
-
-        // I could just always assume that we are passing the right
-        // parameters...
-        if (client_key != req.headers.end()) {
-            OXEN_LOG(debug, "Sending sn.proxy_exit request to {}",
-                     oxenmq::to_hex(sn.pubkey_x25519.view()));
-            omq_server_->request(sn.pubkey_x25519.view(), "sn.proxy_exit",
-                                 std::move(cb), client_key->second, req.body);
-        } else {
-            OXEN_LOG(debug, "Developer error: no {} passed in headers",
-                     http::SENDER_KEY_HEADER);
-            // TODO: call cb?
-            assert(false);
-        }
-        break;
-    }
-    case ss_client::ReqMethod::ONION_REQUEST: {
-        // Onion reqeusts always use oxenmq, so they use it
-        // directly, no need for the "send_to_sn" abstraction
-        OXEN_LOG(err, "Onion requests should not use this interface");
-        assert(false);
-        break;
-    }
-    }
+    // Since HF18 we bencode everything (which is a bit more compact than sending the eph_key in
+    // hex, plus flexible enough to allow other metadata such as the hop number and the encryption
+    // type).
+    data.hop_no++;
+    omq_server_->request(
+        sn.pubkey_x25519.view(), "sn.onion_request", std::move(cb),
+        oxenmq::send_option::request_timeout{30s},
+        omq_server_.encode_onion_data(payload, data));
 }
 
 void ServiceNode::relay_data_reliable(const std::string& blob,
                                       const sn_record_t& sn) const {
 
-    OXEN_LOG(debug, "Relaying data to: {}", sn.pubkey_legacy);
+    OXEN_LOG(debug, "Relaying data to: {} (x25519 pubkey {})",
+            sn.pubkey_legacy, sn.pubkey_x25519);
 
-    send_to_sn(sn, ss_client::ReqMethod::DATA, Request{blob},
+    omq_server_->request(
+            sn.pubkey_x25519.view(),
+            "sn.data",
             [](bool success, auto&& data) {
-                if (!success) OXEN_LOG(err, "Failed to send batch data: time-out");
-            });
+                if (!success) OXEN_LOG(err, "Failed to relay batch data: timeout");
+            },
+            blob);
 }
 
 void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
@@ -530,8 +481,11 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
         block_height_ = bu.height;
         block_hash_ = bu.block_hash;
 
-        block_hashes_cache_.push_back(std::make_pair(bu.height, bu.block_hash));
+        while (block_hashes_cache_.size() >= BLOCK_HASH_CACHE_SIZE)
+            block_hashes_cache_.erase(block_hashes_cache_.begin());
 
+        block_hashes_cache_.emplace_hint(block_hashes_cache_.end(),
+                bu.height, std::move(bu.block_hash));
     } else {
         OXEN_LOG(trace, "already seen this block");
         return;
@@ -727,11 +681,12 @@ void ServiceNode::ping_peers() {
         test_reachability(sn, prev_fails);
 }
 
-void ServiceNode::sign_request(request_t& req) const {
-    // TODO: investigate why we are not signing headers
-    const auto hash = hash_data(req.body());
-    const auto signature = generate_signature(hash, {our_address_.pubkey_legacy, our_seckey_});
-    attach_signature(req, signature);
+std::vector<std::pair<std::string, std::string>> ServiceNode::sign_request(std::string_view body) const {
+    std::vector<std::pair<std::string, std::string>> headers;
+    const auto signature = generate_signature(hash_data(body), {our_address_.pubkey_legacy, our_seckey_});
+    headers.emplace_back(http::SNODE_SIGNATURE_HEADER, oxenmq::to_base64(util::view_guts(signature)));
+    headers.emplace_back(http::SNODE_SENDER_HEADER, oxenmq::to_base32z(our_address_.pubkey_legacy.view()));
+    return headers;
 }
 
 void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures) {
@@ -739,6 +694,14 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     OXEN_LOG(debug, "Testing {} SN {} for reachability",
             previous_failures > 0 ? "previously failing" : "random",
             sn.pubkey_legacy);
+
+    if (sn.ip == "0.0.0.0") {
+        // oxend won't accept 0.0.0.0 in an uptime proof, which means if we see this the node hasn't
+        // sent an uptime proof; we could treat it as a failure, but that seems unnecessary since
+        // oxend will already fail the service node for not sending uptime proofs.
+        OXEN_LOG(debug, "Skipping HTTPS test of {}: no public IP received yet");
+        return;
+    }
 
     static constexpr uint8_t TEST_WAITING = 0, TEST_FAILED = 1, TEST_PASSED = 2;
 
@@ -748,44 +711,99 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     auto test_results = std::make_shared<std::pair<const sn_record_t, std::atomic<uint8_t>>>(
             sn, 0);
 
-    auto http_callback = [this, test_results, previous_failures](sn_response_t&& res) {
-        auto& [sn, result] = *test_results;
-
-        const bool success = res.error_code == SNodeError::NO_ERROR;
-        OXEN_LOG(debug, "{} response for HTTP ping test of {}",
-                success ? "Successful" : "FAILED", sn.pubkey_legacy);
-
-        if (result.exchange(success ? TEST_PASSED : TEST_FAILED) != TEST_WAITING)
-            report_reachability(sn, success && result == TEST_PASSED, previous_failures);
+    bool old_ping_test = !hf_at_least(HARDFORK_HTTPS_PING_TEST_URL);
+    cpr::Url url{fmt::format(old_ping_test
+            ? "https://{}:{}/ping_test/v1"
+            : "https://{}:{}/swarms/ping_test/v1",
+        sn.ip, sn.port)};
+    cpr::Body body{""};
+    cpr::Header headers{
+        {"Host", sn.pubkey_ed25519
+            ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
+            : "service-node.snode"}
     };
-    auto req = build_post_request(sn.pubkey_ed25519, "/swarms/ping_test/v1", "{}");
-    this->sign_request(*req);
-    make_sn_request(ioc_, sn, std::move(req), std::move(http_callback));
+
+    if (old_ping_test)
+        for (auto& [h, v] : sign_request(body.str()))
+            headers[h] = std::move(v);
+
+    outstanding_https_reqs_.emplace_front(
+        cpr::PostCallback(
+            [this, &omq=*omq_server(), old_ping_test, test_results, previous_failures]
+            (cpr::Response r) {
+                auto& [sn, result] = *test_results;
+                auto& pk = sn.pubkey_legacy;
+                bool success = false;
+                if (r.error.code != cpr::ErrorCode::OK) {
+                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {}", pk, r.error.message);
+                } else if (r.status_code != 200) {
+                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: received non-200 status {}",
+                            pk, r.status_code, r.status_line);
+                } else {
+                    if (old_ping_test) {
+                        if (r.header.count(http::SNODE_SIGNATURE_HEADER))
+                            // The signature returned is of the cert.pem which is impossible to
+                            // verify without going deeper into the low level SSL layer which isn't
+                            // worth the bother, so just accept anything with the signature header
+                            // set.
+                            success = true;
+                        else
+                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} response header missing",
+                                    pk, http::SNODE_SIGNATURE_HEADER);
+                    } else {
+                        if (auto it = r.header.find(http::SNODE_PUBKEY_HEADER);
+                                it == r.header.end())
+                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} response header missing",
+                                    pk, http::SNODE_PUBKEY_HEADER);
+                        else if (auto remote_pk = parse_legacy_pubkey(it->second); remote_pk != pk)
+                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: reply has wrong pubkey {}",
+                                    pk, remote_pk);
+                        else
+                            success = true;
+                    }
+                }
+                if (success)
+                    OXEN_LOG(debug, "Successful HTTPS ping test of {}", pk);
+
+                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED); r != TEST_WAITING)
+                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
+            },
+            std::move(url),
+            cpr::Timeout{SN_PING_TIMEOUT},
+            cpr::Ssl(
+                    cpr::ssl::TLSv1_2{},
+                    cpr::ssl::VerifyHost{false},
+                    cpr::ssl::VerifyPeer{false},
+                    cpr::ssl::VerifyStatus{false}),
+            cpr::MaxRedirects{0},
+            std::move(headers),
+            std::move(body)
+        )
+    );
 
     // test omq port:
-    // TODO: remove the backwards compat endpoint alternative ternary after HF18
     omq_server_->request(
-        sn.pubkey_x25519.view(), hf_at_least(HARDFORK_SN_PING) ? "sn.ping" : "sn.onion_req",
+        sn.pubkey_x25519.view(), "sn.ping",
         [this, test_results=std::move(test_results), previous_failures](bool success, const auto&) {
             auto& [sn, result] = *test_results;
 
             OXEN_LOG(debug, "{} response for OxenMQ ping test of {}",
                     success ? "Successful" : "FAILED", sn.pubkey_legacy);
 
-            if (result.exchange(success ? TEST_PASSED : TEST_FAILED) != TEST_WAITING)
-                report_reachability(sn, success && result == TEST_PASSED, previous_failures);
+            if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED); r != TEST_WAITING)
+                report_reachability(sn, success && r == TEST_PASSED, previous_failures);
         },
-        "ping", // TODO: remove this after HF18 (it is just ignored by sn.ping)
         // Only use an existing (or new) outgoing connection:
-        oxenmq::send_option::outgoing{});
+        oxenmq::send_option::outgoing{},
+        oxenmq::send_option::request_timeout{SN_PING_TIMEOUT}
+    );
 }
 
 void ServiceNode::oxend_ping() {
 
     std::lock_guard guard(sn_mutex_);
 
-    /// TODO: Note that this is not actually an SN response! (but Oxend)
-    json params{
+    json oxend_params{
         {"version", STORAGE_SERVER_VERSION},
         {"https_port", our_address_.port},
         {"omq_port", our_address_.omq_port}};
@@ -815,7 +833,7 @@ void ServiceNode::oxend_ping() {
                     OXEN_LOG(critical, "Could not ping oxend: bad json in response");
                 }
         },
-        params.dump()
+        oxend_params.dump()
     );
 
     // Also re-subscribe (or subscribe, in case oxend restarted) to block subscriptions.  This makes
@@ -833,108 +851,121 @@ void ServiceNode::oxend_ping() {
     });
 }
 
-void ServiceNode::attach_signature(request_t& request,
-                                   const signature& sig) const {
-
-    std::string raw_sig;
-    raw_sig.reserve(sig.c.size() + sig.r.size());
-    raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
-    raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-
-    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
-    request.set(http::SNODE_SIGNATURE_HEADER, sig_b64);
-
-    request.set(http::SNODE_SENDER_HEADER,
-                 oxenmq::to_base32z(our_address_.pubkey_legacy.view()));
-}
-
 void ServiceNode::process_storage_test_response(const sn_record_t& testee,
                                                 const Item& item,
                                                 uint64_t test_height,
-                                                sn_response_t&& res) {
-
-    std::lock_guard guard(sn_mutex_);
-
-    if (res.error_code != SNodeError::NO_ERROR) {
-        // TODO: retry here, otherwise tests sometimes fail (when SN not
-        // running yet)
-        this->all_stats_.record_storage_test_result(testee.pubkey_legacy, ResultType::OTHER);
-        OXEN_LOG(debug, "Failed to send a storage test request to snode: {}",
-                 testee.pubkey_legacy);
-        return;
-    }
-
-    // If we got here, the response is 200 OK, but we still need to check
-    // status in response body and check the answer
-    if (!res.body) {
-        this->all_stats_.record_storage_test_result(testee.pubkey_legacy, ResultType::OTHER);
-        OXEN_LOG(debug, "Empty body in storage test response");
-        return;
-    }
-
+                                                std::string status,
+                                                std::string answer) {
     ResultType result = ResultType::OTHER;
 
-    try {
-
-        json res_json = json::parse(*res.body);
-
-        const auto status = res_json.at("status").get<std::string>();
-
-        if (status == "OK") {
-
-            const auto value = res_json.at("value").get<std::string>();
-            if (value == item.data) {
-                OXEN_LOG(debug,
-                         "Storage test is successful for: {} at height: {}",
-                         testee.pubkey_legacy, test_height);
-                result = ResultType::OK;
-            } else {
-                OXEN_LOG(debug,
-                         "Test answer doesn't match for: {} at height {}",
-                         testee.pubkey_legacy, test_height);
-#ifdef INTEGRATION_TEST
-                OXEN_LOG(warn, "got: {} expected: {}", value, item.data);
-#endif
-                result = ResultType::MISMATCH;
-            }
-
-        } else if (status == "wrong request") {
-            OXEN_LOG(debug, "Storage test rejected by testee");
-            result = ResultType::REJECTED;
+    if (status.empty()) {
+        // TODO: retry here, otherwise tests sometimes fail (when SN not
+        // running yet)
+        OXEN_LOG(debug, "Failed to send a storage test request to snode: {}",
+                 testee.pubkey_legacy);
+    } else if (status == "OK") {
+        if (answer == item.data) {
+            OXEN_LOG(debug,
+                     "Storage test is successful for: {} at height: {}",
+                     testee.pubkey_legacy, test_height);
+            result = ResultType::OK;
         } else {
-            result = ResultType::OTHER;
-            OXEN_LOG(debug, "Storage test failed for some other reason");
+            OXEN_LOG(debug,
+                     "Test answer doesn't match for: {} at height {}",
+                     testee.pubkey_legacy, test_height);
+#ifdef INTEGRATION_TEST
+            OXEN_LOG(warn, "got: {} expected: {}", value, item.data);
+#endif
+            result = ResultType::MISMATCH;
         }
-    } catch (...) {
-        result = ResultType::OTHER;
-        OXEN_LOG(debug, "Invalid json in storage test response");
+    } else if (status == "wrong request") {
+        OXEN_LOG(debug, "Storage test rejected by testee");
+        result = ResultType::REJECTED;
+    } else {
+        OXEN_LOG(debug, "Storage test failed for some other reason: {}", status);
     }
 
-    this->all_stats_.record_storage_test_result(testee.pubkey_legacy, result);
+    std::lock_guard guard{sn_mutex_};
+    all_stats_.record_storage_test_result(testee.pubkey_legacy, result);
 }
 
 void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         uint64_t test_height,
                                         const Item& item) {
 
-    // Used as a callback to needs a mutex even if it is private
-    std::lock_guard guard(sn_mutex_);
+    if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
+        // Deprecated HTTPS storage test: remove after HF19
+        cpr::Body body{json{{"height", test_height}, {"hash", item.hash}}.dump()};
+        cpr::Header headers{
+            {"Host", testee.pubkey_ed25519
+                ? oxenmq::to_base32z(testee.pubkey_ed25519.view()) + ".snode"
+                : "service-node.snode"}
+        };
 
-    nlohmann::json json_body;
+        for (auto& [h, v] : sign_request(body.str()))
+            headers[h] = std::move(v);
 
-    json_body["height"] = test_height;
-    json_body["hash"] = item.hash;
+        outstanding_https_reqs_.emplace_front(
+            cpr::PostCallback(
+                [this, testee, item, height=block_height_]
+                (cpr::Response r) {
+                    auto& pk = testee.pubkey_legacy;
+                    std::string status;
+                    std::string answer;
+                    if (r.error.code != cpr::ErrorCode::OK)
+                        OXEN_LOG(debug, "FAILED storage test of {}: {}", pk, r.error.message);
+                    else if (r.status_code != 200)
+                        OXEN_LOG(debug, "FAILED storage test of {}: received non-200 status {}",
+                                pk, r.status_code, r.status_line);
+                    else if (r.text.empty())
+                        OXEN_LOG(debug, "FAILED storage test of {}: received empty body", pk);
+                    else {
+                        try {
+                            json res_json = json::parse(r.text);
+                            status = res_json.at("status").get<std::string>();
+                            answer = res_json.at("value").get<std::string>();
+                        } catch (const std::exception& e) {
+                            OXEN_LOG(debug, "FAILED storage test of {}: invalid json response ({})", pk, e.what());
+                            status.clear();
+                            answer.clear();
+                        }
+                    }
 
-    auto req = build_post_request(testee.pubkey_ed25519, "/swarms/storage_test/v1", json_body.dump());
+                    process_storage_test_response(testee, item, height, std::move(status), std::move(answer));
+                },
+                cpr::Url{fmt::format("https://{}:{}/swarms/storage_test/v1", testee.ip, testee.port)},
+                cpr::Timeout{STORAGE_TEST_TIMEOUT},
+                cpr::Ssl(
+                        cpr::ssl::TLSv1_2{},
+                        cpr::ssl::VerifyHost{false},
+                        cpr::ssl::VerifyPeer{false},
+                        cpr::ssl::VerifyStatus{false}),
+                cpr::MaxRedirects{0},
+                std::move(headers),
+                std::move(body)
+            )
+        );
+        return;
+    }
 
-    this->sign_request(*req);
+    assert(oxenmq::is_hex(item.hash));
 
-    make_sn_request(ioc_, testee, req,
-                    [testee, item, height = this->block_height_,
-                     this](sn_response_t&& res) {
-                        this->process_storage_test_response(
-                            testee, item, height, std::move(res));
-                    });
+    omq_server_->request(
+        testee.pubkey_x25519.view(), "sn.storage_test",
+        [this, testee, item, height=block_height_](bool success, auto data) {
+            if (!success || data.size() != 2) {
+                OXEN_LOG(debug, "Storage test request failed: {}",
+                        !success ? "request timed out" : "wrong number of elements in response");
+            }
+            if (data.size() < 2)
+                data.resize(2);
+            process_storage_test_response(testee, item, height, std::move(data[0]), std::move(data[1]));
+        },
+        oxenmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
+        // Data parts: test height and msg hash (in bytes)
+        std::to_string(block_height_),
+        oxenmq::from_hex(item.hash)
+    );
 }
 
 void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int previous_failures) {
@@ -994,19 +1025,8 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         return false;
     }
 
-    // Ew ew ew: pre-HF18 sorted via ascii on lower-case hex strings.
-    // TODO: remove this after HF18.
-    if (!hf_at_least(HARDFORK_NO_HEX_SORT_HACK))
-        std::sort(members.begin(), members.end(), [](const auto& a, const auto& b) {
-            std::array<char, 64> a_hex, b_hex;
-            oxenmq::to_hex(a.pubkey_legacy.begin(), a.pubkey_legacy.end(), a_hex.begin());
-            oxenmq::to_hex(b.pubkey_legacy.begin(), b.pubkey_legacy.end(), b_hex.begin());
-            return std::string_view{a_hex.data(), a_hex.size()}
-                <  std::string_view{b_hex.data(), b_hex.size()};
-        });
-    else
-        std::sort(members.begin(), members.end(),
-                [](const auto& a, const auto& b) { return a.pubkey_legacy < b.pubkey_legacy; });
+    std::sort(members.begin(), members.end(),
+            [](const auto& a, const auto& b) { return a.pubkey_legacy < b.pubkey_legacy; });
 
     std::string block_hash;
     if (blk_height == block_height_) {
@@ -1016,13 +1036,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         OXEN_LOG(trace, "got storage test request for an older block: {}/{}",
                  blk_height, block_height_);
 
-        const auto it =
-            std::find_if(block_hashes_cache_.begin(), block_hashes_cache_.end(),
-                         [=](const std::pair<uint64_t, std::string>& val) {
-                             return val.first == blk_height;
-                         });
-
-        if (it != block_hashes_cache_.end()) {
+        if (auto it = block_hashes_cache_.find(blk_height); it != block_hashes_cache_.end()) {
             block_hash = it->second;
         } else {
             OXEN_LOG(trace, "Could not find hash for a given block height");
@@ -1061,7 +1075,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
 std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
     uint64_t blk_height,
     const legacy_pubkey& tester_pk,
-    const std::string& msg_hash) {
+    const std::string& msg_hash_hex) {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -1100,7 +1114,7 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
 
     // 3. If for a current/past block, try to respond right away
     Item item;
-    if (!db_->retrieve_by_hash(msg_hash, item)) {
+    if (!db_->retrieve_by_hash(msg_hash_hex, item)) {
         return {MessageTestStatus::RETRY, ""};
     }
 

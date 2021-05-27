@@ -5,19 +5,16 @@ add_definitions(-Wfatal-errors)
 
 add_library(httpserver_lib STATIC
     main.cpp
-    http_connection.cpp
     swarm.cpp
     service_node.cpp
     serialization.cpp
     rate_limiter.cpp
-    https_client.cpp
     stats.cpp
     command_line.cpp
     reachability_testing.cpp
     omq_server.cpp
     request_handler.cpp
     onion_processing.cpp
-    ip_utils.cpp
     oxend_rpc.cpp
     server_certificates.cpp
     https_server.cpp
@@ -29,10 +26,11 @@ target_compile_options(httpserver_lib PRIVATE -Wall -Werror)
 target_link_libraries(httpserver_lib PUBLIC
     common storage utils crypto
     uWebSockets
+    cpr::cpr
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     oxenmq::oxenmq
-    Boost::system Boost::program_options)
+    Boost::boost Boost::program_options)
 
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
 find_library(RESOLV resolv)

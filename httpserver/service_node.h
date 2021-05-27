@@ -1,58 +1,52 @@
 #pragma once
 
-#include <Database.hpp>
 #include <chrono>
+#include <forward_list>
+#include <future>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
+#include <string_view>
 
-#include <boost/asio.hpp>
-#include <boost/beast/http.hpp>
-#include <boost/circular_buffer.hpp>
-
+#include "Database.hpp"
 #include "oxen_common.h"
 #include "oxend_key.h"
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
 
-namespace bhttp = boost::beast::http;
-using request_t = bhttp::request<bhttp::string_body>;
-
 namespace oxen {
 
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
+
+// How long we wait for a HTTPS or OMQ ping response from another SN when ping testing
+inline constexpr auto SN_PING_TIMEOUT = 5s;
+
+// How long we wait for a storage test response (HTTPS until HF19, then OMQ)
+inline constexpr auto STORAGE_TEST_TIMEOUT = 15s;
+
+// Timeout for bootstrap node OMQ requests
+inline constexpr auto BOOTSTRAP_TIMEOUT = 10s;
+
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr int STORAGE_SERVER_HARDFORK = 17;
-// HF at which we start using sn.ping OMQ endpoint
-inline constexpr int HARDFORK_SN_PING = 18;
-// HF at which we can stop using hex conversion for pubkey sorting for testee/testers.
-inline constexpr int HARDFORK_NO_HEX_SORT_HACK = 18;
-// HF at which we start using the sn.onion_request endpoint instead of sn.onion_req_v2
-inline constexpr int HARDFORK_OMQ_ONION_REQ_BENCODE = 18;
+inline constexpr int STORAGE_SERVER_HARDFORK = 18;
+// HF at which we switch to /ping_test/v1 instead of /swarms/ping_test/v1 for HTTPS pings
+inline constexpr int HARDFORK_HTTPS_PING_TEST_URL = 19;
+// HF at which we switch to OMQ storage tests instead of HTTPS
+inline constexpr int HARDFORK_OMQ_STORAGE_TESTS = 19;
 
 namespace storage {
 struct Item;
 } // namespace storage
 
-struct sn_response_t;
-
 class OxenmqServer;
-
 struct OnionRequestMetadata;
-
-class Request;
-
-namespace ss_client {
-enum class ReqMethod;
-using Callback = std::function<void(bool success, std::vector<std::string>)>;
-
-} // namespace ss_client
-
 struct oxend_key_pair_t;
-
 class Swarm;
-
 struct signature;
+struct Response;
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
@@ -61,10 +55,6 @@ enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 /// All service node logic that is not network-specific
 class ServiceNode {
-    boost::asio::io_context ioc_{1};
-    std::thread ioc_thread_;
-    std::unique_ptr<boost::asio::io_service::work> ioc_fake_work_;
-
     bool syncing_ = true;
     bool active_ = false;
     bool got_first_response_ = false;
@@ -83,8 +73,7 @@ class ServiceNode {
     const legacy_seckey our_seckey_;
 
     /// Cache for block_height/block_hash mapping
-    boost::circular_buffer<std::pair<uint64_t, std::string>>
-        block_hashes_cache_{BLOCK_HASH_CACHE_SIZE};
+    std::map<uint64_t, std::string> block_hashes_cache_;
 
     // Need to make sure we only use this to get OxenMQ object and
     // not call any method that would in turn call a method in SN
@@ -108,6 +97,8 @@ class ServiceNode {
 
     mutable std::recursive_mutex sn_mutex_;
 
+    std::forward_list<std::future<void>> outstanding_https_reqs_;
+
     void save_if_new(const message_t& msg);
 
     // Save items to the database, notifying listeners as necessary
@@ -127,9 +118,6 @@ class ServiceNode {
     /// Distribute all our data to where it belongs
     /// (called when our old node got dissolved)
     void salvage_data() const; // mutex not needed
-
-    void attach_signature(request_t& request,
-                          const signature& sig) const; // mutex not needed
 
     /// Reliably push message/batch to a service node
     void
@@ -161,7 +149,8 @@ class ServiceNode {
     void process_storage_test_response(const sn_record_t& testee,
                                        const storage::Item& item,
                                        uint64_t test_height,
-                                       sn_response_t&& res);
+                                       std::string status,
+                                       std::string answer);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -175,7 +164,9 @@ class ServiceNode {
     // Reports node reachability result to oxend and, if a failure, queues the node for retesting.
     void report_reachability(const sn_record_t& sn, bool reachable, int previous_failures);
 
-    void sign_request(request_t& req) const;
+    /// Deprecated; can be removed after HF19
+    /// Returns headers to add to the request containing signature info for the given body
+    std::vector<std::pair<std::string, std::string>> sign_request(std::string_view body) const;
 
   public:
     ServiceNode(sn_record_t address,
@@ -196,14 +187,11 @@ class ServiceNode {
     void record_onion_request();
 
     /// Sends an onion request to the next SS
-    void send_onion_to_sn(const sn_record_t& sn, std::string_view payload,
-                          OnionRequestMetadata&& data,
-                          ss_client::Callback cb) const;
-
-    // TODO: move this eventually out of SN
-    // Send by either http or omq
-    void send_to_sn(const sn_record_t& sn, ss_client::ReqMethod method,
-                    Request req, ss_client::Callback cb) const;
+    void send_onion_to_sn(
+            const sn_record_t& sn,
+            std::string_view payload,
+            OnionRequestMetadata&& data,
+            std::function<void(bool success, std::vector<std::string> data)> cb) const;
 
     bool hf_at_least(int hardfork) const { return hardfork_ >= hardfork; }
 
@@ -235,7 +223,7 @@ class ServiceNode {
     // Attempt to find an answer (message body) to the storage test
     std::pair<MessageTestStatus, std::string> process_storage_test_req(uint64_t blk_height,
                                                const legacy_pubkey& tester_addr,
-                                               const std::string& msg_hash);
+                                               const std::string& msg_hash_hex);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
@@ -271,8 +259,6 @@ class ServiceNode {
     void update_swarms();
 
     OxenmqServer& omq_server() { return omq_server_; }
-
-    boost::asio::io_context& ioc() { return ioc_; }
 };
 
 } // namespace oxen

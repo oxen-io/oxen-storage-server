@@ -109,13 +109,13 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
 
 BOOST_AUTO_TEST_CASE(correctly_filters_urls) {
 
-    BOOST_CHECK(is_server_url_allowed("/loki/v3/lsrpc"));
-    BOOST_CHECK(is_server_url_allowed("/loki/oxen/v4/lsrpc"));
-    BOOST_CHECK(is_server_url_allowed("/oxen/v3/lsrpc"));
+    BOOST_CHECK(is_onion_url_target_allowed("/loki/v3/lsrpc"));
+    BOOST_CHECK(is_onion_url_target_allowed("/loki/oxen/v4/lsrpc"));
+    BOOST_CHECK(is_onion_url_target_allowed("/oxen/v3/lsrpc"));
 
-    BOOST_CHECK(!is_server_url_allowed("/not_loki/v3/lsrpc"));
-    BOOST_CHECK(!is_server_url_allowed("/loki/v3"));
-    BOOST_CHECK(!is_server_url_allowed("/loki/v3/lsrpc?foo=bar"));
+    BOOST_CHECK(!is_onion_url_target_allowed("/not_loki/v3/lsrpc"));
+    BOOST_CHECK(!is_onion_url_target_allowed("/loki/v3"));
+    BOOST_CHECK(!is_onion_url_target_allowed("/loki/v3/lsrpc?foo=bar"));
 
 }
 

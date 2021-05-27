@@ -1,6 +1,6 @@
 #include "request_handler.h"
 #include "channel_encryption.hpp"
-#include "http_connection.h"
+#include "http.h"
 #include "omq_server.h"
 #include "oxen_logger.h"
 #include "signature.h"
@@ -8,8 +8,9 @@
 #include "string_utils.hpp"
 #include "utils.hpp"
 
-#include "https_client.h"
-
+#include <chrono>
+#include <cpr/cpr.h>
+#include <future>
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
 #include <oxenmq/base32z.h>
@@ -19,6 +20,11 @@
 using nlohmann::json;
 
 namespace oxen {
+
+// Timeout for onion-request-to-url requests.  Onion requests have a 30s timeout so we choose a
+// timeout a bit shorter than that so that we still have a good chance of the error response getting
+// back to the client before the entry node's request times out.
+inline constexpr auto ONION_URL_TIMEOUT = 25s;
 
 std::string to_string(const Response& res) {
 
@@ -82,7 +88,14 @@ std::string computeMessageHash(std::vector<std::string_view> parts, bool hex) {
 RequestHandler::RequestHandler(
         ServiceNode& sn,
         const ChannelEncryption& ce)
-    : service_node_{sn}, channel_cipher_(ce) {}
+    : service_node_{sn}, channel_cipher_(ce) {
+
+    // Periodically clean up any proxy request futures
+    service_node_.omq_server()->add_timer([this] {
+        pending_proxy_requests_.remove_if(
+                [](auto& f) { return f.wait_for(0ms) == std::future_status::ready; });
+    }, 1s);
+}
 
 Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
 
@@ -393,49 +406,55 @@ void RequestHandler::process_client_req(
         OXEN_LOG(debug, "Process client request: oxend_request");
         return process_oxend_request(*params_it, std::move(cb));
     }
-    if (method_name == "get_lns_mapping") {
-        const auto name_it = params_it->find("name_hash");
-        if (name_it == params_it->end())
-            return cb({http::BAD_REQUEST, "Field <name_hash> is missing"});
-        return process_lns_request(*name_it, std::move(cb));
-    }
 
     OXEN_LOG(debug, "Bad client request: unknown method '{}'", method_name);
     return cb({http::BAD_REQUEST, "no method " + method_name});
 }
 
-std::variant<legacy_pubkey, Response> RequestHandler::validate_snode_signature(const Request& r, bool headers_only) {
-    legacy_pubkey pubkey;
-    if (auto it = r.headers.find(http::SNODE_SENDER_HEADER); it != r.headers.end())
-        pubkey = parse_legacy_pubkey(it->second);
-    if (!pubkey) {
-        OXEN_LOG(debug, "Missing or invalid pubkey header for request");
-        return Response{http::BAD_REQUEST, "missing/invalid pubkey header"};
-    }
-    signature sig;
-    if (auto it = r.headers.find(http::SNODE_SIGNATURE_HEADER); it != r.headers.end()) {
-        try { sig = signature::from_base64(it->second); }
-        catch (...) {
-            OXEN_LOG(warn, "invalid signature (not b64) found in header from {}", pubkey);
-            return Response{http::BAD_REQUEST, "Invalid signature"};
-        }
+void RequestHandler::process_storage_test_req(
+        uint64_t height,
+        legacy_pubkey tester,
+        std::string msg_hash_hex,
+        std::function<void(MessageTestStatus, std::string, std::chrono::steady_clock::duration)> callback) {
+
+    /// TODO: we never actually test that `height` is within any reasonable
+    /// time window (or that it is not repeated multiple times), we should do
+    /// that! This is done implicitly to some degree using
+    /// `block_hashes_cache_`, which holds a limited number of recent blocks
+    /// only and fails if an earlier block is requested
+
+    auto started = std::chrono::steady_clock::now();
+    auto [status, answer] = service_node_.process_storage_test_req(
+            height, tester, msg_hash_hex);
+
+    if (status == MessageTestStatus::RETRY) {
+        // Our first attempt returned a RETRY, so set up a timer to keep retrying
+
+        auto timer = std::make_shared<oxenmq::TimerID>();
+        auto& timer_ref = *timer;
+        service_node_.omq_server()->add_timer(timer_ref, [
+                this,
+                timer=std::move(timer),
+                height,
+                tester,
+                hash=std::move(msg_hash_hex),
+                started,
+                callback=std::move(callback)] {
+            auto elapsed = std::chrono::steady_clock::now() - started;
+
+            OXEN_LOG(trace, "Performing storage test retry, {} since started",
+                    util::friendly_duration(elapsed));
+
+            auto [status, answer] = service_node_.process_storage_test_req(
+                    height, tester, hash);
+            if (status == MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD && !service_node_.shutting_down())
+                return; // Still retrying so wait for the next call
+            service_node_.omq_server()->cancel_timer(*timer);
+            callback(status, std::move(answer), elapsed);
+        }, TEST_RETRY_INTERVAL);
     } else {
-        OXEN_LOG(debug, "Missing required signature header for request");
-        return Response{http::BAD_REQUEST, "missing signature header"};
+        callback(status, std::move(answer), std::chrono::steady_clock::now() - started);
     }
-
-    if (!service_node_.find_node(pubkey)) {
-        OXEN_LOG(debug, "Rejecting signature from unknown service node: {}", pubkey);
-        return Response{http::UNAUTHORIZED, "Unknown service node"};
-    }
-
-    if (!headers_only) {
-        if (!check_signature(sig, hash_data(r.body), pubkey)) {
-            OXEN_LOG(debug, "snode signature verification failed for pubkey {}", pubkey);
-            return Response{http::UNAUTHORIZED, "snode signature verification failed"};
-        }
-    }
-    return pubkey;
 }
 
 Response RequestHandler::wrap_proxy_response(Response res,
@@ -457,44 +476,6 @@ Response RequestHandler::wrap_proxy_response(Response res,
 
     // why does this have to be json???
     return Response{http::OK, std::move(ciphertext), http::json};
-}
-
-void RequestHandler::process_lns_request(
-    std::string name_hash, std::function<void(oxen::Response)> cb) {
-
-    json params;
-    json array = json::array();
-    json entry;
-
-    entry["name_hash"] = std::move(name_hash);
-
-    json types = json::array();
-    types.push_back(0);
-    entry["types"] = types;
-
-    array.push_back(entry);
-    params["entries"] = array;
-
-#ifdef INTEGRATION_TEST
-    // use mainnet seed
-    oxend_json_rpc_request(
-        service_node_.ioc(), "public.loki.foundation", 22023, "lns_names_to_owners", params,
-        [cb = std::move(cb)](sn_response_t sn) {
-            if (sn.error_code == SNodeError::NO_ERROR && sn.body)
-                cb({http::OK, *sn.body});
-            else
-                cb({http::BAD_REQUEST, "unknown oxend error"});
-        });
-#else
-    service_node_.omq_server().oxend_request(
-        "rpc.lns_names_to_owners",
-        [cb = std::move(cb)](bool success, auto&& data) {
-            if (success && !data.empty())
-                cb({http::OK, data.front()});
-            else
-                cb({http::BAD_REQUEST, "unknown oxend error"});
-        });
-#endif
 }
 
 void RequestHandler::process_onion_req(std::string_view ciphertext,
@@ -573,12 +554,56 @@ void RequestHandler::process_onion_req(
             info.host, info.target);
 
     // Forward the request to url but only if it ends in `/lsrpc`
-    if (is_onion_url_target_allowed(info.target))
-        return process_onion_to_url(info.protocol, std::move(info.host), info.port,
-                std::move(info.target), std::move(info.payload), std::move(data.cb));
-
-    return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"},
+    if (!(info.protocol == "http" || info.protocol == "https") ||
+            !is_onion_url_target_allowed(info.target))
+        return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"},
             data.ephem_key, data.enc_type));
+
+    std::string urlstr;
+    urlstr.reserve(info.protocol.size() + 3 + info.host.size() + 6 /*:port*/ + 1 + info.target.size());
+    urlstr += info.protocol;
+    urlstr += "://";
+    urlstr += info.host;
+    if (info.port != (info.protocol == "https" ? 443 : 80)) {
+        urlstr += ':';
+        urlstr += std::to_string(info.port);
+    }
+    if (!util::starts_with(info.target, "/"))
+        urlstr += '/';
+    urlstr += info.target;
+
+
+    pending_proxy_requests_.emplace_front(
+        cpr::PostCallback(
+            [&omq=*service_node_.omq_server(), cb=std::move(data.cb)](cpr::Response r) {
+                Response res;
+                if (r.error.code != cpr::ErrorCode::OK) {
+                    OXEN_LOG(debug, "Onion proxied request to {} failed: {}", r.url.str(), r.error.message);
+                    res.body = r.error.message;
+                    if (r.error.code == cpr::ErrorCode::OPERATION_TIMEDOUT)
+                        res.status = http::GATEWAY_TIMEOUT;
+                    else
+                        res.status = http::BAD_GATEWAY;
+                } else {
+                    res.status.first = r.status_code;
+                    res.status.second = r.status_line;
+                    for (auto& [k, v] : r.header) {
+                        auto& [header, val] = res.headers.emplace_back(std::move(k), std::move(v));
+                        if (util::string_iequal(header, "content-type"))
+                            res.content_type = val;
+                    }
+                    res.body = std::move(r.text);
+                }
+
+                cb(std::move(res));
+            },
+            cpr::Url{std::move(urlstr)},
+            cpr::Timeout{ONION_URL_TIMEOUT},
+            cpr::Ssl(cpr::ssl::TLSv1_2{}),
+            cpr::MaxRedirects{0},
+            cpr::Body{std::move(info.payload)}
+        )
+    );
 }
 
 void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
@@ -655,36 +680,6 @@ void RequestHandler::process_proxy_exit(
         });
 }
 
-void RequestHandler::process_onion_to_url(
-    const std::string& protocol, const std::string& host, uint16_t port,
-    const std::string& target, const std::string& payload,
-    std::function<void(oxen::Response)> cb) {
 
-    // TODO: investigate if the use of a shared pointer is necessary
-    auto req = std::make_shared<request_t>();
-
-    req->body() = payload;
-    req->set(bhttp::field::host, host);
-    req->method(bhttp::verb::post);
-    req->target(target);
-
-    req->prepare_payload();
-
-    // `cb` needs to be adapted for http request
-    auto http_cb = [cb = std::move(cb)](sn_response_t res) {
-        if (res.error_code == SNodeError::NO_ERROR) {
-            cb(oxen::Response{http::OK, *res.body});
-        } else {
-            OXEN_LOG(debug, "Oxen server error: {}", res.error_code);
-            cb(oxen::Response{http::BAD_REQUEST, "Oxen Server error"});
-        }
-    };
-
-    if (protocol != "https") {
-        make_http_request(service_node_.ioc(), host, port, req, http_cb);
-    } else {
-        make_https_request(service_node_.ioc(), host, port, req, http_cb);
-    }
-}
 
 } // namespace oxen

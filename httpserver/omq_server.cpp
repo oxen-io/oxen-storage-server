@@ -106,6 +106,59 @@ void OxenmqServer::handle_ping(oxenmq::Message& message) {
     message.send_reply("pong");
 }
 
+void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
+    if (message.conn.pubkey().size() != 32) {
+        // This shouldn't happen as this endpoint should have remote-SN-only permissions, so be
+        // noisy
+        OXEN_LOG(err, "bug: invalid sn.storage_test omq request from {} with no pubkey",
+                message.remote);
+        return message.send_reply("invalid parameters");
+    } else if (message.data.size() < 2) {
+        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}: not enough data parts; expected 2, received {}",
+                message.remote, message.data.size());
+        return message.send_reply("invalid parameters");
+    }
+    legacy_pubkey tester_pk;
+    if (auto node = service_node_->find_node(x25519_pubkey::from_bytes(message.conn.pubkey()))) {
+        tester_pk = node->pubkey_legacy;
+        OXEN_LOG(debug, "incoming sn.storage_test request from {}@{}", tester_pk, message.remote);
+    } else {
+        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}: sender is not an active SN");
+        return message.send_reply("invalid pubkey");
+    }
+
+    uint64_t height;
+    if (!util::parse_int(message.data[0], height) || !height) {
+        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: '{}' is not a valid height",
+                tester_pk, message.remote, height);
+        return message.send_reply("invalid height");
+    }
+    if (message.data[1].size() != 64) {
+        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, expected 64",
+                tester_pk, message.remote, message.data[1].size());
+        return message.send_reply("invalid msg hash");
+    }
+
+    request_handler_->process_storage_test_req(height, tester_pk, oxenmq::to_hex(message.data[1]),
+            [reply=message.send_later()](MessageTestStatus status, std::string answer, std::chrono::steady_clock::duration elapsed) {
+                switch (status) {
+                    case MessageTestStatus::SUCCESS:
+                        OXEN_LOG(debug, "Storage test success after {}", util::friendly_duration(elapsed));
+                        reply.reply("OK", answer);
+                        return;
+                    case MessageTestStatus::WRONG_REQ:
+                        reply.reply("wrong request");
+                        return;
+                    case MessageTestStatus::RETRY:
+                        [[fallthrough]]; // If we're getting called then a retry ran out of time
+                    case MessageTestStatus::ERROR:
+                        // Promote this to `error` once we enforce storage testing
+                        OXEN_LOG(debug, "Failed storage test, tried for {}", util::friendly_duration(elapsed));
+                        reply.reply("other");
+                }
+            });
+}
+
 void OxenmqServer::handle_onion_request(
         std::string_view payload,
         OnionRequestMetadata&& data,
@@ -238,26 +291,18 @@ OxenmqServer::OxenmqServer(
         });
 
     // clang-format off
-    omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false})
-        .add_request_command("data", [this](auto& m) { this->handle_sn_data(m); })
-        .add_request_command("proxy_exit", [this](auto& m) { this->handle_sn_proxy_exit(m); })
+    omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false}, 2 /*reserved threads*/, 1000 /*max queue*/)
+        .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
+        .add_request_command("proxy_exit", [this](auto& m) { handle_sn_proxy_exit(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
-        // TODO: Backwards compat endpoint, can be removed after HF18:
-        .add_request_command("onion_req", [this](auto& m) {
-                if (m.data.size() == 1 && m.data[0] == "ping"sv)
-                    return handle_ping(m);
-                m.send_reply(
-                    std::to_string(http::BAD_REQUEST.first),
-                    "onion requests v1 not supported");
-        })
-        // TODO: Backwards compat, only used up until HF18
-        .add_request_command("onion_req_v2", [this](auto& m) { handle_onion_req_v2(m); })
+        .add_request_command("storage_test", [this](auto& m) { handle_storage_test(m); }) // NB: requires a 60s request timeout
         .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
         ;
 
     omq_.add_category("service", oxenmq::AuthLevel::admin)
-        .add_request_command("get_stats", [this](auto& m) { this->handle_get_stats(m); })
-        .add_request_command("get_logs", [this](auto& m) { this->handle_get_logs(m); });
+        .add_request_command("get_stats", [this](auto& m) { handle_get_stats(m); })
+        .add_request_command("get_logs", [this](auto& m) { handle_get_logs(m); })
+        ;
 
     // We send a sub.block to oxend to tell it to push new block notifications to us via this
     // endpoint:

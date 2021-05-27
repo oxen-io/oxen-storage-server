@@ -225,7 +225,7 @@ if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
   string(APPEND boost_buildflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
-set(boost_libs program_options system)
+set(boost_libs program_options)
 set(boost_with_libs_extra)
 if(BUILD_TESTS)
     list(APPEND boost_libs unit_test_framework)

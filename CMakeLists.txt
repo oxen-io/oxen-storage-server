@@ -59,7 +59,7 @@ if(BUILD_STATIC_DEPS)
   include(StaticBuild)
 else()
   find_package(PkgConfig REQUIRED)
-  find_package(Boost REQUIRED system program_options)
+  find_package(Boost REQUIRED program_options)
   find_package(OpenSSL REQUIRED)
 endif()
 

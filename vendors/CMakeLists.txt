@@ -110,3 +110,29 @@ add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets SYSTEM INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
 target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
+
+# cpr configuration.  Ideally we'd just do this via add_subdirectory, but cpr's cmake requires
+# 3.15+, and we target lower than that (and this is fairly simple to build).
+
+if(NOT BUILD_STATIC_DEPS)
+  find_package(CURL REQUIRED COMPONENTS HTTP HTTPS SSL)
+
+  # CURL::libcurl wasn't added to FindCURL until cmake 3.12, so add it if necessary
+  if (CMAKE_VERSION VERSION_LESS 3.12 AND NOT TARGET CURL::libcurl)
+    add_library(libcurl UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(libcurl PROPERTIES
+      IMPORTED_LOCATION ${CURL_LIBRARIES}
+      INTERFACE_INCLUDE_DIRECTORIES "${CURL_INCLUDE_DIRS}")
+    add_library(CURL_libcurl INTERFACE)
+    target_link_libraries(CURL_libcurl INTERFACE libcurl)
+    add_library(CURL::libcurl ALIAS CURL_libcurl)
+  endif()
+endif()
+
+file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
+
+add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
+target_link_libraries(cpr PUBLIC CURL::libcurl)
+target_include_directories(cpr PUBLIC cpr/include)
+target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
+add_library(cpr::cpr ALIAS cpr)

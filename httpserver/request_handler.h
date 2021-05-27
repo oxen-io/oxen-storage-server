@@ -5,11 +5,13 @@
 #include "onion_processing.h"
 #include "oxen_common.h"
 #include "oxend_key.h"
+#include "service_node.h"
 #include "string_utils.hpp"
+#include <chrono>
+#include <forward_list>
+#include <future>
 #include <string>
 #include <string_view>
-
-#include <boost/asio.hpp>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -17,26 +19,15 @@ namespace oxen {
 
 constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit
 
-class ServiceNode;
+// When a storage test returns a "retry" response, we retry again after this interval:
+inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
 
-namespace ss_client {
+// If a storage test is still returning "retry" after this long since the initial request then we
+// give up and send an error response back to the requestor:
+inline constexpr auto TEST_RETRY_PERIOD = 55s;
 
-enum class ReqMethod {
-    DATA,       // Database entries
-    PROXY_EXIT, // A session client request coming through a proxy
-    ONION_REQUEST,
-};
 
-}; // namespace ss_client
-
-// Simpler wrappers that work for most of our requests
-struct Request {
-    std::string body;
-    http::headers headers;
-    std::string remote_addr;
-    std::string uri;
-};
-
+// Simpler wrapper that works for most of our responses
 struct Response {
     http::response_code status = http::OK;
     std::string body;
@@ -44,10 +35,10 @@ struct Response {
     std::vector<std::pair<std::string, std::string>> headers;
 };
 
-
 std::string to_string(const Response& res);
 
-/// Compute message's hash based on its constituents.
+/// Compute message's hash based on its constituents.  The hash is a SHA-512 hash of the
+/// concatenated string parts, and can be returned as either bytes (64 bytes) or hex (128 chars)
 std::string computeMessageHash(std::vector<std::string_view> parts, bool hex);
 
 
@@ -62,6 +53,8 @@ class RequestHandler {
 
     ServiceNode& service_node_;
     const ChannelEncryption& channel_cipher_;
+
+    std::forward_list<std::future<void>> pending_proxy_requests_;
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(
@@ -89,9 +82,6 @@ class RequestHandler {
     void process_onion_exit(std::string_view payload,
                             std::function<void(Response)> cb);
 
-    void process_lns_request(std::string name_hash,
-                             std::function<void(Response)> cb);
-
     // ===================================
 
   public:
@@ -101,19 +91,14 @@ class RequestHandler {
     void process_client_req(std::string_view req_json,
                             std::function<void(Response)> cb);
 
-    /// Verifies snode pubkey and signature values in a request; returns the sender pubkey on
-    /// success or a filled-out error Response if verification fails.
-    ///
-    /// `prevalidate` - if true, do a "pre-validation": check that the required header values
-    /// (pubkey, signature) are present and valid (including verifying that the pubkey is a valid
-    /// snode) but don't actually verify the signature against the body (note that this is *not*
-    /// signature verification but is used as a pre-check before reading a body to ensure the
-    /// required headers are present).
-    std::variant<legacy_pubkey, Response> validate_snode_signature(
-            const Request& r, bool headers_only = false);
-
-    // Processes a swarm test request
-    Response process_storage_test_req(Request r);
+    // Processes a swarm test request; if it succeeds the callback is immediately invoked, otherwise
+    // the test is scheduled for retries for some time until it succeeds, fails, or times out, at
+    // which point the callback is invoked to return the result.
+    void process_storage_test_req(
+            uint64_t height,
+            legacy_pubkey tester,
+            std::string msg_hash_hex,
+            std::function<void(MessageTestStatus, std::string, std::chrono::steady_clock::duration)> callback);
 
     // Forwards a request to oxend RPC. `params` should contain:
     // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and
@@ -135,12 +120,6 @@ class RequestHandler {
             const x25519_pubkey& client_key,
             std::string_view payload,
             std::function<void(Response)> cb);
-
-    void process_onion_to_url(const std::string& protocol,
-                              const std::string& host, const uint16_t port,
-                              const std::string& target,
-                              const std::string& payload,
-                              std::function<void(Response)> cb);
 
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(std::string_view ciphertext, OnionRequestMetadata data);

@@ -69,11 +69,14 @@ namespace oxen::http {
     // A case-insensitive (but case-preserving) unordered_map for holding header fields
     using headers = std::unordered_map<std::string, std::string, detail::ascii_lc_hash, detail::ascii_lc_equal>;
 
+    // Deprecated headers; these can be removed after HF19
     constexpr auto SNODE_SENDER_HEADER = "X-Loki-Snode-PubKey";
     constexpr auto SNODE_TARGET_HEADER = "X-Target-Snode-Key";
     constexpr auto SNODE_SIGNATURE_HEADER = "X-Loki-Snode-Signature";
     constexpr auto SENDER_KEY_HEADER = "X-Sender-Public-Key";
 
+    // Returned in a HF19+ ping_test to include the remote's pubkey in the response
+    constexpr auto SNODE_PUBKEY_HEADER = "X-Oxen-Snode-Pubkey";
 }
 
 

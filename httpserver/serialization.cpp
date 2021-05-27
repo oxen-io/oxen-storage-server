@@ -4,9 +4,9 @@
 #include "Item.hpp"
 #include "oxen_logger.h"
 #include "service_node.h"
+#include "string_utils.hpp"
 
 #include <boost/endian/conversion.hpp>
-#include <boost/format.hpp>
 
 namespace oxen {
 
@@ -15,7 +15,7 @@ using storage::Item;
 template <typename T>
 static void serialize_integer(std::string& buf, T a) {
     boost::endian::native_to_little_inplace(a);
-    buf += std::string_view{reinterpret_cast<const char*>(&a), sizeof(T)};
+    buf += util::view_guts(a);
 }
 
 static void serialize(std::string& buf, const std::string& str) {
