@@ -404,26 +404,10 @@ void RequestHandler::process_client_req(
     return cb({http::BAD_REQUEST, "no method " + method_name});
 }
 
-legacy_pubkey parse_pubkey(std::string_view public_key_in) {
-    legacy_pubkey pk{};
-    if (public_key_in.size() == 64 && oxenmq::is_hex(public_key_in))
-        oxenmq::from_hex(public_key_in.begin(), public_key_in.end(), pk.begin());
-    else if ((public_key_in.size() == 43 || (public_key_in.size() == 44 && public_key_in.back() == '='))
-            && oxenmq::is_base64(public_key_in))
-        oxenmq::from_base64(public_key_in.begin(), public_key_in.end(), pk.begin());
-    else if (public_key_in.size() == 52 && oxenmq::is_base32z(public_key_in))
-        oxenmq::from_base32z(public_key_in.begin(), public_key_in.end(), pk.begin());
-    else {
-        OXEN_LOG(warn, "Invalid public key header: not hex, b64, or b32z encoded");
-        OXEN_LOG(debug, "Received public key encoded value: {}", public_key_in);
-    }
-    return pk;
-}
-
 std::variant<legacy_pubkey, Response> RequestHandler::validate_snode_signature(const Request& r, bool headers_only) {
     legacy_pubkey pubkey;
     if (auto it = r.headers.find(http::SNODE_SENDER_HEADER); it != r.headers.end())
-        pubkey = parse_pubkey(it->second);
+        pubkey = parse_legacy_pubkey(it->second);
     if (!pubkey) {
         OXEN_LOG(debug, "Missing or invalid pubkey header for request");
         return Response{http::BAD_REQUEST, "missing/invalid pubkey header"};
