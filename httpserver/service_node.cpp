@@ -712,10 +712,8 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
             sn, 0);
 
     bool old_ping_test = !hf_at_least(HARDFORK_HTTPS_PING_TEST_URL);
-    cpr::Url url{fmt::format(old_ping_test
-            ? "https://{}:{}/ping_test/v1"
-            : "https://{}:{}/swarms/ping_test/v1",
-        sn.ip, sn.port)};
+    cpr::Url url{fmt::format("https://{}:{}{}/ping_test/v1",
+            old_ping_test ? "/swarms" : "", sn.ip, sn.port)};
     cpr::Body body{""};
     cpr::Header headers{
         {"Host", sn.pubkey_ed25519
