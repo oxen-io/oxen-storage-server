@@ -1,4 +1,5 @@
 #include "string_utils.hpp"
+#include "oxen_logger.h"
 #include <cassert>
 
 namespace util {
@@ -75,6 +76,25 @@ std::string lowercase_ascii_string(std::string_view src)
   for (char ch : src)
     result += ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
   return result;
+}
+
+std::string short_duration(std::chrono::duration<double> dur) {
+    if (dur >= 36h)
+        return fmt::format("{:.1f}d", dur / 24h);
+    if (dur >= 90min)
+        return fmt::format("{:.1f}h", dur / 1h);
+    if (dur >= 90s)
+        return fmt::format("{:.1f}min", dur / 1min);
+    if (dur >= 1s)
+        return fmt::format("{:.1f}s", dur / 1s);
+
+    if (dur >= 1ms)
+        return fmt::format(u8"{:.0f}ms", dur / 1ms);
+    if (dur >= 1us)
+        return fmt::format(u8"{:.0f}µs", dur / 1us);
+    if (dur >= 1ns)
+        return fmt::format(u8"{:.0f}ns", dur / 1ns);
+    return "0s";
 }
 
 std::string friendly_duration(std::chrono::nanoseconds dur) {
