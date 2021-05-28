@@ -727,6 +727,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
         for (auto& [h, v] : sign_request(body.str()))
             headers[h] = std::move(v);
 
+    OXEN_LOG(debug, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url);
     outstanding_https_reqs_.emplace_front(
         cpr::PostCallback(
             [this, &omq=*omq_server(), old_ping_test, test_results, previous_failures]
