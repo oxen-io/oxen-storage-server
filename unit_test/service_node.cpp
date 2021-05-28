@@ -1,11 +1,9 @@
-#include <boost/test/unit_test.hpp>
+#include <catch2/catch.hpp>
 #include <iostream>
 
 #include "oxend_key.h"
 #include "swarm.h"
 #include "request_handler.h"
-
-BOOST_AUTO_TEST_SUITE(service_node_stuff)
 
 static auto create_dummy_sn_record() -> oxen::sn_record_t {
 
@@ -41,12 +39,12 @@ static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
 
     auto new_records = apply_ips(current, incoming);
 
-    BOOST_CHECK_EQUAL(new_records[0].snodes[0].ip, std::get<0>(expected));
-    BOOST_CHECK_EQUAL(new_records[0].snodes[0].port, std::get<1>(expected));
-    BOOST_CHECK_EQUAL(new_records[0].snodes[0].omq_port, std::get<2>(expected));
+    CHECK(new_records[0].snodes[0].ip == std::get<0>(expected));
+    CHECK(new_records[0].snodes[0].port == std::get<1>(expected));
+    CHECK(new_records[0].snodes[0].omq_port == std::get<2>(expected));
 }
 
-BOOST_AUTO_TEST_CASE(updates_ip_address) {
+TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 
     auto sn = create_dummy_sn_record();
 
@@ -65,7 +63,7 @@ BOOST_AUTO_TEST_CASE(updates_ip_address) {
 }
 
 /// Check that we don't inadvertently change how we compute message hashes
-BOOST_AUTO_TEST_CASE(correctly_computes_hash) {
+TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
 
     const auto timestamp = "1616650862026";
     const auto ttl = "172800000";
@@ -76,12 +74,10 @@ BOOST_AUTO_TEST_CASE(correctly_computes_hash) {
 
     const auto expected = "dd5f46395dbab44c9d96711a68cd70e326c4a39d6ccce7a319b0262c18699d2044610196519ad7283e3defebcdf3bccd6499fce1254fdee661e68f0611dc3104";
 
-    BOOST_CHECK_EQUAL(hash, expected);
+    CHECK(hash == expected);
 
-    BOOST_CHECK_EQUAL(
-            oxen::computeMessageHash({timestamp, ttl, pk, data}, false),
+    CHECK(
+            oxen::computeMessageHash({timestamp, ttl, pk, data}, false) ==
             oxenmq::from_hex(expected));
 
 }
-
-BOOST_AUTO_TEST_SUITE_END()

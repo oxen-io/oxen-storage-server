@@ -14,6 +14,9 @@ const command_line_options& command_line_parser::get_options() const {
     return options_;
 }
 
+void command_line_parser::parse_args(std::vector<const char*> args) {
+    parse_args(args.size(), const_cast<char**>(args.data()));
+}
 void command_line_parser::parse_args(int argc, char* argv[]) {
     std::string config_file;
     po::options_description all, hidden;

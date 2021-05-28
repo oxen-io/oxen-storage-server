@@ -7,7 +7,7 @@
 #include <string>
 #include <thread>
 
-#include <boost/test/unit_test.hpp>
+#include <catch2/catch.hpp>
 
 using oxen::storage::Item;
 
@@ -28,16 +28,14 @@ struct StorageRAIIFixture {
     }
 };
 
-BOOST_AUTO_TEST_SUITE(storage)
-
-BOOST_AUTO_TEST_CASE(it_creates_the_database_file) {
+TEST_CASE("storage - database file creation", "[storage]") {
     StorageRAIIFixture fixture;
 
     Database storage{"."};
-    BOOST_CHECK(std::filesystem::exists("storage.db"));
+    CHECK(std::filesystem::exists("storage.db"));
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
+TEST_CASE("storage - data persistence", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto hash = "myhash";
@@ -48,7 +46,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
     const uint64_t timestamp = util::get_time_ms();
     {
         Database storage{"."};
-        BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+        CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
         // the database is closed when storage goes out of scope
     }
     {
@@ -58,18 +56,17 @@ BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
         std::vector<Item> items;
         const auto lastHash = "";
 
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
+        CHECK(storage.retrieve(pubkey, items, lastHash));
 
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].pub_key, pubkey);
-        BOOST_CHECK_EQUAL(items[0].hash, hash);
-        BOOST_CHECK_EQUAL((items[0].expiration_timestamp - items[0].timestamp),
-                          ttl);
-        BOOST_CHECK_EQUAL(items[0].data, bytes);
+        CHECK(items.size() == 1);
+        CHECK(items[0].pub_key == pubkey);
+        CHECK(items[0].hash == hash);
+        CHECK(items[0].expiration_timestamp - items[0].timestamp == ttl);
+        CHECK(items[0].data == bytes);
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
+TEST_CASE("storage - returns false when storing existing hash", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto hash = "myhash";
@@ -81,14 +78,13 @@ BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash, FAIL is default behaviour
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
-                              Database::DuplicateHandling::FAIL) == false);
+    CHECK_FALSE(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
+                              Database::DuplicateHandling::FAIL));
 }
 
-BOOST_AUTO_TEST_CASE(
-    it_returns_true_when_storing_existing_with_ignore_constraint) {
+TEST_CASE("storage - returns true when storing existing with ignore constraint", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto hash = "myhash";
@@ -100,40 +96,40 @@ BOOST_AUTO_TEST_CASE(
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
     // store using the same hash
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
-                              Database::DuplicateHandling::IGNORE) == true);
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
+                              Database::DuplicateHandling::IGNORE));
 }
 
-BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
+TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
     StorageRAIIFixture fixture;
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
+    CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
-    BOOST_CHECK(storage.store("hash1", "otherpubkey", "bytesasstring1", 100000,
+    CHECK(storage.store("hash1", "otherpubkey", "bytesasstring1", 100000,
                               util::get_time_ms(), "nonce"));
 
     {
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash0");
+        CHECK(storage.retrieve("mypubkey", items, lastHash));
+        CHECK(items.size() == 1);
+        CHECK(items[0].hash == "hash0");
     }
 
     {
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("otherpubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash1");
+        CHECK(storage.retrieve("otherpubkey", items, lastHash));
+        CHECK(items.size() == 1);
+        CHECK(items[0].hash == "hash1");
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
+TEST_CASE("storage - return entries older than lasthash", "[storage]") {
     StorageRAIIFixture fixture;
 
     Database storage{"."};
@@ -148,51 +144,50 @@ BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
     {
         std::vector<Item> items;
         const auto lastHash = "hash0";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries - 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash1");
+        CHECK(storage.retrieve("mypubkey", items, lastHash));
+        CHECK(items.size() == num_entries - 1);
+        CHECK(items[0].hash == "hash1");
     }
 
     {
         std::vector<Item> items;
         const auto lastHash =
             std::string("hash") + std::to_string(num_entries / 2 - 1);
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries / 2);
-        BOOST_CHECK_EQUAL(items[0].hash, std::string("hash") +
-                                             std::to_string(num_entries / 2));
+        CHECK(storage.retrieve("mypubkey", items, lastHash));
+        CHECK(items.size() == num_entries / 2);
+        CHECK(items[0].hash == "hash" + std::to_string(num_entries / 2));
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
+TEST_CASE("storage - remove expired entries", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto pubkey = "mypubkey";
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
+    CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
                               util::get_time_ms(), "nonce"));
-    BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0,
+    CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0,
                               util::get_time_ms(), "nonce"));
     {
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 2);
+        CHECK(storage.retrieve(pubkey, items, lastHash));
+        CHECK(items.size() == 2);
     }
     std::this_thread::sleep_for(5ms);
     storage.clean_expired();
     {
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash0");
+        CHECK(storage.retrieve(pubkey, items, lastHash));
+        CHECK(items.size() == 1);
+        CHECK(items[0].hash == "hash0");
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
+TEST_CASE("storage - bulk data storage", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto pubkey = "mypubkey";
@@ -213,19 +208,19 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
                              timestamp + ttl, nonce, bytes});
         }
 
-        BOOST_CHECK(storage.bulk_store(items));
+        CHECK(storage.bulk_store(items));
     }
 
     // retrieve
     {
         std::vector<Item> items;
 
-        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
-        BOOST_CHECK_EQUAL(items.size(), num_items);
+        CHECK(storage.retrieve(pubkey, items, ""));
+        CHECK(items.size() == num_items);
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
+TEST_CASE("storage - bulk storage with overlap", "[storage]") {
     StorageRAIIFixture fixture;
 
     const auto pubkey = "mypubkey";
@@ -239,7 +234,7 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
     Database storage{"."};
 
     // insert existing
-    BOOST_CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
 
     // bulk store
     {
@@ -249,19 +244,19 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
                              timestamp + ttl, nonce, bytes});
         }
 
-        BOOST_CHECK(storage.bulk_store(items));
+        CHECK(storage.bulk_store(items));
     }
 
     // retrieve
     {
         std::vector<Item> items;
 
-        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
-        BOOST_CHECK_EQUAL(items.size(), num_items);
+        CHECK(storage.retrieve(pubkey, items, ""));
+        CHECK(items.size() == num_items);
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
+TEST_CASE("storage - retrieve limit", "[storage]") {
     StorageRAIIFixture fixture;
 
     Database storage{"."};
@@ -277,8 +272,8 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
     {
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries);
+        CHECK(storage.retrieve("mypubkey", items, lastHash));
+        CHECK(items.size() == num_entries);
     }
 
     // should return 10 items
@@ -286,8 +281,8 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
         const int num_results = 10;
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_results);
+        CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        CHECK(items.size() == num_results);
     }
 
     // should return 88 items
@@ -295,8 +290,8 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
         const int num_results = 88;
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_results);
+        CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        CHECK(items.size() == num_results);
     }
 
     // should return num_entries items
@@ -304,9 +299,7 @@ BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
         const int num_results = 2 * num_entries;
         std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_entries);
+        CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
+        CHECK(items.size() == num_entries);
     }
 }
-
-BOOST_AUTO_TEST_SUITE_END()
