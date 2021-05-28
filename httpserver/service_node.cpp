@@ -734,7 +734,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
                 auto& pk = sn.pubkey_legacy;
                 bool success = false;
                 if (r.error.code != cpr::ErrorCode::OK) {
-                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {}", pk, r.error.message);
+                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} {}", pk, r.error.code, r.error.message);
                 } else if (r.status_code != 200) {
                     OXEN_LOG(debug, "FAILED HTTPS ping test of {}: received non-200 status {}",
                             pk, r.status_code, r.status_line);
