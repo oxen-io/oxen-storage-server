@@ -487,6 +487,8 @@ void RequestHandler::process_onion_req(std::string_view ciphertext,
 
     OXEN_LOG(debug, "process_onion_req");
 
+    service_node_.record_onion_request();
+
     var::visit([&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
             process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
 }
@@ -572,6 +574,7 @@ void RequestHandler::process_onion_req(
         urlstr += '/';
     urlstr += info.target;
 
+    service_node_.record_proxy_request();
 
     pending_proxy_requests_.emplace_front(
         cpr::PostCallback(
