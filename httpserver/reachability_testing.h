@@ -39,7 +39,7 @@ enum class ReachType { HTTPS, OMQ };
 class reachability_testing {
   public:
     // How often we tick the timer to check whether we need to do any tests.
-    inline static constexpr auto TESTING_TIMER_INTERVAL = 50ms;
+    inline static constexpr auto TESTING_TIMER_INTERVAL = 200ms;
 
     // Distribution for the seconds between node tests: we throw in some randomness to avoid
     // potential clustering of tests.  (Note that there is some granularity here as the test timer
