@@ -655,7 +655,6 @@ void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                 if (auto it = json_req.find("hop_no"); it != json_req.end())
                     onion.hop_no = std::max(0, it->get<int>());
 
-                service_node_.record_onion_request();
                 request_handler_.process_onion_req(ciphertext, std::move(onion));
             } catch (const std::exception& e) {
                 auto msg = fmt::format("Error parsing onion request: {}", e.what());
