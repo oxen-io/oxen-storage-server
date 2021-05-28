@@ -402,7 +402,9 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
     https.post("/retrieve_all", [this](HttpResponse* res, HttpRequest* req) {
         handle_request(req, res, [this, started=std::chrono::steady_clock::now()]
                 (std::shared_ptr<call_data> data) mutable {
-            data->omq.inject_task("https", "https:" + data->uri, data->remote_addr,
+            auto& omq = data->omq;
+            auto& request = data->request;
+            omq.inject_task("https", "https:" + request.uri, request.remote_addr,
                     [data=std::move(data), started] mutable {
 
                 queue_response(std::move(data), request_handler_.process_retrieve_all());
@@ -499,7 +501,9 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                 std::holds_alternative<Response>(validate))
             return queue_response(std::move(data), std::move(std::get<Response>(validate)));
 
-        data->omq.inject_task("https", "https:" + data->request.uri, data->request.remote_addr,
+        auto& omq = data->omq;
+        auto& request = data->request;
+        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data)] () mutable {
 
             if (data->replied || data->aborted) return;
@@ -597,7 +601,9 @@ void HTTPSServer::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
 
     handle_request(*this, omq_, req, res, [this, started=std::chrono::steady_clock::now()]
             (std::shared_ptr<call_data> data) mutable {
-        data->omq.inject_task("https", "https:" + data->request.uri, data->request.remote_addr,
+        auto& omq = data->omq;
+        auto& request = data->request;
+        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data), started] () mutable {
 
             if (data->replied || data->aborted) return;
