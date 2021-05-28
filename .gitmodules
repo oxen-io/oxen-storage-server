@@ -1,7 +1,7 @@
 [submodule "vendors/spdlog"]
 	path = vendors/spdlog
 	url = https://github.com/gabime/spdlog.git
-[submodule "vendors/loki-mq"]
+[submodule "vendors/oxen-mq"]
 	path = vendors/oxen-mq
 	url = https://github.com/oxen-io/oxen-mq.git
 [submodule "vendors/nlohmann_json"]
