@@ -26,6 +26,7 @@ struct command_line_options {
 class command_line_parser {
   public:
     void parse_args(int argc, char* argv[]);
+    void parse_args(std::vector<const char*> args);
     bool early_exit() const;
 
     const command_line_options& get_options() const;

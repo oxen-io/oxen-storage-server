@@ -13,3 +13,6 @@
 [submodule "vendors/cpr"]
 	path = vendors/cpr
 	url = https://github.com/whoshuu/cpr.git
+[submodule "unit_test/Catch2"]
+	path = unit_test/Catch2
+	url = https://github.com/catchorg/Catch2

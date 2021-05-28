@@ -1,4 +1,4 @@
-#include <boost/test/unit_test.hpp>
+#include <catch2/catch.hpp>
 #include <iostream>
 #include <ostream>
 
@@ -6,14 +6,12 @@
 
 using namespace oxen;
 
-BOOST_AUTO_TEST_SUITE(onion_requests)
-
 constexpr const char* ciphertext = "ciphertext";
 const auto prefix = "\x0a\0\0\0ciphertext"s;
 
 // Provided "headers", so the request terminates
 // at a service node.
-BOOST_AUTO_TEST_CASE(final_destination) {
+TEST_CASE("onion request - final destination", "[onion][final]") {
     auto data = prefix + R"#({
         "headers": "something"
     })#";
@@ -24,15 +22,15 @@ BOOST_AUTO_TEST_CASE(final_destination) {
         ciphertext
     };
 
-    BOOST_REQUIRE(std::holds_alternative<FinalDestinationInfo>(res));
-    BOOST_CHECK_EQUAL(*std::get_if<FinalDestinationInfo>(&res), expected);
+    REQUIRE(std::holds_alternative<FinalDestinationInfo>(res));
+    CHECK(*std::get_if<FinalDestinationInfo>(&res) == expected);
 
 }
 
 // Provided "host", so the request should go
 // to an extrenal server. Default values will
 // be used for port and protocol.
-BOOST_AUTO_TEST_CASE(relay_to_server_legacy) {
+TEST_CASE("onion request - relay to server (legacy)", "[onion][relay]") {
     auto data = prefix + R"#({
         "host": "host",
         "target": "target"
@@ -51,14 +49,14 @@ BOOST_AUTO_TEST_CASE(relay_to_server_legacy) {
         "target"
     };
 
-    BOOST_REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
-    BOOST_CHECK_EQUAL(*std::get_if<RelayToServerInfo>(&res), expected);
+    REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
+    CHECK(*std::get_if<RelayToServerInfo>(&res) == expected);
 
 }
 
 // Provided "host", so the request should go
-// to an extrenal server.
-BOOST_AUTO_TEST_CASE(relay_to_server) {
+// to an external server.
+TEST_CASE("onion request - relay to server", "[onion][relay]") {
     auto data = prefix + R"#({
         "host": "host",
         "target": "target",
@@ -79,14 +77,14 @@ BOOST_AUTO_TEST_CASE(relay_to_server) {
         "target"
     };
 
-    BOOST_REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
-    BOOST_CHECK_EQUAL(*std::get_if<RelayToServerInfo>(&res), expected);
+    REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
+    CHECK(*std::get_if<RelayToServerInfo>(&res) == expected);
 
 }
 
 /// No "host" or "headers", so we forward
 /// the request to another node
-BOOST_AUTO_TEST_CASE(relay_to_node) {
+TEST_CASE("onion request - relay to snode", "[onion][snode]") {
 
     auto data = prefix + R"#({
         "destination": "ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000",
@@ -102,21 +100,19 @@ BOOST_AUTO_TEST_CASE(relay_to_node) {
         ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
     };
 
-    BOOST_REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));
-    BOOST_CHECK_EQUAL(*std::get_if<RelayToNodeInfo>(&res), expected);
+    REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));
+    CHECK(*std::get_if<RelayToNodeInfo>(&res) == expected);
 
 }
 
-BOOST_AUTO_TEST_CASE(correctly_filters_urls) {
+TEST_CASE("onion request - url target filtering", "[onion][relay]") {
 
-    BOOST_CHECK(is_onion_url_target_allowed("/loki/v3/lsrpc"));
-    BOOST_CHECK(is_onion_url_target_allowed("/loki/oxen/v4/lsrpc"));
-    BOOST_CHECK(is_onion_url_target_allowed("/oxen/v3/lsrpc"));
+    CHECK(is_onion_url_target_allowed("/loki/v3/lsrpc"));
+    CHECK(is_onion_url_target_allowed("/loki/oxen/v4/lsrpc"));
+    CHECK(is_onion_url_target_allowed("/oxen/v3/lsrpc"));
 
-    BOOST_CHECK(!is_onion_url_target_allowed("/not_loki/v3/lsrpc"));
-    BOOST_CHECK(!is_onion_url_target_allowed("/loki/v3"));
-    BOOST_CHECK(!is_onion_url_target_allowed("/loki/v3/lsrpc?foo=bar"));
+    CHECK_FALSE(is_onion_url_target_allowed("/not_loki/v3/lsrpc"));
+    CHECK_FALSE(is_onion_url_target_allowed("/loki/v3"));
+    CHECK_FALSE(is_onion_url_target_allowed("/loki/v3/lsrpc?foo=bar"));
 
 }
-
-BOOST_AUTO_TEST_SUITE_END()

@@ -62,7 +62,7 @@ message(STATUS "using git commit hash ${SHORT_HASH}")
 message(STATUS "using UTC build time ${BUILD_TIME}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/version.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
 target_sources(httpserver_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
-target_include_directories(httpserver_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(httpserver_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(NOT BUILD_STATIC_DEPS)
     find_package(PkgConfig QUIET)

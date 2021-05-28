@@ -1,158 +1,130 @@
 #include "command_line.h"
 
-#include <boost/test/unit_test.hpp>
+#include <catch2/catch.hpp>
 
 #include <array>
 
-BOOST_AUTO_TEST_SUITE(server_command_line)
-
-BOOST_AUTO_TEST_CASE(it_throws_when_no_args) {
+TEST_CASE("command line throws with no arguments", "[cli][no-args]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
+    CHECK_THROWS_AS(
+            parser.parse_args({"httpserver"}),
+            std::exception);
 }
 
-BOOST_AUTO_TEST_CASE(it_throws_when_no_port) {
-    oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
+TEST_CASE("port is required", "[cli][port]") {
+    {
+        oxen::command_line_parser parser;
+        CHECK_THROWS_WITH(
+                parser.parse_args({"httpserver", "0.0.0.0", "--omq-port", "123"}),
+                "Invalid option: address and/or port missing.");
+    }
+    {
+        oxen::command_line_parser parser;
+        CHECK_THROWS_WITH(
+                parser.parse_args({"httpserver", "--force-start", "0.0.0.0", "--omq-port", "123"}),
+                "Invalid option: address and/or port missing.");
+    }
 }
 
-BOOST_AUTO_TEST_CASE(it_throws_when_no_port_with_flag) {
+TEST_CASE("unknown argument", "[cli][unknown-arg]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "--force-start", "0.0.0.0"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
+    CHECK_THROWS_WITH(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--covfefe"}),
+            "unrecognised option '--covfefe'");
 }
 
-BOOST_AUTO_TEST_CASE(it_throws_unknown_arg) {
-    oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--covfefe"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
-}
-
-BOOST_AUTO_TEST_CASE(it_parses_help) {
+TEST_CASE("help", "[cli][help]") {
     oxen::command_line_parser parser;
     const char* argv[] = {"httpserver", "--help"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.print_help, true);
+    REQUIRE_NOTHROW(parser.parse_args({"httpserver", "--help"}));
+    CHECK(parser.get_options().print_help);
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_version) {
+TEST_CASE("version", "[cli][version]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "--version"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.print_version, true);
+    REQUIRE_NOTHROW(parser.parse_args({"httpserver", "--version"}));
+    CHECK(parser.get_options().print_version);
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_force_start) {
+TEST_CASE("force start", "[cli][force-start]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--force-start"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.force_start, true);
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--force-start"}));
+    CHECK(parser.get_options().force_start);
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_ip_and_port) {
+TEST_CASE("ip and port", "[cli][ip][port]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123"}));
     const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.ip, "0.0.0.0");
-    BOOST_CHECK_EQUAL(options.port, 80);
+    CHECK(options.ip == "0.0.0.0");
+    CHECK(options.port == 80);
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_old_omq_port) {
+TEST_CASE("deprecated lmq port", "[cli][deprecated]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--lmq-port", "123"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--lmq-port", "123"}));
     const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.ip, "0.0.0.0");
-    BOOST_CHECK_EQUAL(options.port, 80);
-    BOOST_CHECK_EQUAL(options.omq_port, 123);
+    CHECK(options.ip == "0.0.0.0");
+    CHECK(options.port == 80);
+    CHECK(options.omq_port == 123);
 }
 
 
-BOOST_AUTO_TEST_CASE(it_throw_with_invalid_port) {
+TEST_CASE("invalid port", "[cli][port]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0",
+    CHECK_THROWS_WITH(
+            parser.parse_args({"httpserver", "0.0.0.0",
                           "8O", // notice the O instead of 0
-                          "--omq-port", "123"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
+                          "--omq-port", "123"}),
+            "the argument ('8O') for option '--port' is invalid");
+
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_oxend_rpc) {
+TEST_CASE("oxend rpc", "[cli][oxend]") {
     oxen::command_line_parser parser;
-    std::array argv = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--oxend-rpc",
-        "ipc:///path/to/oxend.sock"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(argv.size(),
-                                           const_cast<char**>(argv.data())));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.oxend_omq_rpc, "ipc:///path/to/oxend.sock");
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--oxend-rpc",
+                "ipc:///path/to/oxend.sock"}));
+    CHECK(parser.get_options().oxend_omq_rpc == "ipc:///path/to/oxend.sock");
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_oxend_rpc_tcp) {
+TEST_CASE("oxend rpc -- tcp", "[cli][oxend]") {
     oxen::command_line_parser parser;
-    std::array argv = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--oxend-rpc",
-        "tcp://127.0.0.2:3456"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(argv.size(),
-                                           const_cast<char**>(argv.data())));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.oxend_omq_rpc, "tcp://127.0.0.2:3456");
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--oxend-rpc",
+                "tcp://127.0.0.2:3456"}));
+    CHECK(parser.get_options().oxend_omq_rpc == "tcp://127.0.0.2:3456");
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_data_dir) {
+TEST_CASE("data dir", "[cli][datadir]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--data-dir",
-                          "foobar"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.data_dir, "foobar");
+    REQUIRE_NOTHROW(parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--data-dir",
+                          "foobar"}));
+    CHECK(parser.get_options().data_dir == "foobar");
 }
 
-BOOST_AUTO_TEST_CASE(it_returns_default_data_dir) {
+TEST_CASE("default data dir", "[cli][data-dir]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.data_dir, "");
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123"}));
+    CHECK(parser.get_options().data_dir == "");
 }
 
-BOOST_AUTO_TEST_CASE(it_parses_log_levels) {
+TEST_CASE("log level", "[cli][log-level]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--log-level",
-                          "foobar"};
-    BOOST_CHECK_NO_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                           const_cast<char**>(argv)));
-    const auto options = parser.get_options();
-    BOOST_CHECK_EQUAL(options.log_level, "foobar");
+    REQUIRE_NOTHROW(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123",
+                "--log-level", "foobar"}));
+    CHECK(parser.get_options().log_level == "foobar");
 }
 
-BOOST_AUTO_TEST_CASE(it_throws_with_config_file_not_found) {
+TEST_CASE("config not found", "[cli][config]") {
     oxen::command_line_parser parser;
-    const char* argv[] = {"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--config-file",
-                          "foobar"};
-    BOOST_CHECK_THROW(parser.parse_args(sizeof(argv) / sizeof(char*),
-                                        const_cast<char**>(argv)),
-                      std::exception);
+    CHECK_THROWS_WITH(
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123",
+                "--config-file", "foobar"}),
+            "path provided in --config-file does not exist");
 }
-
-BOOST_AUTO_TEST_SUITE_END()

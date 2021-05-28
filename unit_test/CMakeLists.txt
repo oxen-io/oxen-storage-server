@@ -1,23 +1,20 @@
-cmake_minimum_required (VERSION 3.5)
 
-add_executable (Test
+add_subdirectory(Catch2)
+
+add_executable(Test
+    main.cpp
+
     command_line.cpp
     encrypt.cpp
-    main.cpp
     onion_requests.cpp
     rate_limiter.cpp
     serialization.cpp
+    service_node.cpp
     signature.cpp
     storage.cpp
-    service_node.cpp
 )
 
-target_link_libraries(Test PRIVATE common storage utils crypto httpserver_lib)
-target_include_directories(Test PRIVATE ../httpserver)
-
-# boost
-if(NOT BUILD_STATIC_DEPS)
-  find_package(Boost REQUIRED unit_test_framework)
-endif()
-
-target_link_libraries(Test PRIVATE Boost::unit_test_framework)
+target_link_libraries(Test
+    PRIVATE
+    common storage utils crypto httpserver_lib
+    Catch2::Catch2)
