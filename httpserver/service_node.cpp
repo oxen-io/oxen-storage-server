@@ -1370,6 +1370,7 @@ std::string ServiceNode::get_status_line() const {
 
     std::lock_guard guard(sn_mutex_);
 
+    // v2.3.4; sw=abcd…789(n=7); 123 msgs; reqs(S/R/O/P): 123/456/789/1011 in 62.3min
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
     if (!oxen::is_mainnet)
@@ -1381,22 +1382,19 @@ std::string ServiceNode::get_status_line() const {
     if (!swarm_ || !swarm_->is_valid())
         s << "NONE";
     else {
-        std::string swarm = std::to_string(swarm_->our_swarm_id());
-        if (swarm.size() <= 6)
-            s << swarm;
-        else
-            s << swarm.substr(0, 4) << u8"…" << swarm.back();
+        std::string swarm = fmt::format("{:016x}", swarm_->our_swarm_id());
+        s << swarm.substr(0, 4) << u8"…" << swarm.substr(swarm.size()-3);
         s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
     }
     uint64_t total_stored;
     if (db_->get_message_count(total_stored))
         s << "; " << total_stored << " msgs";
-    s << "; reqs(S/R): " << all_stats_.get_total_store_requests() << '/'
-      << all_stats_.get_total_retrieve_requests();
-    // FIXME: something better?
-    /*s << "; conns(in/http/https): " << get_net_stats().connections_in << '/'
-      << get_net_stats().http_connections_out << '/'
-      << get_net_stats().https_connections_out;*/
+    auto [window, stats] = all_stats_.get_recent_requests();
+    s << "; reqs(S/R/O/P): " << stats.client_store_requests << '/'
+        << stats.client_retrieve_requests << '/'
+        << stats.onion_requests << '/'
+        << stats.proxy_requests
+        << " in " << util::short_duration(window);
     return s.str();
 }
 
