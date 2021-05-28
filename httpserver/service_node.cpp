@@ -36,7 +36,6 @@ constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
 using MISSING_PUBKEY_THRESHOLD = std::ratio<3, 100>;
 
 /// TODO: there should be config.h to store constants like these
-constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 60min;
 constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
@@ -50,7 +49,8 @@ ServiceNode::ServiceNode(
       db_{std::make_unique<Database>(db_location)},
       our_address_{std::move(address)},
       our_seckey_{skey},
-      omq_server_{omq_server} {
+      omq_server_{omq_server},
+      all_stats_{*omq_server} {
 
     swarm_ = std::make_unique<Swarm>(our_address_);
 
@@ -62,9 +62,6 @@ ServiceNode::ServiceNode(
 
     omq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
             Database::CLEANUP_PERIOD);
-
-    omq_server_->add_timer([this] { std::lock_guard l{sn_mutex_}; all_stats_.cleanup(); },
-            STATS_CLEANUP_INTERVAL);
 
     // Periodically clean up any https request futures
     omq_server_->add_timer([this] {
@@ -884,7 +881,6 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
         OXEN_LOG(debug, "Storage test failed for some other reason: {}", status);
     }
 
-    std::lock_guard guard{sn_mutex_};
     all_stats_.record_storage_test_result(testee.pubkey_legacy, result);
 }
 
@@ -1307,67 +1303,52 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                            const std::string& last_hash,
                            std::vector<Item>& items) {
 
-    std::lock_guard guard(sn_mutex_);
-
     all_stats_.bump_retrieve_requests();
+
+    std::lock_guard guard(sn_mutex_);
 
     return db_->retrieve(pubKey, items, last_hash,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
 void to_json(nlohmann::json& j, const test_result_t& val) {
-    j["timestamp"] = val.timestamp;
+    j["timestamp"] = std::chrono::duration<double>(val.timestamp.time_since_epoch()).count();
     j["result"] = to_str(val.result);
 }
 
 static nlohmann::json to_json(const all_stats_t& stats) {
 
-    nlohmann::json json;
+    json peers;
+    for (const auto& [pk, stats] : stats.peer_report()) {
+        auto& p = peers[pk.hex()];
 
-    json["total_store_requests"] = stats.get_total_store_requests();
-    json["recent_store_requests"] = stats.get_recent_store_requests();
-    json["previous_period_store_requests"] =
-        stats.get_previous_period_store_requests();
-
-    json["total_retrieve_requests"] = stats.get_total_retrieve_requests();
-    json["recent_store_requests"] = stats.get_recent_store_requests();
-    json["previous_period_retrieve_requests"] =
-        stats.get_previous_period_retrieve_requests();
-
-    json["previous_period_onion_requests"] =
-        stats.get_previous_period_onion_requests();
-
-    json["reset_time"] = std::chrono::duration_cast<std::chrono::seconds>(
-                             stats.get_reset_time().time_since_epoch())
-                             .count();
-
-    nlohmann::json peers;
-
-    for (const auto& [pk, stats] : stats.peer_report_) {
-        auto pubkey = pk.hex();
-
-        peers[pubkey]["requests_failed"] = stats.requests_failed;
-        peers[pubkey]["pushes_failed"] = stats.requests_failed;
-        peers[pubkey]["storage_tests"] = stats.storage_tests;
+        p["requests_failed"] = stats.requests_failed;
+        p["pushes_failed"] = stats.requests_failed;
+        p["storage_tests"] = stats.storage_tests;
     }
 
-    json["peers"] = peers;
-    return json;
+    auto [window, recent] = stats.get_recent_requests();
+    return json{
+        {"total_store_requests", stats.get_total_store_requests()},
+        {"total_retrieve_requests", stats.get_total_retrieve_requests()},
+        {"total_onion_requests", stats.get_total_onion_requests()},
+        {"total_proxy_requests", stats.get_total_proxy_requests()},
+
+        {"recent_timespan", std::chrono::duration<double>(window).count()},
+        {"recent_store_requests", recent.client_store_requests},
+        {"recent_retrieve_requests", recent.client_retrieve_requests},
+        {"recent_onion_requests", recent.onion_requests},
+        {"recent_proxy_requests", recent.proxy_requests},
+
+        {"peers", std::move(peers)}
+    };
 }
 
 std::string ServiceNode::get_stats_for_session_client() const {
-
-    nlohmann::json res;
-    res["version"] = STORAGE_SERVER_VERSION_STRING;
-
-    constexpr bool PRETTY = true;
-    constexpr int indent = PRETTY ? 4 : 0;
-    return res.dump(indent);
+    return json{{"version", STORAGE_SERVER_VERSION_STRING}}.dump();
 }
 
 std::string ServiceNode::get_stats() const {
-
-    std::lock_guard guard(sn_mutex_);
 
     auto val = to_json(all_stats_);
 
@@ -1375,21 +1356,10 @@ std::string ServiceNode::get_stats() const {
     val["height"] = block_height_;
     val["target_height"] = target_height_;
 
-    uint64_t total_stored;
-    if (db_->get_message_count(total_stored)) {
+    if (uint64_t total_stored; db_->get_message_count(total_stored))
         val["total_stored"] = total_stored;
-    }
 
-    // TODO: figure out some more interesting stats (these counters don't tell us much at all except
-    // for, maybe, a slow loris attack in progress, and so were removed)
-    val["connections_in"] = -1;
-    val["http_connections_out"] = -1;
-    val["https_connections_out"] = -1;
-
-    /// we want pretty (indented) json, but might change that in the future
-    constexpr bool PRETTY = true;
-    constexpr int indent = PRETTY ? 4 : 0;
-    return val.dump(indent);
+    return val.dump();
 }
 
 std::string ServiceNode::get_status_line() const {
