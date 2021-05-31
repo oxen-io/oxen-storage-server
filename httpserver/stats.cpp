@@ -25,7 +25,7 @@ void all_stats_t::cleanup() {
     {
         // rotate historic period counters
         std::lock_guard lock{prev_stats_mutex};
-        while (previous_stats.size() > RECENT_STATS_COUNT)
+        while (previous_stats.size() >= RECENT_STATS_COUNT)
             previous_stats.pop_front();
         previous_stats.emplace_back(
                 last_rotate,
