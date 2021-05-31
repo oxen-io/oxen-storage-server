@@ -42,8 +42,7 @@ void Database::clean_expired() {
         } else if (rc == SQLITE_DONE) {
             break;
         } else {
-            fprintf(stderr, "Can't delete expired messages: %s\n",
-                    sqlite3_errmsg(db));
+            OXEN_LOG(err, "Can't delete expired messages: {}", sqlite3_errmsg(db));
         }
     }
     int reset_rc = sqlite3_reset(delete_expired_stmt);
@@ -51,7 +50,7 @@ void Database::clean_expired() {
     // indicated an error, then sqlite3_reset(S) returns an appropriate error
     // code.
     if (reset_rc != SQLITE_OK && reset_rc != rc) {
-        fprintf(stderr, "sql error: unexpected value from sqlite3_reset");
+        OXEN_LOG(err, "sql error: unexpected value from sqlite3_reset");
     }
 }
 
@@ -61,7 +60,7 @@ sqlite3_stmt* Database::prepare_statement(const std::string& query) {
     int rc = sqlite3_prepare_v2(db, query.c_str(), query.length() + 1, &stmt,
                                 &pzTest);
     if (rc != SQLITE_OK) {
-        printf("ERROR: sql error: %s", pzTest);
+        OXEN_LOG(err, "sql error: {}", pzTest);
     }
     return stmt;
 }
@@ -142,10 +141,10 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
                              NULL);
 
     if (rc) {
-        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+        auto err = fmt::format("Can't open database: {}", sqlite3_errmsg(db));
+        OXEN_LOG(critical, err);
         sqlite3_close(db);
-        // throw?
-        return;
+        throw std::runtime_error{err};
     }
 
     check_page_size(db);
@@ -168,7 +167,7 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     rc = sqlite3_exec(db, create_table_query, nullptr, nullptr, &errMsg);
     if (rc) {
         if (errMsg) {
-            printf("%s\n", errMsg);
+            OXEN_LOG(err, "{}", errMsg);
             sqlite3_free(errMsg);
         }
         throw std::runtime_error("Can't create table");
@@ -445,7 +444,7 @@ bool Database::bulk_store(const std::vector<Item>& items) {
                   item.nonce, DuplicateHandling::IGNORE);
         }
     } catch (...) {
-        fprintf(stderr, "Failed to store items during bulk operation");
+        OXEN_LOG(err, "Failed to store items during bulk operation");
     }
 
     if (sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, &errmsg) != SQLITE_OK)
