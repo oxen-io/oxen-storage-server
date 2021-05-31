@@ -27,6 +27,7 @@ target_link_libraries(httpserver_lib PUBLIC
     common storage utils crypto
     uWebSockets
     cpr::cpr
+    jemalloc::jemalloc
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     oxenmq::oxenmq
