@@ -15,7 +15,11 @@ Database::~Database() {
     sqlite3_finalize(get_all_for_pk_stmt);
     sqlite3_finalize(get_all_stmt);
     sqlite3_finalize(get_stmt);
+    sqlite3_finalize(get_row_count_stmt);
+    sqlite3_finalize(get_by_index_stmt);
+    sqlite3_finalize(get_by_hash_stmt);
     sqlite3_finalize(delete_expired_stmt);
+    sqlite3_finalize(page_count_stmt);
     sqlite3_close(db);
 }
 
@@ -62,10 +66,6 @@ sqlite3_stmt* Database::prepare_statement(const std::string& query) {
     return stmt;
 }
 
-constexpr int64_t DB_PAGE_SIZE = 4096;
-constexpr int64_t DB_SIZE_LIMIT = int64_t(3584) * 1024 * 1024; // 3.5 GB
-constexpr int64_t DB_PAGE_LIMIT = DB_SIZE_LIMIT / DB_PAGE_SIZE;
-
 static void set_page_count(sqlite3* db) {
 
     char* errMsg = nullptr;
@@ -90,7 +90,7 @@ static void set_page_count(sqlite3* db) {
     };
 
     int rc = sqlite3_exec(
-        db, fmt::format("PRAGMA MAX_PAGE_COUNT = {};", DB_PAGE_LIMIT).c_str(),
+        db, fmt::format("PRAGMA MAX_PAGE_COUNT = {};", Database::PAGE_LIMIT).c_str(),
         cb, nullptr, &errMsg);
 
     if (rc) {
@@ -117,7 +117,7 @@ static void check_page_size(sqlite3* db) {
             return 0;
         }
 
-        if (res != DB_PAGE_SIZE) {
+        if (res != Database::PAGE_SIZE) {
             OXEN_LOG(warn, "Unexpected DB page size: {}", res);
         } else {
             OXEN_LOG(info, "DB page size: {}", res);
@@ -223,6 +223,39 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     if (!delete_expired_stmt)
         throw std::runtime_error(
             "could not prepare 'delete expired' statement");
+
+    page_count_stmt = prepare_statement("PRAGMA page_count;");
+    if (!page_count_stmt)
+        throw std::runtime_error{"could not prepare page count statement"};
+}
+
+bool Database::get_used_pages(uint64_t& count) {
+    int rc;
+    bool success = false;
+    while (true) {
+        rc = sqlite3_step(page_count_stmt);
+        if (rc == SQLITE_BUSY) {
+            continue;
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else if (rc == SQLITE_ROW) {
+            count = sqlite3_column_int64(page_count_stmt, 0);
+            success = true;
+        } else {
+            OXEN_LOG(critical, "Could not execute page count db statement");
+            break;
+        }
+    }
+
+    rc = sqlite3_reset(page_count_stmt);
+    if (rc != SQLITE_OK) {
+        OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
+                 sqlite3_errmsg(db));
+        success = false;
+    }
+
+    return success;
+
 }
 
 bool Database::get_message_count(uint64_t& count) {
@@ -244,7 +277,7 @@ bool Database::get_message_count(uint64_t& count) {
         }
     }
 
-    rc = sqlite3_reset(get_by_index_stmt);
+    rc = sqlite3_reset(get_row_count_stmt);
     if (rc != SQLITE_OK) {
         OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));

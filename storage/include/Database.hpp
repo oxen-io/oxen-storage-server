@@ -21,6 +21,10 @@ class Database {
     // Recommended period for calling clean_expired()
     inline static constexpr auto CLEANUP_PERIOD = 10s;
 
+    inline static constexpr int64_t PAGE_SIZE = 4096;
+    inline static constexpr int64_t SIZE_LIMIT = int64_t(3584) * 1024 * 1024; // 3.5 GB
+    inline static constexpr int64_t PAGE_LIMIT = SIZE_LIMIT / PAGE_SIZE;
+
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
     explicit Database(const std::filesystem::path& db_path);
@@ -37,6 +41,9 @@ class Database {
 
     bool retrieve(const std::string& key, std::vector<storage::Item>& items,
                   const std::string& lastHash, int num_results = -1);
+
+    // Returns the number of used database pages
+    bool get_used_pages(uint64_t& count);
 
     // Return the total number of messages stored
     bool get_message_count(uint64_t& count);
@@ -65,6 +72,7 @@ class Database {
     sqlite3_stmt* get_by_index_stmt;
     sqlite3_stmt* get_by_hash_stmt;
     sqlite3_stmt* delete_expired_stmt;
+    sqlite3_stmt* page_count_stmt;
 };
 
 } // namespace oxen
