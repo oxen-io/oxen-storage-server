@@ -56,7 +56,7 @@ std::pair<std::chrono::steady_clock::duration, period_stats> all_stats_t::get_re
 
     stats = {current_client_store_requests, current_client_retrieve_requests, current_proxy_requests, current_onion_requests};
     for (auto& [ts, ps] : previous_stats) {
-        stats.client_store_requests += ps.client_retrieve_requests;
+        stats.client_store_requests += ps.client_store_requests;
         stats.client_retrieve_requests += ps.client_retrieve_requests;
         stats.proxy_requests += ps.proxy_requests;
         stats.onion_requests += ps.onion_requests;
