@@ -44,21 +44,14 @@ template <typename T>
 std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
 
     std::vector<std::string> res;
+    res.emplace_back();
 
-    std::string buf;
-
-    constexpr size_t BATCH_SIZE = 500000;
+    constexpr size_t BATCH_SIZE = 9'000'000;
 
     for (const auto& msg : msgs) {
-        serialize_message(buf, msg);
-        if (buf.size() > BATCH_SIZE) {
-            res.push_back(std::move(buf));
-            buf.clear();
-        }
-    }
-
-    if (!buf.empty()) {
-        res.push_back(std::move(buf));
+        if (res.back().size() > BATCH_SIZE)
+            res.emplace_back();
+        serialize_message(res.back(), msg);
     }
 
     return res;
