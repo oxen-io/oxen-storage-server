@@ -147,6 +147,14 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
         throw std::runtime_error{err};
     }
 
+    if (int rc = sqlite3_exec(db, "PRAGMA journal_mode = WAL", nullptr, nullptr, nullptr);
+            rc != SQLITE_OK)
+        OXEN_LOG(critical, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
+
+    if (int rc = sqlite3_exec(db, "PRAGMA synchronous = NORMAL", nullptr, nullptr, nullptr);
+            rc != SQLITE_OK)
+        OXEN_LOG(critical, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
+
     check_page_size(db);
     set_page_count(db);
 
