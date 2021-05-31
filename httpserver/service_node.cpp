@@ -28,8 +28,6 @@ namespace oxen {
 
 using storage::Item;
 
-constexpr std::chrono::milliseconds RELAY_INTERVAL = 350ms;
-
 // Threshold of missing data records at which we start warning and consult bootstrap nodes (mainly
 // so that we don't bother producing warning spam or going to the bootstrap just for a few new nodes
 // that will often have missing info for a few minutes).
@@ -89,8 +87,6 @@ void ServiceNode::on_oxend_connected() {
     omq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
     omq_server_->add_timer([this] { ping_peers(); },
             reachability_testing::TESTING_TIMER_INTERVAL);
-    omq_server_->add_timer([this] { relay_buffered_messages(); },
-            RELAY_INTERVAL);
 }
 
 static block_update_t
@@ -344,10 +340,9 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
-/// do this asynchronously on a different thread? (on the same thread?)
 bool ServiceNode::process_store(const message_t& msg) {
 
-    std::lock_guard guard(sn_mutex_);
+    std::lock_guard guard{sn_mutex_};
 
     /// only accept a message if we are in a swarm
     if (!swarm_) {
@@ -359,12 +354,15 @@ bool ServiceNode::process_store(const message_t& msg) {
     all_stats_.bump_store_requests();
 
     /// store in the database
-    this->save_if_new(msg);
+    save_if_new(msg);
 
-    // Instead of sending the messages immediatly, store them in a buffer
-    // and periodically send all messages from there as batches
-    this->relay_buffer_.push_back(msg);
+    std::string serialized;
+    serialize_message(serialized, msg);
 
+    for (auto& peer : swarm_->other_nodes())
+        relay_data_reliable(serialized, peer);
+
+    OXEN_LOG(debug, "Relayed message to {} swarm peers", swarm_->other_nodes().size());
     return true;
 }
 
@@ -535,20 +533,6 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 #ifndef INTEGRATION_TEST
     this->initiate_peer_test();
 #endif
-}
-
-void ServiceNode::relay_buffered_messages() {
-
-    std::lock_guard guard(sn_mutex_);
-
-    if (relay_buffer_.empty())
-        return;
-
-    OXEN_LOG(debug, "Relaying {} messages from buffer to {} nodes",
-             relay_buffer_.size(), swarm_->other_nodes().size());
-
-    this->relay_messages(relay_buffer_, swarm_->other_nodes());
-    relay_buffer_.clear();
 }
 
 void ServiceNode::update_swarms() {

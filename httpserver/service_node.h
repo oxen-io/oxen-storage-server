@@ -89,10 +89,6 @@ class ServiceNode {
 
     reachability_testing reach_records_;
 
-    /// Container for recently received messages directly from
-    /// clients;
-    std::vector<message_t> relay_buffer_;
-
     mutable all_stats_t all_stats_;
 
     mutable std::recursive_mutex sn_mutex_;
@@ -132,8 +128,6 @@ class ServiceNode {
     // Conducts any ping peer tests that are due; (this is designed to be called frequently and does
     // nothing if there are no tests currently due).
     void ping_peers();
-
-    void relay_buffered_messages();
 
     /// Pings oxend (as required for uptime proofs)
     void oxend_ping();
