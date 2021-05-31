@@ -1358,6 +1358,10 @@ std::string ServiceNode::get_stats() const {
 
     if (uint64_t total_stored; db_->get_message_count(total_stored))
         val["total_stored"] = total_stored;
+    if (uint64_t db_pages; db_->get_used_pages(db_pages)) {
+        val["db_used"] = db_pages * Database::PAGE_SIZE;
+        val["db_max"] = Database::SIZE_LIMIT;
+    }
 
     return val.dump();
 }
@@ -1386,9 +1390,25 @@ std::string ServiceNode::get_status_line() const {
         s << swarm.substr(0, 4) << u8"…" << swarm.substr(swarm.size()-3);
         s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
     }
-    uint64_t total_stored;
-    if (db_->get_message_count(total_stored))
-        s << "; " << total_stored << " msgs";
+    if (uint64_t msgs_stored; db_->get_message_count(msgs_stored)) {
+        s << "; " << msgs_stored << " msgs";
+        if (uint64_t bytes_stored; db_->get_used_pages(bytes_stored)) {
+            bytes_stored *= Database::PAGE_SIZE;
+            s << " (";
+            auto oldprec = s.precision(4);
+            if (bytes_stored >= 1'000'000'000)
+                s << bytes_stored * 1e-9 << 'G';
+            else if (bytes_stored >= 1'000'000)
+                s << bytes_stored * 1e-6 << 'M';
+            else if (bytes_stored >= 1000)
+                s << bytes_stored * 1e-3 << 'k';
+            else
+                s << bytes_stored;
+            s.precision(oldprec);
+            s << "B)";
+        }
+    }
+
     auto [window, stats] = all_stats_.get_recent_requests();
     s << "; reqs(S/R/O/P): " << stats.client_store_requests << '/'
         << stats.client_retrieve_requests << '/'
