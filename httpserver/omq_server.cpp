@@ -316,7 +316,7 @@ OxenmqServer::OxenmqServer(
     omq_.set_general_threads(1);
 
     omq_.MAX_MSG_SIZE =
-        10 * 1024 * 1024; // 10 MB (needed by the fileserver)
+        10 * 1024 * 1024; // 10 MB (needed by the fileserver, and swarm msg serialization)
 
     // Be explicit about wanting per-SN unique connection IDs:
     omq_.EPHEMERAL_ROUTING_ID = true;
