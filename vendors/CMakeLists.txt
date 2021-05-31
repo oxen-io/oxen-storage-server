@@ -137,3 +137,41 @@ target_link_libraries(cpr PUBLIC CURL::libcurl)
 target_include_directories(cpr PUBLIC cpr/include)
 target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
+
+
+option(USE_JEMALLOC "Use jemalloc for memory allocations" ON)
+if (USE_JEMALLOC)
+  set(jemalloc_cc "${CMAKE_C_COMPILER}")
+  set(jemalloc_cxx "${CMAKE_CXX_COMPILER}")
+  if(CMAKE_C_COMPILER_LAUNCHER)
+    set(jemalloc_cc "${CMAKE_C_COMPILER_LAUNCHER} ${jemalloc_cc}")
+  endif()
+  if(CMAKE_CXX_COMPILER_LAUNCHER)
+    set(jemalloc_cxx "${CMAKE_CXX_COMPILER_LAUNCHER} ${jemalloc_cxx}")
+  endif()
+
+  include(ExternalProject)
+  ExternalProject_Add(jemalloc_external
+    PREFIX jemalloc
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc
+    BINARY_DIR jemalloc
+    CONFIGURE_COMMAND cd ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc && ./autogen.sh
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc/configure
+      --enable-static --disable-shared --prefix=<INSTALL_DIR>
+      "CC=${jemalloc_cc}" "CXX=${jemalloc_cxx}"
+    EXCLUDE_FROM_ALL TRUE
+    INSTALL_DIR jemalloc-install
+    BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
+  )
+  add_library(jemalloc STATIC IMPORTED GLOBAL)
+  add_dependencies(jemalloc jemalloc_external)
+  set_target_properties(jemalloc PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
+  )
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/include)
+  target_include_directories(jemalloc SYSTEM INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/include)
+  target_link_libraries(jemalloc INTERFACE ${CMAKE_DL_LIBS})
+else()
+  add_library(jemalloc INTERFACE)
+endif()
+add_library(jemalloc::jemalloc ALIAS jemalloc)
