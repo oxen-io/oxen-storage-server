@@ -49,6 +49,21 @@ set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
 set(LIBUV_HASH SHA512=33613fa28e8136507300eba374351774849b6b39aab4e53c997a918d3bc1d1094c6123e0e509535095b14dc5daa885eadb1a67bed46622ad3cc79d62dc817e84
     CACHE STRING "libuv source hash")
 
+set(ZLIB_VERSION 1.2.11 CACHE STRING "zlib version")
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+    CACHE STRING "zlib mirror(s)")
+set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
+set(ZLIB_HASH SHA512=73fd3fff4adeccd4894084c15ddac89890cd10ef105dd5e1835e1e9bbb6a49ff229713bd197d203edfa17c2727700fce65a2a235f07568212d820dca88b528ae
+    CACHE STRING "zlib source hash")
+
+set(CURL_VERSION 7.76.1 CACHE STRING "curl version")
+set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.haxx.se/download https://curl.askapache.com
+    CACHE STRING "curl mirror(s)")
+set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
+set(CURL_HASH SHA256=64bb5288c39f0840c07d077e30d9052e1cbb9fa6c2dc52523824cc859e679145
+    CACHE STRING "curl source hash")
+
+
 
 include(ExternalProject)
 
@@ -180,6 +195,16 @@ if (WIN32 OR (APPLE AND NOT IOS))
 endif()
 
 
+
+build_external(zlib
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} ./configure --prefix=${DEPS_DESTDIR} --static
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libz.a
+    ${DEPS_DESTDIR}/include/zlib.h
+)
+add_static_target(zlib zlib_external libz.a)
+
+
 set(openssl_configure ./config)
 set(openssl_system_env "")
 set(openssl_cc "${deps_cc}")
@@ -194,7 +219,7 @@ build_external(openssl
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
     --prefix=${DEPS_DESTDIR} ${openssl_extra_opts} no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
     no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
-    no-static-engine no-tests no-weak-ssl-ciphers no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+    no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
   INSTALL_COMMAND make install_sw
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
@@ -316,3 +341,45 @@ endif()
 set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
+
+
+set(curl_extra)
+if(WIN32)
+  set(curl_ssl_opts --without-ssl --with-schannel)
+elseif(APPLE)
+  set(curl_ssl_opts --without-ssl --with-secure-transport)
+else()
+  set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
+  set(curl_extra "LIBS=-pthread")
+endif()
+
+build_external(curl
+  DEPENDS openssl_external zlib_external
+  CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${DEPS_DESTDIR} --disable-shared
+  --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
+  --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
+  --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http
+  --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
+  --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
+  --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
+  --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
+  --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
+  --without-zsh-functions-dir --without-fish-functions-dir
+  "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
+  BUILD_COMMAND true
+  INSTALL_COMMAND make -C lib install && make -C include install
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libcurl.a
+    ${DEPS_DESTDIR}/include/curl/curl.h
+)
+
+add_static_target(CURL::libcurl curl_external libcurl.a)
+set(libcurl_link_libs zlib)
+if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
+  list(APPEND libcurl_link_libs crypt32)
+elseif(APPLE)
+  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation")
+endif()
+set_target_properties(CURL::libcurl PROPERTIES
+  INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
+  INTERFACE_COMPILE_DEFINITIONS "CURL_STATICLIB")
