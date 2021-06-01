@@ -149,9 +149,6 @@ class ServiceNode {
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
 
-    /// Select a random message from our database, return nullopt on error
-    std::optional<storage::Item> select_random_message(); // mutex not needed
-
     // Initiate node ping tests
     void test_reachability(const sn_record_t& sn, int previous_failures);
 

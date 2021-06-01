@@ -73,10 +73,6 @@ std::mt19937_64& rng() {
     return generator;
 }
 
-uint64_t uniform_distribution_portable(uint64_t n) {
-    return uniform_distribution_portable(rng(), n);
-}
-
 uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
                                        uint64_t n) {
     const uint64_t secure_max =

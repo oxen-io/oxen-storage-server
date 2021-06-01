@@ -48,9 +48,8 @@ class Database {
     // Return the total number of messages stored
     bool get_message_count(uint64_t& count);
 
-    // Get message by `index` (must be smaller than the result of
-    // `get_message_count`).
-    bool retrieve_by_index(uint64_t index, storage::Item& item);
+    // Get random message. Returns false if there are no messages (or the db query failed)
+    bool retrieve_random(storage::Item& item);
 
     // Get message by `msg_hash`, return true if found
     bool retrieve_by_hash(const std::string& msg_hash, storage::Item& item);
@@ -69,7 +68,7 @@ class Database {
     sqlite3_stmt* get_all_stmt;
     sqlite3_stmt* get_stmt;
     sqlite3_stmt* get_row_count_stmt;
-    sqlite3_stmt* get_by_index_stmt;
+    sqlite3_stmt* get_random_stmt;
     sqlite3_stmt* get_by_hash_stmt;
     sqlite3_stmt* delete_expired_stmt;
     sqlite3_stmt* page_count_stmt;

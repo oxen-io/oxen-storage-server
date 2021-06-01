@@ -1100,34 +1100,6 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
     return {MessageTestStatus::SUCCESS, std::move(item.data)};
 }
 
-std::optional<Item> ServiceNode::select_random_message() {
-
-    uint64_t message_count;
-    if (!db_->get_message_count(message_count)) {
-        OXEN_LOG(err, "Could not count messages in the database");
-        return {};
-    }
-
-    OXEN_LOG(debug, "total messages: {}", message_count);
-
-    if (message_count == 0) {
-        OXEN_LOG(debug, "No messages in the database to initiate a peer test");
-        return {};
-    }
-
-    // SNodes don't have to agree on this, rather they should use different
-    // messages
-    const auto msg_idx = util::uniform_distribution_portable(message_count);
-
-    auto item = std::make_optional<Item>();
-    if (!db_->retrieve_by_index(msg_idx, *item)) {
-        OXEN_LOG(err, "Could not retrieve message by index: {}", msg_idx);
-        return {};
-    }
-
-    return item;
-}
-
 void ServiceNode::initiate_peer_test() {
 
     std::lock_guard guard(sn_mutex_);
@@ -1162,9 +1134,9 @@ void ServiceNode::initiate_peer_test() {
     }
 
     /// 2. Storage Testing: initiate a testing request with a randomly selected message
-    if (auto item = select_random_message()) {
-        OXEN_LOG(trace, "Selected random message: {}, {}", item->hash, item->data);
-        send_storage_test_req(testee, test_height, *item);
+    if (Item item; db_->retrieve_random(item)) {
+        OXEN_LOG(trace, "Selected random message: {}, {}", item.hash, item.data);
+        send_storage_test_req(testee, test_height, item);
     } else {
         OXEN_LOG(debug, "Could not select a message for testing");
     }

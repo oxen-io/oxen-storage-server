@@ -16,7 +16,7 @@ Database::~Database() {
     sqlite3_finalize(get_all_stmt);
     sqlite3_finalize(get_stmt);
     sqlite3_finalize(get_row_count_stmt);
-    sqlite3_finalize(get_by_index_stmt);
+    sqlite3_finalize(get_random_stmt);
     sqlite3_finalize(get_by_hash_stmt);
     sqlite3_finalize(delete_expired_stmt);
     sqlite3_finalize(page_count_stmt);
@@ -147,13 +147,14 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
         throw std::runtime_error{err};
     }
 
+    // Don't fail on these because we can still work even if they fail
     if (int rc = sqlite3_exec(db, "PRAGMA journal_mode = WAL", nullptr, nullptr, nullptr);
             rc != SQLITE_OK)
-        OXEN_LOG(critical, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
+        OXEN_LOG(err, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
 
     if (int rc = sqlite3_exec(db, "PRAGMA synchronous = NORMAL", nullptr, nullptr, nullptr);
             rc != SQLITE_OK)
-        OXEN_LOG(critical, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
+        OXEN_LOG(err, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
 
     check_page_size(db);
     set_page_count(db);
@@ -216,9 +217,9 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     if (!get_row_count_stmt)
         throw std::runtime_error("could not prepare row count statement");
 
-    get_by_index_stmt = prepare_statement("SELECT * FROM `Data` LIMIT ?, 1;");
-    if (!get_by_index_stmt)
-        throw std::runtime_error("could not prepare get by index statement");
+    get_random_stmt = prepare_statement("SELECT * FROM Data WHERE rowid = (SELECT rowid FROM Data ORDER BY RANDOM() LIMIT 1)");
+    if (!get_random_stmt)
+        throw std::runtime_error("could not prepare get random statement");
 
     get_by_hash_stmt =
         prepare_statement("SELECT * FROM `Data` WHERE `Hash` = ?;");
@@ -312,32 +313,28 @@ static Item extract_item(sqlite3_stmt* stmt) {
     return item;
 }
 
-bool Database::retrieve_by_index(uint64_t index, Item& item) {
-
-    sqlite3_bind_int64(get_by_index_stmt, 1, index);
+bool Database::retrieve_random(Item& item) {
 
     bool success = false;
     int rc;
     while (true) {
-        rc = sqlite3_step(get_by_index_stmt);
+        rc = sqlite3_step(get_random_stmt);
         if (rc == SQLITE_BUSY) {
             continue;
         } else if (rc == SQLITE_DONE) {
-            // Note that if the index is out of bounds, we will get here
-            // returning an empty Item
             break;
         } else if (rc == SQLITE_ROW) {
-            item = extract_item(get_by_index_stmt);
+            item = extract_item(get_random_stmt);
             success = true;
             break;
         } else {
             OXEN_LOG(critical,
-                     "Could not execute `retrieve by index` db statement");
+                     "Could not execute `retrieve random` db statement");
             break;
         }
     }
 
-    rc = sqlite3_reset(get_by_index_stmt);
+    rc = sqlite3_reset(get_random_stmt);
     if (rc != SQLITE_OK) {
         OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db));
