@@ -163,7 +163,7 @@ if (USE_JEMALLOC)
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc
     BINARY_DIR jemalloc
     CONFIGURE_COMMAND cd ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc && ./autogen.sh
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc/configure
+    COMMAND cd ${CMAKE_CURRENT_BINARY_DIR}/jemalloc && ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc/configure
       --enable-static --disable-shared --prefix=<INSTALL_DIR>
       "CC=${jemalloc_cc}" "CXX=${jemalloc_cxx}"
     EXCLUDE_FROM_ALL TRUE
