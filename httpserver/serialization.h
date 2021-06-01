@@ -11,6 +11,8 @@ struct Item;
 
 struct message_t;
 
+inline constexpr size_t SERIALIZATION_BATCH_SIZE = 9'000'000;
+
 template <typename T>
 void serialize_message(std::string& buf, const T& msg);
 
