@@ -42,6 +42,12 @@ set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
     CACHE STRING "libzmq source hash")
 
+set(LIBUV_VERSION 1.41.0 CACHE STRING "libuv version")
+set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
+    CACHE STRING "libuv mirror(s)")
+set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
+set(LIBUV_HASH SHA512=33613fa28e8136507300eba374351774849b6b39aab4e53c997a918d3bc1d1094c6123e0e509535095b14dc5daa885eadb1a67bed46622ad3cc79d62dc817e84
+    CACHE STRING "libuv source hash")
 
 
 include(ExternalProject)
@@ -162,6 +168,16 @@ function(build_external target)
   )
 endfunction()
 
+if (WIN32 OR (APPLE AND NOT IOS))
+  build_external(libuv
+    CONFIGURE_COMMAND ./autogen.sh && ./configure ${cross_host} ${cross_rc} --prefix=${DEPS_DESTDIR} --with-pic --disable-shared --enable-static "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}"
+    BUILD_BYPRODUCTS
+      ${DEPS_DESTDIR}/lib/libuv.a
+      ${DEPS_DESTDIR}/include/uv.h
+    )
+  add_static_target(libuv libuv_external libuv.a)
+  target_link_libraries(libuv INTERFACE ${CMAKE_DL_LIBS})
+endif()
 
 
 set(openssl_configure ./config)

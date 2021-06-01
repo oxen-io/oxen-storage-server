@@ -95,9 +95,16 @@ target_link_libraries(uSockets OpenSSL::SSL OpenSSL::Crypto)
 # On Windows uSockets uses libuv for its event loop; on Mac kqueue is the default, but that seems to
 # not be reliable on older macos versions (like 10.12), so we use libuv on macos as well.
 if (WIN32 OR (APPLE AND NOT IOS))
-  add_subdirectory(libuv EXCLUDE_FROM_ALL)
-  target_link_libraries(uSockets uv_a)
-  target_compile_definitions(uSockets PUBLIC LIBUS_USE_LIBUV)
+  if(BUILD_STATIC_DEPS)
+    target_link_libraries(uSockets libuv)
+  else()
+    if(STATIC)
+      pkg_check_modules(LIBUV libuv-static REQUIRED IMPORTED_TARGET)
+    else()
+      pkg_check_modules(LIBUV libuv REQUIRED IMPORTED_TARGET)
+    endif()
+    target_link_libraries(uSockets PkgConfig::LIBUV)
+  endif()
 endif()
 
 
