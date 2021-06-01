@@ -699,7 +699,8 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     cpr::Header headers{
         {"Host", sn.pubkey_ed25519
             ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
-            : "service-node.snode"}
+            : "service-node.snode"},
+        {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
     };
 
     if (old_ping_test)
@@ -878,7 +879,8 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
         cpr::Header headers{
             {"Host", testee.pubkey_ed25519
                 ? oxenmq::to_base32z(testee.pubkey_ed25519.view()) + ".snode"
-                : "service-node.snode"}
+                : "service-node.snode"},
+            {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
         };
 
         for (auto& [h, v] : sign_request(body.str()))
