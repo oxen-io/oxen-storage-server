@@ -147,6 +147,8 @@ add_library(cpr::cpr ALIAS cpr)
 
 
 option(USE_JEMALLOC "Use jemalloc for memory allocations" ON)
+add_library(jemalloc INTERFACE)
+add_library(jemalloc::jemalloc ALIAS jemalloc)
 if (USE_JEMALLOC)
   set(jemalloc_cc "${CMAKE_C_COMPILER}")
   set(jemalloc_cxx "${CMAKE_CXX_COMPILER}")
@@ -170,15 +172,12 @@ if (USE_JEMALLOC)
     INSTALL_DIR jemalloc-install
     BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
   )
-  add_library(jemalloc STATIC IMPORTED GLOBAL)
-  add_dependencies(jemalloc jemalloc_external)
-  set_target_properties(jemalloc PROPERTIES
+  add_library(jemalloc_a STATIC IMPORTED GLOBAL)
+  add_dependencies(jemalloc_a jemalloc_external)
+  set_target_properties(jemalloc_a PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
   )
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/include)
-  target_include_directories(jemalloc SYSTEM INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/include)
-  target_link_libraries(jemalloc INTERFACE ${CMAKE_DL_LIBS})
-else()
-  add_library(jemalloc INTERFACE)
+  target_link_libraries(jemalloc_a INTERFACE ${CMAKE_DL_LIBS})
+  target_link_libraries(jemalloc INTERFACE jemalloc_a)
 endif()
-add_library(jemalloc::jemalloc ALIAS jemalloc)
