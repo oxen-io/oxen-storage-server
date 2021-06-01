@@ -1358,7 +1358,7 @@ std::string ServiceNode::get_status_line() const {
 
     std::lock_guard guard(sn_mutex_);
 
-    // v2.3.4; sw=abcd…789(n=7); 123 msgs; reqs(S/R/O/P): 123/456/789/1011 in 62.3min
+    // v2.3.4; sw=abcd…789(n=7); 123 msgs (47.3MB); reqs(S/R/O/P): 123/456/789/1011 (last 62.3min)
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
     if (!oxen::is_mainnet)
@@ -1379,10 +1379,10 @@ std::string ServiceNode::get_status_line() const {
         if (uint64_t bytes_stored; db_->get_used_pages(bytes_stored)) {
             bytes_stored *= Database::PAGE_SIZE;
             s << " (";
-            auto oldprec = s.precision(4);
-            if (bytes_stored >= 1'000'000'000)
+            auto oldprec = s.precision(3);
+            if (bytes_stored >= 999'500'000)
                 s << bytes_stored * 1e-9 << 'G';
-            else if (bytes_stored >= 1'000'000)
+            else if (bytes_stored >= 999'500)
                 s << bytes_stored * 1e-6 << 'M';
             else if (bytes_stored >= 1000)
                 s << bytes_stored * 1e-3 << 'k';
@@ -1398,7 +1398,7 @@ std::string ServiceNode::get_status_line() const {
         << stats.client_retrieve_requests << '/'
         << stats.onion_requests << '/'
         << stats.proxy_requests
-        << " in " << util::short_duration(window);
+        << " (last " << util::short_duration(window) << ")";
     return s.str();
 }
 
