@@ -1,6 +1,6 @@
 
 local default_deps_base='libsystemd-dev libboost-program-options-dev libcurl4-openssl-dev ' +
-    'libsqlite3-dev libsodium-dev libssl-dev pkg-config autoconf make';
+    'libsqlite3-dev libsodium-dev libssl-dev pkg-config autoconf make libjemalloc-dev';
 local default_deps_nocxx='libsodium-dev ' + default_deps_base; // libsodium-dev needs to be >= 1.0.18
 local default_deps='g++ ' + default_deps_nocxx; // g++ sometimes needs replacement
 local docker_base = 'registry.oxen.rocks/lokinet-ci-';
