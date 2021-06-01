@@ -46,10 +46,8 @@ std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
     std::vector<std::string> res;
     res.emplace_back();
 
-    constexpr size_t BATCH_SIZE = 9'000'000;
-
     for (const auto& msg : msgs) {
-        if (res.back().size() > BATCH_SIZE)
+        if (res.back().size() > SERIALIZATION_BATCH_SIZE)
             res.emplace_back();
         serialize_message(res.back(), msg);
     }
