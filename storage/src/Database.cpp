@@ -171,7 +171,8 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
         "    Data BLOB"
         ");"
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_data_hash ON Data(Hash);"
-        "CREATE INDEX IF NOT EXISTS idx_data_owner on Data('Owner');";
+        "CREATE INDEX IF NOT EXISTS idx_data_owner on Data(Owner);";
+    // TODO: WTF -- the above index was previously 'Owner' and so created an index on the FIXED LITERAL STRING 'Owner' for every row
 
     char* errMsg = nullptr;
     rc = sqlite3_exec(db, create_table_query, nullptr, nullptr, &errMsg);
@@ -213,6 +214,8 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     if (!get_all_stmt)
         throw std::runtime_error("could not prepare the get all statement");
 
+    // FIXME: this query is cursed: rowid is not guaranteed to be monotonic, *nor* is it guaranteed
+    // to even stay the same.  This table structure has to be redesigned.
     get_stmt = prepare_statement(R"(
         SELECT Hash, Owner, Timestamp, TimeExpires, Data
         FROM Data
