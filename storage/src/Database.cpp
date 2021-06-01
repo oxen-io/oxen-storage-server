@@ -423,9 +423,8 @@ bool Database::store(
             result = true;
             break;
         } else if (rc == SQLITE_FULL) {
-            if (db_full_counter % DB_FULL_FREQUENCY == 0) {
+            if (db_full_counter++ % DB_FULL_FREQUENCY == 0) {
                 OXEN_LOG(err, "Failed to store message: database is full");
-                ++db_full_counter;
             }
             break;
         } else {

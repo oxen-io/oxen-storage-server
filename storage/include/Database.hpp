@@ -3,6 +3,7 @@
 #include "Item.hpp"
 #include "oxen_common.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -72,6 +73,9 @@ class Database {
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
     void open_and_prepare(const std::filesystem::path& db_path);
+
+    // keep track of db full errorss so we don't print them on every store
+    std::atomic<int> db_full_counter = 0;
 
     sqlite3* db;
     sqlite3_stmt* save_stmt;

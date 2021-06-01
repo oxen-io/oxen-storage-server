@@ -666,6 +666,8 @@ void RequestHandler::process_onion_exit(
     this->process_client_req(body, std::move(cb));
 }
 
+static std::atomic<int> proxy_idx = 0;
+
 void RequestHandler::process_proxy_exit(
         const x25519_pubkey& client_key,
         std::string_view payload,
@@ -675,8 +677,6 @@ void RequestHandler::process_proxy_exit(
         return cb(wrap_proxy_response(
                 {http::SERVICE_UNAVAILABLE, "Snode not ready"},
                 client_key, EncryptType::aes_cbc));
-
-    static int proxy_idx = 0;
 
     int idx = proxy_idx++;
 
