@@ -3,6 +3,7 @@
 #include "Item.hpp"
 #include "oxen_common.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -32,10 +33,21 @@ class Database {
 
     enum class DuplicateHandling { IGNORE, FAIL };
 
-    bool store(const std::string& hash, const std::string& pubKey,
-               const std::string& bytes, uint64_t ttl, uint64_t timestamp,
-               const std::string& nonce,
-               DuplicateHandling behaviour = DuplicateHandling::FAIL);
+    bool store(std::string_view hash, std::string_view pubKey, std::string_view bytes,
+            std::chrono::system_clock::time_point timestamp, std::chrono::system_clock::time_point expiry,
+            DuplicateHandling behaviour = DuplicateHandling::FAIL);
+
+    bool store(std::string_view hash, std::string_view pubKey, std::string_view bytes,
+            std::chrono::milliseconds ttl, std::chrono::system_clock::time_point timestamp,
+            DuplicateHandling behaviour = DuplicateHandling::FAIL) {
+        return store(hash, pubKey, bytes, timestamp, timestamp + ttl, behaviour);
+    }
+    bool store(const storage::Item& item, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
+        return store(item.hash, item.pub_key, item.data, item.timestamp, item.expiration, behaviour);
+    }
+    bool store(const message_t& msg, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
+        return store(msg.hash, msg.pub_key, msg.data, msg.timestamp, msg.timestamp + msg.ttl, behaviour);
+    }
 
     bool bulk_store(const std::vector<storage::Item>& items);
 

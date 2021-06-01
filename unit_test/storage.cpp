@@ -41,12 +41,11 @@ TEST_CASE("storage - data persistence", "[storage]") {
     const auto hash = "myhash";
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+        CHECK(storage.store(hash, pubkey, bytes, ttl, now));
         // the database is closed when storage goes out of scope
     }
     {
@@ -58,10 +57,10 @@ TEST_CASE("storage - data persistence", "[storage]") {
 
         CHECK(storage.retrieve(pubkey, items, lastHash));
 
-        CHECK(items.size() == 1);
+        REQUIRE(items.size() == 1);
         CHECK(items[0].pub_key == pubkey);
         CHECK(items[0].hash == hash);
-        CHECK(items[0].expiration_timestamp - items[0].timestamp == ttl);
+        CHECK(items[0].expiration - items[0].timestamp == ttl);
         CHECK(items[0].data == bytes);
     }
 }
@@ -72,15 +71,14 @@ TEST_CASE("storage - returns false when storing existing hash", "[storage]") {
     const auto hash = "myhash";
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     Database storage{"."};
 
-    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp));
     // store using the same hash, FAIL is default behaviour
-    CHECK_FALSE(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
+    CHECK_FALSE(storage.store(hash, pubkey, bytes, ttl, timestamp,
                               Database::DuplicateHandling::FAIL));
 }
 
@@ -90,15 +88,14 @@ TEST_CASE("storage - returns true when storing existing with ignore constraint",
     const auto hash = "myhash";
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     Database storage{"."};
 
-    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp));
     // store using the same hash
-    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
+    CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp,
                               Database::DuplicateHandling::IGNORE));
 }
 
@@ -107,16 +104,15 @@ TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
 
     Database storage{"."};
 
-    CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
-                              util::get_time_ms(), "nonce"));
-    CHECK(storage.store("hash1", "otherpubkey", "bytesasstring1", 100000,
-                              util::get_time_ms(), "nonce"));
+    auto now = std::chrono::system_clock::now();
+    CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100s, now));
+    CHECK(storage.store("hash1", "otherpubkey", "bytesasstring1", 100s, now));
 
     {
         std::vector<Item> items;
         const auto lastHash = "";
         CHECK(storage.retrieve("mypubkey", items, lastHash));
-        CHECK(items.size() == 1);
+        REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash0");
     }
 
@@ -124,7 +120,7 @@ TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
         std::vector<Item> items;
         const auto lastHash = "";
         CHECK(storage.retrieve("otherpubkey", items, lastHash));
-        CHECK(items.size() == 1);
+        REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash1");
     }
 }
@@ -134,18 +130,18 @@ TEST_CASE("storage - return entries older than lasthash", "[storage]") {
 
     Database storage{"."};
 
+    auto now = std::chrono::system_clock::now();
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
         const auto hash = std::string("hash") + std::to_string(i);
-        storage.store(hash, "mypubkey", "bytesasstring", 100000,
-                      util::get_time_ms(), "nonce");
+        storage.store(hash, "mypubkey", "bytesasstring", 100s, now);
     }
 
     {
         std::vector<Item> items;
         const auto lastHash = "hash0";
         CHECK(storage.retrieve("mypubkey", items, lastHash));
-        CHECK(items.size() == num_entries - 1);
+        REQUIRE(items.size() == num_entries - 1);
         CHECK(items[0].hash == "hash1");
     }
 
@@ -154,7 +150,7 @@ TEST_CASE("storage - return entries older than lasthash", "[storage]") {
         const auto lastHash =
             std::string("hash") + std::to_string(num_entries / 2 - 1);
         CHECK(storage.retrieve("mypubkey", items, lastHash));
-        CHECK(items.size() == num_entries / 2);
+        REQUIRE(items.size() == num_entries / 2);
         CHECK(items[0].hash == "hash" + std::to_string(num_entries / 2));
     }
 }
@@ -166,15 +162,14 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
 
     Database storage{"."};
 
-    CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
-                              util::get_time_ms(), "nonce"));
-    CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0,
-                              util::get_time_ms(), "nonce"));
+    auto now = std::chrono::system_clock::now();
+    CHECK(storage.store("hash0", pubkey, "bytesasstring0", 1s, now));
+    CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0s, now));
     {
         std::vector<Item> items;
         const auto lastHash = "";
         CHECK(storage.retrieve(pubkey, items, lastHash));
-        CHECK(items.size() == 2);
+        REQUIRE(items.size() == 2);
     }
     std::this_thread::sleep_for(5ms);
     storage.clean_expired();
@@ -182,7 +177,7 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
         std::vector<Item> items;
         const auto lastHash = "";
         CHECK(storage.retrieve(pubkey, items, lastHash));
-        CHECK(items.size() == 1);
+        REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash0");
     }
 }
@@ -192,9 +187,8 @@ TEST_CASE("storage - bulk data storage", "[storage]") {
 
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     const size_t num_items = 100;
 
@@ -204,8 +198,8 @@ TEST_CASE("storage - bulk data storage", "[storage]") {
     {
         std::vector<Item> items;
         for (int i = 0; i < num_items; ++i) {
-            items.push_back({std::to_string(i), pubkey, timestamp, ttl,
-                             timestamp + ttl, nonce, bytes});
+            items.emplace_back(std::to_string(i), pubkey, timestamp,
+                             timestamp + ttl, bytes);
         }
 
         CHECK(storage.bulk_store(items));
@@ -225,23 +219,21 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
 
     const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     const size_t num_items = 100;
 
     Database storage{"."};
 
     // insert existing
-    CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
+    CHECK(storage.store("0", pubkey, bytes, ttl, timestamp));
 
     // bulk store
     {
         std::vector<Item> items;
         for (int i = 0; i < num_items; ++i) {
-            items.push_back({std::to_string(i), pubkey, timestamp, ttl,
-                             timestamp + ttl, nonce, bytes});
+            items.emplace_back(std::to_string(i), pubkey, timestamp, timestamp + ttl, bytes);
         }
 
         CHECK(storage.bulk_store(items));
@@ -261,11 +253,11 @@ TEST_CASE("storage - retrieve limit", "[storage]") {
 
     Database storage{"."};
 
+    auto now = std::chrono::system_clock::now();
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
         const auto hash = std::string("hash") + std::to_string(i);
-        storage.store(hash, "mypubkey", "bytesasstring", 100000,
-                      util::get_time_ms(), "nonce");
+        storage.store(hash, "mypubkey", "bytesasstring", 100s, now);
     }
 
     // should return all items

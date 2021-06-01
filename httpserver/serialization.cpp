@@ -7,6 +7,7 @@
 #include "string_utils.hpp"
 
 #include <boost/endian/conversion.hpp>
+#include <chrono>
 
 namespace oxen {
 
@@ -23,25 +24,23 @@ static void serialize(std::string& buf, const std::string& str) {
     buf += str;
 }
 
-template <typename T>
-void serialize_message(std::string& res, const T& msg) {
+void serialize_message(std::string& res, const storage::Item& msg) {
 
     /// TODO: use binary / base64 representation for pk
     res += msg.pub_key;
     serialize(res, msg.hash);
     serialize(res, msg.data);
-    serialize_integer(res, msg.ttl);
-    serialize_integer(res, msg.timestamp);
-    serialize(res, msg.nonce);
+    // For backwards compat, we send expiry as a ttl
+    serialize_integer<uint64_t>(res, std::chrono::duration_cast<std::chrono::milliseconds>(
+            msg.expiration - msg.timestamp).count());
+    serialize_integer<uint64_t>(res, std::chrono::duration_cast<std::chrono::milliseconds>(
+                msg.timestamp.time_since_epoch()).count());
+    serialize(res, ""s); // Empty nonce string, no longer used, but serialization currently requires it be here
 
     OXEN_LOG(trace, "serialized message: {}", msg.data);
 }
 
-template void serialize_message(std::string& res, const message_t& msg);
-template void serialize_message(std::string& res, const Item& msg);
-
-template <typename T>
-std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
+std::vector<std::string> serialize_messages(const std::vector<storage::Item>& msgs) {
 
     std::vector<std::string> res;
     res.emplace_back();
@@ -54,12 +53,6 @@ std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
 
     return res;
 }
-
-template std::vector<std::string>
-serialize_messages(const std::vector<message_t>& msgs);
-
-template std::vector<std::string>
-serialize_messages(const std::vector<Item>& msgs);
 
 template <typename T>
 static std::optional<T> deserialize_integer(std::string_view& slice) {
@@ -92,48 +85,57 @@ static std::optional<std::string> deserialize_string(std::string_view& slice) {
     return std::nullopt;
 }
 
-std::vector<message_t> deserialize_messages(std::string_view slice) {
+std::vector<storage::Item> deserialize_messages(std::string_view slice) {
 
     OXEN_LOG(trace, "=== Deserializing ===");
 
-    std::vector<message_t> result;
+    std::vector<storage::Item> result;
 
     while (!slice.empty()) {
+        auto& item = result.emplace_back();
 
         /// Deserialize PK
-        auto pk = deserialize_string(slice, oxen::get_user_pubkey_size());
-        if (!pk) {
+        if (auto pk = deserialize_string(slice, oxen::get_user_pubkey_size()))
+            item.pub_key = std::move(*pk);
+        else {
             OXEN_LOG(debug, "Could not deserialize pk");
             return {};
         }
 
         /// Deserialize Hash
-        auto hash = deserialize_string(slice);
-        if (!hash) {
+        if (auto hash = deserialize_string(slice))
+            item.hash = std::move(*hash);
+        else {
             OXEN_LOG(debug, "Could not deserialize hash");
             return {};
         }
 
         /// Deserialize Data
-        auto data = deserialize_string(slice);
-        if (!data) {
+        if (auto data = deserialize_string(slice))
+            item.data = std::move(*data);
+        else {
             OXEN_LOG(debug, "Could not deserialize data");
             return {};
         }
 
         /// Deserialize TTL
-        auto ttl = deserialize_integer<uint64_t>(slice);
-        if (!ttl) {
+        std::chrono::milliseconds ttl;
+        if (auto ttl_ms = deserialize_integer<uint64_t>(slice))
+            ttl = std::chrono::milliseconds{*ttl_ms};
+        else {
             OXEN_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
-        auto timestamp = deserialize_integer<uint64_t>(slice);
-        if (!timestamp) {
+        if (auto timestamp = deserialize_integer<uint64_t>(slice))
+            item.timestamp = std::chrono::system_clock::time_point{std::chrono::milliseconds{*timestamp}};
+        else {
             OXEN_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
+
+        item.expiration = item.timestamp + ttl;
 
         /// Deserialize Nonce
         /// TODO: Nonce is unused but we have to call this for backwards compat (and if we don't
@@ -144,11 +146,7 @@ std::vector<message_t> deserialize_messages(std::string_view slice) {
         /// values as hex, and using a rigid fixed ordering of fields.
         [[maybe_unused]] auto unused_nonce = deserialize_string(slice);
 
-        OXEN_LOG(trace, "Deserialized data: {}", *data);
-
-        OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
-
-        result.emplace_back(std::move(*pk), std::move(*data), std::move(*hash), *ttl, *timestamp);
+        OXEN_LOG(trace, "pk: {}, msg: {}", item.pub_key, item.data);
     }
 
     OXEN_LOG(trace, "=== END ===");

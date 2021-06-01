@@ -95,9 +95,7 @@ class ServiceNode {
 
     std::forward_list<std::future<void>> outstanding_https_reqs_;
 
-    void save_if_new(const message_t& msg);
-
-    // Save items to the database, notifying listeners as necessary
+    // Save multiple items to the database at once (i.e. in a single transaction)
     void save_bulk(const std::vector<storage::Item>& items);
 
     void on_bootstrap_update(block_update_t&& bu);
@@ -120,9 +118,8 @@ class ServiceNode {
     relay_data_reliable(const std::string& blob,
                         const sn_record_t& address) const; // mutex not needed
 
-    template <typename Message>
     void relay_messages(
-        const std::vector<Message>& messages,
+        const std::vector<storage::Item>& items,
         const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
     // Conducts any ping peer tests that are due; (this is designed to be called frequently and does

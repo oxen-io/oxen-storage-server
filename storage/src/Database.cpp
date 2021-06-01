@@ -3,6 +3,7 @@
 #include "utils.hpp"
 
 #include "sqlite3.h"
+#include <chrono>
 #include <cstdlib>
 #include <exception>
 
@@ -30,9 +31,9 @@ Database::Database(const std::filesystem::path& db_path) {
 }
 
 void Database::clean_expired() {
-    const auto now_ms = util::get_time_ms();
-
-    sqlite3_bind_int64(delete_expired_stmt, 1, now_ms);
+    using namespace std::chrono;
+    sqlite3_bind_int64(delete_expired_stmt, 1, duration_cast<milliseconds>(
+                system_clock::now().time_since_epoch()).count());
 
     int rc;
     while (true) {
@@ -160,17 +161,17 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     set_page_count(db);
 
     const char* create_table_query =
-        "CREATE TABLE IF NOT EXISTS `Data`("
-        "    `Hash` VARCHAR(128) NOT NULL,"
-        "    `Owner` VARCHAR(256) NOT NULL,"
-        "    `TTL` INTEGER NOT NULL,"
-        "    `Timestamp` INTEGER NOT NULL,"
-        "    `TimeExpires` INTEGER NOT NULL,"
-        "    `Nonce` VARCHAR(128) NOT NULL,"
-        "    `Data` BLOB"
+        "CREATE TABLE IF NOT EXISTS Data("
+        "    Hash VARCHAR(128) NOT NULL,"
+        "    Owner VARCHAR(256) NOT NULL,"
+        "    TTL INTEGER NOT NULL," // No longer used; TODO: nuke this the next time we do a table migration
+        "    Timestamp INTEGER NOT NULL,"
+        "    TimeExpires INTEGER NOT NULL,"
+        "    Nonce VARCHAR(128) NOT NULL," // No longer used; TODO: nuke this field the next time we do a table migration
+        "    Data BLOB"
         ");"
-        "CREATE UNIQUE INDEX IF NOT EXISTS `idx_data_hash` ON `Data` (`Hash`);"
-        "CREATE INDEX IF NOT EXISTS `idx_data_owner` on `Data` ('Owner');";
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_data_hash ON Data(Hash);"
+        "CREATE INDEX IF NOT EXISTS idx_data_owner on Data('Owner');";
 
     char* errMsg = nullptr;
     rc = sqlite3_exec(db, create_table_query, nullptr, nullptr, &errMsg);
@@ -182,52 +183,65 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
         throw std::runtime_error("Can't create table");
     }
 
-    save_stmt = prepare_statement(
-        "INSERT INTO Data "
-        "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
-        "VALUES (?,?,?,?,?,?,?);");
+    save_stmt = prepare_statement(R"(
+        INSERT INTO Data
+        (Hash, Owner, Timestamp, TimeExpires, Data, TTL, Nonce)
+        VALUES (?,?,?,?,?,0,''))");
     if (!save_stmt)
         throw std::runtime_error("could not prepare the save statement");
 
-    save_or_ignore_stmt = prepare_statement(
-        "INSERT OR IGNORE INTO Data "
-        "(Hash, Owner, TTL, Timestamp, TimeExpires, Nonce, Data)"
-        "VALUES (?,?,?,?,?,?,?)");
+    save_or_ignore_stmt = prepare_statement(R"(
+        INSERT OR IGNORE INTO Data
+        (Hash, Owner, Timestamp, TimeExpires, Data, TTL, Nonce)
+        VALUES (?,?,?,?,?,0,''))");
     if (!save_or_ignore_stmt)
         throw std::runtime_error("could not prepare the bulk save statement");
 
-    get_all_for_pk_stmt = prepare_statement(
-        "SELECT * FROM Data WHERE `Owner` = ? ORDER BY rowid LIMIT ?;");
+    get_all_for_pk_stmt = prepare_statement(R"(
+        SELECT Hash, Owner, Timestamp, TimeExpires, Data
+        FROM Data
+        WHERE Owner = ?
+        ORDER BY rowid LIMIT ?)");
     if (!get_all_for_pk_stmt)
         throw std::runtime_error(
             "could not prepare the get all for pk statement");
 
-    get_all_stmt = prepare_statement("SELECT * FROM Data ORDER BY rowid;");
+    get_all_stmt = prepare_statement(R"(
+        SELECT Hash, Owner, Timestamp, TimeExpires, Data
+        FROM Data
+        ORDER BY rowid)");
     if (!get_all_stmt)
         throw std::runtime_error("could not prepare the get all statement");
 
-    get_stmt =
-        prepare_statement("SELECT * FROM `Data` WHERE `Owner` == ? AND rowid >"
-                          "COALESCE((SELECT `rowid` FROM `Data` WHERE `Hash` = "
-                          "?), 0) ORDER BY rowid LIMIT ?;");
+    get_stmt = prepare_statement(R"(
+        SELECT Hash, Owner, Timestamp, TimeExpires, Data
+        FROM Data
+        WHERE Owner = ? AND rowid > COALESCE((SELECT rowid FROM Data WHERE Hash = ?), 0)
+        ORDER BY rowid
+        LIMIT ?)");
     if (!get_stmt)
         throw std::runtime_error("could not prepare get statement");
 
-    get_row_count_stmt = prepare_statement("SELECT count(*) FROM `Data`;");
+    get_row_count_stmt = prepare_statement("SELECT COUNT(*) FROM Data");
     if (!get_row_count_stmt)
         throw std::runtime_error("could not prepare row count statement");
 
-    get_random_stmt = prepare_statement("SELECT * FROM Data WHERE rowid = (SELECT rowid FROM Data ORDER BY RANDOM() LIMIT 1)");
+    get_random_stmt = prepare_statement(R"(
+        SELECT Hash, Owner, Timestamp, TimeExpires, Data
+        FROM Data
+        WHERE rowid = (SELECT rowid FROM Data ORDER BY RANDOM() LIMIT 1))");
     if (!get_random_stmt)
         throw std::runtime_error("could not prepare get random statement");
 
-    get_by_hash_stmt =
-        prepare_statement("SELECT * FROM `Data` WHERE `Hash` = ?;");
+    get_by_hash_stmt = prepare_statement(R"(
+        SELECT Hash, Owner, Timestamp, TimeExpires, Data
+        FROM Data
+        WHERE Hash = ?)");
     if (!get_by_hash_stmt)
         throw std::runtime_error("could not prepare get by hash statement");
 
     delete_expired_stmt =
-        prepare_statement("DELETE FROM `Data` WHERE `TimeExpires` <= ?");
+        prepare_statement("DELETE FROM Data WHERE TimeExpires <= ?");
     if (!delete_expired_stmt)
         throw std::runtime_error(
             "could not prepare 'delete expired' statement");
@@ -297,19 +311,14 @@ bool Database::get_message_count(uint64_t& count) {
 
 /// Extract item from the result of a successfull select statement execution
 static Item extract_item(sqlite3_stmt* stmt) {
-
+    using namespace std::chrono;
     Item item;
-
-    // "If the SQL statement does not currently point to a valid row, or if the
-    // column index is out of range, the result is undefined"
-    item.hash = std::string((const char*)sqlite3_column_text(stmt, 0));
-    item.pub_key = std::string((const char*)sqlite3_column_text(stmt, 1));
-    item.ttl = sqlite3_column_int64(stmt, 2);
-    item.timestamp = sqlite3_column_int64(stmt, 3);
-    item.expiration_timestamp = sqlite3_column_int64(stmt, 4);
-    item.nonce = std::string((const char*)sqlite3_column_text(stmt, 5));
-    item.data = std::string((char*)sqlite3_column_blob(stmt, 6),
-                            sqlite3_column_bytes(stmt, 6));
+    item.hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    item.pub_key = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+    item.timestamp = system_clock::time_point{milliseconds{sqlite3_column_int64(stmt, 2)}};
+    item.expiration = system_clock::time_point{milliseconds{sqlite3_column_int64(stmt, 3)}};
+    item.data = std::string(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 4)),
+            sqlite3_column_bytes(stmt, 4));
     return item;
 }
 
@@ -344,9 +353,9 @@ bool Database::retrieve_random(Item& item) {
     return success;
 }
 
-bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
+bool Database::retrieve_by_hash(std::string_view msg_hash, Item& item) {
 
-    sqlite3_bind_text(get_by_hash_stmt, 1, msg_hash.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(get_by_hash_stmt, 1, msg_hash.data(), msg_hash.size(), SQLITE_STATIC);
 
     bool success = false;
     int rc;
@@ -379,28 +388,26 @@ bool Database::retrieve_by_hash(const std::string& msg_hash, Item& item) {
     return success;
 }
 
-bool Database::store(const std::string& hash, const std::string& pubKey,
-                     const std::string& bytes, uint64_t ttl, uint64_t timestamp,
-                     const std::string& nonce,
-                     DuplicateHandling duplicateHandling) {
-
-    const auto exp_time = timestamp + ttl;
+bool Database::store(
+        std::string_view hash,
+        std::string_view pubKey,
+        std::string_view bytes,
+        std::chrono::system_clock::time_point timestamp,
+        std::chrono::system_clock::time_point expiry,
+        DuplicateHandling duplicateHandling) {
 
     sqlite3_stmt* stmt = duplicateHandling == DuplicateHandling::IGNORE
                              ? save_or_ignore_stmt
                              : save_stmt;
 
     // TODO: bind can return errors, handle them
-    sqlite3_bind_text(stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, pubKey.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 3, ttl);
-    sqlite3_bind_int64(stmt, 4, timestamp);
-    sqlite3_bind_int64(stmt, 5, exp_time);
-    sqlite3_bind_blob(stmt, 6, nonce.data(), nonce.size(), SQLITE_STATIC);
-    sqlite3_bind_blob(stmt, 7, bytes.data(), bytes.size(), SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, hash.data(), hash.size(), SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, pubKey.data(), pubKey.size(), SQLITE_STATIC);
+    using namespace std::chrono;
+    sqlite3_bind_int64(stmt, 3, duration_cast<milliseconds>(timestamp.time_since_epoch()).count());
+    sqlite3_bind_int64(stmt, 4, duration_cast<milliseconds>(expiry.time_since_epoch()).count());
+    sqlite3_bind_blob(stmt, 5, bytes.data(), bytes.size(), SQLITE_STATIC);
 
-    // keep track of db full errorss so we don't print them on every store
-    static int db_full_counter = 0;
     // print the error once so many errors
     constexpr int DB_FULL_FREQUENCY = 100;
 
@@ -444,10 +451,8 @@ bool Database::bulk_store(const std::vector<Item>& items) {
     }
 
     try {
-        for (const auto& item : items) {
-            store(item.hash, item.pub_key, item.data, item.ttl, item.timestamp,
-                  item.nonce, DuplicateHandling::IGNORE);
-        }
+        for (const auto& item : items)
+            store(item, DuplicateHandling::IGNORE);
     } catch (...) {
         OXEN_LOG(err, "Failed to store items during bulk operation");
     }

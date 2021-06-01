@@ -41,6 +41,12 @@ std::string to_string(const Response& res);
 /// concatenated string parts, and can be returned as either bytes (64 bytes) or hex (128 chars)
 std::string computeMessageHash(std::vector<std::string_view> parts, bool hex);
 
+// Validates a TTL value to see if it is acceptable.
+bool validateTTL(std::chrono::milliseconds ttl);
+
+// Validates a timestamp to see if it is acceptable.  Takes the timestamp and the associated TTL.
+bool validateTimestamp(std::chrono::system_clock::time_point timestamp, std::chrono::milliseconds ttl);
+
 
 struct OnionRequestMetadata {
     x25519_pubkey ephem_key;

@@ -353,27 +353,18 @@ bool ServiceNode::process_store(const message_t& msg) {
 
     all_stats_.bump_store_requests();
 
-    /// store in the database
-    save_if_new(msg);
+    /// store in the database (if not already present)
+    if (db_->store(msg))
+        OXEN_LOG(trace, "saved message: {}", msg.data);
 
     std::string serialized;
-    serialize_message(serialized, msg);
+    serialize_message(serialized, Item{msg});
 
     for (auto& peer : swarm_->other_nodes())
         relay_data_reliable(serialized, peer);
 
     OXEN_LOG(debug, "Relayed message to {} swarm peers", swarm_->other_nodes().size());
     return true;
-}
-
-void ServiceNode::save_if_new(const message_t& msg) {
-
-    std::lock_guard guard(sn_mutex_);
-
-    if (db_->store(msg.hash, msg.pub_key, msg.data, msg.ttl, msg.timestamp,
-                   msg.nonce)) {
-        OXEN_LOG(trace, "saved message: {}", msg.data);
-    }
 }
 
 void ServiceNode::save_bulk(const std::vector<Item>& items) {
@@ -1143,11 +1134,12 @@ void ServiceNode::initiate_peer_test() {
 }
 
 void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
-
     std::vector<Item> all_entries;
-    this->get_all_messages(all_entries);
-
-    this->relay_messages(all_entries, peers);
+    if (!get_all_messages(all_entries)) {
+        OXEN_LOG(err, "Could not retrieve entries from the database");
+        return;
+    }
+    relay_messages(all_entries, peers);
 }
 
 void ServiceNode::bootstrap_swarms(
@@ -1226,8 +1218,7 @@ void ServiceNode::bootstrap_swarms(
     }
 }
 
-template <typename Message>
-void ServiceNode::relay_messages(const std::vector<Message>& messages,
+void ServiceNode::relay_messages(const std::vector<storage::Item>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
     std::vector<std::string> batches = serialize_messages(messages);
 
@@ -1390,26 +1381,14 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    std::vector<message_t> messages = deserialize_messages(blob);
+    std::vector<storage::Item> items = deserialize_messages(blob);
 
     OXEN_LOG(trace, "Saving all: begin");
 
-    OXEN_LOG(debug, "Got {} messages from peers, size: {}", messages.size(),
+    OXEN_LOG(debug, "Got {} messages from peers, size: {}", items.size(),
              blob.size());
 
-    std::vector<Item> items;
-    items.reserve(messages.size());
-
-    // TODO: avoid copying m.data
-    // Promoting message_t to Item:
-    std::transform(messages.begin(), messages.end(), std::back_inserter(items),
-                   [](const message_t& m) {
-                       return Item{m.hash, m.pub_key,           m.timestamp,
-                                   m.ttl,  m.timestamp + m.ttl, m.nonce,
-                                   m.data};
-                   });
-
-    this->save_bulk(items);
+    save_bulk(items);
 
     OXEN_LOG(trace, "Saving all: end");
 }

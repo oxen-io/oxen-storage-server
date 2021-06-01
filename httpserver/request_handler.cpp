@@ -84,6 +84,24 @@ std::string computeMessageHash(std::vector<std::string_view> parts, bool hex) {
     return hashResult;
 }
 
+bool validateTimestamp(std::chrono::system_clock::time_point timestamp, std::chrono::milliseconds ttl) {
+    auto now = std::chrono::system_clock::now();
+    // Timestamp must not be in the future (with some tolerance)
+    if (timestamp > now + 10s)
+        return false;
+
+    // Don't accept timestamp that has already expired
+    if (timestamp + ttl < now)
+        return false;
+
+    return true;
+}
+
+bool validateTTL(std::chrono::milliseconds ttl) {
+    // Minimum time to live of 10 seconds, maximum of 14 days
+    return ttl >= 10s && ttl <= 14 * 24h;
+}
+
 
 RequestHandler::RequestHandler(
         ServiceNode& sn,
@@ -118,9 +136,8 @@ Response RequestHandler::process_store(const json& params) {
         }
     }
 
-    const auto& ttl = params.at("ttl").get_ref<const std::string&>();
-    const auto& timestamp =
-        params.at("timestamp").get_ref<const std::string&>();
+    const auto& ttl_in = params.at("ttl");
+    const auto& timestamp_in = params.at("timestamp");
     const auto& data = params.at("data").get_ref<const std::string&>();
 
     OXEN_LOG(trace, "Storing message: {}", data);
@@ -149,24 +166,39 @@ Response RequestHandler::process_store(const json& params) {
         return this->handle_wrong_swarm(pk);
     }
 
-    uint64_t ttlInt;
-    if (!util::parseTTL(ttl, ttlInt)) {
-        OXEN_LOG(debug, "Forbidden. Invalid TTL: {}", ttl);
+    using namespace std::chrono;
+    std::optional<milliseconds> ttl;
+    if (ttl_in.is_number_unsigned())
+        ttl.emplace(ttl_in.get<uint64_t>());
+    else if (uint64_t ttlInt; ttl_in.is_string() &&
+            util::parse_int(ttl_in.get_ref<const std::string&>(), ttlInt))
+        ttl.emplace(ttlInt);
+    if (!ttl || !validateTTL(*ttl)) {
+        OXEN_LOG(debug, "Forbidden. Invalid TTL: {}", ttl_in.dump());
         return {http::FORBIDDEN, "Provided TTL is not valid.\n"};
     }
 
-    uint64_t timestampInt;
-    if (!util::parseTimestamp(timestamp, ttlInt, timestampInt)) {
-        OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}", timestamp);
+    std::optional<system_clock::time_point> timestamp;
+    if (timestamp_in.is_number_unsigned())
+        timestamp.emplace(milliseconds{timestamp_in.get<uint64_t>()});
+    else if (uint64_t t; timestamp_in.is_string() &&
+            util::parse_int(ttl_in.get_ref<const std::string&>(), t))
+        timestamp.emplace(milliseconds{t});
+    if (!timestamp || !validateTimestamp(*timestamp, *ttl)) {
+        OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}", timestamp_in.dump());
         return {http::NOT_ACCEPTABLE, "Timestamp error: check your clock\n"};
     }
 
-    auto messageHash = computeMessageHash({timestamp, ttl, pk.str(), data}, true);
+    auto messageHash = computeMessageHash({
+        std::to_string(duration_cast<milliseconds>(timestamp->time_since_epoch()).count()),
+        std::to_string(ttl->count()),
+        pk.str(),
+        data}, true);
 
     bool success;
 
     try {
-        success = service_node_.process_store({pk.str(), data, messageHash, ttlInt, timestampInt});
+        success = service_node_.process_store({pk.str(), data, messageHash, *ttl, *timestamp});
     } catch (const std::exception& e) {
         OXEN_LOG(critical,
                  "Internal Server Error. Could not store message for {}",
@@ -346,8 +378,9 @@ Response RequestHandler::process_retrieve(const json& params) {
     for (const auto& item : items) {
         json message;
         message["hash"] = item.hash;
-        /// TODO: calculate expiration time once only?
-        message["expiration"] = item.timestamp + item.ttl;
+        message["expiration"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                item.expiration.time_since_epoch()
+        ).count();
         message["data"] = item.data;
         messages.push_back(message);
     }

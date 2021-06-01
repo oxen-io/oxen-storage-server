@@ -56,20 +56,13 @@ class user_pubkey_t {
     }
 };
 
-/// message as received by client
+/// message as received from client
 struct message_t {
-
     std::string pub_key;
     std::string data;
     std::string hash;
-    uint64_t ttl;
-    uint64_t timestamp;
-    /// Nonce is now meaningless, but we keep it to avoid breaking the protocol
-    std::string nonce;
-
-    message_t(const std::string& pk, const std::string& text,
-              const std::string& hash, uint64_t ttl, uint64_t timestamp)
-        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp) {}
+    std::chrono::milliseconds ttl;
+    std::chrono::system_clock::time_point timestamp;
 };
 
 using swarm_id_t = uint64_t;
