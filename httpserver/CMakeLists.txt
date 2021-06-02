@@ -1,8 +1,5 @@
 add_definitions(-DDISABLE_ENCRYPTION)
 
-# Stop compiling post first error
-add_definitions(-Wfatal-errors)
-
 add_library(httpserver_lib STATIC
     main.cpp
     swarm.cpp
