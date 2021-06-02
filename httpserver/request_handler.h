@@ -121,12 +121,6 @@ class RequestHandler {
     // Test only: retrieve all db entires
     Response process_retrieve_all();
 
-    // Handle a Session client reqeust sent via SN proxy
-    void process_proxy_exit(
-            const x25519_pubkey& client_key,
-            std::string_view payload,
-            std::function<void(Response)> cb);
-
     // The result will arrive asynchronously, so it needs a callback handler
     void process_onion_req(std::string_view ciphertext, OnionRequestMetadata data);
 

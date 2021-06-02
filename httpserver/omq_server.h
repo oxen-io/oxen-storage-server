@@ -36,12 +36,6 @@ class OxenmqServer {
     // Handle Session data coming from peer SN
     void handle_sn_data(oxenmq::Message& message);
 
-    // Handle Session client requests arrived via proxy
-    void handle_sn_proxy_exit(oxenmq::Message& message);
-
-    // Called for the sn.onion_req_v2 endpoint
-    void handle_onion_req_v2(oxenmq::Message& message);
-
     // Called starting at HF18 for SS-to-SS onion requests
     void handle_onion_request(oxenmq::Message& message);
 

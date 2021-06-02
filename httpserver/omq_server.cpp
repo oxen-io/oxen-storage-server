@@ -57,49 +57,6 @@ void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
     message.send_reply();
 };
 
-static std::optional<x25519_pubkey> extract_x25519_from_hex(std::string_view hex) {
-    try {
-        return x25519_pubkey::from_hex(hex);
-    } catch (const std::exception& e) {
-        OXEN_LOG(warn, "Failed to decode client key: {}", e.what());
-    }
-    return std::nullopt;
-}
-
-void OxenmqServer::handle_sn_proxy_exit(oxenmq::Message& message) {
-
-    OXEN_LOG(debug, "[LMQ] handle_sn_proxy_exit");
-    OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    OXEN_LOG(debug, "[LMQ]   from: {}", oxenmq::to_hex(message.conn.pubkey()));
-
-    if (message.data.size() != 2) {
-        OXEN_LOG(debug, "Expected 2 message parts, got {}",
-                 message.data.size());
-        return;
-    }
-
-    auto client_key = extract_x25519_from_hex(message.data[0]);
-    // TODO: Just not returning any response here is gross: the protocol needs some way to return an
-    // error state, but doesn't currently have one.
-    if (!client_key) return;
-    const auto& payload = message.data[1];
-
-    request_handler_->process_proxy_exit(
-        *client_key, payload,
-        [send=message.send_later()](oxen::Response res) {
-            OXEN_LOG(debug, "    Proxy exit status: {}", res.status.first);
-
-            if (res.status == http::OK) {
-                send.reply(res.body);
-            } else {
-                // We reply with 2 message parts which will be treated as
-                // an error (rather than timeout)
-                send.reply(std::to_string(res.status.first), res.body);
-                OXEN_LOG(debug, "Error: status {} != OK for proxy_exit", res.status.first);
-            }
-        });
-}
-
 void OxenmqServer::handle_ping(oxenmq::Message& message) {
     OXEN_LOG(debug, "Remote pinged me");
     service_node_->update_last_ping(ReachType::OMQ);
@@ -194,32 +151,6 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
     handle_onion_request(data.first, std::move(data.second), message.send_later());
 }
 
-void OxenmqServer::handle_onion_req_v2(oxenmq::Message& message) {
-
-    OXEN_LOG(debug, "Got a v2 onion request over OxenMQ");
-
-    constexpr int bad_code = http::BAD_REQUEST.first;
-    if (message.data.size() != 2) {
-        OXEN_LOG(err, "Expected 2 message parts, got {}",
-                 message.data.size());
-        message.send_reply(std::to_string(bad_code),
-                "Incorrect number of onion request message parts");
-        return;
-    }
-
-    auto eph_key = extract_x25519_from_hex(message.data[0]);
-    if (!eph_key) {
-        OXEN_LOG(err, "no ephemeral key in omq onion request");
-        message.send_reply(std::to_string(bad_code), "Missing ephemeral key");
-        return;
-    }
-
-    handle_onion_request(
-            message.data[1], // ciphertext
-            {*eph_key, nullptr, 1 /* hopno */, EncryptType::aes_gcm},
-            message.send_later());
-}
-
 void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
 
     OXEN_LOG(debug, "Received get_logs request via LMQ");
@@ -293,7 +224,6 @@ OxenmqServer::OxenmqServer(
     // clang-format off
     omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false}, 2 /*reserved threads*/, 1000 /*max queue*/)
         .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
-        .add_request_command("proxy_exit", [this](auto& m) { handle_sn_proxy_exit(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
         .add_request_command("storage_test", [this](auto& m) { handle_storage_test(m); }) // NB: requires a 60s request timeout
         .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
