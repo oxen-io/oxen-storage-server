@@ -8,10 +8,13 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
+#include <oxenmq/oxenmq.h>
+#include <oxenmq/hex.h>
 
 namespace oxen {
 
-oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
+oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address,
+        std::function<bool()> keep_trying) {
     oxenmq::OxenMQ omq{omq_logger, oxenmq::LogLevel::info};
     omq.start();
     constexpr auto retry_interval = 5s;
@@ -26,6 +29,8 @@ oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
             std::this_thread::sleep_until(next_try);
         last_try = now;
 
+        if (keep_trying && !keep_trying())
+            return {};
         std::promise<oxend_seckeys> prom;
         auto fut = prom.get_future();
         auto conn = omq.connect_remote(oxenmq::address{oxend_rpc_address},
@@ -42,8 +47,8 @@ oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
 
                             auto pk = r.at("service_node_privkey").get<std::string>();
                             if (pk.empty())
-                                throw std::runtime_error{"main service node private key is empty; "
-                                    "perhaps oxend is not running in service-node mode?"};
+                                throw std::runtime_error{"main service node private key is empty ("
+                                    "perhaps oxend is not running in service-node mode?)"};
                             prom.set_value(oxend_seckeys{
                                 legacy_seckey::from_hex(pk),
                                 ed25519_seckey::from_hex(r.at("service_node_ed25519_privkey").get<std::string>()),
@@ -65,6 +70,8 @@ oxend_seckeys get_sn_privkeys(std::string_view oxend_rpc_address) {
         } catch (const std::exception& e) {
             OXEN_LOG(critical, "Error retrieving private keys from oxend: {}; retrying", e.what());
         }
+        if (keep_trying && !keep_trying())
+            return {};
     }
 }
 

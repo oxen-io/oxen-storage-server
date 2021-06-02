@@ -145,7 +145,7 @@ int main(int argc, char* argv[]) {
 
 #ifndef INTEGRATION_TEST
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            get_sn_privkeys(options.oxend_omq_rpc);
+            get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
 #else
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
@@ -163,6 +163,10 @@ int main(int argc, char* argv[]) {
             throw;
         }
 #endif
+        if (signalled) {
+            OXEN_LOG(err, "Received signal {}, aborting startup", signalled.load());
+            return EXIT_FAILURE;
+        }
 
         sn_record_t me{"0.0.0.0", options.port, options.omq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
