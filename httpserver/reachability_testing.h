@@ -25,8 +25,8 @@ struct nth_greater {
 };
 
 struct incoming_test_state {
-    time_point_t last_test{};
-    time_point_t last_whine{};
+    std::chrono::steady_clock::time_point last_test{};
+    std::chrono::steady_clock::time_point last_whine{};
     bool was_failing = false;
 };
 
@@ -72,6 +72,8 @@ class reachability_testing {
 
     // How often we whine in the logs about being unreachable
     inline static constexpr auto WHINING_INTERVAL = 2min;
+
+    using time_point_t = std::chrono::steady_clock::time_point;
 
   private:
 

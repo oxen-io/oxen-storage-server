@@ -1179,12 +1179,9 @@ void ServiceNode::bootstrap_swarms(
         const auto it = cache.find(entry.pub_key);
         if (it == cache.end()) {
 
-            bool success;
-            auto pk = user_pubkey_t::create(entry.pub_key, success);
-
-            if (!success) {
-                OXEN_LOG(err, "Invalid pubkey in a message while "
-                                "bootstrapping other nodes");
+            user_pubkey_t pk;
+            if (!pk.load(entry.pub_key)) {
+                OXEN_LOG(err, "Invalid pubkey in a message while bootstrapping other nodes");
                 continue;
             }
 

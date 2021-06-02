@@ -142,11 +142,8 @@ Response RequestHandler::process_store(const json& params) {
 
     OXEN_LOG(trace, "Storing message: {}", data);
 
-    bool created;
-    auto pk =
-        user_pubkey_t::create(params.at("pubKey").get<std::string>(), created);
-
-    if (!created) {
+    user_pubkey_t pk;
+    if (!pk.load(params.at("pubKey").get<std::string>())) {
         auto msg = fmt::format("Pubkey must be {} characters long\n",
                                get_user_pubkey_size());
         OXEN_LOG(debug, "{}", msg);
@@ -300,10 +297,8 @@ Response RequestHandler::process_snodes_by_pk(const json& params) const {
                         "invalid json: no `pubKey` field\n"};
     }
 
-    bool success;
-    const auto pk =
-        user_pubkey_t::create(params.at("pubKey").get<std::string>(), success);
-    if (!success) {
+    user_pubkey_t pk;
+    if (!pk.load(params.at("pubKey").get<std::string>(), success)) {
 
         auto msg = fmt::format("Pubkey must be {} hex digits long\n",
                                get_user_pubkey_size());
@@ -334,11 +329,8 @@ Response RequestHandler::process_retrieve(const json& params) {
         }
     }
 
-    bool success;
-    const auto pk =
-        user_pubkey_t::create(params["pubKey"].get<std::string>(), success);
-
-    if (!success) {
+    user_pubkey_t pk;
+    if (!pk.load(params["pubKey"].get<std::string>())) {
 
         auto msg = fmt::format("Pubkey must be {} characters long\n",
                                get_user_pubkey_size());

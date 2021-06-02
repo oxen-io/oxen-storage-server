@@ -14,8 +14,8 @@ using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
 
 static void check_incoming_tests_impl(
         std::string_view name,
-        const time_point_t& now,
-        const time_point_t& startup,
+        const reachability_testing::time_point_t& now,
+        const reachability_testing::time_point_t& startup,
         detail::incoming_test_state& incoming) {
 
     const auto elapsed = now - std::max(startup, incoming.last_test);
