@@ -205,14 +205,14 @@ void ServiceNode::bootstrap_data() {
     std::vector<oxenmq::address> seed_nodes;
     if (oxen::is_mainnet) {
         seed_nodes = {{
-            "curve://public.loki.foundation:22027/3c157ed3c675f56280dc5d8b2f00b327b5865c127bf2c6c42becc3ca73d9132b",
-            "curve://imaginary.stream:22027/449a8011d3abcb97f5db6d91529b1106b0590d2f2a86635104fe7059ffeeef47",
-            //"curve://storage.seed1.loki.network:22027/???",
-            //"curve://storage.seed3.loki.network:22027/???",
+            oxenmq::address{"curve://public.loki.foundation:22027/3c157ed3c675f56280dc5d8b2f00b327b5865c127bf2c6c42becc3ca73d9132b"},
+            oxenmq::address{"curve://imaginary.stream:22027/449a8011d3abcb97f5db6d91529b1106b0590d2f2a86635104fe7059ffeeef47"},
+            oxenmq::address{"curve://storage.seed1.loki.network:22027/6d4146b51404576efa6f582ea0562532b25ba4aceddb0d5d12bc127360678551"},
+            oxenmq::address{"curve://storage.seed3.loki.network:22027/146fb2840583c32f7e281b81d8c5568cc7bb04155fb9968987bb265b6ca9816e"},
         }};
     } else {
         seed_nodes = {{
-            "curve://public.loki.foundation:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45",
+            oxenmq::address{"curve://public.loki.foundation:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45"},
         }};
     }
 
