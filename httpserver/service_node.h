@@ -203,7 +203,7 @@ class ServiceNode {
     bool shutting_down() const { return shutting_down_; }
 
     /// Process message received from a client, return false if not in a swarm
-    bool process_store(const message_t& msg);
+    bool process_store(message_t msg);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);

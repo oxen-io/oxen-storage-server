@@ -15,6 +15,7 @@ add_library(httpserver_lib STATIC
     oxend_rpc.cpp
     server_certificates.cpp
     https_server.cpp
+    client_rpc_endpoints.cpp
     )
 
 # TODO: enable more warnings!

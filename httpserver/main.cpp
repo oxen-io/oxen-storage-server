@@ -193,13 +193,15 @@ int main(int argc, char* argv[]) {
 
         RequestHandler request_handler{service_node, channel_encryption};
 
-        HTTPSServer https_server{service_node, request_handler,
+        RateLimiter rate_limiter{*oxenmq_server};
+
+        HTTPSServer https_server{service_node, request_handler, rate_limiter,
             {{options.ip, options.port, true}},
             ssl_cert, ssl_key, ssl_dh,
             {me.pubkey_legacy, private_key}};
 
 
-        oxenmq_server.init(&service_node, &request_handler,
+        oxenmq_server.init(&service_node, &request_handler, &rate_limiter,
                 oxenmq::address{options.oxend_omq_rpc});
 
         https_server.start();

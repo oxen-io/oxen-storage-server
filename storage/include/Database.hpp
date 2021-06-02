@@ -38,16 +38,11 @@ class Database {
             std::chrono::system_clock::time_point timestamp, std::chrono::system_clock::time_point expiry,
             DuplicateHandling behaviour = DuplicateHandling::FAIL);
 
-    bool store(std::string_view hash, std::string_view pubKey, std::string_view bytes,
-            std::chrono::milliseconds ttl, std::chrono::system_clock::time_point timestamp,
-            DuplicateHandling behaviour = DuplicateHandling::FAIL) {
-        return store(hash, pubKey, bytes, timestamp, timestamp + ttl, behaviour);
-    }
     bool store(const storage::Item& item, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
         return store(item.hash, item.pub_key, item.data, item.timestamp, item.expiration, behaviour);
     }
     bool store(const message_t& msg, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
-        return store(msg.hash, msg.pub_key, msg.data, msg.timestamp, msg.timestamp + msg.ttl, behaviour);
+        return store(msg.hash, msg.pub_key, msg.data, msg.timestamp, msg.expiry, behaviour);
     }
 
     bool bulk_store(const std::vector<storage::Item>& items);
@@ -65,7 +60,7 @@ class Database {
     bool retrieve_random(storage::Item& item);
 
     // Get message by `msg_hash`, return true if found
-    bool retrieve_by_hash(const std::string& msg_hash, storage::Item& item);
+    bool retrieve_by_hash(std::string_view msg_hash, storage::Item& item);
 
     // Removes expired messages from the database; the Database owner should call this periodically.
     void clean_expired();

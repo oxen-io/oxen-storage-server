@@ -35,6 +35,7 @@ public:
     HTTPSServer(
         ServiceNode& sn,
         RequestHandler& rh,
+        RateLimiter& rl,
         std::vector<std::tuple<std::string, uint16_t, bool>> bind,
         const std::filesystem::path& ssl_cert,
         const std::filesystem::path& ssl_key,
@@ -129,10 +130,10 @@ private:
     oxenmq::OxenMQ& omq_;
     // Request handler
     RequestHandler& request_handler_;
+    // Rate limiter for direct client requests
+    RateLimiter& rate_limiter_;
     // Keys for signing responses
     legacy_keypair legacy_keys_;
-    // Rate limiter for direct client requests
-    RateLimiter rate_limiter_{omq_};
     // Certificate signature of the cert.pem so that the client can verify who they are receiving a
     // reply from (deprecated, to be removed after HF19).  This was a mistake: it doesn't provide
     // any assurance *before* sending data, and is almost impossible to verify without rolling your

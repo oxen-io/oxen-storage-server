@@ -6,13 +6,13 @@
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "channel_encryption.hpp"
-#include "oxenmq/connections.h"
-#include "oxenmq/oxenmq.h"
+#include "rate_limiter.h"
 #include "request_handler.h"
 #include "service_node.h"
 
-#include <oxenmq/hex.h>
 #include <nlohmann/json.hpp>
+#include <oxenmq/hex.h>
+#include <oxenmq/oxenmq.h>
 
 #include <optional>
 
@@ -179,6 +179,44 @@ void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
     message.send_reply(payload);
 }
 
+void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Message& message) {
+    OXEN_LOG(debug, "Handling OMQ RPC request for {}", method);
+    auto it = RequestHandler::client_rpc_endpoints.find(method);
+    assert(it != RequestHandler::client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
+
+    if (message.data.size() != 1) {
+        OXEN_LOG(warn, "Invalid OMQ RPC request for {}: incorrect number of message parts ({})",
+                method, message.data.size());
+        message.send_reply(
+                std::to_string(http::BAD_REQUEST.first),
+                "Invalid request: expected 1 message part, received " + std::to_string(message.data.size()));
+        return;
+    }
+
+    if (rate_limiter_->should_rate_limit_client(message.remote)) {
+        OXEN_LOG(debug, "Rate limiting client request from {}", message.remote);
+        return message.send_reply(std::to_string(http::TOO_MANY_REQUESTS.first), "Too many requests, try again later");
+    }
+
+    auto params = nlohmann::json::parse(message.data[0], nullptr, false);
+    if (params.is_discarded()) {
+        OXEN_LOG(debug, "Bad OMQ storage RPC request: invalid json");
+        return message.send_reply(std::to_string(http::BAD_REQUEST.first), "invalid json");
+    }
+
+    it->second(*request_handler_, params, [send=message.send_later()](oxen::Response res) {
+        if (res.status == http::OK) {
+            OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte response", res.body.size());
+            // Success: return just the body
+            send.reply(std::move(res.body));
+        } else {
+            // On error return [errcode, body]
+            OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, res.body);
+            send.reply(std::to_string(res.status.first), res.body);
+        }
+    });
+}
+
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
         std::string message) {
 #define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
@@ -222,6 +260,8 @@ OxenmqServer::OxenmqServer(
         });
 
     // clang-format off
+
+    // Endpoints invoked by other SNs
     omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false}, 2 /*reserved threads*/, 1000 /*max queue*/)
         .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
@@ -229,6 +269,14 @@ OxenmqServer::OxenmqServer(
         .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
         ;
 
+    // storage.WHATEVER (e.g. storage.store, storage.retrieve, etc.) endpoints are invokable by
+    // anyone (i.e. clients).  These endpoints return a single-part message [body] on success, or a
+    // two-part message [errcode, body] on error.
+    auto st_cat = omq_.add_category("storage", oxenmq::AuthLevel::none, 1 /*reserved threads*/, 200 /*max queue*/);
+    for (const auto& [name, _cb] : RequestHandler::client_rpc_endpoints)
+        st_cat.add_request_command(std::string{name}, [this, name=name](auto& m) { handle_client_request(name, m); });
+
+    // Endpoints invokable by a local admin
     omq_.add_category("service", oxenmq::AuthLevel::admin)
         .add_request_command("get_stats", [this](auto& m) { handle_get_stats(m); })
         .add_request_command("get_logs", [this](auto& m) { handle_get_logs(m); })
@@ -269,10 +317,11 @@ void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
         oxenmq::AuthLevel::admin);
 }
 
-void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxend_rpc) {
+void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc) {
     assert(!service_node_);
     service_node_ = sn;
     request_handler_ = rh;
+    rate_limiter_ = rl;
     omq_.start();
     connect_oxend(oxend_rpc);
 }

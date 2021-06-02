@@ -48,13 +48,13 @@ class user_pubkey_t {
     std::string_view key() const;
 };
 
-/// message as received from client
+/// message received from a client
 struct message_t {
     std::string pub_key;
     std::string data;
     std::string hash;
-    std::chrono::milliseconds ttl;
     std::chrono::system_clock::time_point timestamp;
+    std::chrono::system_clock::time_point expiry;
 };
 
 using swarm_id_t = uint64_t;

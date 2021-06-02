@@ -17,7 +17,7 @@ TEST_CASE("serialization - basic values", "[serialization]") {
     const auto hash = "hash";
     const std::chrono::system_clock::time_point timestamp{12'345'678ms};
     const auto ttl = 3456s;
-    message_t msg{pub_key, data, hash, ttl, timestamp};
+    message_t msg{pub_key, data, hash, timestamp, timestamp + ttl};
     std::string msg_serialized;
     serialize_message(msg_serialized, Item{msg});
     const auto expected_serialized = oxenmq::to_hex(pub_key) +
@@ -50,7 +50,7 @@ TEST_CASE("serialization - batch serialization", "[serialization]") {
     const auto hash = "hash";
     const std::chrono::system_clock::time_point timestamp{1'622'576'077s};
     const auto ttl = 24h;
-    message_t msg{pub_key, data, hash, ttl, timestamp};
+    message_t msg{pub_key, data, hash, timestamp, timestamp + ttl};
     std::string buffer;
     serialize_message(buffer, Item{msg});
     const size_t num_messages = (SERIALIZATION_BATCH_SIZE / buffer.size()) + 1;

@@ -33,6 +33,12 @@ class RateLimiter {
             uint32_t ip,
             std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
 
+    // Same as above, but takes a "a.b.c.d" string.  Returns false (i.e. don't rate limit) if the
+    // given address isn't parseable as an IPv4 address at all.
+    bool should_rate_limit_client(
+            const std::string& ip_dotted_quad,
+            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+
   private:
     struct TokenBucket {
         uint32_t num_tokens;

@@ -7,37 +7,39 @@
 
 #include <algorithm>
 
+extern "C" {
+#include <arpa/inet.h>
+}
+
 namespace oxen {
 
 namespace {
 
+using namespace std::chrono;
+
 // Time between to consecutive tokens for clients
-constexpr std::chrono::microseconds TOKEN_PERIOD_US =
-    1'000'000us / RateLimiter::TOKEN_RATE;
+constexpr microseconds TOKEN_PERIOD_US = 1'000'000us / RateLimiter::TOKEN_RATE;
 
 // Time between to consecutive tokens for snodes
-constexpr std::chrono::microseconds TOKEN_PERIOD_SN_US =
-    1'000'000us / RateLimiter::TOKEN_RATE_SN;
+constexpr microseconds TOKEN_PERIOD_SN_US = 1'000'000us / RateLimiter::TOKEN_RATE_SN;
 
-constexpr std::chrono::microseconds FILL_EMPTY_BUCKET_US =
-    TOKEN_PERIOD_US * RateLimiter::BUCKET_SIZE;
+constexpr microseconds FILL_EMPTY_BUCKET_US = TOKEN_PERIOD_US * RateLimiter::BUCKET_SIZE;
 
 }
 
 RateLimiter::RateLimiter(oxenmq::OxenMQ& omq) {
     omq.add_timer([this] {
         std::lock_guard lock{mutex_};
-        clean_buckets(std::chrono::steady_clock::now());
+        clean_buckets(steady_clock::now());
     }, 10s);
 }
 
 template <typename TokenBucket>
 static bool fill_bucket(
         TokenBucket& bucket,
-        std::chrono::steady_clock::time_point now,
+        steady_clock::time_point now,
         bool service_node = false) {
-    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
-        now - bucket.last_time_point);
+    auto elapsed_us = duration_cast<microseconds>(now - bucket.last_time_point);
     // clamp elapsed time to how long it takes to fill up the whole bucket
     // (simplifies overlow checking)
     elapsed_us = std::min(elapsed_us, FILL_EMPTY_BUCKET_US);
@@ -55,7 +57,7 @@ static bool fill_bucket(
 }
 
 template <typename TokenBucket>
-static bool remove_token(TokenBucket& b, std::chrono::steady_clock::time_point now, bool sn = false) {
+static bool remove_token(TokenBucket& b, steady_clock::time_point now, bool sn = false) {
     fill_bucket(b, now, sn);
     if (b.num_tokens == 0)
         return false;
@@ -64,8 +66,7 @@ static bool remove_token(TokenBucket& b, std::chrono::steady_clock::time_point n
     return true;
 }
 
-bool RateLimiter::should_rate_limit(const legacy_pubkey& pubkey,
-                                    std::chrono::steady_clock::time_point now) {
+bool RateLimiter::should_rate_limit(const legacy_pubkey& pubkey, steady_clock::time_point now) {
     std::lock_guard lock{mutex_};
     if (auto [it, ins] = snode_buckets_.emplace(pubkey, TokenBucket{BUCKET_SIZE-1, now});
             ins)
@@ -74,8 +75,7 @@ bool RateLimiter::should_rate_limit(const legacy_pubkey& pubkey,
         return !remove_token(it->second, now, true);
 }
 
-bool RateLimiter::should_rate_limit_client(
-        uint32_t ip, std::chrono::steady_clock::time_point now) {
+bool RateLimiter::should_rate_limit_client(uint32_t ip, steady_clock::time_point now) {
     std::lock_guard lock{mutex_};
 
     if (auto it = client_buckets_.find(ip); it != client_buckets_.end())
@@ -90,8 +90,13 @@ bool RateLimiter::should_rate_limit_client(
     return false;
 }
 
-void RateLimiter::clean_buckets(
-    std::chrono::steady_clock::time_point now) {
+bool RateLimiter::should_rate_limit_client(const std::string& ip_dotted_quad, steady_clock::time_point now) {
+    struct in_addr ip;
+    int res = inet_pton(AF_INET, ip_dotted_quad.c_str(), &ip);
+    return res == 1 ? should_rate_limit_client(ip.s_addr) : false;
+}
+
+void RateLimiter::clean_buckets(steady_clock::time_point now) {
 
     for (auto it = client_buckets_.begin(); it != client_buckets_.end(); ) {
         if (fill_bucket(it->second, now))

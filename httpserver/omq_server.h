@@ -15,6 +15,7 @@ namespace oxen {
 struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
+class RateLimiter;
 struct OnionRequestMetadata;
 
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
@@ -29,6 +30,8 @@ class OxenmqServer {
     ServiceNode* service_node_ = nullptr;
 
     RequestHandler* request_handler_ = nullptr;
+
+    RateLimiter* rate_limiter_ = nullptr;
 
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
@@ -55,6 +58,10 @@ class OxenmqServer {
 
     void handle_get_stats(oxenmq::Message& message);
 
+    // storage.(whatever) -- client request handling.  These reply with [BODY] on success or [CODE,
+    // BODY] on failure (where BODY typically is some sort of error message).
+    void handle_client_request(std::string_view method, oxenmq::Message& message);
+
     // Access keys for the 'service' category as binary
     std::unordered_set<std::string> stats_access_keys_;
 
@@ -67,7 +74,7 @@ class OxenmqServer {
             const std::vector<x25519_pubkey>& stats_access_keys_hex);
 
     // Initialize oxenmq
-    void init(ServiceNode* sn, RequestHandler* rh, oxenmq::address oxend_rpc);
+    void init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc);
 
     /// Dereferencing via * or -> accesses the contained OxenMQ instance.
     oxenmq::OxenMQ& operator*() { return omq_; }

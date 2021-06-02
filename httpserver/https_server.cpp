@@ -52,6 +52,7 @@ void HTTPSServer::handle_cors(HttpRequest& req, http::headers& extra_headers) {
 HTTPSServer::HTTPSServer(
         ServiceNode& sn,
         RequestHandler& rh,
+        RateLimiter& rl,
         std::vector<std::tuple<std::string, uint16_t, bool>> bind,
         const std::filesystem::path& ssl_cert,
         const std::filesystem::path& ssl_key,
@@ -61,6 +62,7 @@ HTTPSServer::HTTPSServer(
     service_node_{sn},
     omq_{*service_node_.omq_server()},
     request_handler_{rh},
+    rate_limiter_{rl},
     legacy_keys_{std::move(legacy_keys)},
     cert_signature_{oxenmq::to_base64(util::view_guts(
         generate_signature(hash_data(slurp_file(ssl_cert)), legacy_keys_)

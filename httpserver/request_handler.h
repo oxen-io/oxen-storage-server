@@ -1,12 +1,14 @@
 #pragma once
 
 #include "channel_encryption.hpp"
+#include "client_rpc_endpoints.h"
 #include "http.h"
 #include "onion_processing.h"
 #include "oxen_common.h"
 #include "oxend_key.h"
 #include "service_node.h"
 #include "string_utils.hpp"
+
 #include <chrono>
 #include <forward_list>
 #include <future>
@@ -16,8 +18,6 @@
 #include <nlohmann/json_fwd.hpp>
 
 namespace oxen {
-
-constexpr size_t MAX_MESSAGE_BODY = 102400; // 100 KB limit
 
 // When a storage test returns a "retry" response, we retry again after this interval:
 inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
@@ -42,10 +42,11 @@ std::string to_string(const Response& res);
 std::string computeMessageHash(std::vector<std::string_view> parts, bool hex);
 
 // Validates a TTL value to see if it is acceptable.
-bool validateTTL(std::chrono::milliseconds ttl);
+bool validateTTL(std::chrono::system_clock::duration ttl);
 
-// Validates a timestamp to see if it is acceptable.  Takes the timestamp and the associated TTL.
-bool validateTimestamp(std::chrono::system_clock::time_point timestamp, std::chrono::milliseconds ttl);
+// Validates a timestamp to see if it is acceptable.  Takes the timestamp and the expiry (when using
+// a ttl, give expiry as timestamp+ttl).
+bool validateTimestamp(std::chrono::system_clock::time_point timestamp, std::chrono::system_clock::time_point expiry);
 
 
 struct OnionRequestMetadata {
@@ -54,6 +55,7 @@ struct OnionRequestMetadata {
     int hop_no = 0;
     EncryptType enc_type = EncryptType::aes_gcm;
 };
+
 
 class RequestHandler {
 
@@ -85,17 +87,35 @@ class RequestHandler {
     // Query the database and return requested messages
     Response process_retrieve(const nlohmann::json& params);
 
-    void process_onion_exit(std::string_view payload,
-                            std::function<void(Response)> cb);
-
     // ===================================
 
   public:
     RequestHandler(ServiceNode& sn, const ChannelEncryption& ce);
 
-    // Process all Session client requests
-    void process_client_req(std::string_view req_json,
-                            std::function<void(Response)> cb);
+    // Handlers for parsed client requests
+    void process_client_req(rpc::store&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::retrieve&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::get_swarm&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::oxend_request&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::info&&, std::function<void(Response)> cb);
+
+    using rpc_map = std::unordered_map<
+        std::string_view,
+        std::function<void(RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>
+    >;
+    static const rpc_map client_rpc_endpoints;
+
+    // Process a client request taking encoded json to be parsed containing something like
+    // `{"method": "abc", "params": {"some_arg": 1}}`, dispatching to the appropriate request
+    // handler.
+    void process_client_req(std::string_view req_json, std::function<void(Response)> cb);
+
+    // Processes a pre-parsed client request taking the method name ("store", "retrieve", etc.) and
+    // the json params object.
+    void process_client_req(
+            std::string_view method,
+            nlohmann::json params,
+            std::function<void(Response)> cb);
 
     // Processes a swarm test request; if it succeeds the callback is immediately invoked, otherwise
     // the test is scheduled for retries for some time until it succeeds, fails, or times out, at
@@ -130,4 +150,5 @@ class RequestHandler {
     void process_onion_req(RelayToServerInfo&& res, OnionRequestMetadata&& data);
     void process_onion_req(ProcessCiphertextError&& res, OnionRequestMetadata&& data);
 };
+
 } // namespace oxen

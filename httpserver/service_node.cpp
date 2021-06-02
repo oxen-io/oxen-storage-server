@@ -340,7 +340,7 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
-bool ServiceNode::process_store(const message_t& msg) {
+bool ServiceNode::process_store(message_t msg) {
 
     std::lock_guard guard{sn_mutex_};
 
@@ -358,7 +358,7 @@ bool ServiceNode::process_store(const message_t& msg) {
         OXEN_LOG(trace, "saved message: {}", msg.data);
 
     std::string serialized;
-    serialize_message(serialized, Item{msg});
+    serialize_message(serialized, Item{std::move(msg)});
 
     for (auto& peer : swarm_->other_nodes())
         relay_data_reliable(serialized, peer);
