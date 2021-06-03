@@ -213,13 +213,15 @@ void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Messag
     auto it = client_rpc_endpoints.find(method);
     assert(it != client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
 
-    if (message.data.size() != (forwarded ? 3 : 1)) {
+    const size_t full_size = forwarded ? 3 : 1;
+    const size_t empty_body = full_size - 1;
+    if (message.data.size() != empty_body && message.data.size() != full_size) {
         OXEN_LOG(warn, "Invalid {}OMQ RPC request for {}: incorrect number of message parts ({})",
                 forwarded ? "forwarded " : "", method, message.data.size());
         message.send_reply(
                 std::to_string(http::BAD_REQUEST.first),
                 fmt::format("Invalid request: expected {} message part, received {}",
-                    forwarded ? 3 : 1, message.data.size()));
+                    full_size, message.data.size()));
         return;
     }
 
@@ -229,7 +231,8 @@ void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Messag
     }
 
     try {
-        it->second(*request_handler_, oxenmq::bt_dict_consumer{message.data[forwarded ? 2 : 0]}, !forwarded,
+        oxenmq::bt_dict_consumer params{message.data.size() == full_size ? message.data.back() : "de"sv};
+        it->second(*request_handler_, std::move(params), !forwarded,
             [send=message.send_later()](oxen::Response res) {
                 if (res.status == http::OK) {
                     OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte response", res.body.size());
