@@ -5,6 +5,10 @@
 #include "swarm.h"
 #include "request_handler.h"
 
+#include <oxenmq/base64.h>
+
+using namespace std::literals;
+
 static auto create_dummy_sn_record() -> oxen::sn_record_t {
 
     const auto pk = oxen::legacy_pubkey::from_hex(
@@ -65,19 +69,19 @@ TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 /// Check that we don't inadvertently change how we compute message hashes
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
 
-    const auto timestamp = "1616650862026";
-    const auto ttl = "172800000";
+    const auto timestamp = std::chrono::system_clock::time_point{1616650862026ms};
+    const auto ttl = 48h;
     const auto pk = "05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48";
-    const auto data = "CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSagrtpeEpY31L7VxawfS8aSya0SiDa4J025SkjP13YX8g5pxgQ8Z6hgfNArMqr/tSijJ9miVKVDJ63YWE85O8kyWF8tdtZR5j0Vxb+JH5U8Rg1bp7ftKk3OSf7JJMcrUUrDnctQHe540zJ2OTDJ03DfubkX5NmKqEu5nhXGxeeDv3mTiL63fjtCvZYcikfjf6Nh1AX++HTgJ9SGoEIMastGUorFrmmXb2sbjHxNiJn0Radj/VzcA9VxYwBW5+AbGQ2d9+vvm7X+8vh+jIenJfjxf+8CWER+9adNfb4YUH07I+godNCV0O0J05gzqfKdT7J8MBZzFBtKrbk8oCagPpTsq/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=";
+    const auto data = oxenmq::from_base64("CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSagrtpeEpY31L7VxawfS8aSya0SiDa4J025SkjP13YX8g5pxgQ8Z6hgfNArMqr/tSijJ9miVKVDJ63YWE85O8kyWF8tdtZR5j0Vxb+JH5U8Rg1bp7ftKk3OSf7JJMcrUUrDnctQHe540zJ2OTDJ03DfubkX5NmKqEu5nhXGxeeDv3mTiL63fjtCvZYcikfjf6Nh1AX++HTgJ9SGoEIMastGUorFrmmXb2sbjHxNiJn0Radj/VzcA9VxYwBW5+AbGQ2d9+vvm7X+8vh+jIenJfjxf+8CWER+9adNfb4YUH07I+godNCV0O0J05gzqfKdT7J8MBZzFBtKrbk8oCagPpTsq/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
 
-    const auto hash = oxen::computeMessageHash({timestamp, ttl, pk, data}, true);
+    // The hash used here deliberately changed with the RPC overhaul as it now computes the hash
+    // from the expiry date (instead of TTL) and the binary data (instead of b64-encoded data).
+    const auto expected = "b44adb755e9bca15d2f22fb0775b75e48d1689c4e314cd38c73cc4f1b2a609d06ef3df928c5175ba1447ad168a126419674083f1d5537de8fc622c22632f3aa5";
 
-    const auto expected = "dd5f46395dbab44c9d96711a68cd70e326c4a39d6ccce7a319b0262c18699d2044610196519ad7283e3defebcdf3bccd6499fce1254fdee661e68f0611dc3104";
-
+    auto hash = oxen::computeMessageHash(timestamp, timestamp+ttl, pk, data);
     CHECK(hash == expected);
 
-    CHECK(
-            oxen::computeMessageHash({timestamp, ttl, pk, data}, false) ==
-            oxenmq::from_hex(expected));
+    hash = oxen::computeMessageHash("16166508620261616823662026"s + pk + data);
+    CHECK(hash == expected);
 
 }

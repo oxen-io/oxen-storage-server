@@ -14,6 +14,7 @@
 #include <future>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -37,9 +38,47 @@ struct Response {
 
 std::string to_string(const Response& res);
 
+namespace detail {
+
+// detail::to_hashable takes either an integral type, system_clock::time_point, or a string type and
+// converts it to a string_view by writing an integer value (using std::to_chars) into the buffer
+// space, and returning a string_view.  (For strings/string_views the string_view is returned
+// directly from the argument).  system_clock::time_points are converted into integral milliseconds
+// since epoch then treated as an integer value.
+template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+std::string_view to_hashable(const T& val, char*& buffer) {
+    auto [p, ec] = std::to_chars(buffer, buffer+20, val);
+    std::string_view s(buffer, p-buffer);
+    buffer = p;
+    return s;
+}
+inline std::string_view to_hashable(const std::chrono::system_clock::time_point& val, char*& buffer) {
+    return to_hashable(std::chrono::duration_cast<std::chrono::milliseconds>(val.time_since_epoch()).count(), buffer);
+}
+template <typename T, std::enable_if_t<std::is_convertible_v<T, std::string_view>, int> = 0>
+std::string_view to_hashable(const T& value, char*&) {
+    return value;
+}
+
+}
+
 /// Compute message's hash based on its constituents.  The hash is a SHA-512 hash of the
-/// concatenated string parts, and can be returned as either bytes (64 bytes) or hex (128 chars)
-std::string computeMessageHash(std::vector<std::string_view> parts, bool hex);
+/// concatenated string parts, encoded in hex.
+std::string computeMessageHash(std::vector<std::string_view> parts);
+
+/// Computes a message hash based on its constituent parts.  Takes any number of std::string,
+/// std::string_view, milliseconds, or integer values.  Strings are concatenated; integers are
+/// converted to strings via std::to_chars; milliseconds are treated as integer values from their
+/// `.count()` value.
+template <typename... T>
+std::string computeMessageHash(const T&... args) {
+    // Allocate a buffer of 20 bytes per integral value (which is the largest the any integral value
+    // can be when stringified).
+    std::array<char, (0 + ... + (std::is_integral_v<T> ||
+                std::is_same_v<T, std::chrono::system_clock::time_point> ? 20 : 0))> buffer;
+    auto* b = buffer.data();
+    return computeMessageHash({detail::to_hashable(args, b)...});
+}
 
 // Validates a TTL value to see if it is acceptable.
 bool validateTTL(std::chrono::system_clock::duration ttl);

@@ -99,18 +99,15 @@ RequestHandler::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
 const RequestHandler::rpc_map RequestHandler::client_rpc_endpoints =
     register_client_rpc_endpoints(rpc::client_rpc_types{});
 
-std::string computeMessageHash(std::vector<std::string_view> parts, bool hex) {
+std::string computeMessageHash(std::vector<std::string_view> parts) {
     SHA512_CTX ctx;
     SHA512_Init(&ctx);
     for (const auto& s : parts)
         SHA512_Update(&ctx, s.data(), s.size());
 
-    std::string hashResult;
-    hashResult.resize(SHA512_DIGEST_LENGTH);
-    SHA512_Final(reinterpret_cast<unsigned char*>(hashResult.data()), &ctx);
-    if (hex)
-        hashResult = oxenmq::to_hex(hashResult);
-    return hashResult;
+    std::array<unsigned char, SHA512_DIGEST_LENGTH> result;
+    SHA512_Final(result.data(), &ctx);
+    return oxenmq::to_hex(result.begin(), result.end());
 }
 
 bool validateTimestamp(system_clock::time_point timestamp, system_clock::time_point expiry) {
@@ -165,11 +162,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"});
     }
 
-    auto messageHash = computeMessageHash({
-        std::to_string(duration_cast<milliseconds>(req.timestamp.time_since_epoch()).count()),
-        std::to_string(duration_cast<milliseconds>(req.expiry.time_since_epoch()).count()),
-        req.pubkey.str(),
-        req.data}, true);
+    auto messageHash = computeMessageHash(req.timestamp, req.expiry, req.pubkey.str(), req.data);
 
     bool success;
     try {
