@@ -79,6 +79,8 @@ void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
     auto call = [](RequestHandler& h, const json& params, std::function<void(Response)> cb) {
         RPC req;
         req.load_from(params);
+        if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
+            req.recurse = true; // Requests through json are *always* client requests, so always recurse
         h.process_client_req(std::move(req), std::move(cb));
     };
     for (auto& name : RPC::names()) {
@@ -144,7 +146,9 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
         http::json};
 }
 
-void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Response)> cb) {
+void RequestHandler::process_client_req(
+        rpc::store&& req, std::function<void(Response)> cb) {
+
     if (OXEN_LOG_ENABLED(trace))
         OXEN_LOG(trace, "Storing message: {}", oxenmq::to_base64(req.data));
 
@@ -261,7 +265,9 @@ void RequestHandler::process_client_req(
     return cb(Response{http::OK, body.dump(), http::json});
 }
 
-void RequestHandler::process_client_req(rpc::info&&, std::function<void(oxen::Response)> cb) {
+void RequestHandler::process_client_req(
+        rpc::info&&, std::function<void(oxen::Response)> cb) {
+
     return cb(Response{http::OK,
         json{
             {"version", STORAGE_SERVER_VERSION},
@@ -316,7 +322,7 @@ void RequestHandler::process_client_req(
             return it->second(*this, std::move(params), cb);
         } catch (const rpc::parse_error& e) {
             // These exceptions carry a failure message to send back to the client
-            OXEN_LOG(debug, "Bad client request: {}", e.what());
+            OXEN_LOG(debug, "Invalid request: {}", e.what());
             return cb(Response{http::BAD_REQUEST, "invalid request: "s + e.what()});
         } catch (const std::exception& e) {
             // Other exceptions might contain something sensitive or irrelevant so warn about it and

@@ -16,6 +16,7 @@ struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
 class RateLimiter;
+class Response;
 struct OnionRequestMetadata;
 
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
@@ -60,7 +61,12 @@ class OxenmqServer {
 
     // storage.(whatever) -- client request handling.  These reply with [BODY] on success or [CODE,
     // BODY] on failure (where BODY typically is some sort of error message).
-    void handle_client_request(std::string_view method, oxenmq::Message& message);
+    //
+    // forwarded is set if this request was forwarded from another swarm member rather than being
+    // direct from the client; the request is handled identically except that these forwarded
+    // requests are not-reforwarded again, and there are two message parts prepended: the method
+    // name, and the remote client's IP.
+    void handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded = false);
 
     // Access keys for the 'service' category as binary
     std::unordered_set<std::string> stats_access_keys_;
@@ -104,6 +110,12 @@ class OxenmqServer {
     static std::string encode_onion_data(std::string_view payload, const OnionRequestMetadata& data);
     // Decodes onion request data; throws if invalid formatted or missing required fields.
     static std::pair<std::string_view, OnionRequestMetadata> decode_onion_data(std::string_view data);
+
+    using rpc_map = std::unordered_map<
+        std::string_view,
+        std::function<void(RequestHandler&, oxenmq::bt_dict_consumer params, bool recurse, std::function<void(Response)>)>
+    >;
+    static const rpc_map client_rpc_endpoints;
 };
 
 } // namespace oxen

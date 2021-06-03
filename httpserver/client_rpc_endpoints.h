@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
+#include <oxenmq/bt_serialize.h>
 
 namespace oxen::rpc {
 
@@ -26,14 +27,24 @@ struct parse_error : std::runtime_error {
 
 // Common base type decorator of all client rpc endpoint types.
 struct endpoint {
-
     // Loads the rpc request from json.  Throws on error (missing keys, bad values, etc.).
     virtual void load_from(nlohmann::json params) = 0;
+    virtual void load_from(oxenmq::bt_dict_consumer params) = 0;
 };
 
 // Base type for no-argument endpoints
 struct no_args : endpoint {
-    void load_from(nlohmann::json) {}
+    void load_from(nlohmann::json) override {}
+    void load_from(oxenmq::bt_dict_consumer) override {}
+};
+
+// Base type for a "recursive" endpoint: that is, where the request gets forwarded from the initial
+// swarm member to all other swarm members.
+struct recursive : endpoint {
+    // True on the initial client request, false on forwarded requests
+    bool recurse;
+    // Convert a request's value into a bt_dict for forwarding to other SNs.
+    virtual explicit operator oxenmq::bt_dict() const = 0;
 };
 
 namespace {
@@ -58,8 +69,8 @@ namespace {
 /// backwards compatibility may be passed as a stringified integer.
 /// - `expiry` (required, unless ttl given) the message's expiry time as a unix epoch milliseconds
 /// timestamp.  (Unlike the above, this cannot be passed as an integer).
-/// - `data` (required) the message data, encoded in base64.  Max size is 102400 in b64 encoding
-/// (76800 binary bytes).
+/// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
+/// 76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
 struct store final : endpoint {
     static constexpr auto names() { return NAMES("store"); }
 
@@ -72,13 +83,15 @@ struct store final : endpoint {
     std::string data; // always stored here in bytes
 
     void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
 };
 
 /// Retrieves data from this service node. Takes keys of:
 /// - `pubkey` (required) the hex-encoded pubkey who is retrieving messages. For backwards
 /// compatibility, this can also be specified as `pubKey`
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
-/// stored.  Can also be specified as `lastHash`.
+/// stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
+/// omitted value.
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
@@ -86,6 +99,7 @@ struct retrieve final : endpoint {
     std::optional<std::string> last_hash;
 
     void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
 };
 
 /// Retrieves status information about this storage server.  Takes no parameters.
@@ -107,6 +121,7 @@ struct get_swarm final : endpoint {
     user_pubkey_t pubkey;
 
     void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
 };
 
 /// Forwards an RPC request to the this storage server's oxend.  Takes keys of:
@@ -127,6 +142,7 @@ struct oxend_request final : endpoint {
     std::optional<nlohmann::json> params;
 
     void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
 };
 
 

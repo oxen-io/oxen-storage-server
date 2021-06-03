@@ -11,8 +11,8 @@
 #include "service_node.h"
 
 #include <nlohmann/json.hpp>
+#include <oxenmq/bt_serialize.h>
 #include <oxenmq/hex.h>
-#include <oxenmq/oxenmq.h>
 
 #include <optional>
 
@@ -179,42 +179,78 @@ void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
     message.send_reply(payload);
 }
 
-void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Message& message) {
-    OXEN_LOG(debug, "Handling OMQ RPC request for {}", method);
-    auto it = RequestHandler::client_rpc_endpoints.find(method);
-    assert(it != RequestHandler::client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
+namespace {
 
-    if (message.data.size() != 1) {
-        OXEN_LOG(warn, "Invalid OMQ RPC request for {}: incorrect number of message parts ({})",
-                method, message.data.size());
+template <typename RPC>
+void register_client_rpc_endpoint(OxenmqServer::rpc_map& regs) {
+    auto call = [](RequestHandler& h, oxenmq::bt_dict_consumer params, bool recursive, std::function<void(Response)> cb) {
+        RPC req;
+        req.load_from(params);
+        if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
+            req.recurse = recursive;
+        h.process_client_req(std::move(req), std::move(cb));
+    };
+    for (auto& name : RPC::names()) {
+        [[maybe_unused]] auto [it, ins] = regs.emplace(name, call);
+        assert(ins);
+    }
+}
+
+template <typename... RPC>
+OxenmqServer::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
+    OxenmqServer::rpc_map regs;
+    (register_client_rpc_endpoint<RPC>(regs), ...);
+    return regs;
+}
+
+}
+
+const OxenmqServer::rpc_map OxenmqServer::client_rpc_endpoints =
+    register_client_rpc_endpoints(rpc::client_rpc_types{});
+
+void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded) {
+    OXEN_LOG(debug, "Handling OMQ RPC request for {}", method);
+    auto it = client_rpc_endpoints.find(method);
+    assert(it != client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
+
+    if (message.data.size() != (forwarded ? 3 : 1)) {
+        OXEN_LOG(warn, "Invalid {}OMQ RPC request for {}: incorrect number of message parts ({})",
+                forwarded ? "forwarded " : "", method, message.data.size());
         message.send_reply(
                 std::to_string(http::BAD_REQUEST.first),
-                "Invalid request: expected 1 message part, received " + std::to_string(message.data.size()));
+                fmt::format("Invalid request: expected {} message part, received {}",
+                    forwarded ? 3 : 1, message.data.size()));
         return;
     }
 
-    if (rate_limiter_->should_rate_limit_client(message.remote)) {
+    if (rate_limiter_->should_rate_limit_client(forwarded ? std::string{message.data[1]} : message.remote)) {
         OXEN_LOG(debug, "Rate limiting client request from {}", message.remote);
         return message.send_reply(std::to_string(http::TOO_MANY_REQUESTS.first), "Too many requests, try again later");
     }
 
-    auto params = nlohmann::json::parse(message.data[0], nullptr, false);
-    if (params.is_discarded()) {
-        OXEN_LOG(debug, "Bad OMQ storage RPC request: invalid json");
-        return message.send_reply(std::to_string(http::BAD_REQUEST.first), "invalid json");
+    try {
+        it->second(*request_handler_, oxenmq::bt_dict_consumer{message.data[forwarded ? 2 : 0]}, !forwarded,
+            [send=message.send_later()](oxen::Response res) {
+                if (res.status == http::OK) {
+                    OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte response", res.body.size());
+                    // Success: return just the body
+                    send.reply(std::move(res.body));
+                } else {
+                    // On error return [errcode, body]
+                    OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, res.body);
+                    send.reply(std::to_string(res.status.first), res.body);
+                }
+            });
+    } catch (const rpc::parse_error& e) {
+        // These exceptions carry a failure message to send back to the client
+        OXEN_LOG(debug, "Invalid request: {}", e.what());
+        message.send_reply(std::to_string(http::BAD_REQUEST.first), "invalid request: "s + e.what());
+    } catch (const std::exception& e) {
+        // Other exceptions might contain something sensitive or irrelevant so warn about it and
+        // send back a generic message.
+        OXEN_LOG(warn, "Client request raised an exception: {}", e.what());
+        message.send_reply(std::to_string(http::INTERNAL_SERVER_ERROR.first), "request failed");
     }
-
-    it->second(*request_handler_, params, [send=message.send_later()](oxen::Response res) {
-        if (res.status == http::OK) {
-            OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte response", res.body.size());
-            // Success: return just the body
-            send.reply(std::move(res.body));
-        } else {
-            // On error return [errcode, body]
-            OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, res.body);
-            send.reply(std::to_string(res.status.first), res.body);
-        }
-    });
 }
 
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
@@ -271,7 +307,8 @@ OxenmqServer::OxenmqServer(
 
     // storage.WHATEVER (e.g. storage.store, storage.retrieve, etc.) endpoints are invokable by
     // anyone (i.e. clients).  These endpoints return a single-part message [body] on success, or a
-    // two-part message [errcode, body] on error.
+    // two-part message [errcode, body] on error.  The sole argument is the parameters, specified as
+    // a bt-encoded dict.
     auto st_cat = omq_.add_category("storage", oxenmq::AuthLevel::none, 1 /*reserved threads*/, 200 /*max queue*/);
     for (const auto& [name, _cb] : RequestHandler::client_rpc_endpoints)
         st_cat.add_request_command(std::string{name}, [this, name=name](auto& m) { handle_client_request(name, m); });
