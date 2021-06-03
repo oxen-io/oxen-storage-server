@@ -119,8 +119,7 @@ bool validateTimestamp(system_clock::time_point timestamp, system_clock::time_po
 }
 
 bool validateTTL(system_clock::duration ttl) {
-    // Minimum time to live of 10 seconds, maximum of 14 days
-    return ttl >= 10s && ttl <= 14 * 24h;
+    return ttl >= TTL_MINIMUM && ttl <= TTL_MAXIMUM;
 }
 
 
@@ -157,8 +156,8 @@ void RequestHandler::process_client_req(
 
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
     if (!validateTTL(ttl)) {
-        OXEN_LOG(debug, "Forbidden. Invalid TTL: {}ms", ttl.count());
-        return cb(Response{http::FORBIDDEN, "Provided TTL is not valid."});
+        OXEN_LOG(warn, "Forbidden. Invalid TTL: {}ms", ttl.count());
+        return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."});
     }
     if (!validateTimestamp(req.timestamp, req.expiry)) {
         OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}",

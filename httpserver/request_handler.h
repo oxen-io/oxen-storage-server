@@ -27,6 +27,10 @@ inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
 // give up and send an error response back to the requestor:
 inline constexpr auto TEST_RETRY_PERIOD = 55s;
 
+// Minimum and maximum TTL permitted for a message storage request
+inline constexpr auto TTL_MINIMUM = 10s;
+inline constexpr auto TTL_MAXIMUM = 14 * 24h;
+
 
 // Simpler wrapper that works for most of our responses
 struct Response {
