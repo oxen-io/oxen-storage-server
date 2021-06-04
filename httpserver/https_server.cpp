@@ -15,6 +15,7 @@
 #include <oxenmq/hex.h>
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
+#include <variant>
 
 namespace oxen {
 
@@ -172,16 +173,21 @@ void HTTPSServer::add_generic_headers(HttpResponse& res) const {
 
 // Queues a response with the uWebSockets response object; this must only be called from the
 // http thread (typically you want to use `queue_response` instead).
-void queue_response_internal(HTTPSServer& https, HttpResponse& r, Response res, bool force_close = false) {
+void queue_response_internal(
+        HTTPSServer& https, HttpResponse& r, Response res, bool force_close = false) {
     r.cork([&https, &r, res=std::move(res), force_close] {
-        r.writeStatus(std::to_string(res.status.first) + " " + std::string{res.status.second});
+        r.writeStatus(fmt::format("{} {}", res.status.first, res.status.second));
         https.add_generic_headers(r);
-        if (!res.content_type.empty())
-            r.writeHeader("Content-Type", res.content_type);
+
+        const bool is_json = std::holds_alternative<json>(res.body);
+        if (std::none_of(begin(res.headers), end(res.headers), [](const auto& h) {
+                return util::string_iequal(h.first, "content-type"); }))
+            r.writeHeader("Content-Type", is_json ? "application/json" : "text/plain");
         for (const auto& [h, v] : res.headers)
             r.writeHeader(h, v);
 
-        r.end(res.body, force_close || https.closing());
+        r.end(is_json ? std::get<json>(res.body).dump() : view_body(res),
+                force_close || https.closing());
     });
 }
 
@@ -323,11 +329,13 @@ namespace {
             if (uint64_t length; !util::parse_int(len, length)) {
                 OXEN_LOG(warn, "Received HTTPS request from {} with invalid Content-Length, dropping",
                         get_remote_address(res));
-                queue_response_internal(https, res, Response{http::BAD_REQUEST, "invalid Content-Length"}, true);
+                queue_response_internal(https, res,
+                        Response{http::BAD_REQUEST, "invalid Content-Length"sv}, true);
             } else if (length > MAX_REQUEST_BODY_SIZE) {
                 OXEN_LOG(warn, "Received HTTPS request from {} with too-large body ({} > {}), dropping",
                         get_remote_address(res), length, MAX_REQUEST_BODY_SIZE);
-                queue_response_internal(https, res, Response{http::PAYLOAD_TOO_LARGE}, true);
+                queue_response_internal(https, res,
+                        Response{http::PAYLOAD_TOO_LARGE, "Request body too large"sv}, true);
             }
         }
 
@@ -389,12 +397,10 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
         OXEN_LOG(trace, "POST /onion_req/v2");
         process_onion_req_v2(*req, *res);
     });
+    // Deprecated; use /storage_rpc/v1 with method=info instead
     https.get("/get_stats/v1", [this](HttpResponse* res, HttpRequest* req) {
         queue_response_internal(*this, *res, Response{
-            http::OK,
-            nlohmann::json{{"version", STORAGE_SERVER_VERSION_STRING}}.dump(),
-            http::json
-        });
+            http::OK, json{{"version", STORAGE_SERVER_VERSION_STRING}}});
     });
 
         
@@ -449,29 +455,29 @@ static std::variant<legacy_pubkey, Response> validate_snode_signature(ServiceNod
         pubkey = parse_legacy_pubkey(it->second);
     if (!pubkey) {
         OXEN_LOG(debug, "Missing or invalid pubkey header for request");
-        return Response{http::BAD_REQUEST, "missing/invalid pubkey header"};
+        return Response{http::BAD_REQUEST, "missing/invalid pubkey header"sv};
     }
     signature sig;
     if (auto it = r.headers.find(http::SNODE_SIGNATURE_HEADER); it != r.headers.end()) {
         try { sig = signature::from_base64(it->second); }
         catch (...) {
             OXEN_LOG(warn, "invalid signature (not b64) found in header from {}", pubkey);
-            return Response{http::BAD_REQUEST, "Invalid signature"};
+            return Response{http::BAD_REQUEST, "Invalid signature"sv};
         }
     } else {
         OXEN_LOG(debug, "Missing required signature header for request");
-        return Response{http::BAD_REQUEST, "missing signature header"};
+        return Response{http::BAD_REQUEST, "missing signature header"sv};
     }
 
     if (!sn.find_node(pubkey)) {
         OXEN_LOG(debug, "Rejecting signature from unknown service node: {}", pubkey);
-        return Response{http::UNAUTHORIZED, "Unknown service node"};
+        return Response{http::UNAUTHORIZED, "Unknown service node"sv};
     }
 
     if (!prevalidate) {
         if (!check_signature(sig, hash_data(r.body), pubkey)) {
             OXEN_LOG(debug, "snode signature verification failed for pubkey {}", pubkey);
-            return Response{http::UNAUTHORIZED, "snode signature verification failed"};
+            return Response{http::UNAUTHORIZED, "snode signature verification failed"sv};
         }
     }
     return pubkey;
@@ -491,7 +497,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
             assert(std::holds_alternative<legacy_pubkey>(prevalidate));
             if (rate_limiter_.should_rate_limit(std::get<legacy_pubkey>(prevalidate))) {
                 queue_response_internal(*this, res,
-                        Response{http::TOO_MANY_REQUESTS, "too many requests from this snode"});
+                        Response{http::TOO_MANY_REQUESTS, "too many requests from this snode"sv});
                 data.replied = true;
             }
         }
@@ -519,19 +525,19 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
             if (auto it = req.headers.find(http::SNODE_SENDER_HEADER); it != req.headers.end()) {
                 if (tester_pk = parse_legacy_pubkey(it->second); !tester_pk) {
                     OXEN_LOG(debug, "Invalid test request: invalid pubkey");
-                    resp.body = "invalid tester pubkey header";
+                    resp.body = "invalid tester pubkey header"sv;
                     return queue_response(std::move(data), std::move(resp));
                 }
             } else {
                 OXEN_LOG(debug, "Invalid test request: missing pubkey");
-                resp.body = "missing tester pubkey header";
+                resp.body = "missing tester pubkey header"sv;
                 return queue_response(std::move(data), std::move(resp));
             }
 
             auto body = json::parse(data->request.body, nullptr, false);
             if (body.is_discarded()) {
                 OXEN_LOG(debug, "Bad snode test request: invalid json");
-                resp.body = "invalid json";
+                resp.body = "invalid json"sv;
                 return queue_response(std::move(data), std::move(resp));
             }
 
@@ -541,8 +547,8 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                 height = body.at("height").get<uint64_t>();
                 msg_hash = body.at("hash").get<std::string>();
             } catch (...) {
-                resp.body = "Bad snode test request: missing fields in json";
-                OXEN_LOG(debug, resp.body);
+                resp.body = "Bad snode test request: missing fields in json"sv;
+                OXEN_LOG(debug, std::get<std::string_view>(resp.body));
                 return queue_response(std::move(data), std::move(resp));
             }
 
@@ -550,24 +556,23 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                 [data=std::move(data), resp=std::move(resp)]
                 (MessageTestStatus status, std::string answer, std::chrono::steady_clock::duration elapsed) mutable {
                     resp.status = http::OK;
-                    resp.content_type = http::json;
                     switch (status) {
                         case MessageTestStatus::SUCCESS:
                             OXEN_LOG(debug, "Storage test success after {}",
                                     util::friendly_duration(elapsed));
                             resp.body = json{
                                     {"status", "OK"},
-                                    {"value", std::move(answer)}}.dump();
+                                    {"value", std::move(answer)}};
                             return queue_response(std::move(data), std::move(resp));
                         case MessageTestStatus::WRONG_REQ:
-                            resp.body = json{{"status", "wrong request"}}.dump();
+                            resp.body = json{{"status", "wrong request"}};
                             return queue_response(std::move(data), std::move(resp));
                         case MessageTestStatus::RETRY:
                             [[fallthrough]]; // If we're getting called then a retry ran out of time
                         case MessageTestStatus::ERROR:
                             // Promote this to `error` once we enforce storage testing
                             OXEN_LOG(debug, "Failed storage test, tried for {}", util::friendly_duration(elapsed));
-                            resp.body = json{{"status", "other"}}.dump();
+                            resp.body = json{{"status", "other"}};
                             return queue_response(std::move(data), std::move(resp));
                     }
                 });

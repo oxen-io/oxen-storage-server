@@ -30,6 +30,10 @@ struct endpoint {
     // Loads the rpc request from json.  Throws on error (missing keys, bad values, etc.).
     virtual void load_from(nlohmann::json params) = 0;
     virtual void load_from(oxenmq::bt_dict_consumer params) = 0;
+
+    bool b64 = true; // True if we need to base64-encode values (i.e. for json); false if we can deal with binary (i.e. bt-encoded)
+
+    virtual ~endpoint() = default;
 };
 
 // Base type for no-argument endpoints
@@ -43,8 +47,6 @@ struct no_args : endpoint {
 struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
     bool recurse;
-    // Convert a request's value into a bt_dict for forwarding to other SNs.
-    virtual explicit operator oxenmq::bt_dict() const = 0;
 };
 
 namespace {

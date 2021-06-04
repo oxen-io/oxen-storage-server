@@ -17,6 +17,7 @@
 #include <type_traits>
 
 #include <nlohmann/json_fwd.hpp>
+#include <variant>
 
 namespace oxen {
 
@@ -35,10 +36,20 @@ inline constexpr auto TTL_MAXIMUM = 14 * 24h;
 // Simpler wrapper that works for most of our responses
 struct Response {
     http::response_code status = http::OK;
-    std::string body;
-    std::string_view content_type = http::plaintext;
+    std::variant<std::string, std::string_view, nlohmann::json> body;
     std::vector<std::pair<std::string, std::string>> headers;
 };
+
+// Views the string or string_view body inside a Response.  Should only be called when the body has
+// already been verified to not contain a json object.
+inline std::string_view view_body(const Response& r) {
+    assert(!std::holds_alternative<nlohmann::json>(r.body));
+    if (auto* sv = std::get_if<std::string_view>(&r.body))
+        return *sv;
+    if (auto* s = std::get_if<std::string>(&r.body))
+        return *s;
+    return "(internal error)"sv;
+}
 
 std::string to_string(const Response& res);
 

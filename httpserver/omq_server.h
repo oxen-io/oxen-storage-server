@@ -55,20 +55,31 @@ class OxenmqServer {
     // sn.storage_test
     void handle_storage_test(oxenmq::Message& message);
 
+    /// storage.(whatever) -- client request handling.  These reply with [BODY] on success or [CODE,
+    /// BODY] on failure (where BODY typically is some sort of error message).
+    ///
+    /// The return value is either:
+    /// [VALUE] for a successful response
+    /// [ERRCODE, VALUE] for a failure.
+    ///
+    /// Successful responses will generally return VALUE as json, if the request was json (or
+    /// empty), or a bt-encoded dict if the request was bt-encoded.  Note that base64-encoded values
+    /// for json responses are raw byte values (*not* base64-encoded) when returning a bt-encoded
+    /// value.
+    ///
+    /// Failure responses are an HTTP error number and a plain text failure string.
+    ///
+    /// `forwarded` is set if this request was forwarded from another swarm member rather than being
+    /// direct from the client; the request is handled identically except that these forwarded
+    /// requests are not-reforwarded again, and there are two message parts prepended: the method
+    /// name, and the remote client's IP.
+    void handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded = false);
+
     void handle_get_logs(oxenmq::Message& message);
 
     void handle_get_stats(oxenmq::Message& message);
 
-    // storage.(whatever) -- client request handling.  These reply with [BODY] on success or [CODE,
-    // BODY] on failure (where BODY typically is some sort of error message).
-    //
-    // forwarded is set if this request was forwarded from another swarm member rather than being
-    // direct from the client; the request is handled identically except that these forwarded
-    // requests are not-reforwarded again, and there are two message parts prepended: the method
-    // name, and the remote client's IP.
-    void handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded = false);
-
-    // Access keys for the 'service' category as binary
+    // Access pubkeys for the 'service' command category (for access stats & logs), in binary.
     std::unordered_set<std::string> stats_access_keys_;
 
     void connect_oxend(const oxenmq::address& oxend_rpc);
@@ -113,7 +124,7 @@ class OxenmqServer {
 
     using rpc_map = std::unordered_map<
         std::string_view,
-        std::function<void(RequestHandler&, oxenmq::bt_dict_consumer params, bool recurse, std::function<void(Response)>)>
+        std::function<void(RequestHandler&, std::string_view params, bool recurse, std::function<void(Response)>)>
     >;
     static const rpc_map client_rpc_endpoints;
 };

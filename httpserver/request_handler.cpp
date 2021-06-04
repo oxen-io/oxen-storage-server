@@ -11,14 +11,15 @@
 #include "version.h"
 
 #include <chrono>
-#include <cpr/cpr.h>
 #include <future>
+
+#include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
-#include <system_error>
+#include <variant>
 
 using nlohmann::json;
 using namespace std::chrono;
@@ -34,9 +35,10 @@ std::string to_string(const Response& res) {
 
     std::stringstream ss;
 
+    const bool is_json = std::holds_alternative<json>(res.body);
     ss << "Status: " << res.status.first << " " << res.status.second
-        << ", Content-Type: " << (res.content_type.empty() ? "(unspecified)" : res.content_type)
-        << ", Body: <" << res.body << ">";
+        << ", Content-Type: " << (is_json ? "application/json" : "text/plain")
+        << ", Body: <" << (is_json ? std::get<json>(res.body).dump() : view_body(res)) << ">";
 
     return ss.str();
 }
@@ -141,8 +143,7 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
 
     return {
         http::MISDIRECTED_REQUEST,
-        snodes_to_json(service_node_.get_snodes_by_pk(pubKey)).dump(),
-        http::json};
+        snodes_to_json(service_node_.get_snodes_by_pk(pubKey))};
 }
 
 void RequestHandler::process_client_req(
@@ -157,12 +158,12 @@ void RequestHandler::process_client_req(
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
     if (!validateTTL(ttl)) {
         OXEN_LOG(warn, "Forbidden. Invalid TTL: {}ms", ttl.count());
-        return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."});
+        return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
     }
     if (!validateTimestamp(req.timestamp, req.expiry)) {
         OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}",
                 duration_cast<milliseconds>(req.timestamp.time_since_epoch()).count());
-        return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"});
+        return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
     auto messageHash = computeMessageHash(req.timestamp, req.expiry, req.pubkey.str(), req.data);
@@ -173,12 +174,12 @@ void RequestHandler::process_client_req(
     } catch (const std::exception& e) {
         OXEN_LOG(critical, "Internal Server Error. Could not store message for {}",
                  obfuscate_pubkey(req.pubkey));
-        return cb(Response{http::INTERNAL_SERVER_ERROR, e.what()});
+        return cb(Response{http::INTERNAL_SERVER_ERROR, std::string{e.what()}});
     }
 
     if (!success) {
         OXEN_LOG(warn, "Service node is initializing");
-        return cb(Response{http::SERVICE_UNAVAILABLE, "Service node is initializing\n"});
+        return cb(Response{http::SERVICE_UNAVAILABLE, "Service node is initializing"sv});
     }
 
     OXEN_LOG(trace, "Successfully stored message {} for {}", messageHash, obfuscate_pubkey(req.pubkey));
@@ -188,7 +189,7 @@ void RequestHandler::process_client_req(
         {"difficulty", 1}, // No longer used, but here to avoid breaking older clients.  TODO: remove eventually
     };
 
-    cb(Response{http::OK, res_body.dump(), http::json});
+    cb(Response{http::OK, std::move(res_body)});
 }
 
 void RequestHandler::process_client_req(
@@ -205,10 +206,14 @@ void RequestHandler::process_client_req(
             // Currently we only support json endpoints; if we want to support non-json endpoints
             // (which end in ".bin") at some point in the future then we'll need to return those
             // endpoint results differently here.
-            if (success && data.size() >= 2 && data[0] == "200")
-                return cb({http::OK,
-                    R"({"result":)" + std::move(data[1]) + "}",
-                    http::json});
+            if (success && data.size() >= 2 && data[0] == "200") {
+                json result = json::parse(data[1], nullptr, false);
+                if (result.is_discarded()) {
+                    OXEN_LOG(warn, "Invalid oxend response to client request: result is not valid json");
+                    return cb({http::BAD_GATEWAY, "oxend returned unparseable data"s});
+                }
+                return cb({http::OK, json{{"result", std::move(result)}}});
+            }
             return cb({http::BAD_REQUEST,
                 data.size() >= 2 && !data[1].empty()
                     ? std::move(data[1]) : "Unknown oxend error"s});
@@ -223,12 +228,12 @@ void RequestHandler::process_client_req(
 
     OXEN_LOG(debug, "get swarm for {}, swarm size: {}", obfuscate_pubkey(req.pubkey), nodes.size());
 
-    auto body = snodes_to_json(nodes).dump();
+    auto body = snodes_to_json(nodes);
 
     if (OXEN_LOG_ENABLED(trace))
-        OXEN_LOG(trace, "swarm details for pk {}: {}", obfuscate_pubkey(req.pubkey), body);
+        OXEN_LOG(trace, "swarm details for pk {}: {}", obfuscate_pubkey(req.pubkey), body.dump());
 
-    cb(Response{http::OK, std::move(body), http::json});
+    cb(Response{http::OK, std::move(body)});
 }
 
 void RequestHandler::process_client_req(
@@ -253,7 +258,7 @@ void RequestHandler::process_client_req(
         messages.push_back(json{
             {"hash", item.hash},
             {"expiration", duration_cast<milliseconds>(item.expiration.time_since_epoch()).count()},
-            {"data", oxenmq::to_base64(item.data)},
+            {"data", req.b64 ? oxenmq::to_base64(item.data) : std::move(item.data)},
         });
     }
 
@@ -261,7 +266,7 @@ void RequestHandler::process_client_req(
         {"messages", std::move(messages)}
     };
 
-    return cb(Response{http::OK, body.dump(), http::json});
+    return cb(Response{http::OK, std::move(body)});
 }
 
 void RequestHandler::process_client_req(
@@ -272,8 +277,7 @@ void RequestHandler::process_client_req(
             {"version", STORAGE_SERVER_VERSION},
             {"timestamp",
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count()},
-        }.dump(),
-        http::json});
+        }});
 }
 
 void RequestHandler::process_client_req(
@@ -284,7 +288,7 @@ void RequestHandler::process_client_req(
     json body = json::parse(req_json, nullptr, false);
     if (body.is_discarded()) {
         OXEN_LOG(debug, "Bad client request: invalid json");
-        return cb(Response{http::BAD_REQUEST, "invalid json\n"});
+        return cb(Response{http::BAD_REQUEST, "invalid json"sv});
     }
 
     if (OXEN_LOG_ENABLED(trace))
@@ -293,7 +297,7 @@ void RequestHandler::process_client_req(
     const auto method_it = body.find("method");
     if (method_it == body.end() || !method_it->is_string()) {
         OXEN_LOG(debug, "Bad client request: no method field");
-        return cb(Response{http::BAD_REQUEST, "invalid json: no `method` field\n"});
+        return cb(Response{http::BAD_REQUEST, "invalid json: no `method` field"sv});
     }
 
     std::string_view method_name = method_it->get_ref<const std::string&>();
@@ -303,7 +307,7 @@ void RequestHandler::process_client_req(
     auto params_it = body.find("params");
     if (params_it == body.end() || !params_it->is_object()) {
         OXEN_LOG(debug, "Bad client request: no params field");
-        return cb(Response{http::BAD_REQUEST, "invalid json: no `params` field\n"});
+        return cb(Response{http::BAD_REQUEST, "invalid json: no `params` field"sv});
     }
 
     process_client_req(method_name, std::move(*params_it), std::move(cb));
@@ -327,7 +331,7 @@ void RequestHandler::process_client_req(
             // Other exceptions might contain something sensitive or irrelevant so warn about it and
             // send back a generic message.
             OXEN_LOG(warn, "Client request raised an exception: {}", e.what());
-            return cb(Response{http::INTERNAL_SERVER_ERROR, "request failed"});
+            return cb(Response{http::INTERNAL_SERVER_ERROR, "request failed"sv});
         }
     }
 
@@ -341,24 +345,14 @@ Response RequestHandler::process_retrieve_all() {
 
     bool res = service_node_.get_all_messages(all_entries);
 
-    if (!res) {
-        return Response{http::INTERNAL_SERVER_ERROR,
-                        "could not retrieve all entries\n"};
-    }
+    if (!res)
+        return {http::INTERNAL_SERVER_ERROR, "could not retrieve all entries"s};
 
     json messages = json::array();
+    for (auto& entry : all_entries)
+        messages.push_back({ {"data", entry.data}, {"pk", entry.pub_key} });
 
-    for (auto& entry : all_entries) {
-        json item;
-        item["data"] = entry.data;
-        item["pk"] = entry.pub_key;
-        messages.push_back(item);
-    }
-
-    json res_body;
-    res_body["messages"] = messages;
-
-    return Response{http::OK, res_body.dump(), http::json};
+    return {http::OK, json{{"messages", std::move(messages)}}};
 }
 
 
@@ -416,17 +410,20 @@ Response RequestHandler::wrap_proxy_response(Response res,
 
     int status = res.status.first;
     std::string body;
-    if (embed_json && res.content_type == http::json)
-        body = fmt::format(R"({{"status":{},"body":{}}})", status, res.body);
-    else
-        body = json{{"status", status}, {"body", res.body}}.dump();
+    if (std::holds_alternative<std::string>(res.body))
+        body = json{{"status", status}, {"body", std::move(std::get<std::string>(res.body))}}.dump();
+    if (std::holds_alternative<std::string_view>(res.body))
+        body = json{{"status", status}, {"body", std::get<std::string_view>(res.body)}}.dump();
+    else if (embed_json)
+        body = json{{"status", status}, {"body", std::move(std::get<json>(res.body))}}.dump();
+    else // Yuck: double-encoded json
+        body = json{{"status", status}, {"body", std::get<json>(res.body).dump()}}.dump();
 
     std::string ciphertext = channel_cipher_.encrypt(enc_type, body, client_key);
     if (base64)
         ciphertext = oxenmq::to_base64(std::move(ciphertext));
 
-    // why does this have to be json???
-    return Response{http::OK, std::move(ciphertext), http::json};
+    return Response{http::OK, std::move(ciphertext)};
 }
 
 void RequestHandler::process_onion_req(std::string_view ciphertext,
@@ -449,7 +446,7 @@ void RequestHandler::process_onion_req(FinalDestinationInfo&& info,
     OXEN_LOG(debug, "We are the target of the onion request!");
 
     if (!service_node_.snode_ready())
-        return data.cb(wrap_proxy_response({http::SERVICE_UNAVAILABLE, "Snode not ready"},
+        return data.cb(wrap_proxy_response({http::SERVICE_UNAVAILABLE, "Snode not ready"s},
                     data.ephem_key, data.enc_type, info.json, info.base64));
 
     process_client_req(
@@ -476,22 +473,23 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info,
 
         if (!success) {
             OXEN_LOG(debug, "[Onion request] Request time out");
-            return cb({http::GATEWAY_TIMEOUT, "Request time out"});
+            return cb({http::GATEWAY_TIMEOUT, "Request time out"s});
         }
 
         // We expect a two-part message, but for forwards compatibility allow extra parts
         if (data.size() < 2) {
             OXEN_LOG(debug, "[Onion request] Invalid response; expected at least 2 parts");
-            return cb({http::INTERNAL_SERVER_ERROR, "Invalid response from snode"});
+            return cb({http::INTERNAL_SERVER_ERROR, "Invalid response from snode"s});
         }
 
-        Response res{http::INTERNAL_SERVER_ERROR, std::move(data[1]), http::json};
+        Response res{http::INTERNAL_SERVER_ERROR, std::move(data[1])};
         if (int code; util::parse_int(data[0], code))
             res.status = http::from_code(code);
 
         /// We use http status codes (for now)
         if (res.status != http::OK)
-            OXEN_LOG(debug, "Onion request relay failed with: {}", res.body);
+            OXEN_LOG(debug, "Onion request relay failed with: {}",
+                    std::holds_alternative<nlohmann::json>(res.body) ? "<json>" : view_body(res));
 
         cb(std::move(res));
     };
@@ -513,7 +511,7 @@ void RequestHandler::process_onion_req(
     // Forward the request to url but only if it ends in `/lsrpc`
     if (!(info.protocol == "http" || info.protocol == "https") ||
             !is_onion_url_target_allowed(info.target))
-        return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"},
+        return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid url"s},
             data.ephem_key, data.enc_type));
 
     std::string urlstr;
@@ -545,11 +543,8 @@ void RequestHandler::process_onion_req(
                 } else {
                     res.status.first = r.status_code;
                     res.status.second = r.status_line;
-                    for (auto& [k, v] : r.header) {
-                        auto& [header, val] = res.headers.emplace_back(std::move(k), std::move(v));
-                        if (util::string_iequal(header, "content-type"))
-                            res.content_type = val;
-                    }
+                    for (auto& [k, v] : r.header)
+                        res.headers.emplace_back(std::move(k), std::move(v));
                     res.body = std::move(r.text);
                 }
 
@@ -569,9 +564,9 @@ void RequestHandler::process_onion_req(ProcessCiphertextError&& error,
 
     switch (error) {
         case ProcessCiphertextError::INVALID_CIPHERTEXT:
-            return data.cb({http::BAD_REQUEST, "Invalid ciphertext"});
+            return data.cb({http::BAD_REQUEST, "Invalid ciphertext"s});
         case ProcessCiphertextError::INVALID_JSON:
-            return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid json"},
+            return data.cb(wrap_proxy_response({http::BAD_REQUEST, "Invalid json"s},
                     data.ephem_key, data.enc_type));
     }
 }

@@ -50,10 +50,6 @@ namespace oxen::http {
         }
     }
 
-    // Common mime types
-    inline constexpr std::string_view plaintext = "text/plain"sv;
-    inline constexpr std::string_view json = "application/json"sv;
-
     namespace detail {
         struct ascii_lc_hash {
             std::size_t operator()(const std::string& val) const {

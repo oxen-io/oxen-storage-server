@@ -15,6 +15,7 @@
 #include <oxenmq/hex.h>
 
 #include <optional>
+#include <variant>
 
 namespace oxen {
 
@@ -125,11 +126,14 @@ void OxenmqServer::handle_onion_request(
         if (OXEN_LOG_ENABLED(trace))
             OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
 
-        send.reply(std::to_string(res.status.first), std::move(res).body);
+        if (auto* js = std::get_if<nlohmann::json>(&res.body))
+            send.reply(std::to_string(res.status.first), js->dump());
+        else
+            send.reply(std::to_string(res.status.first), view_body(res));
     };
 
     if (data.hop_no > MAX_ONION_HOPS)
-        return data.cb({http::BAD_REQUEST, "onion request max path length exceeded"});
+        return data.cb({http::BAD_REQUEST, "onion request max path length exceeded"sv});
 
     request_handler_->process_onion_req(payload, std::move(data));
 }
@@ -183,9 +187,21 @@ namespace {
 
 template <typename RPC>
 void register_client_rpc_endpoint(OxenmqServer::rpc_map& regs) {
-    auto call = [](RequestHandler& h, oxenmq::bt_dict_consumer params, bool recursive, std::function<void(Response)> cb) {
+    auto call = [](RequestHandler& h, std::string_view params, bool recursive, std::function<void(Response)> cb) {
         RPC req;
-        req.load_from(params);
+        if (params.empty())
+            params = "{}"sv;
+        if (params.front() == 'd') {
+            req.load_from(oxenmq::bt_dict_consumer{params});
+            req.b64 = false;
+        } else {
+            auto body = nlohmann::json::parse(params, nullptr, false);
+            if (body.is_discarded()) {
+                OXEN_LOG(debug, "Bad OMQ client request: not valid json or bt_dict");
+                return cb(Response{http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
+            }
+            req.load_from(body);
+        }
         if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
             req.recurse = recursive;
         h.process_client_req(std::move(req), std::move(cb));
@@ -203,7 +219,33 @@ OxenmqServer::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
     return regs;
 }
 
+oxenmq::bt_value json_to_bt(nlohmann::json j) {
+    using namespace oxenmq;
+    if (j.is_object()) {
+        bt_dict res;
+        for (auto& [k, v] : j.items())
+            res[k] = json_to_bt(v);
+        return res;
+    }
+    if (j.is_array()) {
+        bt_list res;
+        for (auto& v : j)
+            res.push_back(json_to_bt(v));
+        return res;
+    }
+    if (j.is_string())
+        return j.get<std::string>();
+    if (j.is_boolean())
+        return j.get<bool>() ? 1 : 0;
+    if (j.is_number_unsigned())
+        return j.get<uint64_t>();
+    if (j.is_number_integer())
+        return j.get<int64_t>();
+    OXEN_LOG(warn, "client request returned json with an unhandled value type, unable to convert to bt");
+    throw std::runtime_error{"internal error"};
 }
+
+} // anon. namespace
 
 const OxenmqServer::rpc_map OxenmqServer::client_rpc_endpoints =
     register_client_rpc_endpoints(rpc::client_rpc_types{});
@@ -231,17 +273,30 @@ void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Messag
     }
 
     try {
-        oxenmq::bt_dict_consumer params{message.data.size() == full_size ? message.data.back() : "de"sv};
-        it->second(*request_handler_, std::move(params), !forwarded,
-            [send=message.send_later()](oxen::Response res) {
+        std::string_view params = message.data.size() == full_size ? message.data.back() : ""sv;
+        it->second(*request_handler_, params, !forwarded,
+            [send=message.send_later(), bt_encoded = !params.empty() && params.front() == 'd']
+            (oxen::Response res) {
+                std::string dump;
+                std::string_view body;
+                if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
+                    if (bt_encoded)
+                        dump = bt_serialize(json_to_bt(std::move(*j)));
+                    else
+                        dump = j->dump();
+                    body = dump;
+                } else
+                    body = view_body(res);
+
                 if (res.status == http::OK) {
-                    OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte response", res.body.size());
+                    OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte {} response",
+                            body.size(), dump.empty() ? "text" : bt_encoded ? "bt" : "json");
                     // Success: return just the body
-                    send.reply(std::move(res.body));
+                    send.reply(body);
                 } else {
                     // On error return [errcode, body]
-                    OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, res.body);
-                    send.reply(std::to_string(res.status.first), res.body);
+                    OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, body);
+                    send.reply(std::to_string(res.status.first), body);
                 }
             });
     } catch (const rpc::parse_error& e) {
@@ -309,9 +364,8 @@ OxenmqServer::OxenmqServer(
         ;
 
     // storage.WHATEVER (e.g. storage.store, storage.retrieve, etc.) endpoints are invokable by
-    // anyone (i.e. clients).  These endpoints return a single-part message [body] on success, or a
-    // two-part message [errcode, body] on error.  The sole argument is the parameters, specified as
-    // a bt-encoded dict.
+    // anyone (i.e. clients) and have the same WHATEVER endpoints as the "method" values for the
+    // HTTPS /storage_rpc/v1 endpoint.
     auto st_cat = omq_.add_category("storage", oxenmq::AuthLevel::none, 1 /*reserved threads*/, 200 /*max queue*/);
     for (const auto& [name, _cb] : RequestHandler::client_rpc_endpoints)
         st_cat.add_request_command(std::string{name}, [this, name=name](auto& m) { handle_client_request(name, m); });
