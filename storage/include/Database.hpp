@@ -65,6 +65,23 @@ class Database {
     // Removes expired messages from the database; the Database owner should call this periodically.
     void clean_expired();
 
+    // Deletes all messages owned by the given pubkey.  Returns the number of deleted messages on
+    // success, -1 on failure.
+    int delete_all(std::string_view pubkey);
+
+    // Delete a message owned by the given pubkey having the given hash.  Returns true if deleted.
+    bool delete_by_hash(std::string_view pubkey, std::string_view msg_hash);
+
+    // Deletes all messages owned by the given pubkey with a timestamp <= timestamp.  Returns the
+    // number of deleted messages.
+    int delete_by_timestamp(std::string_view pubkey, uint64_t timestamp);
+
+    // Updates the expiry time of a message owned by the given pubkey.  Expiries can only be
+    // shortened (i.e. brought closer to now), not extended into the future.  Returns the new
+    // message expiry timestamp, if found (note that the new expiry may not have been updated if it
+    // was already shorter than the requested time).
+    uint64_t update_expiry(std::string_view pubkey, std::string_view msg_hash);
+
   private:
     sqlite3_stmt* prepare_statement(const std::string& query);
     void open_and_prepare(const std::filesystem::path& db_path);

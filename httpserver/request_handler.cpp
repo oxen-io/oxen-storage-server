@@ -281,6 +281,22 @@ void RequestHandler::process_client_req(
 }
 
 void RequestHandler::process_client_req(
+        rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
+}
+void RequestHandler::process_client_req(
+        rpc::delete_msgs&& req, std::function<void(Response)> cb) {
+}
+void RequestHandler::process_client_req(
+        rpc::delete_before&& req, std::function<void(Response)> cb) {
+}
+void RequestHandler::process_client_req(
+        rpc::expire_all&& req, std::function<void(Response)> cb) {
+}
+void RequestHandler::process_client_req(
+        rpc::expire_msgs&& req, std::function<void(Response)> cb) {
+}
+
+void RequestHandler::process_client_req(
     std::string_view req_json, std::function<void(Response)> cb) {
 
     OXEN_LOG(trace, "process_client_req str <{}>", req_json);

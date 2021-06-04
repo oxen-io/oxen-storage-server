@@ -152,6 +152,11 @@ class RequestHandler {
     void process_client_req(rpc::get_swarm&& req, std::function<void(Response)> cb);
     void process_client_req(rpc::oxend_request&& req, std::function<void(Response)> cb);
     void process_client_req(rpc::info&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::delete_all&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::delete_msgs&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::delete_before&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::expire_all&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
 
     using rpc_map = std::unordered_map<
         std::string_view,

@@ -150,6 +150,29 @@ void require_exactly_one_of(std::string_view first, const std::optional<T1>& a, 
                 first, second)};
 }
 
+template <typename RPC, typename Dict>
+static void load_pk_signature(
+        RPC &rpc,
+        const Dict&,
+        std::optional<std::string> pk,
+        std::optional<std::string_view> sig) {
+    require("pubkey", pk);
+    require("signature", sig);
+    if (!rpc.pubkey.load(std::move(*pk)))
+        throw parse_error{fmt::format("Pubkey must be {} hex digits long", get_user_pubkey_size())};
+
+    if constexpr (std::is_same_v<json, Dict>) {
+        if (!oxenmq::is_base64(*sig) || !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
+            throw parse_error{"invalid signature: expected base64 encoded Ed25519 signature"};
+        oxenmq::from_base64(sig->begin(), sig->end(), rpc.signature.begin());
+    } else {
+        if (sig->size() != 64)
+            throw parse_error{"invalid signature: expected 64-byte Ed25519 signature"};
+        std::memcpy(rpc.signature.data(), sig->data(), 64);
+    }
+    // NB: We don't validate the signature here, we only parse input
+}
+
 
 } // anon. namespace
 
@@ -227,6 +250,84 @@ static void load(retrieve& r, Dict& d) {
 }
 void retrieve::load_from(json params) { load(*this, params); }
 void retrieve::load_from(bt_dict_consumer params) { load(*this, params); }
+
+template <typename Dict>
+static void load(delete_msgs& dm, Dict& d) {
+    auto [messages, pubkey, signature] =
+        load_fields<std::vector<std::string>, std::string, std::string_view>(
+            d, "messages", "pubkey", "signature");
+
+    load_pk_signature(dm, d, pubkey, signature);
+    require("messages", messages);
+    dm.messages = std::move(*messages);
+    if (dm.messages.empty())
+        throw parse_error{"messages does not contain any message hashes"};
+    for (const auto& m : dm.messages)
+        if (m.size() != 128 && !oxenmq::is_hex(m))
+            throw parse_error{"invalid message hash: expected 128 hex digits"};
+}
+void delete_msgs::load_from(json params) { load(*this, params); }
+void delete_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
+
+
+template <typename Dict>
+static void load(delete_all& da, Dict& d) {
+    auto [pubkey, signature, timestamp] =
+        load_fields<std::string, std::string_view, system_clock::time_point>(
+            d, "pubkey", "signature", "timestamp");
+
+    load_pk_signature(da, d, pubkey, signature);
+    require("timestamp", timestamp);
+    da.timestamp = std::move(*timestamp);
+}
+void delete_all::load_from(json params) { load(*this, params); }
+void delete_all::load_from(bt_dict_consumer params) { load(*this, params); }
+
+template <typename Dict>
+static void load(delete_before& db, Dict& d) {
+    auto [before, pubkey, signature] =
+        load_fields<system_clock::time_point, std::string, std::string_view>(
+            d, "before", "pubkey", "signature");
+
+    load_pk_signature(db, d, pubkey, signature);
+    require("before", before);
+    db.before = std::move(*before);
+}
+void delete_before::load_from(json params) { load(*this, params); }
+void delete_before::load_from(bt_dict_consumer params) { load(*this, params); }
+
+template <typename Dict>
+static void load(expire_all& e, Dict& d) {
+    auto [expiry, pubkey, signature] =
+        load_fields<system_clock::time_point, std::string, std::string_view>(
+            d, "expiry", "pubkey", "signature");
+
+    load_pk_signature(e, d, pubkey, signature);
+    require("expiry", expiry);
+    e.expiry = std::move(*expiry);
+}
+void expire_all::load_from(json params) { load(*this, params); }
+void expire_all::load_from(bt_dict_consumer params) { load(*this, params); }
+
+template <typename Dict>
+static void load(expire_msgs& e, Dict& d) {
+    auto [expiry, messages, pubkey, signature] =
+        load_fields<system_clock::time_point, std::vector<std::string>, std::string, std::string_view>(
+            d, "expiry", "messages", "pubkey", "signature");
+
+    load_pk_signature(e, d, pubkey, signature);
+    require("expiry", expiry);
+    e.expiry = std::move(*expiry);
+    require("messages", messages);
+    e.messages = std::move(*messages);
+    if (e.messages.empty())
+        throw parse_error{"messages does not contain any message hashes"};
+    for (const auto& m : e.messages)
+        if (m.size() != 128 && !oxenmq::is_hex(m))
+            throw parse_error{"invalid message hash: expected 128 hex digits"};
+}
+void expire_msgs::load_from(json params) { load(*this, params); }
+void expire_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
 
 template <typename Dict>
 static void load(get_swarm& g, Dict& d) {

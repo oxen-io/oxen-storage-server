@@ -115,6 +115,112 @@ struct info final : no_args {
     static constexpr auto names() { return NAMES("info"); }
 };
 
+
+/// Deletes specific stored messages and broadcasts the delete request to all other swarm members.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall be deleted
+/// - messages -- array of message hashes (in hex) to delete
+/// - signature -- Ed25519 signature of `messages`; this signs the value constructed by
+/// concatenating all `messages` values, using `pubkey` to sign.  Must be base64 encoded for json
+/// requests; binary for OMQ requests.
+struct delete_msgs final : recursive {
+    static constexpr auto names() { return NAMES("delete"); }
+
+    user_pubkey_t pubkey;
+    std::vector<std::string> messages;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
+};
+
+/// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request to
+/// all other swarm members.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall be deleted
+/// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
+/// epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+/// timestamp via `info` first, to avoid client time sync issues).
+/// - signature -- an Ed25519 signature of the timestamp value (expressed as a string), signed by
+/// the ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
+/// requests; binary for OMQ requests.
+struct delete_all final : recursive {
+    static constexpr auto names() { return NAMES("delete_all"); }
+
+    user_pubkey_t pubkey;
+    std::chrono::system_clock::time_point timestamp;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
+};
+
+/// Deletes all stored messages with a timestamp earlier than the specified value and broadcasts the
+/// delete request to all other swarm members.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall be deleted
+/// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stores messages
+/// with timestamps <= this value will be deleted.
+/// - signature -- Ed25519 signature of the before value (expressed as a string), signed by
+/// `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).
+struct delete_before final : recursive {
+    static constexpr auto names() { return NAMES("delete_before"); }
+
+    user_pubkey_t pubkey;
+    std::chrono::system_clock::time_point before;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
+};
+
+/// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
+/// other swarm members.  Note that this will not extend existing expiries, it will only shorten the
+/// expiry of any messages that have expiries after the requested value.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall have their expiries reduced.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
+/// - signature -- signature of the expiry value, expressed as a string, signed by `pubkey`.  Must
+/// be base64 encoded (json) or bytes (OMQ).
+struct expire_all final : recursive {
+    static constexpr auto names() { return NAMES("expire_all"); }
+
+    user_pubkey_t pubkey;
+    std::chrono::system_clock::time_point expiry;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
+};
+
+/// Updates (shortens) the expiry of one or more stored messages and broadcasts the update request
+/// to all other swarm members.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall have their expiries reduced.
+/// - messages -- array of message hashes (in hex) to update
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
+/// - signature -- Ed25519 signature of `messages[0] || ... || messages[N] || expiry` (where
+/// `expiry` is the expiry timestamp expressed as a string).  Must be base64 encoded (json) or bytes
+/// (OMQ).
+struct expire_msgs final : recursive {
+    static constexpr auto names() { return NAMES("expire"); }
+
+    user_pubkey_t pubkey;
+    std::vector<std::string> messages;
+    std::chrono::system_clock::time_point expiry;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenmq::bt_dict_consumer params) override;
+};
+
+
+
 /// Retrieves the swarm information for a given pubkey. Takes keys of:
 /// - `pubkey` (required) the pubkey to query
 struct get_swarm final : endpoint {
@@ -155,6 +261,11 @@ template <typename...> struct type_list {};
 using client_rpc_types = type_list<
     store,
     retrieve,
+    delete_msgs,
+    delete_all,
+    delete_before,
+    expire_msgs,
+    expire_all,
     get_swarm,
     oxend_request,
     info
