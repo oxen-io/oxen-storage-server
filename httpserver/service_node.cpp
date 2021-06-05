@@ -708,7 +708,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
                 if (r.error.code != cpr::ErrorCode::OK) {
                     OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} {}", pk, r.error.code, r.error.message);
                 } else if (r.status_code != 200) {
-                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: received non-200 status {}",
+                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: received non-200 status {} {}",
                             pk, r.status_code, r.status_line);
                 } else {
                     if (old_ping_test) {
@@ -885,7 +885,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                     if (r.error.code != cpr::ErrorCode::OK)
                         OXEN_LOG(debug, "FAILED storage test of {}: {}", pk, r.error.message);
                     else if (r.status_code != 200)
-                        OXEN_LOG(debug, "FAILED storage test of {}: received non-200 status {}",
+                        OXEN_LOG(debug, "FAILED storage test of {}: received non-200 status {} {}",
                                 pk, r.status_code, r.status_line);
                     else if (r.text.empty())
                         OXEN_LOG(debug, "FAILED storage test of {}: received empty body", pk);
