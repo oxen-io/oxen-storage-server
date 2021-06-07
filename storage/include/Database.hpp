@@ -30,7 +30,6 @@ class Database {
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
     explicit Database(const std::filesystem::path& db_path);
-    ~Database();
 
     enum class DuplicateHandling { IGNORE, FAIL };
 
@@ -83,23 +82,34 @@ class Database {
     uint64_t update_expiry(std::string_view pubkey, std::string_view msg_hash);
 
   private:
-    sqlite3_stmt* prepare_statement(const std::string& query);
+    struct sqlite_destructor {
+        void operator()(sqlite3_stmt* ptr);
+        void operator()(sqlite3* ptr);
+    };
+
+  public:
+    using StatementPtr = std::unique_ptr<sqlite3_stmt, sqlite_destructor>;
+    using SqlitePtr = std::unique_ptr<sqlite3, sqlite_destructor>;
+
+  private:
+
+    StatementPtr prepare_statement(std::string_view desc, const std::string& query);
     void open_and_prepare(const std::filesystem::path& db_path);
 
     // keep track of db full errorss so we don't print them on every store
     std::atomic<int> db_full_counter = 0;
 
-    sqlite3* db;
-    sqlite3_stmt* save_stmt;
-    sqlite3_stmt* save_or_ignore_stmt;
-    sqlite3_stmt* get_all_for_pk_stmt;
-    sqlite3_stmt* get_all_stmt;
-    sqlite3_stmt* get_stmt;
-    sqlite3_stmt* get_row_count_stmt;
-    sqlite3_stmt* get_random_stmt;
-    sqlite3_stmt* get_by_hash_stmt;
-    sqlite3_stmt* delete_expired_stmt;
-    sqlite3_stmt* page_count_stmt;
+    SqlitePtr db;
+    StatementPtr save_stmt;
+    StatementPtr save_or_ignore_stmt;
+    StatementPtr get_all_for_pk_stmt;
+    StatementPtr get_all_stmt;
+    StatementPtr get_stmt;
+    StatementPtr get_row_count_stmt;
+    StatementPtr get_random_stmt;
+    StatementPtr get_by_hash_stmt;
+    StatementPtr delete_expired_stmt;
+    StatementPtr page_count_stmt;
 };
 
 } // namespace oxen
