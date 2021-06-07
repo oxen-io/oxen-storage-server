@@ -49,9 +49,9 @@ void Database::clean_expired() {
     }
 }
 
-Database::StatementPtr Database::prepare_statement(std::string_view desc, const std::string& query) {
+Database::StatementPtr Database::prepare_statement(std::string_view desc, std::string_view query) {
     sqlite3_stmt* s = nullptr;
-    int rc = sqlite3_prepare_v2(db.get(), query.c_str(), query.length() + 1, &s, nullptr);
+    int rc = sqlite3_prepare_v2(db.get(), query.data(), query.size(), &s, nullptr);
     StatementPtr stmt{s};
     if (rc != SQLITE_OK) {
         OXEN_LOG(err, "sql error compiling {}: {}", desc, sqlite3_errstr(rc));
@@ -222,6 +222,22 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     delete_expired_stmt = prepare_statement(
             "delete expired", "DELETE FROM Data WHERE TimeExpires <= ?");
 
+    delete_by_timestamp_stmt = prepare_statement("delete by timestamp", R"(
+        DELETE FROM Data
+        WHERE Owner = ? AND Timestamp <= ?
+        RETURNING Hash)");
+
+    delete_all_stmt = prepare_statement("delete all", R"(
+        DELETE FROM Data
+        WHERE Owner = ?
+        RETURNING Hash)");
+
+    update_all_expiries_stmt = prepare_statement("update all expiries", R"(
+        UPDATE Data
+        SET TimeExpires = MIN(TimeExpires, ?)
+        WHERE Owner = ?
+        RETURNING Hash, TimeExpires)");
+
     page_count_stmt = prepare_statement("page count", "PRAGMA page_count");
 }
 
@@ -389,6 +405,114 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
     return get_results("retrieve", db, get_by_hash_stmt, [&items](auto* stmt) {
         items.push_back(extract_item(stmt));
     });
+}
+
+static std::optional<std::vector<std::string>>
+extract_hashes(std::string_view desc, Database::SqlitePtr& db, Database::StatementPtr& st) {
+    auto results = std::make_optional<std::vector<std::string>>();
+    auto success = get_results(desc, db, st, [&results](auto* stmt) {
+        results->push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    });
+    if (!success)
+        results.reset();
+    return results;
+}
+
+std::optional<std::vector<std::string>> Database::delete_all(std::string_view pubkey) {
+    sqlite3_bind_text(delete_all_stmt.get(), 1, pubkey.data(), pubkey.size(), SQLITE_STATIC);
+
+    return extract_hashes("delete all", db, delete_all_stmt);
+}
+
+std::optional<std::vector<std::string>> Database::delete_by_hash(
+        std::string_view pubkey, const std::vector<std::string_view>& msg_hashes) {
+    constexpr std::string_view prefix = "DELETE FROM Data WHERE Owner = ? AND Hash IN ("sv;
+    constexpr std::string_view suffix = ") RETURNING Hash"sv;
+    std::string query;
+    query.reserve(prefix.size() + suffix.size() + (msg_hashes.size()*2 - 1));
+    query += prefix;
+    for (size_t i = 0; i < msg_hashes.size(); i++) {
+        if (i > 0) query += ',';
+        query += '?';
+    }
+    query += suffix;
+
+    auto st = prepare_statement("delete by hash", query);
+    sqlite3_bind_text(st.get(), 1, pubkey.data(), pubkey.size(), SQLITE_STATIC);
+    for (size_t i = 0; i < msg_hashes.size(); i++)
+        sqlite3_bind_text(st.get(), i+2, msg_hashes[i].data(), msg_hashes[i].size(), SQLITE_STATIC);
+
+    return extract_hashes("delete by hash", db, st);
+}
+
+std::optional<std::vector<std::string>> Database::delete_by_timestamp(
+        std::string_view pubkey, std::chrono::system_clock::time_point timestamp) {
+    sqlite3_bind_text(delete_by_timestamp_stmt.get(), 1, pubkey.data(), pubkey.size(), SQLITE_STATIC);
+    using namespace std::chrono;
+    sqlite3_bind_int64(delete_by_timestamp_stmt.get(), 2,
+            duration_cast<milliseconds>(timestamp.time_since_epoch()).count());
+
+    return extract_hashes("delete by timestamp", db, delete_by_timestamp_stmt);
+}
+
+static std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+extract_expiries(std::string_view desc, Database::SqlitePtr& db, Database::StatementPtr& st) {
+    auto results = std::make_optional<
+        std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>();
+    using namespace std::chrono;
+    auto success = get_results(desc, db, st, [&results](auto* stmt) {
+        results->emplace_back(
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
+            system_clock::time_point{milliseconds{sqlite3_column_int64(stmt, 1)}});
+    });
+    if (!success)
+        results.reset();
+    return results;
+}
+
+
+
+std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+Database::update_expiry(
+        std::string_view pubkey,
+        const std::vector<std::string_view>& msg_hashes,
+        std::chrono::system_clock::time_point new_exp
+        ) {
+    constexpr std::string_view prefix = "UPDATE Data SET TimeExpires = MIN(TimeExpires, ?) WHERE Owner = ? AND Hash IN ("sv;
+    constexpr std::string_view suffix = ") RETURNING Hash, TimeExpires"sv;
+
+    std::string query;
+    query.reserve(prefix.size() + suffix.size() + (msg_hashes.size()*2 - 1));
+    query += prefix;
+    for (size_t i = 0; i < msg_hashes.size(); i++) {
+        if (i > 0) query += ',';
+        query += '?';
+    }
+    query += suffix;
+
+    auto st = prepare_statement("update expiries", query);
+    using namespace std::chrono;
+    sqlite3_bind_int64(st.get(), 1,
+            duration_cast<milliseconds>(new_exp.time_since_epoch()).count());
+    sqlite3_bind_text(st.get(), 2, pubkey.data(), pubkey.size(), SQLITE_STATIC);
+    for (size_t i = 0; i < msg_hashes.size(); i++)
+        sqlite3_bind_text(st.get(), i+3, msg_hashes[i].data(), msg_hashes[i].size(), SQLITE_STATIC);
+
+    return extract_expiries("update expiries", db, st);
+}
+
+std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+Database::update_all_expiries(
+        std::string_view pubkey,
+        std::chrono::system_clock::time_point new_exp
+        ) {
+    using namespace std::chrono;
+    sqlite3_bind_int64(update_all_expiries_stmt.get(), 1,
+            duration_cast<milliseconds>(new_exp.time_since_epoch()).count());
+    sqlite3_bind_text(update_all_expiries_stmt.get(), 2,
+            pubkey.data(), pubkey.size(), SQLITE_STATIC);
+
+    return extract_expiries("update all expiries", db, update_all_expiries_stmt);
 }
 
 } // namespace oxen

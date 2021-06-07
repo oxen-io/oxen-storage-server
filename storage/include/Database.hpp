@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,22 +65,39 @@ class Database {
     // Removes expired messages from the database; the Database owner should call this periodically.
     void clean_expired();
 
-    // Deletes all messages owned by the given pubkey.  Returns the number of deleted messages on
-    // success, -1 on failure.
-    int delete_all(std::string_view pubkey);
+    // Deletes all messages owned by the given pubkey.  Returns the hashes of any deleted messages
+    // on success (including the case where no messages are deleted), nullopt on query failure.
+    std::optional<std::vector<std::string>> delete_all(std::string_view pubkey);
 
-    // Delete a message owned by the given pubkey having the given hash.  Returns true if deleted.
-    bool delete_by_hash(std::string_view pubkey, std::string_view msg_hash);
+    // Delete a message owned by the given pubkey having the given hashes.  Returns the hashes of
+    // any delete messages on success (including the case where no messages are deleted), nullopt on
+    // query failure.
+    std::optional<std::vector<std::string>> delete_by_hash(
+            std::string_view pubkey, const std::vector<std::string_view>& msg_hashes);
 
     // Deletes all messages owned by the given pubkey with a timestamp <= timestamp.  Returns the
-    // number of deleted messages.
-    int delete_by_timestamp(std::string_view pubkey, uint64_t timestamp);
+    // hashes of any deleted messages (including the case where no messages are deleted), nullopt on
+    // query failure.
+    std::optional<std::vector<std::string>> delete_by_timestamp(
+            std::string_view pubkey, std::chrono::system_clock::time_point timestamp);
 
-    // Updates the expiry time of a message owned by the given pubkey.  Expiries can only be
-    // shortened (i.e. brought closer to now), not extended into the future.  Returns the new
-    // message expiry timestamp, if found (note that the new expiry may not have been updated if it
-    // was already shorter than the requested time).
-    uint64_t update_expiry(std::string_view pubkey, std::string_view msg_hash);
+    // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
+    // be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
+    // [msgid, newexpiry] pairs indicating the new expiry of any messages found (note that the new
+    // expiry may not have been updated if it was already shorter than the requested time).
+    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    update_expiry(
+            std::string_view pubkey,
+            const std::vector<std::string_view>& msg_hashes,
+            std::chrono::system_clock::time_point new_exp
+            );
+
+    // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
+    // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
+    // [msg, newexpiry] for all messages, whether the expiry is updated or not.
+    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    update_all_expiries(
+            std::string_view pubkey, std::chrono::system_clock::time_point new_exp);
 
   private:
     struct sqlite_destructor {
@@ -93,7 +111,7 @@ class Database {
 
   private:
 
-    StatementPtr prepare_statement(std::string_view desc, const std::string& query);
+    StatementPtr prepare_statement(std::string_view desc, std::string_view query);
     void open_and_prepare(const std::filesystem::path& db_path);
 
     // keep track of db full errorss so we don't print them on every store
@@ -109,6 +127,9 @@ class Database {
     StatementPtr get_random_stmt;
     StatementPtr get_by_hash_stmt;
     StatementPtr delete_expired_stmt;
+    StatementPtr delete_by_timestamp_stmt;
+    StatementPtr delete_all_stmt;
+    StatementPtr update_all_expiries_stmt;
     StatementPtr page_count_stmt;
 };
 
