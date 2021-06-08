@@ -401,7 +401,7 @@ OxenmqServer::OxenmqServer(
         .add_request_command("storage_test", [this](auto& m) { handle_storage_test(m); }) // NB: requires a 60s request timeout
         .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
         .add_request_command("storage_cc", [this](auto& m) {
-            if (m.data.size() >= 2) return handle_client_request(m.data[0], m);
+            if (m.data.size() >= 2) return handle_client_request(m.data[0], m, true);
             OXEN_LOG(warn, "Invalid forwarded client request: incorrect number of message parts ({})",  m.data.size());
         })
         ;
