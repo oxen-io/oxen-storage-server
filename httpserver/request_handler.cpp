@@ -359,6 +359,7 @@ void RequestHandler::process_client_req(
     for (const auto& item : items) {
         messages.push_back(json{
             {"hash", item.hash},
+            {"timestamp", duration_cast<milliseconds>(item.timestamp.time_since_epoch()).count()},
             {"expiration", duration_cast<milliseconds>(item.expiration.time_since_epoch()).count()},
             {"data", req.b64 ? oxenmq::to_base64(item.data) : std::move(item.data)},
         });
