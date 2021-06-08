@@ -451,14 +451,19 @@ void RequestHandler::process_client_req(
         lock.emplace(res->mutex);
     }
 
+    // If we're recursive then put our stuff inside "swarm" alongside all the other results,
+    // otherwise keep it top-level
+    auto& mine = res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()];
+
     if (auto deleted = service_node_.delete_all_messages(req.pubkey)) {
         auto msgs = json::array();
         for (auto& m : *deleted)
             msgs.push_back(m);
-        res->result["deleted"] = std::move(msgs);
-        res->result["signature"] = create_signature(ed25519_sk_, *deleted);
+        mine["deleted"] = std::move(msgs);
+        mine["signature"] = create_signature(ed25519_sk_, *deleted);
     } else {
-        res->result["failed"] = true;
+        mine["failed"] = true;
+        mine["query_failure"] = true;
     }
 
     if (--res->pending == 0)
