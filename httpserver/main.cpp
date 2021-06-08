@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
         ServiceNode service_node{
             me, private_key, oxenmq_server, data_dir, options.force_start};
 
-        RequestHandler request_handler{service_node, channel_encryption};
+        RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
         RateLimiter rate_limiter{*oxenmq_server};
 

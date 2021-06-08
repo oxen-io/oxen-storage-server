@@ -14,6 +14,7 @@
 
 #include <boost/endian/conversion.hpp>
 #include <cpr/cpr.h>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
@@ -1255,6 +1256,37 @@ bool ServiceNode::retrieve(const std::string& pubKey,
                          CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
+std::optional<std::vector<std::string>> ServiceNode::delete_all_messages(
+        const user_pubkey_t& pubkey) {
+    return db_->delete_all(pubkey.str());
+}
+
+std::optional<std::vector<std::string>> ServiceNode::delete_messages(
+        const user_pubkey_t& pubkey,
+        const std::vector<std::string_view>& msg_hashes) {
+    return db_->delete_by_hash(pubkey.str(), msg_hashes);
+}
+
+std::optional<std::vector<std::string>> ServiceNode::delete_messages_before(
+        const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp) {
+    return db_->delete_by_timestamp(pubkey.str(), timestamp);
+}
+
+std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+ServiceNode::update_messages_expiry(
+        const user_pubkey_t& pubkey,
+        const std::vector<std::string_view>& msg_hashes,
+        std::chrono::system_clock::time_point new_exp) {
+    return db_->update_expiry(pubkey.str(), msg_hashes, new_exp);
+}
+
+std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+ServiceNode::update_all_expiries(
+        const user_pubkey_t& pubkey,
+        std::chrono::system_clock::time_point new_exp) {
+    return db_->update_all_expiries(pubkey.str(), new_exp);
+}
+
 void to_json(nlohmann::json& j, const test_result_t& val) {
     j["timestamp"] = std::chrono::duration<double>(val.timestamp.time_since_epoch()).count();
     j["result"] = to_str(val.result);
@@ -1412,6 +1444,13 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
     }
 
     return get_swarm_by_pk(swarm_->all_valid_swarms(), pk).snodes;
+}
+
+std::vector<sn_record_t>
+ServiceNode::get_swarm_peers() {
+    std::lock_guard guard{sn_mutex_};
+
+    return swarm_->other_nodes();
 }
 
 } // namespace oxen

@@ -217,11 +217,48 @@ class ServiceNode {
 
     std::vector<sn_record_t> get_snodes_by_pk(const user_pubkey_t& pk);
 
+    std::vector<sn_record_t> get_swarm_peers();
+
     /// return all messages for a particular PK (in JSON)
     bool get_all_messages(std::vector<storage::Item>& all_entries) const;
 
     bool retrieve(const std::string& pubKey, const std::string& last_hash,
                   std::vector<storage::Item>& items);
+
+    /// Deletes all messages belonging to a pubkey; returns the deleted hashes
+    std::optional<std::vector<std::string>> delete_all_messages(
+            const user_pubkey_t& pubkey);
+
+    /// Delete messages owned by the given pubkey having the given hashes.  Returns the hashes of
+    /// any delete messages on success (including the case where no messages are deleted), nullopt
+    /// on query failure.
+    std::optional<std::vector<std::string>> delete_messages(
+            const user_pubkey_t& pubkey,
+            const std::vector<std::string_view>& msg_hashes);
+
+    /// Deletes all messages owned by the given pubkey with a timestamp <= `timestamp`.  Returns the
+    /// hashes of any deleted messages (including the case where no messages are deleted), nullopt
+    /// on query failure.
+    std::optional<std::vector<std::string>> delete_messages_before(
+            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp);
+
+    /// Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
+    /// be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector
+    /// of [msgid, newexpiry] pairs indicating the new expiry of any messages found (note that the
+    /// new expiry may not have been updated if it was already shorter than the requested time).
+    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    update_messages_expiry(
+            const user_pubkey_t& pubkey,
+            const std::vector<std::string_view>& msg_hashes,
+            std::chrono::system_clock::time_point new_exp);
+
+    /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
+    /// shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
+    /// [msg, newexpiry] for all messages, whether the expiry is updated or not.
+    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    update_all_expiries(
+            const user_pubkey_t& pubkey,
+            std::chrono::system_clock::time_point new_exp);
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;

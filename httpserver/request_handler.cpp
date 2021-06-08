@@ -4,6 +4,7 @@
 #include "http.h"
 #include "omq_server.h"
 #include "oxen_logger.h"
+#include "oxenmq/oxenmq.h"
 #include "signature.h"
 #include "service_node.h"
 #include "string_utils.hpp"
@@ -19,6 +20,7 @@
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
+#include <sodium/crypto_sign.h>
 #include <variant>
 
 using nlohmann::json;
@@ -98,6 +100,46 @@ RequestHandler::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
     return regs;
 }
 
+template <typename T, std::enable_if_t<!detail::is_str_vector<T>, int> = 0>
+static void signature_update(crypto_sign_state& state, const T& val) {
+    std::array<char, 20> buffer;
+    auto* b = buffer.data();
+    auto val_str = detail::to_hashable(val, b);
+
+    crypto_sign_update(&state, reinterpret_cast<const unsigned char*>(val_str.data()), val_str.size());
+}
+
+template <typename T, std::enable_if_t<detail::is_str_vector<T>, int> = 0>
+static void signature_update(crypto_sign_state& state, const T& val) {
+    for (auto& s : val)
+        crypto_sign_update(&state, reinterpret_cast<const unsigned char*>(s.data()), s.size());
+}
+
+template <typename... T>
+static bool verify_signature(const user_pubkey_t& pubkey, const std::array<unsigned char, 64>& sig, const T&... val) {
+    auto pk_hex = pubkey.key();
+    assert(pk_hex.size() == 64);
+    OXEN_LOG(warn, "pubkey is: {}", pk_hex);
+    std::array<unsigned char, 32> pk;
+    oxenmq::from_hex(begin(pk_hex), end(pk_hex), begin(pk));
+    OXEN_LOG(warn, "pubkey* is: {}", oxenmq::to_hex(pk.begin(), pk.end()));
+
+    crypto_sign_state state;
+    crypto_sign_init(&state);
+    (signature_update(state, val), ...);
+    return 0 == crypto_sign_final_verify(&state, sig.data(), pk.data());
+}
+
+template <typename... T>
+static std::array<unsigned char, 64> create_signature(const ed25519_seckey& sk, const T&... val) {
+    std::array<unsigned char, 64> sig;
+    crypto_sign_state state;
+    crypto_sign_init(&state);
+    (signature_update(state, val), ...);
+    crypto_sign_final_create(&state, sig.data(), nullptr, sk.data());
+    return sig;
+}
+
 } // anon. namespace
 
 const RequestHandler::rpc_map RequestHandler::client_rpc_endpoints =
@@ -127,8 +169,9 @@ bool validateTTL(system_clock::duration ttl) {
 
 RequestHandler::RequestHandler(
         ServiceNode& sn,
-        const ChannelEncryption& ce)
-    : service_node_{sn}, channel_cipher_(ce) {
+        const ChannelEncryption& ce,
+        ed25519_seckey edsk)
+    : service_node_{sn}, channel_cipher_(ce), ed25519_sk_{std::move(edsk)} {
 
     // Periodically clean up any proxy request futures
     service_node_.omq_server()->add_timer([this] {
@@ -280,8 +323,94 @@ void RequestHandler::process_client_req(
         }});
 }
 
+struct swarm_response {
+    std::mutex mutex;
+    int pending;
+    nlohmann::json result;
+    std::function<void(oxen::Response)> cb;
+};
+
+static void distribute_command(
+        ServiceNode& sn,
+        std::shared_ptr<swarm_response>& res,
+        std::string_view cmd,
+        const rpc::recursive& req) {
+    auto peers = sn.get_swarm_peers();
+    res->pending = peers.size();
+
+    for (auto& peer : peers) {
+        sn.omq_server()->request(
+                peer.pubkey_x25519.view(),
+                "sn.storage_cc",
+                [res, peer, cmd](bool success, auto parts) {
+                    json peer_result;
+                    if (!success)
+                        OXEN_LOG(warn, "Response timeout from {} for forwarded command {}", peer.pubkey_legacy, cmd);
+                    bool good_result = success && !parts.empty();
+                    if (good_result) {
+                        try {
+                            peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
+                        } catch (const std::exception& e) {
+                            good_result = false;
+                        }
+                    }
+
+                    std::lock_guard lock{res->mutex};
+
+                    // If we're the last response then we reply:
+                    bool send_reply = --res->pending == 0;
+
+                    if (!good_result)
+                        peer_result = json{
+                            {"failed", true},
+                            {(success ? "bad_peer_response" : "timeout"), true}};
+
+                    res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
+
+                    if (send_reply)
+                        return res->cb(Response{http::OK, std::move(res->result)});
+                },
+                cmd,
+                bt_serialize(req.to_bt()),
+                oxenmq::send_option::request_timeout{10s});
+    }
+}
+
 void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
+
+    auto now = system_clock::now();
+    if (req.timestamp < now - 1min || req.timestamp > now + 1min) {
+        OXEN_LOG(debug, "delete_all: invalid timestamp ({}s from now)", duration_cast<seconds>(req.timestamp - now).count());
+        return cb(Response{http::UNAUTHORIZED, "delete_all timestamp too far from current time"sv});
+    }
+
+    if (!verify_signature(req.pubkey, req.signature, req.timestamp)) {
+        OXEN_LOG(debug, "delete_all: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "delete_all signature verification failed"sv});
+    }
+
+    auto res = std::make_shared<swarm_response>();
+    res->cb = std::move(cb);
+    std::optional<std::lock_guard<std::mutex>> lock;
+    if (req.recurse) {
+        // Send it off to our peers right away, before we process it ourselves
+        distribute_command(service_node_, res, "delete_all", req);
+        lock.emplace(res->mutex);
+    }
+
+    if (auto deleted = service_node_.delete_all_messages(req.pubkey)) {
+        auto msgs = json::array();
+        for (auto& m : *deleted)
+            msgs.push_back(m);
+        res->result["deleted"] = std::move(msgs);
+        res->result["signature"] = create_signature(ed25519_sk_, *deleted);
+    } else {
+        res->result["failed"] = true;
+    }
+
+    if (--res->pending == 0)
+        res->cb(Response{http::OK, std::move(res->result)});
 }
 void RequestHandler::process_client_req(
         rpc::delete_msgs&& req, std::function<void(Response)> cb) {

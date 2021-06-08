@@ -402,7 +402,7 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
         sqlite3_bind_int(stmt->get(), 3, num_results);
     }
 
-    return get_results("retrieve", db, get_by_hash_stmt, [&items](auto* stmt) {
+    return get_results("retrieve", db, *stmt, [&items](auto* stmt) {
         items.push_back(extract_item(stmt));
     });
 }

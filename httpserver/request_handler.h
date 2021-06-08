@@ -75,6 +75,10 @@ std::string_view to_hashable(const T& value, char*&) {
     return value;
 }
 
+template <typename T> constexpr bool is_str_vector = false;
+template <> inline constexpr bool is_str_vector<std::vector<std::string>> = true;
+template <> inline constexpr bool is_str_vector<std::vector<std::string_view>> = true;
+
 }
 
 /// Compute message's hash based on its constituents.  The hash is a SHA-512 hash of the
@@ -115,6 +119,7 @@ class RequestHandler {
 
     ServiceNode& service_node_;
     const ChannelEncryption& channel_cipher_;
+    const ed25519_seckey ed25519_sk_;
 
     std::forward_list<std::future<void>> pending_proxy_requests_;
 
@@ -144,7 +149,7 @@ class RequestHandler {
     // ===================================
 
   public:
-    RequestHandler(ServiceNode& sn, const ChannelEncryption& ce);
+    RequestHandler(ServiceNode& sn, const ChannelEncryption& ce, ed25519_seckey ed_sk);
 
     // Handlers for parsed client requests
     void process_client_req(rpc::store&& req, std::function<void(Response)> cb);

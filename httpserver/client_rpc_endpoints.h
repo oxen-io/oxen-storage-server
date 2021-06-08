@@ -47,6 +47,8 @@ struct no_args : endpoint {
 struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
     bool recurse;
+
+    virtual oxenmq::bt_value to_bt() const = 0;
 };
 
 namespace {
@@ -133,6 +135,7 @@ struct delete_msgs final : recursive {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request to
@@ -155,6 +158,7 @@ struct delete_all final : recursive {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 /// Deletes all stored messages with a timestamp earlier than the specified value and broadcasts the
@@ -175,6 +179,7 @@ struct delete_before final : recursive {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
@@ -195,6 +200,7 @@ struct expire_all final : recursive {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of one or more stored messages and broadcasts the update request
@@ -217,6 +223,7 @@ struct expire_msgs final : recursive {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 

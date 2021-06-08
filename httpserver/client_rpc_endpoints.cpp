@@ -12,7 +12,10 @@ namespace oxen::rpc {
 
 using nlohmann::json;
 using namespace std::chrono;
+using oxenmq::bt_dict;
 using oxenmq::bt_dict_consumer;
+using oxenmq::bt_list;
+using oxenmq::bt_value;
 
 namespace {
 
@@ -268,6 +271,16 @@ static void load(delete_msgs& dm, Dict& d) {
 }
 void delete_msgs::load_from(json params) { load(*this, params); }
 void delete_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value delete_msgs::to_bt() const {
+    bt_list msgs;
+    for (auto& m : messages)
+        msgs.emplace_back(std::string_view{m});
+    return bt_dict{
+        {"pubkey", pubkey.str()},
+        {"messages", std::move(msgs)},
+        {"signature", util::view_guts(signature)},
+    };
+}
 
 
 template <typename Dict>
@@ -282,6 +295,13 @@ static void load(delete_all& da, Dict& d) {
 }
 void delete_all::load_from(json params) { load(*this, params); }
 void delete_all::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value delete_all::to_bt() const {
+    return bt_dict{
+        {"pubkey", pubkey.str()},
+        {"signature", util::view_guts(signature)},
+        {"timestamp", duration_cast<milliseconds>(timestamp.time_since_epoch()).count()}
+    };
+}
 
 template <typename Dict>
 static void load(delete_before& db, Dict& d) {
@@ -295,6 +315,13 @@ static void load(delete_before& db, Dict& d) {
 }
 void delete_before::load_from(json params) { load(*this, params); }
 void delete_before::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value delete_before::to_bt() const {
+    return bt_dict{
+        {"pubkey", pubkey.str()},
+        {"signature", util::view_guts(signature)},
+        {"before", duration_cast<milliseconds>(before.time_since_epoch()).count()}
+    };
+}
 
 template <typename Dict>
 static void load(expire_all& e, Dict& d) {
@@ -308,6 +335,13 @@ static void load(expire_all& e, Dict& d) {
 }
 void expire_all::load_from(json params) { load(*this, params); }
 void expire_all::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value expire_all::to_bt() const {
+    return bt_dict{
+        {"pubkey", pubkey.str()},
+        {"signature", util::view_guts(signature)},
+        {"expiry", duration_cast<milliseconds>(expiry.time_since_epoch()).count()}
+    };
+}
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
@@ -328,6 +362,17 @@ static void load(expire_msgs& e, Dict& d) {
 }
 void expire_msgs::load_from(json params) { load(*this, params); }
 void expire_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value expire_msgs::to_bt() const {
+    bt_list msgs;
+    for (const auto& m : messages)
+        msgs.emplace_back(std::string_view{m});
+    return bt_dict{
+        {"pubkey", pubkey.str()},
+        {"signature", util::view_guts(signature)},
+        {"expiry", duration_cast<milliseconds>(expiry.time_since_epoch()).count()},
+        {"messages", std::move(msgs)},
+    };
+}
 
 template <typename Dict>
 static void load(get_swarm& g, Dict& d) {
