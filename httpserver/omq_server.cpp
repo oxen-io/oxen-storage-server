@@ -294,19 +294,19 @@ void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Messag
     auto it = client_rpc_endpoints.find(method);
     assert(it != client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
 
-    const size_t full_size = forwarded ? 3 : 1;
+    const size_t full_size = forwarded ? 2 : 1;
     const size_t empty_body = full_size - 1;
     if (message.data.size() != empty_body && message.data.size() != full_size) {
         OXEN_LOG(warn, "Invalid {}OMQ RPC request for {}: incorrect number of message parts ({})",
                 forwarded ? "forwarded " : "", method, message.data.size());
         message.send_reply(
                 std::to_string(http::BAD_REQUEST.first),
-                fmt::format("Invalid request: expected {} message part, received {}",
+                fmt::format("Invalid request: expected {} message parts, received {}",
                     full_size, message.data.size()));
         return;
     }
 
-    if (rate_limiter_->should_rate_limit_client(forwarded ? std::string{message.data[1]} : message.remote)) {
+    if (!forwarded && rate_limiter_->should_rate_limit_client(message.remote)) {
         OXEN_LOG(debug, "Rate limiting client request from {}", message.remote);
         return message.send_reply(std::to_string(http::TOO_MANY_REQUESTS.first), "Too many requests, try again later");
     }

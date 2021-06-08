@@ -78,8 +78,7 @@ class OxenmqServer {
     ///
     /// `forwarded` is set if this request was forwarded from another swarm member rather than being
     /// direct from the client; the request is handled identically except that these forwarded
-    /// requests are not-reforwarded again, and there are two message parts prepended: the method
-    /// name, and the remote client's IP.
+    /// requests are not-reforwarded again, and the method name is prepended on the argument list.
     void handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded = false);
 
     void handle_get_logs(oxenmq::Message& message);
