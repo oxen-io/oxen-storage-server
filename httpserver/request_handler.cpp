@@ -386,7 +386,7 @@ static void distribute_command(
         std::string_view cmd,
         const rpc::recursive& req) {
     auto peers = sn.get_swarm_peers();
-    res->pending = peers.size();
+    res->pending += peers.size();
 
     for (auto& peer : peers) {
         sn.omq_server()->request(
@@ -428,6 +428,7 @@ static void distribute_command(
 
 void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
+    OXEN_LOG(debug, "processing delete_all {} request", req.recurse ? "direct" : "forwarded");
 
     auto now = system_clock::now();
     if (req.timestamp < now - 1min || req.timestamp > now + 1min) {
@@ -442,6 +443,7 @@ void RequestHandler::process_client_req(
 
     auto res = std::make_shared<swarm_response>();
     res->cb = std::move(cb);
+    res->pending = 1;
     std::optional<std::lock_guard<std::mutex>> lock;
     if (req.recurse) {
         // Send it off to our peers right away, before we process it ourselves
@@ -464,15 +466,19 @@ void RequestHandler::process_client_req(
 }
 void RequestHandler::process_client_req(
         rpc::delete_msgs&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing delete_msgs {} request", req.recurse ? "direct" : "forwarded");
 }
 void RequestHandler::process_client_req(
         rpc::delete_before&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing delete_before {} request", req.recurse ? "direct" : "forwarded");
 }
 void RequestHandler::process_client_req(
         rpc::expire_all&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing expire_all {} request", req.recurse ? "direct" : "forwarded");
 }
 void RequestHandler::process_client_req(
         rpc::expire_msgs&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing expire_msgs {} request", req.recurse ? "direct" : "forwarded");
 }
 
 void RequestHandler::process_client_req(
