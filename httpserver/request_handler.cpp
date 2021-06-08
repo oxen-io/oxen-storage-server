@@ -475,7 +475,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "delete_all timestamp too far from current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, req.timestamp)) {
+    if (!verify_signature(req.pubkey, req.signature, "delete_all", req.timestamp)) {
         OXEN_LOG(debug, "delete_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_all signature verification failed"sv});
     }
@@ -509,7 +509,7 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
-    if (!verify_signature(req.pubkey, req.signature, req.messages)) {
+    if (!verify_signature(req.pubkey, req.signature, "delete", req.messages)) {
         OXEN_LOG(debug, "delete_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
     }
@@ -551,7 +551,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "delete_before timestamp too far in the future"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, req.before)) {
+    if (!verify_signature(req.pubkey, req.signature, "delete_before", req.before)) {
         OXEN_LOG(debug, "delete_before: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_before signature verification failed"sv});
     }
@@ -591,7 +591,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, req.expiry)) {
+    if (!verify_signature(req.pubkey, req.signature, "expire_all", req.expiry)) {
         OXEN_LOG(debug, "expire_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_all signature verification failed"sv});
     }
@@ -630,7 +630,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, req.messages)) {
+    if (!verify_signature(req.pubkey, req.signature, "expire", req.messages)) {
         OXEN_LOG(debug, "expire_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_msgs signature verification failed"sv});
     }

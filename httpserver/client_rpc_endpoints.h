@@ -131,9 +131,9 @@ struct info final : no_args {
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted
 /// - messages -- array of message hash strings (as provided by the storage server) to delete
-/// - signature -- Ed25519 signature of `messages`; this signs the value constructed by
-/// concatenating all `messages` values, using `pubkey` to sign.  Must be base64 encoded for json
-/// requests; binary for OMQ requests.
+/// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value
+/// constructed by concatenating "delete" and all `messages` values, using `pubkey` to sign.
+/// Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -163,9 +163,9 @@ struct delete_msgs final : recursive {
 /// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
 ///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
 ///   timestamp via `info` first, to avoid client time sync issues).
-/// - signature -- an Ed25519 signature of the timestamp value (expressed as a string), signed by
-///   the ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
-///   requests; binary for OMQ requests.
+/// - signature -- an Ed25519 signature of ( "delete_all" || timestamp ), signed by the ed25519
+/// pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json requests;
+/// binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -193,8 +193,8 @@ struct delete_all final : recursive {
 /// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stores messages
 ///   with timestamps <= this value will be deleted.  Should be <= now, but tolerance acceptance
 ///   allows it to be <= 60s from now.
-/// - signature -- Ed25519 signature of the before value (expressed as a string), signed by
-///   `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).
+/// - signature -- Ed25519 signature of ("delete_before" || before), signed by `pubkey`.  Must be
+/// base64 encoded (json) or bytes (OMQ).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -222,8 +222,8 @@ struct delete_before final : recursive {
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced.
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
 ///   tolerance acceptance allows >= 60s ago.
-/// - signature -- signature of the expiry value, expressed as a string, signed by `pubkey`.  Must
-/// be base64 encoded (json) or bytes (OMQ).
+/// - signature -- signature of ("expire_all" || expiry), signed by `pubkey`.  Must be base64
+/// encoded (json) or bytes (OMQ).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -250,9 +250,9 @@ struct expire_all final : recursive {
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced.
 /// - messages -- array of message hash strings (as provided by the storage server) to update
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
-/// - signature -- Ed25519 signature of `messages[0] || ... || messages[N] || expiry` (where
-/// `expiry` is the expiry timestamp expressed as a string).  Must be base64 encoded (json) or bytes
-/// (OMQ).
+/// - signature -- Ed25519 signature of ("expire" || expiry || messages[0] || ... || messages[N])
+/// (where `expiry` is the expiry timestamp expressed as a string).  Must be base64 encoded (json)
+/// or bytes (OMQ).
 ///
 ///
 /// Returns dict of:
