@@ -437,7 +437,7 @@ static void distribute_command(
                 },
                 cmd,
                 bt_serialize(req.to_bt()),
-                oxenmq::send_option::request_timeout{10s});
+                oxenmq::send_option::request_timeout{5s});
     }
 }
 
