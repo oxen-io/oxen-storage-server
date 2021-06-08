@@ -445,6 +445,9 @@ void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
     OXEN_LOG(debug, "processing delete_all {} request", req.recurse ? "direct" : "forwarded");
 
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
     auto now = system_clock::now();
     if (req.timestamp < now - 1min || req.timestamp > now + 1min) {
         OXEN_LOG(debug, "delete_all: invalid timestamp ({}s from now)", duration_cast<seconds>(req.timestamp - now).count());
