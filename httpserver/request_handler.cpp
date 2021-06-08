@@ -16,10 +16,10 @@
 
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
-#include <openssl/sha.h>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
+#include <sodium/crypto_generichash.h>
 #include <sodium/crypto_sign.h>
 #include <type_traits>
 #include <variant>
@@ -196,14 +196,19 @@ const RequestHandler::rpc_map RequestHandler::client_rpc_endpoints =
     register_client_rpc_endpoints(rpc::client_rpc_types{});
 
 std::string computeMessageHash(std::vector<std::string_view> parts) {
-    SHA512_CTX ctx;
-    SHA512_Init(&ctx);
+    constexpr size_t HASH_SIZE = 32;
+    crypto_generichash_state state;
+    crypto_generichash_init(&state, nullptr, 0, HASH_SIZE);
     for (const auto& s : parts)
-        SHA512_Update(&ctx, s.data(), s.size());
+        crypto_generichash_update(&state, reinterpret_cast<const unsigned char*>(s.data()), s.size());
+    std::array<unsigned char, HASH_SIZE> hash;
+    crypto_generichash_final(&state, hash.data(), HASH_SIZE);
 
-    std::array<unsigned char, SHA512_DIGEST_LENGTH> result;
-    SHA512_Final(result.data(), &ctx);
-    return oxenmq::to_hex(result.begin(), result.end());
+    std::string b64hash = oxenmq::to_base64(hash.begin(), hash.end());
+    // Trim padding:
+    while (!b64hash.empty() && b64hash.back() == '=')
+        b64hash.pop_back();
+    return b64hash;
 }
 
 bool validateTimestamp(system_clock::time_point timestamp, system_clock::time_point expiry) {
