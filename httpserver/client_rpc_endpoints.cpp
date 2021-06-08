@@ -357,8 +357,16 @@ static void load(expire_msgs& e, Dict& d) {
     if (e.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
     for (const auto& m : e.messages)
-        if (m.size() != 128 && !oxenmq::is_hex(m))
-            throw parse_error{"invalid message hash: expected 128 hex digits"};
+        if (!
+                (
+                 (m.size() == 43 && oxenmq::is_base64(m))
+                 ||
+                 // TODO: can remove this in the future, once everything has been upgraded to a SS
+                 // that uses 43-byte base64 string hashes instead.
+                 (m.size() == 128 && oxenmq::is_hex(m))
+                )
+           )
+            throw parse_error{"invalid message hash: " + m};
 }
 void expire_msgs::load_from(json params) { load(*this, params); }
 void expire_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
