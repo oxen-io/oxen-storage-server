@@ -130,10 +130,19 @@ struct info final : no_args {
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted
-/// - messages -- array of message hashes (in hex) to delete
+/// - messages -- array of message hash strings (as provided by the storage server) to delete
 /// - signature -- Ed25519 signature of `messages`; this signs the value constructed by
 /// concatenating all `messages` values, using `pubkey` to sign.  Must be base64 encoded for json
 /// requests; binary for OMQ requests.
+///
+/// Returns dict of:
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "deleted": list of hashes of messages that were found and deleted
+///     - "signature": signature of:
+///             ( PUBKEY || RMSG[0] || ... || RMSG[N] || DMSG[0] || ... || DMSG[M] )
+///       where RMSG are the requested deletion hashes and DMSG are the actual deletion hashes.
+///       The signature uses the node's ed25519 pubkey.
 struct delete_msgs final : recursive {
     static constexpr auto names() { return NAMES("delete"); }
 
@@ -159,11 +168,10 @@ struct delete_msgs final : recursive {
 ///   requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "timestamp" copy of the request timestamp
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": hashes of deleted messages.
-///     - "signature": signature of ( TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
+///     - "signature": signature of ( PUBKEY || TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
 ///       by the node's ed25519 pubkey.
 struct delete_all final : recursive {
     static constexpr auto names() { return NAMES("delete_all"); }
@@ -183,9 +191,17 @@ struct delete_all final : recursive {
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted
 /// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stores messages
-/// with timestamps <= this value will be deleted.
+///   with timestamps <= this value will be deleted.  Should be <= now, but tolerance acceptance
+///   allows it to be <= 60s from now.
 /// - signature -- Ed25519 signature of the before value (expressed as a string), signed by
-/// `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).
+///   `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).
+///
+/// Returns dict of:
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "deleted": hashes of deleted messages.
+///     - "signature": signature of ( PUBKEY || BEFORE || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
+///       by the node's ed25519 pubkey.
 struct delete_before final : recursive {
     static constexpr auto names() { return NAMES("delete_before"); }
 
@@ -204,9 +220,17 @@ struct delete_before final : recursive {
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced.
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
+///   tolerance acceptance allows >= 60s ago.
 /// - signature -- signature of the expiry value, expressed as a string, signed by `pubkey`.  Must
 /// be base64 encoded (json) or bytes (OMQ).
+///
+/// Returns dict of:
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "updated": dict of hashes that had their expiries updated to `expiry`
+///     - "signature": signature of ( PUBKEY || EXPIRY || UPDATED[0] || ... || UPDATED[N] ), signed
+///       by the node's ed25519 pubkey.
 struct expire_all final : recursive {
     static constexpr auto names() { return NAMES("expire_all"); }
 
@@ -224,11 +248,21 @@ struct expire_all final : recursive {
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced.
-/// - messages -- array of message hashes (in hex) to update
+/// - messages -- array of message hash strings (as provided by the storage server) to update
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
 /// - signature -- Ed25519 signature of `messages[0] || ... || messages[N] || expiry` (where
 /// `expiry` is the expiry timestamp expressed as a string).  Must be base64 encoded (json) or bytes
 /// (OMQ).
+///
+///
+/// Returns dict of:
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "updated": list of hashes of messages that had their expiries updated
+///     - "signature": signature of:
+///             ( PUBKEY || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
+///       where RMSG are the requested deletion hashes and UMSG are the actual updated hashes.
+///       The signature uses the node's ed25519 pubkey.
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
 

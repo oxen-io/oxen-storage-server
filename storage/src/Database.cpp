@@ -234,9 +234,9 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
 
     update_all_expiries_stmt = prepare_statement("update all expiries", R"(
         UPDATE Data
-        SET TimeExpires = MIN(TimeExpires, ?)
-        WHERE Owner = ?
-        RETURNING Hash, TimeExpires)");
+        SET TimeExpires = ?
+        WHERE Owner = ? AND TimeExpires > ?
+        RETURNING Hash)");
 
     page_count_stmt = prepare_statement("page count", "PRAGMA page_count");
 }
@@ -456,31 +456,14 @@ std::optional<std::vector<std::string>> Database::delete_by_timestamp(
     return extract_hashes("delete by timestamp", db, delete_by_timestamp_stmt);
 }
 
-static std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
-extract_expiries(std::string_view desc, Database::SqlitePtr& db, Database::StatementPtr& st) {
-    auto results = std::make_optional<
-        std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>();
-    using namespace std::chrono;
-    auto success = get_results(desc, db, st, [&results](auto* stmt) {
-        results->emplace_back(
-            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
-            system_clock::time_point{milliseconds{sqlite3_column_int64(stmt, 1)}});
-    }) >= 0;
-    if (!success)
-        results.reset();
-    return results;
-}
-
-
-
-std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+std::optional<std::vector<std::string>>
 Database::update_expiry(
         std::string_view pubkey,
         const std::vector<std::string_view>& msg_hashes,
         std::chrono::system_clock::time_point new_exp
         ) {
-    constexpr std::string_view prefix = "UPDATE Data SET TimeExpires = MIN(TimeExpires, ?) WHERE Owner = ? AND Hash IN ("sv;
-    constexpr std::string_view suffix = ") RETURNING Hash, TimeExpires"sv;
+    constexpr std::string_view prefix = "UPDATE Data SET TimeExpires = ? WHERE Owner = ? AND TimeExpires = ? AND Hash IN ("sv;
+    constexpr std::string_view suffix = ") RETURNING Hash"sv;
 
     std::string query;
     query.reserve(prefix.size() + suffix.size() + (msg_hashes.size()*2 - 1));
@@ -493,27 +476,29 @@ Database::update_expiry(
 
     auto st = prepare_statement("update expiries", query);
     using namespace std::chrono;
-    sqlite3_bind_int64(st.get(), 1,
-            duration_cast<milliseconds>(new_exp.time_since_epoch()).count());
+    auto exp = duration_cast<milliseconds>(new_exp.time_since_epoch()).count();
+    sqlite3_bind_int64(st.get(), 1, exp);
     sqlite3_bind_text(st.get(), 2, pubkey.data(), pubkey.size(), SQLITE_STATIC);
+    sqlite3_bind_int64(st.get(), 3, exp);
     for (size_t i = 0; i < msg_hashes.size(); i++)
-        sqlite3_bind_text(st.get(), i+3, msg_hashes[i].data(), msg_hashes[i].size(), SQLITE_STATIC);
+        sqlite3_bind_text(st.get(), i+4, msg_hashes[i].data(), msg_hashes[i].size(), SQLITE_STATIC);
 
-    return extract_expiries("update expiries", db, st);
+    return extract_hashes("update expiries", db, st);
 }
 
-std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+std::optional<std::vector<std::string>>
 Database::update_all_expiries(
         std::string_view pubkey,
         std::chrono::system_clock::time_point new_exp
         ) {
     using namespace std::chrono;
-    sqlite3_bind_int64(update_all_expiries_stmt.get(), 1,
-            duration_cast<milliseconds>(new_exp.time_since_epoch()).count());
+    auto exp = duration_cast<milliseconds>(new_exp.time_since_epoch()).count();
+    sqlite3_bind_int64(update_all_expiries_stmt.get(), 1, exp);
     sqlite3_bind_text(update_all_expiries_stmt.get(), 2,
             pubkey.data(), pubkey.size(), SQLITE_STATIC);
+    sqlite3_bind_int64(update_all_expiries_stmt.get(), 3, exp);
 
-    return extract_expiries("update all expiries", db, update_all_expiries_stmt);
+    return extract_hashes("update all expiries", db, update_all_expiries_stmt);
 }
 
 } // namespace oxen

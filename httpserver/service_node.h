@@ -246,7 +246,7 @@ class ServiceNode {
     /// be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector
     /// of [msgid, newexpiry] pairs indicating the new expiry of any messages found (note that the
     /// new expiry may not have been updated if it was already shorter than the requested time).
-    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    std::optional<std::vector<std::string>>
     update_messages_expiry(
             const user_pubkey_t& pubkey,
             const std::vector<std::string_view>& msg_hashes,
@@ -255,7 +255,7 @@ class ServiceNode {
     /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
     /// shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
     /// [msg, newexpiry] for all messages, whether the expiry is updated or not.
-    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    std::optional<std::vector<std::string>>
     update_all_expiries(
             const user_pubkey_t& pubkey,
             std::chrono::system_clock::time_point new_exp);

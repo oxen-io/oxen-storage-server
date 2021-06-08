@@ -83,9 +83,9 @@ class Database {
 
     // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
     // be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
-    // [msgid, newexpiry] pairs indicating the new expiry of any messages found (note that the new
-    // expiry may not have been updated if it was already shorter than the requested time).
-    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    // hashes of messages that had their expiries updates.  (Missing messages and messages that
+    // already had an expiry <= the given expiry value are not returned).
+    std::optional<std::vector<std::string>>
     update_expiry(
             std::string_view pubkey,
             const std::vector<std::string_view>& msg_hashes,
@@ -94,8 +94,8 @@ class Database {
 
     // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
     // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
-    // [msg, newexpiry] for all messages, whether the expiry is updated or not.
-    std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+    // hashes of messages that had their expiries shorten.
+    std::optional<std::vector<std::string>>
     update_all_expiries(
             std::string_view pubkey, std::chrono::system_clock::time_point new_exp);
 

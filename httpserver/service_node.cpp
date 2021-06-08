@@ -1272,7 +1272,7 @@ std::optional<std::vector<std::string>> ServiceNode::delete_messages_before(
     return db_->delete_by_timestamp(pubkey.str(), timestamp);
 }
 
-std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+std::optional<std::vector<std::string>>
 ServiceNode::update_messages_expiry(
         const user_pubkey_t& pubkey,
         const std::vector<std::string_view>& msg_hashes,
@@ -1280,7 +1280,7 @@ ServiceNode::update_messages_expiry(
     return db_->update_expiry(pubkey.str(), msg_hashes, new_exp);
 }
 
-std::optional<std::vector<std::pair<std::string, std::chrono::system_clock::time_point>>>
+std::optional<std::vector<std::string>>
 ServiceNode::update_all_expiries(
         const user_pubkey_t& pubkey,
         std::chrono::system_clock::time_point new_exp) {

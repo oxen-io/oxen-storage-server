@@ -85,7 +85,7 @@ void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
         RPC req;
         req.load_from(params);
         if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
-            req.recurse = true; // Requests through json are *always* client requests, so always recurse
+            req.recurse = true; // Requests through HTTP or onion reqs are *always* client requests, so always recurse
         h.process_client_req(std::move(req), std::move(cb));
     };
     for (auto& name : RPC::names()) {
@@ -118,12 +118,14 @@ size_t space_needed(const std::array<std::string_view, N>& stringified_ints, con
     size_t s = 0;
     if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
         s = stringified_ints[N - sizeof...(More) - 1].size();
+    else if constexpr (std::is_convertible_v<T, std::string_view>)
+        s += std::string_view{val}.size();
     else {
         static_assert(std::is_same_v<T, std::vector<std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
         for (auto& v : val)
             s += v.size();
     }
-    if constexpr (sizeof...(More))
+    if constexpr (sizeof...(More) > 0)
         s += space_needed(stringified_ints, more...);
     return s;
 }
@@ -133,19 +135,21 @@ void concatenate_parts(std::string& result, const std::array<std::string_view, N
     static_assert(N >= sizeof...(More) + 1);
     if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
         result += stringified_ints[N - sizeof...(More) - 1];
+    else if constexpr (std::is_convertible_v<T, std::string_view>)
+        result += std::string_view{val};
     else {
         static_assert(std::is_same_v<T, std::vector<std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
         for (auto& v : val)
             result += v;
     }
-    if constexpr (sizeof...(More))
+    if constexpr (sizeof...(More) > 0)
         concatenate_parts(result, stringified_ints, more...);
 }
 
 // This uses the above to make a std::string containing all the parts (stringifying when the parts
 // contain integer or time_point values) concatenated together.  The implementation is a bit
-// complicated using the various templates above because we do this with only a single heap
-// allocation for the final std::string but otherwise avoid allocations.
+// complicated using the various templates above because we do this trying to minimize the number of
+// allocations we have to perform.
 template <typename... T>
 std::string concatenate_sig_message_parts(const T&... vals) {
     constexpr size_t num_ints = (0 + ... + (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>));
@@ -441,6 +445,23 @@ static void distribute_command(
     }
 }
 
+template <typename RPC>
+std::pair<std::shared_ptr<swarm_response>, std::unique_lock<std::mutex>>
+static setup_recursive_request(ServiceNode& sn, RPC& req, std::function<void(Response)> cb) {
+    auto res = std::make_shared<swarm_response>();
+    res->cb = std::move(cb);
+    res->pending = 1;
+    res->b64 = req.b64;
+
+    std::unique_lock<std::mutex> lock{res->mutex, std::defer_lock};
+    if (req.recurse) {
+        // Send it off to our peers right away, before we process it ourselves
+        distribute_command(sn, res, RPC::names()[0], req);
+        lock.lock();
+    }
+    return {std::move(res), std::move(lock)};
+}
+
 void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
     OXEN_LOG(debug, "processing delete_all {} request", req.recurse ? "direct" : "forwarded");
@@ -459,18 +480,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "delete_all signature verification failed"sv});
     }
 
-    auto res = std::make_shared<swarm_response>();
-    res->cb = std::move(cb);
-    res->pending = 1;
-    res->b64 = req.b64;
-    if (req.recurse)
-        res->result["timestamp"] = duration_cast<milliseconds>(req.timestamp.time_since_epoch()).count();
-    std::optional<std::lock_guard<std::mutex>> lock;
-    if (req.recurse) {
-        // Send it off to our peers right away, before we process it ourselves
-        distribute_command(service_node_, res, "delete_all", req);
-        lock.emplace(res->mutex);
-    }
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
 
     // If we're recursive then put our stuff inside "swarm" alongside all the other results,
     // otherwise keep it top-level
@@ -479,11 +489,125 @@ void RequestHandler::process_client_req(
         : res->result;
 
     if (auto deleted = service_node_.delete_all_messages(req.pubkey)) {
-        auto msgs = json::array();
-        for (auto& m : *deleted)
-            msgs.push_back(m);
-        mine["deleted"] = std::move(msgs);
-        auto sig = create_signature(ed25519_sk_, req.timestamp, *deleted);
+        std::sort(deleted->begin(), deleted->end());
+        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.timestamp, *deleted);
+        mine["deleted"] = std::move(*deleted);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    } else {
+        mine["failed"] = true;
+        mine["query_failure"] = true;
+    }
+
+    if (--res->pending == 0)
+        res->cb(Response{http::OK, std::move(res->result)});
+}
+
+void RequestHandler::process_client_req(
+        rpc::delete_msgs&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing delete_msgs {} request", req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    if (!verify_signature(req.pubkey, req.signature, req.messages)) {
+        OXEN_LOG(debug, "delete_msgs: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // If we're recursive then put our stuff inside "swarm" alongside all the other results,
+    // otherwise keep it top-level
+    auto& mine = req.recurse
+        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+        : res->result;
+
+    std::vector<std::string_view> msgs{req.messages.begin(), req.messages.end()};
+
+    if (auto deleted = service_node_.delete_messages(req.pubkey, msgs)) {
+        std::sort(deleted->begin(), deleted->end());
+        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.messages, *deleted);
+        mine["deleted"] = std::move(*deleted);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    } else {
+        mine["failed"] = true;
+        mine["query_failure"] = true;
+    }
+
+    if (--res->pending == 0)
+        res->cb(Response{http::OK, std::move(res->result)});
+}
+
+void RequestHandler::process_client_req(
+        rpc::delete_before&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing delete_before {} request", req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.before > now + 1min) {
+        OXEN_LOG(debug, "delete_before: invalid timestamp ({}s from now)", duration_cast<seconds>(req.before - now).count());
+        return cb(Response{http::UNAUTHORIZED, "delete_before timestamp too far in the future"sv});
+    }
+
+    if (!verify_signature(req.pubkey, req.signature, req.before)) {
+        OXEN_LOG(debug, "delete_before: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "delete_before signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // If we're recursive then put our stuff inside "swarm" alongside all the other results,
+    // otherwise keep it top-level
+    auto& mine = req.recurse
+        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+        : res->result;
+
+    if (auto deleted = service_node_.delete_messages_before(req.pubkey, req.before)) {
+        std::sort(deleted->begin(), deleted->end());
+        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.before, *deleted);
+        mine["deleted"] = std::move(*deleted);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    } else {
+        mine["failed"] = true;
+        mine["query_failure"] = true;
+    }
+
+    if (--res->pending == 0)
+        res->cb(Response{http::OK, std::move(res->result)});
+}
+
+void RequestHandler::process_client_req(
+        rpc::expire_all&& req, std::function<void(Response)> cb) {
+    OXEN_LOG(debug, "processing expire_all {} request", req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.expiry < now - 1min) {
+        OXEN_LOG(debug, "expire_all: invalid timestamp ({}s ago)", duration_cast<seconds>(now - req.expiry).count());
+        return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
+    }
+
+    if (!verify_signature(req.pubkey, req.signature, req.expiry)) {
+        OXEN_LOG(debug, "expire_all: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "expire_all signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // If we're recursive then put our stuff inside "swarm" alongside all the other results,
+    // otherwise keep it top-level
+    auto& mine = req.recurse
+        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+        : res->result;
+
+    if (auto updated = service_node_.update_all_expiries(req.pubkey, req.expiry)) {
+        std::sort(updated->begin(), updated->end());
+        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.expiry, *updated);
+        mine["updated"] = std::move(*updated);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
@@ -494,20 +618,45 @@ void RequestHandler::process_client_req(
         res->cb(Response{http::OK, std::move(res->result)});
 }
 void RequestHandler::process_client_req(
-        rpc::delete_msgs&& req, std::function<void(Response)> cb) {
-    OXEN_LOG(debug, "processing delete_msgs {} request", req.recurse ? "direct" : "forwarded");
-}
-void RequestHandler::process_client_req(
-        rpc::delete_before&& req, std::function<void(Response)> cb) {
-    OXEN_LOG(debug, "processing delete_before {} request", req.recurse ? "direct" : "forwarded");
-}
-void RequestHandler::process_client_req(
-        rpc::expire_all&& req, std::function<void(Response)> cb) {
-    OXEN_LOG(debug, "processing expire_all {} request", req.recurse ? "direct" : "forwarded");
-}
-void RequestHandler::process_client_req(
         rpc::expire_msgs&& req, std::function<void(Response)> cb) {
     OXEN_LOG(debug, "processing expire_msgs {} request", req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.expiry < now - 1min) {
+        OXEN_LOG(debug, "expire_all: invalid timestamp ({}s ago)", duration_cast<seconds>(now - req.expiry).count());
+        return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
+    }
+
+    if (!verify_signature(req.pubkey, req.signature, req.messages)) {
+        OXEN_LOG(debug, "expire_msgs: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "expire_msgs signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // If we're recursive then put our stuff inside "swarm" alongside all the other results,
+    // otherwise keep it top-level
+    auto& mine = req.recurse
+        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+        : res->result;
+
+    std::vector<std::string_view> msgs{req.messages.begin(), req.messages.end()};
+
+    if (auto updated = service_node_.update_messages_expiry(req.pubkey, msgs, req.expiry)) {
+        std::sort(updated->begin(), updated->end());
+        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.expiry, req.messages, *updated);
+        mine["updated"] = std::move(*updated);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    } else {
+        mine["failed"] = true;
+        mine["query_failure"] = true;
+    }
+
+    if (--res->pending == 0)
+        res->cb(Response{http::OK, std::move(res->result)});
 }
 
 void RequestHandler::process_client_req(
