@@ -21,6 +21,7 @@
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 #include <sodium/crypto_sign.h>
+#include <type_traits>
 #include <variant>
 
 using nlohmann::json;
@@ -100,43 +101,92 @@ RequestHandler::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
     return regs;
 }
 
-template <typename T, std::enable_if_t<!detail::is_str_vector<T>, int> = 0>
-static void signature_update(crypto_sign_state& state, const T& val) {
-    std::array<char, 20> buffer;
-    auto* b = buffer.data();
-    auto val_str = detail::to_hashable(val, b);
-
-    crypto_sign_update(&state, reinterpret_cast<const unsigned char*>(val_str.data()), val_str.size());
+// For any integer (or timestamp) arguments convert to string using the provided buffer; returns a
+// string_view into the relevant part of the buffer for converted integer/timestamp values.  If
+// called with non-integer values then this simply returns an empty string_view.
+template <typename T>
+std::string_view convert_integer_arg(char*& buffer, const T& val) {
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+        return detail::to_hashable(val, buffer);
+    else
+        return {};
 }
 
-template <typename T, std::enable_if_t<detail::is_str_vector<T>, int> = 0>
-static void signature_update(crypto_sign_state& state, const T& val) {
-    for (auto& s : val)
-        crypto_sign_update(&state, reinterpret_cast<const unsigned char*>(s.data()), s.size());
+template <typename T, typename... More, size_t N>
+size_t space_needed(const std::array<std::string_view, N>& stringified_ints, const T& val, const More&... more) {
+    static_assert(N >= sizeof...(More) + 1);
+    size_t s = 0;
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+        s = stringified_ints[N - sizeof...(More) - 1].size();
+    else {
+        static_assert(std::is_same_v<T, std::vector<std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
+        for (auto& v : val)
+            s += v.size();
+    }
+    if constexpr (sizeof...(More))
+        s += space_needed(stringified_ints, more...);
+    return s;
+}
+
+template <typename T, typename... More, size_t N>
+void concatenate_parts(std::string& result, const std::array<std::string_view, N>& stringified_ints, const T& val, const More&... more) {
+    static_assert(N >= sizeof...(More) + 1);
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+        result += stringified_ints[N - sizeof...(More) - 1];
+    else {
+        static_assert(std::is_same_v<T, std::vector<std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
+        for (auto& v : val)
+            result += v;
+    }
+    if constexpr (sizeof...(More))
+        concatenate_parts(result, stringified_ints, more...);
+}
+
+// This uses the above to make a std::string containing all the parts (stringifying when the parts
+// contain integer or time_point values) concatenated together.  The implementation is a bit
+// complicated using the various templates above because we do this with only a single heap
+// allocation for the final std::string but otherwise avoid allocations.
+template <typename... T>
+std::string concatenate_sig_message_parts(const T&... vals) {
+    constexpr size_t num_ints = (0 + ... + (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>));
+    // Buffer big enough to hold all our integer arguments:
+    std::array<char, 20*num_ints> int_buffer;
+    char* buffer_ptr = int_buffer.data();
+    std::array<std::string_view, sizeof...(T)> stringified_ints{{convert_integer_arg(buffer_ptr, vals)...}};
+
+    std::string data;
+    // Don't reserve when we have a single int argument because SSO may avoid an allocation entirely
+    if (!(num_ints == 1 && sizeof...(T) == 1))
+        data.reserve(space_needed(stringified_ints, vals...));
+    concatenate_parts(data, stringified_ints, vals...);
+    return data;
 }
 
 template <typename... T>
-static bool verify_signature(const user_pubkey_t& pubkey, const std::array<unsigned char, 64>& sig, const T&... val) {
+bool verify_signature(const user_pubkey_t& pubkey, const std::array<unsigned char, 64>& sig, const T&... val) {
+    std::string data = concatenate_sig_message_parts(val...);
     auto pk_hex = pubkey.key();
     assert(pk_hex.size() == 64);
-    OXEN_LOG(warn, "pubkey is: {}", pk_hex);
     std::array<unsigned char, 32> pk;
     oxenmq::from_hex(begin(pk_hex), end(pk_hex), begin(pk));
-    OXEN_LOG(warn, "pubkey* is: {}", oxenmq::to_hex(pk.begin(), pk.end()));
 
-    crypto_sign_state state;
-    crypto_sign_init(&state);
-    (signature_update(state, val), ...);
-    return 0 == crypto_sign_final_verify(&state, sig.data(), pk.data());
+    return 0 == crypto_sign_verify_detached(
+            sig.data(),
+            reinterpret_cast<const unsigned char*>(data.data()),
+            data.size(),
+            pk.data());
 }
 
 template <typename... T>
-static std::array<unsigned char, 64> create_signature(const ed25519_seckey& sk, const T&... val) {
+std::array<unsigned char, 64> create_signature(const ed25519_seckey& sk, const T&... val) {
     std::array<unsigned char, 64> sig;
-    crypto_sign_state state;
-    crypto_sign_init(&state);
-    (signature_update(state, val), ...);
-    crypto_sign_final_create(&state, sig.data(), nullptr, sk.data());
+    std::string data = concatenate_sig_message_parts(val...);
+    crypto_sign_detached(
+            sig.data(),
+            nullptr,
+            reinterpret_cast<const unsigned char*>(data.data()),
+            data.size(),
+            sk.data());
     return sig;
 }
 

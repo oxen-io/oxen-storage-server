@@ -57,9 +57,10 @@ namespace detail {
 
 // detail::to_hashable takes either an integral type, system_clock::time_point, or a string type and
 // converts it to a string_view by writing an integer value (using std::to_chars) into the buffer
-// space, and returning a string_view.  (For strings/string_views the string_view is returned
-// directly from the argument).  system_clock::time_points are converted into integral milliseconds
-// since epoch then treated as an integer value.
+// space (which should be at least 20 bytes), and returning a string_view into the written buffer
+// space.  For strings/string_views the string_view is returned directly from the argument.
+// system_clock::time_points are converted into integral milliseconds since epoch then treated as an
+// integer value.
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string_view to_hashable(const T& val, char*& buffer) {
     auto [p, ec] = std::to_chars(buffer, buffer+20, val);
