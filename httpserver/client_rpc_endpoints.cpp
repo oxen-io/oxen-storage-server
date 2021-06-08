@@ -254,6 +254,15 @@ static void load(retrieve& r, Dict& d) {
 void retrieve::load_from(json params) { load(*this, params); }
 void retrieve::load_from(bt_dict_consumer params) { load(*this, params); }
 
+static bool is_valid_message_hash(std::string_view hash) {
+    return
+        (hash.size() == 43 && oxenmq::is_base64(hash))
+        ||
+        // TODO: remove this in the future, once everything has been upgraded to a SS
+        // that uses 43-byte base64 string hashes instead.
+        (hash.size() == 128 && oxenmq::is_hex(hash));
+}
+
 template <typename Dict>
 static void load(delete_msgs& dm, Dict& d) {
     auto [messages, pubkey, signature] =
@@ -266,8 +275,8 @@ static void load(delete_msgs& dm, Dict& d) {
     if (dm.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
     for (const auto& m : dm.messages)
-        if (m.size() != 128 && !oxenmq::is_hex(m))
-            throw parse_error{"invalid message hash: expected 128 hex digits"};
+        if (!is_valid_message_hash(m))
+            throw parse_error{"invalid message hash: " + m};
 }
 void delete_msgs::load_from(json params) { load(*this, params); }
 void delete_msgs::load_from(bt_dict_consumer params) { load(*this, params); }
@@ -357,15 +366,7 @@ static void load(expire_msgs& e, Dict& d) {
     if (e.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
     for (const auto& m : e.messages)
-        if (!
-                (
-                 (m.size() == 43 && oxenmq::is_base64(m))
-                 ||
-                 // TODO: can remove this in the future, once everything has been upgraded to a SS
-                 // that uses 43-byte base64 string hashes instead.
-                 (m.size() == 128 && oxenmq::is_hex(m))
-                )
-           )
+        if (!is_valid_message_hash(m))
             throw parse_error{"invalid message hash: " + m};
 }
 void expire_msgs::load_from(json params) { load(*this, params); }
