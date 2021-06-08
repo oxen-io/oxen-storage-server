@@ -241,12 +241,12 @@ void Database::open_and_prepare(const std::filesystem::path& db_path) {
     page_count_stmt = prepare_statement("page count", "PRAGMA page_count");
 }
 
-// Gets results, calls a callback with the sqlite3_statement* to extract them.  Returns true if at
-// least one row was fetched (and callback invoked), false otherwise.
+// Gets results, calls a callback with the sqlite3_statement* to extract them.  Returns the number
+// of rows fetched on success (including 0), -1 if a failure occured.
 template <typename Func>
-static bool get_results(std::string_view desc, Database::SqlitePtr& db, Database::StatementPtr& stmt, Func callback) {
+static int get_results(std::string_view desc, Database::SqlitePtr& db, Database::StatementPtr& stmt, Func callback) {
     int rc;
-    bool success = false;
+    int rows = 0;
     while (true) {
         rc = sqlite3_step(stmt.get());
         if (rc == SQLITE_BUSY)
@@ -255,9 +255,10 @@ static bool get_results(std::string_view desc, Database::SqlitePtr& db, Database
             break;
         else if (rc == SQLITE_ROW) {
             callback(stmt.get());
-            success = true;
+            rows++;
         } else {
             OXEN_LOG(critical, "Could not execute {} db statement", desc);
+            rows = -1;
             break;
         }
     }
@@ -266,21 +267,21 @@ static bool get_results(std::string_view desc, Database::SqlitePtr& db, Database
     if (rc != SQLITE_OK) {
         OXEN_LOG(critical, "sqlite reset error: [{}], {}", rc,
                  sqlite3_errmsg(db.get()));
-        success = false;
+        rows = -1;
     }
-    return success;
+    return rows;
 }
 
 bool Database::get_used_pages(uint64_t& count) {
     return get_results("page count", db, page_count_stmt, [&count](auto* stmt) {
         count = sqlite3_column_int64(stmt, 0);
-    });
+    }) > 0;
 }
 
 bool Database::get_message_count(uint64_t& count) {
     return get_results("message count", db, get_row_count_stmt, [&count](auto* stmt) {
         count = sqlite3_column_int64(stmt, 0);
-    });
+    }) > 0;
 }
 
 /// Extract item from the result of a successfull select statement execution
@@ -299,7 +300,7 @@ static Item extract_item(sqlite3_stmt* stmt) {
 bool Database::retrieve_random(Item& item) {
     return get_results("random message", db, get_random_stmt, [&item](auto* stmt) {
         item = extract_item(stmt);
-    });
+    }) > 0;
 }
 
 bool Database::retrieve_by_hash(std::string_view msg_hash, Item& item) {
@@ -308,7 +309,7 @@ bool Database::retrieve_by_hash(std::string_view msg_hash, Item& item) {
 
     return get_results("retrieve by hash", db, get_by_hash_stmt, [&item](auto* stmt) {
         item = extract_item(stmt);
-    });
+    }) > 0;
 }
 
 bool Database::store(
@@ -404,7 +405,7 @@ bool Database::retrieve(const std::string& pubKey, std::vector<Item>& items,
 
     return get_results("retrieve", db, *stmt, [&items](auto* stmt) {
         items.push_back(extract_item(stmt));
-    });
+    }) >= 0;
 }
 
 static std::optional<std::vector<std::string>>
@@ -412,7 +413,7 @@ extract_hashes(std::string_view desc, Database::SqlitePtr& db, Database::Stateme
     auto results = std::make_optional<std::vector<std::string>>();
     auto success = get_results(desc, db, st, [&results](auto* stmt) {
         results->push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
-    });
+    }) >= 0;
     if (!success)
         results.reset();
     return results;
@@ -464,7 +465,7 @@ extract_expiries(std::string_view desc, Database::SqlitePtr& db, Database::State
         results->emplace_back(
             reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
             system_clock::time_point{milliseconds{sqlite3_column_int64(stmt, 1)}});
-    });
+    }) >= 0;
     if (!success)
         results.reset();
     return results;
