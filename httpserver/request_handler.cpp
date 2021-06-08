@@ -376,6 +376,7 @@ void RequestHandler::process_client_req(
 struct swarm_response {
     std::mutex mutex;
     int pending;
+    bool b64;
     nlohmann::json result;
     std::function<void(oxen::Response)> cb;
 };
@@ -395,12 +396,15 @@ static void distribute_command(
                 [res, peer, cmd](bool success, auto parts) {
                     json peer_result;
                     if (!success)
-                        OXEN_LOG(warn, "Response timeout from {} for forwarded command {}", peer.pubkey_legacy, cmd);
-                    bool good_result = success && !parts.empty();
+                        OXEN_LOG(warn, "Response timeout from {} for forwarded command {}",
+                                peer.pubkey_legacy, cmd);
+                    bool good_result = success && parts.size() == 1;
                     if (good_result) {
                         try {
                             peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
+                            OXEN_LOG(warn, "Received unparseable response to {} from {}: {}",
+                                    cmd, peer.pubkey_legacy, e.what());
                             good_result = false;
                         }
                     }
@@ -410,10 +414,16 @@ static void distribute_command(
                     // If we're the last response then we reply:
                     bool send_reply = --res->pending == 0;
 
-                    if (!good_result)
-                        peer_result = json{
-                            {"failed", true},
-                            {(success ? "bad_peer_response" : "timeout"), true}};
+                    if (!good_result) {
+                        peer_result = json{{"failed", true}};
+                        if (!success) peer_result["timeout"] = true;
+                        else if (parts.size() == 2) peer_result["code"] = parts[0];
+                        else peer_result["bad_peer_response"] = true;
+                    }
+                    else if (res->b64) {
+                        if (auto it = peer_result.find("signature"); it != peer_result.end() && it->is_string())
+                            *it = oxenmq::to_base64(it->get_ref<const std::string&>());
+                    }
 
                     res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
 
@@ -444,6 +454,9 @@ void RequestHandler::process_client_req(
     auto res = std::make_shared<swarm_response>();
     res->cb = std::move(cb);
     res->pending = 1;
+    res->b64 = req.b64;
+    if (req.recurse)
+        res->result["timestamp"] = duration_cast<milliseconds>(req.timestamp.time_since_epoch()).count();
     std::optional<std::lock_guard<std::mutex>> lock;
     if (req.recurse) {
         // Send it off to our peers right away, before we process it ourselves
@@ -460,7 +473,8 @@ void RequestHandler::process_client_req(
         for (auto& m : *deleted)
             msgs.push_back(m);
         mine["deleted"] = std::move(msgs);
-        mine["signature"] = create_signature(ed25519_sk_, *deleted);
+        auto sig = create_signature(ed25519_sk_, req.timestamp, *deleted);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;

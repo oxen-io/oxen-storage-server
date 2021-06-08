@@ -42,8 +42,16 @@ struct no_args : endpoint {
     void load_from(oxenmq::bt_dict_consumer) override {}
 };
 
-// Base type for a "recursive" endpoint: that is, where the request gets forwarded from the initial
-// swarm member to all other swarm members.
+/// Base type for a "recursive" endpoint: that is, where the request gets forwarded from the initial
+/// swarm member to all other swarm members.
+///
+/// Recursive requests return per-swarm member results in the "swarm" key; results are endpoint
+/// specific, but on failure there will be a `"failed": true` key possibly accompanied by one of the
+/// following:
+/// - "timeout": true if the inter-swarm request timed out
+/// - "code": X if the inter-swarm request returned error code X
+/// - "bad_peer_response": true if the peer returned an unparseable response
+/// - "query_failure": true if the database failed to perform the query
 struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
     bool recurse;
@@ -144,11 +152,19 @@ struct delete_msgs final : recursive {
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted
 /// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
-/// epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
-/// timestamp via `info` first, to avoid client time sync issues).
+///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+///   timestamp via `info` first, to avoid client time sync issues).
 /// - signature -- an Ed25519 signature of the timestamp value (expressed as a string), signed by
-/// the ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
-/// requests; binary for OMQ requests.
+///   the ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
+///   requests; binary for OMQ requests.
+///
+/// Returns dict of:
+/// - "timestamp" copy of the request timestamp
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "deleted": hashes of deleted messages.
+///     - "signature": signature of ( TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
+///       by the node's ed25519 pubkey.
 struct delete_all final : recursive {
     static constexpr auto names() { return NAMES("delete_all"); }
 
@@ -247,7 +263,7 @@ struct get_swarm final : endpoint {
 ///     - ons_resolve
 /// - `params` (optional) dict of parameters to forward to oxend.  Can be omitted or null if no
 ///   parameters should be passed.
-/// 
+///
 /// See oxend rpc documentation (or the oxen-core/src/rpc/core_rpc_server_command_defs.h file) for
 /// information on using these oxend rpc endpoints.
 struct oxend_request final : endpoint {
