@@ -5,7 +5,6 @@
 #include "string_utils.hpp"
 #include "time.hpp"
 #include "utils.hpp"
-#include "Owner.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -18,7 +17,6 @@
 #include <sqlite3.h>
 
 namespace oxen {
-using namespace storage;
 
 constexpr std::chrono::milliseconds SQLite_busy_timeout = 3s;
 
