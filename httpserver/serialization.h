@@ -1,22 +1,31 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace oxen {
 
-namespace storage {
-struct Item;
-}
-
 struct message_t;
 
 inline constexpr size_t SERIALIZATION_BATCH_SIZE = 9'000'000;
 
-void serialize_message(std::string& buf, const storage::Item& msg);
+// The oldest serialization version we support (as of this version of SS)
+inline constexpr uint8_t SERIALIZATION_VERSION_COMPAT = 0;
 
-std::vector<std::string> serialize_messages(const std::vector<storage::Item>& msgs);
+// The next serialization version we support, if any (we use this on testnet, and often with a HF
+// version guard for upgrades).
+inline constexpr uint8_t SERIALIZATION_VERSION_NEXT = 1;
 
-std::vector<storage::Item> deserialize_messages(std::string_view blob);
+std::vector<std::string> serialize_messages(std::function<const message_t*()> next_msg, uint8_t version);
+
+template <typename It>
+std::vector<std::string> serialize_messages(It begin, It end, uint8_t version) {
+    return serialize_messages([&begin, &end]() mutable -> const message_t* {
+        return begin == end ? nullptr : &*begin++;
+    }, version);
+}
+
+std::vector<message_t> deserialize_messages(std::string_view blob);
 
 } // namespace oxen

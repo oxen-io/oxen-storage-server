@@ -5,8 +5,6 @@
 #include "utils.hpp"
 #include <chrono>
 
-using std::chrono::steady_clock;
-
 namespace oxen {
 
 using fseconds = std::chrono::duration<float, std::chrono::seconds::period>;

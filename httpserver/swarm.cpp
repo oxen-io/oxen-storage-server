@@ -3,6 +3,7 @@
 
 #include "service_node.h"
 
+#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ostream>
 #include <unordered_map>
@@ -270,17 +271,16 @@ Swarm::find_node(const x25519_pubkey& pk) const {
 
 static uint64_t hex_to_u64(const user_pubkey_t& pk) {
 
-    /// Create a buffer for 16 characters null terminated
-    char buf[17] = {};
-
-    const auto hexpk = pk.key();
-    assert(hexpk.size() == 64 && oxenmq::is_hex(hexpk));
+    const auto bytes = pk.raw();
+    assert(bytes.size() == 32);
 
     uint64_t res = 0;
-    for (size_t i = 0; i < 64; i += 16) {
-        std::memcpy(buf, hexpk.data() + i, 16);
-        res ^= strtoull(buf, nullptr, 16);
+    for (size_t i = 0; i < 4; i++) {
+        uint64_t buf;
+        std::memcpy(&buf, bytes.data() + i*8, 8);
+        res ^= buf;
     }
+    boost::endian::big_to_native_inplace(res);
 
     return res;
 }

@@ -78,23 +78,32 @@ std::string_view to_hashable(const T& value, char*&) {
 
 }
 
-/// Compute message's hash based on its constituents.  The hash is a SHA-512 hash of the
-/// concatenated string parts, encoded in hex.
-std::string computeMessageHash(std::vector<std::string_view> parts);
+/// Compute a hash from the given strings, concatenated together.
+std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts);
+std::string compute_hash_sha512_hex(std::vector<std::string_view> parts);
 
-/// Computes a message hash based on its constituent parts.  Takes any number of std::string,
-/// std::string_view, milliseconds, or integer values.  Strings are concatenated; integers are
-/// converted to strings via std::to_chars; milliseconds are treated as integer values from their
-/// `.count()` value.
-template <typename... T>
-std::string computeMessageHash(const T&... args) {
+/// Computes a message hash based on its constituent parts.  Takes a function (which accepts a
+/// container of string_views) and any number of std::string, std::string_view, system_clock values,
+/// or integer values.  Strings are concatenated; integers are converted to strings via
+/// std::to_chars; clock values are treated as integer milliseconds-since-unix-epoch values.
+template <typename Func, typename... T>
+std::string compute_hash(Func hasher, const T&... args) {
     // Allocate a buffer of 20 bytes per integral value (which is the largest the any integral value
     // can be when stringified).
     std::array<char, (0 + ... + (std::is_integral_v<T> ||
                 std::is_same_v<T, std::chrono::system_clock::time_point> ? 20 : 0))> buffer;
     auto* b = buffer.data();
-    return computeMessageHash({detail::to_hashable(args, b)...});
+    return hasher({detail::to_hashable(args, b)...});
 }
+
+/// Computes a message hash using either the "new" (post-2.2) or "old" formats, which are blake2b
+/// and sha512 of the messages attributes (which differ a little between new/old).
+std::string computeMessageHash(
+        std::chrono::system_clock::time_point timestamp,
+        std::chrono::system_clock::time_point expiry,
+        const user_pubkey_t& pubkey,
+        std::string_view data,
+        bool old);
 
 // Validates a TTL value to see if it is acceptable.
 bool validateTTL(std::chrono::system_clock::duration ttl);

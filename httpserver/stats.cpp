@@ -6,8 +6,6 @@
 #include <oxenmq/oxenmq.h>
 #include <unordered_map>
 
-using namespace std::chrono_literals;
-
 namespace oxen {
 
 all_stats_t::all_stats_t(oxenmq::OxenMQ& omq) {

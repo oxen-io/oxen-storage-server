@@ -8,6 +8,7 @@
 #include "signature.h"
 #include "service_node.h"
 #include "string_utils.hpp"
+#include "time.hpp"
 #include "utils.hpp"
 #include "version.h"
 
@@ -16,6 +17,7 @@
 
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
+#include <openssl/sha.h>
 #include <oxenmq/base32z.h>
 #include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
@@ -69,14 +71,11 @@ json snodes_to_json(const std::vector<sn_record_t>& snodes) {
 }
 
 std::string obfuscate_pubkey(const user_pubkey_t& pk) {
-    auto& pk_str = pk.str();
-    if (pk_str.empty())
+    const auto& pk_raw = pk.raw();
+    if (pk_raw.empty())
         return "(none)";
-    std::string res;
-    res += pk_str.substr(0, 4);
-    res += u8"…";
-    res += pk_str.substr(pk_str.length() - 3);
-    return res;
+    return oxenmq::to_hex(pk_raw.begin(), pk_raw.begin() + 2)
+        + u8"…" + oxenmq::to_hex(std::prev(pk_raw.end()), pk_raw.end());
 }
 
 template <typename RPC>
@@ -106,7 +105,7 @@ RequestHandler::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
 // called with non-integer values then this simply returns an empty string_view.
 template <typename T>
 std::string_view convert_integer_arg(char*& buffer, const T& val) {
-    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, system_clock::time_point>)
         return detail::to_hashable(val, buffer);
     else
         return {};
@@ -116,7 +115,7 @@ template <typename T, typename... More, size_t N>
 size_t space_needed(const std::array<std::string_view, N>& stringified_ints, const T& val, const More&... more) {
     static_assert(N >= sizeof...(More) + 1);
     size_t s = 0;
-    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, system_clock::time_point>)
         s = stringified_ints[N - sizeof...(More) - 1].size();
     else if constexpr (std::is_convertible_v<T, std::string_view>)
         s += std::string_view{val}.size();
@@ -133,7 +132,7 @@ size_t space_needed(const std::array<std::string_view, N>& stringified_ints, con
 template <typename T, typename... More, size_t N>
 void concatenate_parts(std::string& result, const std::array<std::string_view, N>& stringified_ints, const T& val, const More&... more) {
     static_assert(N >= sizeof...(More) + 1);
-    if constexpr (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>)
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, system_clock::time_point>)
         result += stringified_ints[N - sizeof...(More) - 1];
     else if constexpr (std::is_convertible_v<T, std::string_view>)
         result += std::string_view{val};
@@ -152,7 +151,7 @@ void concatenate_parts(std::string& result, const std::array<std::string_view, N
 // allocations we have to perform.
 template <typename... T>
 std::string concatenate_sig_message_parts(const T&... vals) {
-    constexpr size_t num_ints = (0 + ... + (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>));
+    constexpr size_t num_ints = (0 + ... + (std::is_integral_v<T> || std::is_same_v<T, system_clock::time_point>));
     // Buffer big enough to hold all our integer arguments:
     std::array<char, 20*num_ints> int_buffer;
     char* buffer_ptr = int_buffer.data();
@@ -169,16 +168,13 @@ std::string concatenate_sig_message_parts(const T&... vals) {
 template <typename... T>
 bool verify_signature(const user_pubkey_t& pubkey, const std::array<unsigned char, 64>& sig, const T&... val) {
     std::string data = concatenate_sig_message_parts(val...);
-    auto pk_hex = pubkey.key();
-    assert(pk_hex.size() == 64);
-    std::array<unsigned char, 32> pk;
-    oxenmq::from_hex(begin(pk_hex), end(pk_hex), begin(pk));
+    const auto& pk = pubkey.raw();
 
     return 0 == crypto_sign_verify_detached(
             sig.data(),
             reinterpret_cast<const unsigned char*>(data.data()),
             data.size(),
-            pk.data());
+            reinterpret_cast<const unsigned char*>(pk.data()));
 }
 
 template <typename... T>
@@ -199,7 +195,7 @@ std::array<unsigned char, 64> create_signature(const ed25519_seckey& sk, const T
 const RequestHandler::rpc_map RequestHandler::client_rpc_endpoints =
     register_client_rpc_endpoints(rpc::client_rpc_types{});
 
-std::string computeMessageHash(std::vector<std::string_view> parts) {
+std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
     constexpr size_t HASH_SIZE = 32;
     crypto_generichash_state state;
     crypto_generichash_init(&state, nullptr, 0, HASH_SIZE);
@@ -214,6 +210,38 @@ std::string computeMessageHash(std::vector<std::string_view> parts) {
         b64hash.pop_back();
     return b64hash;
 }
+
+std::string compute_hash_sha512_hex(std::vector<std::string_view> parts) {
+    SHA512_CTX ctx;
+    SHA512_Init(&ctx);
+    for (const auto& p : parts)
+        SHA512_Update(&ctx, p.data(), p.size());
+
+    std::array<unsigned char, SHA512_DIGEST_LENGTH> hash;
+    SHA512_Final(hash.data(), &ctx);
+    return oxenmq::to_hex(hash.begin(), hash.end());
+}
+
+std::string computeMessageHash(
+        system_clock::time_point timestamp,
+        system_clock::time_point expiry,
+        const user_pubkey_t& pubkey,
+        std::string_view data,
+        bool old) {
+    if (old) {
+        return compute_hash(compute_hash_sha512_hex,
+                timestamp,
+                to_epoch_ms(expiry) - to_epoch_ms(timestamp), // ttl
+                pubkey.prefixed_hex(),
+                oxenmq::to_base64(data));
+    }
+
+    char netid = static_cast<char>(pubkey.type());
+    return compute_hash(compute_hash_blake2b_b64,
+            timestamp, expiry, std::string_view{&netid, 1}, pubkey.raw(), data);
+}
+
+
 
 bool validateTimestamp(system_clock::time_point timestamp, system_clock::time_point expiry) {
     auto now = system_clock::now();
@@ -257,20 +285,26 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
+    using namespace std::chrono;
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
     if (!validateTTL(ttl)) {
         OXEN_LOG(warn, "Forbidden. Invalid TTL: {}ms", ttl.count());
         return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
     }
     if (!validateTimestamp(req.timestamp, req.expiry)) {
-        OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}",
-                duration_cast<milliseconds>(req.timestamp.time_since_epoch()).count());
+        OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}", to_epoch_ms(req.timestamp));
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
     auto messageHash = computeMessageHash(req.timestamp, req.expiry, req.pubkey.str(), req.data);
 
-    bool success;
+    // FIXME: need to use the "old" backwards compat hash up to the HF that changes hash structure.
+    bool use_old_hash = false;
+    std::string message_hash = computeMessageHash(
+            req.timestamp, req.expiry, req.pubkey, req.data, use_old_hash);
+
+    bool new_msg;
+    bool success = false;
     try {
         success = service_node_.process_store(message_t{req.pubkey.str(), std::move(req.data), messageHash, req.timestamp, req.expiry});
     } catch (const std::exception& e) {
@@ -284,7 +318,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::SERVICE_UNAVAILABLE, "Service node is initializing"sv});
     }
 
-    OXEN_LOG(trace, "Successfully stored message {} for {}", messageHash, obfuscate_pubkey(req.pubkey));
+    OXEN_LOG(trace, "Successfully stored message {} for {}", message_hash, obfuscate_pubkey(req.pubkey));
 
     json res_body{
         {"hash", messageHash},
@@ -491,7 +525,7 @@ void RequestHandler::process_client_req(
 
     if (auto deleted = service_node_.delete_all_messages(req.pubkey)) {
         std::sort(deleted->begin(), deleted->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.timestamp, *deleted);
+        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, *deleted);
         mine["deleted"] = std::move(*deleted);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
@@ -527,7 +561,7 @@ void RequestHandler::process_client_req(
 
     if (auto deleted = service_node_.delete_messages(req.pubkey, msgs)) {
         std::sort(deleted->begin(), deleted->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.messages, *deleted);
+        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, *deleted);
         mine["deleted"] = std::move(*deleted);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
@@ -567,7 +601,7 @@ void RequestHandler::process_client_req(
 
     if (auto deleted = service_node_.delete_messages_before(req.pubkey, req.before)) {
         std::sort(deleted->begin(), deleted->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.before, *deleted);
+        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.before, *deleted);
         mine["deleted"] = std::move(*deleted);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
@@ -607,7 +641,7 @@ void RequestHandler::process_client_req(
 
     if (auto updated = service_node_.update_all_expiries(req.pubkey, req.expiry)) {
         std::sort(updated->begin(), updated->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.expiry, *updated);
+        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, *updated);
         mine["updated"] = std::move(*updated);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
@@ -648,7 +682,7 @@ void RequestHandler::process_client_req(
 
     if (auto updated = service_node_.update_messages_expiry(req.pubkey, msgs, req.expiry)) {
         std::sort(updated->begin(), updated->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.str(), req.expiry, req.messages, *updated);
+        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, *updated);
         mine["updated"] = std::move(*updated);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {

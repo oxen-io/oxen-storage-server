@@ -95,8 +95,8 @@ class ServiceNode {
 
     std::forward_list<std::future<void>> outstanding_https_reqs_;
 
-    // Save multiple items to the database at once (i.e. in a single transaction)
-    void save_bulk(const std::vector<storage::Item>& items);
+    // Save multiple messages to the database at once (i.e. in a single transaction)
+    void save_bulk(const std::vector<message_t>& msgs);
 
     void on_bootstrap_update(block_update_t&& bu);
 
@@ -104,10 +104,7 @@ class ServiceNode {
 
     void bootstrap_data();
 
-    void bootstrap_peers(
-        const std::vector<sn_record_t>& peers) const; // mutex not needed
-
-    void bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const;
+    void bootstrap_swarms(const std::vector<swarm_id_t>& swarms = {}) const;
 
     /// Distribute all our data to where it belongs
     /// (called when our old node got dissolved)
@@ -119,7 +116,7 @@ class ServiceNode {
                         const sn_record_t& address) const; // mutex not needed
 
     void relay_messages(
-        const std::vector<storage::Item>& items,
+        const std::vector<message_t>& msgs,
         const std::vector<sn_record_t>& snodes) const; // mutex not needed
 
     // Conducts any ping peer tests that are due; (this is designed to be called frequently and does
@@ -135,10 +132,10 @@ class ServiceNode {
 
     /// Send a request to a SN under test
     void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
-                               const storage::Item& item);
+                               const message_t& msg);
 
     void process_storage_test_response(const sn_record_t& testee,
-                                       const storage::Item& item,
+                                       const message_t& msg,
                                        uint64_t test_height,
                                        std::string status,
                                        std::string answer);
@@ -202,8 +199,9 @@ class ServiceNode {
     // Returns true if the storage server is currently shutting down.
     bool shutting_down() const { return shutting_down_; }
 
-    /// Process message received from a client, return false if not in a swarm
-    bool process_store(message_t msg);
+    /// Process message received from a client, return false if not in a swarm.  If new_msg is not
+    /// nullptr, sets it to true if we stored as a new message, false if we already had it.
+    bool process_store(message_t msg, bool* new_msg = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
@@ -219,11 +217,10 @@ class ServiceNode {
 
     std::vector<sn_record_t> get_swarm_peers();
 
-    /// return all messages for a particular PK (in JSON)
-    bool get_all_messages(std::vector<storage::Item>& all_entries) const;
+    std::vector<message_t> get_all_messages() const;
 
-    bool retrieve(const std::string& pubKey, const std::string& last_hash,
-                  std::vector<storage::Item>& items);
+    /// return all messages for a particular PK
+    std::vector<message_t> retrieve(const user_pubkey_t& pubkey, const std::string& last_hash);
 
     /// Deletes all messages belonging to a pubkey; returns the deleted hashes
     std::optional<std::vector<std::string>> delete_all_messages(

@@ -1,7 +1,9 @@
 #include "client_rpc_endpoints.h"
 #include "oxen_logger.h"
 #include "string_utils.hpp"
+#include "time.hpp"
 
+#include <chrono>
 #include <type_traits>
 #include <unordered_set>
 
@@ -11,7 +13,7 @@
 namespace oxen::rpc {
 
 using nlohmann::json;
-using namespace std::chrono;
+using std::chrono::system_clock;
 using oxenmq::bt_dict;
 using oxenmq::bt_dict_consumer;
 using oxenmq::bt_list;
@@ -57,7 +59,7 @@ std::optional<T> parse_field(const json& params, const char* name) {
     if constexpr (std::is_same_v<T, std::string_view>)
         return it->template get_ref<const std::string&>();
     else if constexpr (is_timestamp) {
-        system_clock::time_point time{milliseconds{it->template get<uint64_t>()}};
+        auto time = from_epoch_ms(it->template get<int64_t>());
         // If we get a small timestamp value (less than 1M seconds since epoch) then this was very
         // likely given as unix epoch seconds rather than milliseconds
         if (time.time_since_epoch() < 1'000'000s)
@@ -88,7 +90,7 @@ std::optional<T> parse_field(bt_dict_consumer& params, const char* name) {
         else if constexpr (std::is_integral_v<T>)
             return params.consume_integer<T>();
         else if constexpr (is_timestamp)
-            return system_clock::time_point{milliseconds{params.consume_integer<uint64_t>()}};
+            return from_epoch_ms(params.consume_integer<int64_t>());
         else if constexpr (is_str_array) {
             auto strs = std::make_optional<T>();
             for (auto l = params.consume_list_consumer(); !l.is_finished(); )
@@ -127,7 +129,7 @@ constexpr bool check_ascending(std::string_view a, std::string_view b, Args&&...
 template <typename... T, typename Dict, typename... Names, typename = std::enable_if_t<
         sizeof...(T) == sizeof...(Names) && (std::is_convertible_v<Names, std::string_view> && ...)>>
 std::tuple<std::optional<T>...> load_fields(Dict& params, const Names&... names) {
-    assert(check_lt(names...));
+    assert(check_ascending(names...));
     return {parse_field<T>(params, names)...};
 }
 
@@ -162,7 +164,8 @@ static void load_pk_signature(
     require("pubkey", pk);
     require("signature", sig);
     if (!rpc.pubkey.load(std::move(*pk)))
-        throw parse_error{fmt::format("Pubkey must be {} hex digits long", get_user_pubkey_size())};
+        throw parse_error{fmt::format("Pubkey must be {} hex digits ({} bytes) long",
+                USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
 
     if constexpr (std::is_same_v<json, Dict>) {
         if (!oxenmq::is_base64(*sig) || !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
@@ -191,8 +194,8 @@ static void load(store& s, Dict& d) {
     std::optional<uint64_t> ttl;
     std::optional<system_clock::time_point> timestamp;
     if constexpr (std::is_same_v<Dict, json>) {
-        if (auto ts = parse_stringified<uint64_t>(d, "timestamp"))
-            timestamp = system_clock::time_point{milliseconds{*ts}};
+        if (auto ts = parse_stringified<int64_t>(d, "timestamp"))
+            timestamp = from_epoch_ms(*ts);
         ttl = parse_stringified<uint64_t>(d, "ttl");
     } else {
         timestamp = parse_field<system_clock::time_point>(d, "timestamp");
@@ -201,12 +204,13 @@ static void load(store& s, Dict& d) {
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubkey_alt, true);
     if (!s.pubkey.load(std::move(pubkey ? *pubkey : *pubkey_alt)))
-        throw parse_error{fmt::format("Pubkey must be {} hex digits long", get_user_pubkey_size())};
+        throw parse_error{fmt::format("Pubkey must be {} hex digits/{} bytes long",
+                USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
 
     require("timestamp", timestamp);
     require_exactly_one_of("expiry", expiry, "ttl", ttl);
     s.timestamp = *timestamp;
-    s.expiry = expiry ? *expiry : s.timestamp + milliseconds{*ttl};
+    s.expiry = expiry ? *expiry : s.timestamp + std::chrono::milliseconds{*ttl};
 
     require("data", data);
     if constexpr (std::is_same_v<Dict, json>) {
@@ -238,7 +242,8 @@ static void load(retrieve& r, Dict& d) {
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     if (!r.pubkey.load(std::move(pubkey ? *pubkey : *pubKey)))
-        throw parse_error{fmt::format("Pubkey must be {} hex digits long", get_user_pubkey_size())};
+        throw parse_error{fmt::format("Pubkey must be {} hex digits/{} bytes long",
+                USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
 
     require_at_most_one_of("last_hash", last_hash, "lastHash", lastHash);
     if (lastHash)
@@ -285,7 +290,7 @@ bt_value delete_msgs::to_bt() const {
     for (auto& m : messages)
         msgs.emplace_back(std::string_view{m});
     return bt_dict{
-        {"pubkey", pubkey.str()},
+        {"pubkey", pubkey.prefixed_raw()},
         {"messages", std::move(msgs)},
         {"signature", util::view_guts(signature)},
     };
@@ -306,9 +311,9 @@ void delete_all::load_from(json params) { load(*this, params); }
 void delete_all::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value delete_all::to_bt() const {
     return bt_dict{
-        {"pubkey", pubkey.str()},
+        {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
-        {"timestamp", duration_cast<milliseconds>(timestamp.time_since_epoch()).count()}
+        {"timestamp", to_epoch_ms(timestamp)}
     };
 }
 
@@ -326,9 +331,9 @@ void delete_before::load_from(json params) { load(*this, params); }
 void delete_before::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value delete_before::to_bt() const {
     return bt_dict{
-        {"pubkey", pubkey.str()},
+        {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
-        {"before", duration_cast<milliseconds>(before.time_since_epoch()).count()}
+        {"before", to_epoch_ms(before)}
     };
 }
 
@@ -346,9 +351,9 @@ void expire_all::load_from(json params) { load(*this, params); }
 void expire_all::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value expire_all::to_bt() const {
     return bt_dict{
-        {"pubkey", pubkey.str()},
+        {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
-        {"expiry", duration_cast<milliseconds>(expiry.time_since_epoch()).count()}
+        {"expiry", to_epoch_ms(expiry)}
     };
 }
 
@@ -376,9 +381,9 @@ bt_value expire_msgs::to_bt() const {
     for (const auto& m : messages)
         msgs.emplace_back(std::string_view{m});
     return bt_dict{
-        {"pubkey", pubkey.str()},
+        {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
-        {"expiry", duration_cast<milliseconds>(expiry.time_since_epoch()).count()},
+        {"expiry", to_epoch_ms(expiry)},
         {"messages", std::move(msgs)},
     };
 }
@@ -389,7 +394,8 @@ static void load(get_swarm& g, Dict& d) {
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     if (!g.pubkey.load(std::move(pubkey ? *pubkey : *pubKey)))
-        throw parse_error{fmt::format("Pubkey must be {} hex digits long", get_user_pubkey_size())};
+        throw parse_error{fmt::format("Pubkey must be {} hex digits/{} bytes long",
+                USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
 }
 void get_swarm::load_from(json params) { load(*this, params); }
 void get_swarm::load_from(bt_dict_consumer params) { load(*this, params); }

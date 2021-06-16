@@ -1,7 +1,6 @@
 #include "service_node.h"
 
 #include "Database.hpp"
-#include "Item.hpp"
 #include "http.h"
 #include "omq_server.h"
 #include "oxen_logger.h"
@@ -26,8 +25,6 @@
 using json = nlohmann::json;
 
 namespace oxen {
-
-using storage::Item;
 
 // Threshold of missing data records at which we start warning and consult bootstrap nodes (mainly
 // so that we don't bother producing warning spam or going to the bootstrap just for a few new nodes
@@ -358,8 +355,10 @@ bool ServiceNode::process_store(message_t msg) {
     if (db_->store(msg))
         OXEN_LOG(trace, "saved message: {}", msg.data);
 
-    std::string serialized;
-    serialize_message(serialized, Item{std::move(msg)});
+    // TODO: don't need to relay this anymore after 2.2.0 because the store itself becomes
+    // recursive.
+    auto sversion = is_mainnet ? SERIALIZATION_VERSION_COMPAT : SERIALIZATION_VERSION_NEXT;
+    auto serialized = std::move(serialize_messages(&msg, &msg+1, sversion).front());
 
     for (auto& peer : swarm_->other_nodes())
         relay_data_reliable(serialized, peer);
@@ -368,16 +367,17 @@ bool ServiceNode::process_store(message_t msg) {
     return true;
 }
 
-void ServiceNode::save_bulk(const std::vector<Item>& items) {
+void ServiceNode::save_bulk(const std::vector<message_t>& msgs) {
 
     std::lock_guard guard(sn_mutex_);
 
-    if (!db_->bulk_store(items)) {
-        OXEN_LOG(err, "failed to save batch to the database");
+    try { db_->bulk_store(msgs); }
+    catch (const std::exception& e) {
+        OXEN_LOG(err, "failed to save batch to the database: {}", e.what());
         return;
     }
 
-    OXEN_LOG(trace, "saved messages count: {}", items.size());
+    OXEN_LOG(trace, "saved messages count: {}", msgs.size());
 }
 
 void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
@@ -510,7 +510,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, true);
 
     if (!events.new_snodes.empty()) {
-        this->bootstrap_peers(events.new_snodes);
+        relay_messages(get_all_messages(), events.new_snodes);
     }
 
     if (!events.new_swarms.empty()) {
@@ -519,7 +519,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     if (events.dissolved) {
         /// Go through all our PK and push them accordingly
-        this->salvage_data();
+        bootstrap_swarms();
     }
 
 #ifndef INTEGRATION_TEST
@@ -824,7 +824,7 @@ void ServiceNode::oxend_ping() {
 }
 
 void ServiceNode::process_storage_test_response(const sn_record_t& testee,
-                                                const Item& item,
+                                                const message_t& msg,
                                                 uint64_t test_height,
                                                 std::string status,
                                                 std::string answer) {
@@ -836,7 +836,7 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
         OXEN_LOG(debug, "Failed to send a storage test request to snode: {}",
                  testee.pubkey_legacy);
     } else if (status == "OK") {
-        if (answer == item.data) {
+        if (answer == msg.data) {
             OXEN_LOG(debug,
                      "Storage test is successful for: {} at height: {}",
                      testee.pubkey_legacy, test_height);
@@ -846,7 +846,7 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
                      "Test answer doesn't match for: {} at height {}",
                      testee.pubkey_legacy, test_height);
 #ifdef INTEGRATION_TEST
-            OXEN_LOG(warn, "got: {} expected: {}", value, item.data);
+            OXEN_LOG(warn, "got: {} expected: {}", value, msg.data);
 #endif
             result = ResultType::MISMATCH;
         }
@@ -862,11 +862,11 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
 
 void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                                         uint64_t test_height,
-                                        const Item& item) {
+                                        const message_t& msg) {
 
     if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
         // Deprecated HTTPS storage test: remove after HF19
-        cpr::Body body{json{{"height", test_height}, {"hash", item.hash}}.dump()};
+        cpr::Body body{json{{"height", test_height}, {"hash", msg.hash}}.dump()};
         cpr::Header headers{
             {"Host", testee.pubkey_ed25519
                 ? oxenmq::to_base32z(testee.pubkey_ed25519.view()) + ".snode"
@@ -878,7 +878,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
 
         outstanding_https_reqs_.emplace_front(
             cpr::PostCallback(
-                [this, testee, item, height=block_height_]
+                [this, testee, msg, height=block_height_]
                 (cpr::Response r) {
                     auto& pk = testee.pubkey_legacy;
                     std::string status;
@@ -902,7 +902,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
                         }
                     }
 
-                    process_storage_test_response(testee, item, height, std::move(status), std::move(answer));
+                    process_storage_test_response(testee, msg, height, std::move(status), std::move(answer));
                 },
                 cpr::Url{fmt::format("https://{}:{}/swarms/storage_test/v1", testee.ip, testee.port)},
                 cpr::Timeout{STORAGE_TEST_TIMEOUT},
@@ -919,23 +919,23 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
         return;
     }
 
-    assert(oxenmq::is_hex(item.hash));
+    assert(oxenmq::is_hex(msg.hash));
 
     omq_server_->request(
         testee.pubkey_x25519.view(), "sn.storage_test",
-        [this, testee, item, height=block_height_](bool success, auto data) {
+        [this, testee, msg, height=block_height_](bool success, auto data) {
             if (!success || data.size() != 2) {
                 OXEN_LOG(debug, "Storage test request failed: {}",
                         !success ? "request timed out" : "wrong number of elements in response");
             }
             if (data.size() < 2)
                 data.resize(2);
-            process_storage_test_response(testee, item, height, std::move(data[0]), std::move(data[1]));
+            process_storage_test_response(testee, msg, height, std::move(data[0]), std::move(data[1]));
         },
         oxenmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
         // Data parts: test height and msg hash (in bytes)
         std::to_string(block_height_),
-        oxenmq::from_hex(item.hash)
+        oxenmq::from_hex(msg.hash)
     );
 }
 
@@ -1084,12 +1084,11 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
     }
 
     // 3. If for a current/past block, try to respond right away
-    Item item;
-    if (!db_->retrieve_by_hash(msg_hash_hex, item)) {
+    auto msg = db_->retrieve_by_hash(msg_hash_hex);
+    if (!msg)
         return {MessageTestStatus::RETRY, ""};
-    }
 
-    return {MessageTestStatus::SUCCESS, std::move(item.data)};
+    return {MessageTestStatus::SUCCESS, std::move(msg->data)};
 }
 
 void ServiceNode::initiate_peer_test() {
@@ -1126,21 +1125,12 @@ void ServiceNode::initiate_peer_test() {
     }
 
     /// 2. Storage Testing: initiate a testing request with a randomly selected message
-    if (Item item; db_->retrieve_random(item)) {
-        OXEN_LOG(trace, "Selected random message: {}, {}", item.hash, item.data);
-        send_storage_test_req(testee, test_height, item);
+    if (auto msg = db_->retrieve_random()) {
+        OXEN_LOG(trace, "Selected random message: {}, {}", msg->hash, msg->data);
+        send_storage_test_req(testee, test_height, *msg);
     } else {
         OXEN_LOG(debug, "Could not select a message for testing");
     }
-}
-
-void ServiceNode::bootstrap_peers(const std::vector<sn_record_t>& peers) const {
-    std::vector<Item> all_entries;
-    if (!get_all_messages(all_entries)) {
-        OXEN_LOG(err, "Could not retrieve entries from the database");
-        return;
-    }
-    relay_messages(all_entries, peers);
 }
 
 void ServiceNode::bootstrap_swarms(
@@ -1148,143 +1138,99 @@ void ServiceNode::bootstrap_swarms(
 
     std::lock_guard guard(sn_mutex_);
 
-    if (swarms.empty()) {
+    if (swarms.empty())
         OXEN_LOG(info, "Bootstrapping all swarms");
-    } else {
-        OXEN_LOG(info, "Bootstrapping swarms: [{}]", util::join(" ", swarms));
-    }
+    else if (OXEN_LOG_ENABLED(info))
+        OXEN_LOG(info, "Bootstrapping swarms: [{}]", util::join(", ", swarms));
 
     const auto& all_swarms = swarm_->all_valid_swarms();
 
-    std::vector<Item> all_entries;
-    if (!get_all_messages(all_entries)) {
-        OXEN_LOG(err, "Could not retrieve entries from the database");
-        return;
-    }
+    std::unordered_map<user_pubkey_t, swarm_id_t> pk_swarm_cache;
+    std::unordered_map<swarm_id_t, std::vector<message_t>> to_relay;
 
-    std::unordered_map<swarm_id_t, size_t> swarm_id_to_idx;
-    for (size_t i = 0; i < all_swarms.size(); ++i) {
-        swarm_id_to_idx.insert({all_swarms[i].swarm_id, i});
-    }
-
-    /// See what pubkeys we have
-    std::unordered_map<std::string, swarm_id_t> cache;
-
+    std::vector<message_t> all_entries = get_all_messages();
     OXEN_LOG(debug, "We have {} messages", all_entries.size());
-
-    std::unordered_map<swarm_id_t, std::vector<Item>> to_relay;
-
     for (auto& entry : all_entries) {
-
-        swarm_id_t swarm_id;
-        const auto it = cache.find(entry.pub_key);
-        if (it == cache.end()) {
-
-            user_pubkey_t pk;
-            if (!pk.load(entry.pub_key)) {
-                OXEN_LOG(err, "Invalid pubkey in a message while bootstrapping other nodes");
-                continue;
-            }
-
-            swarm_id = get_swarm_by_pk(all_swarms, pk).swarm_id;
-            cache.insert({entry.pub_key, swarm_id});
-        } else {
-            swarm_id = it->second;
+        if (!entry.pubkey) {
+            OXEN_LOG(err, "Invalid pubkey in a message while bootstrapping other nodes");
+            continue;
         }
 
-        bool relevant = false;
-        for (const auto swarm : swarms) {
+        auto [it, ins] = pk_swarm_cache.try_emplace(entry.pubkey);
+        if (ins)
+            it->second = get_swarm_by_pk(all_swarms, entry.pubkey).swarm_id;
+        auto swarm_id = it->second;
 
-            if (swarm == swarm_id) {
-                relevant = true;
-            }
-        }
-
-        if (relevant || swarms.empty()) {
-
-            to_relay[swarm_id].emplace_back(std::move(entry));
-        }
+        if (swarms.empty() || std::find(swarms.begin(), swarms.end(), swarm_id) != swarms.end())
+            to_relay[swarm_id].push_back(std::move(entry));
     }
 
     OXEN_LOG(trace, "Bootstrapping {} swarms", to_relay.size());
 
-    for (const auto& [swarm_id, items] : to_relay) {
-        /// what if not found?
-        const size_t idx = swarm_id_to_idx[swarm_id];
+    std::unordered_map<swarm_id_t, size_t> swarm_id_to_idx;
+    for (size_t i = 0; i < all_swarms.size(); ++i)
+        swarm_id_to_idx.emplace(all_swarms[i].swarm_id, i);
 
-        relay_messages(items, all_swarms[idx].snodes);
-    }
+    for (const auto& [swarm_id, items] : to_relay)
+        relay_messages(items, all_swarms[swarm_id_to_idx[swarm_id]].snodes);
 }
 
-void ServiceNode::relay_messages(const std::vector<storage::Item>& messages,
+void ServiceNode::relay_messages(const std::vector<message_t>& messages,
                                  const std::vector<sn_record_t>& snodes) const {
-    std::vector<std::string> batches = serialize_messages(messages);
+    std::vector<std::string> batches = serialize_messages(messages.begin(), messages.end(),
+            is_mainnet ? SERIALIZATION_VERSION_COMPAT : SERIALIZATION_VERSION_NEXT);
 
-    OXEN_LOG(debug, "Relayed messages:");
-    for (auto msg : batches) {
-        OXEN_LOG(debug, "    {}", msg);
-    }
-    OXEN_LOG(debug, "To Snodes:");
-    for (auto sn : snodes) {
-        OXEN_LOG(debug, "    {}", sn.pubkey_legacy);
+    if (OXEN_LOG_ENABLED(debug)) {
+        OXEN_LOG(debug, "Relayed messages:");
+        for (auto msg : batches)
+            OXEN_LOG(debug, "    {}", msg);
+        OXEN_LOG(debug, "To Snodes:");
+        for (auto sn : snodes)
+            OXEN_LOG(debug, "    {}", sn.pubkey_legacy);
+
+        OXEN_LOG(debug, "Serialised batches: {}", batches.size());
     }
 
-    OXEN_LOG(debug, "Serialised batches: {}", batches.size());
-    for (const sn_record_t& sn : snodes) {
-        for (auto& batch : batches) {
-            // TODO: I could probably avoid copying here
-            this->relay_data_reliable(batch, sn);
-        }
-    }
+    for (const sn_record_t& sn : snodes)
+        for (auto& batch : batches)
+            relay_data_reliable(batch, sn);
 }
 
-void ServiceNode::salvage_data() const {
-
-    /// This is very similar to ServiceNode::bootstrap_swarms, so just reuse it
-    bootstrap_swarms({});
-}
-
-bool ServiceNode::retrieve(const std::string& pubKey,
-                           const std::string& last_hash,
-                           std::vector<Item>& items) {
-
+std::vector<message_t> ServiceNode::retrieve(
+        const user_pubkey_t& pubkey, const std::string& last_hash) {
     all_stats_.bump_retrieve_requests();
-
-    std::lock_guard guard(sn_mutex_);
-
-    return db_->retrieve(pubKey, items, last_hash,
-                         CLIENT_RETRIEVE_MESSAGE_LIMIT);
+    return db_->retrieve(pubkey, last_hash, CLIENT_RETRIEVE_MESSAGE_LIMIT);
 }
 
 std::optional<std::vector<std::string>> ServiceNode::delete_all_messages(
         const user_pubkey_t& pubkey) {
-    return db_->delete_all(pubkey.str());
+    return db_->delete_all(pubkey);
 }
 
 std::optional<std::vector<std::string>> ServiceNode::delete_messages(
         const user_pubkey_t& pubkey,
-        const std::vector<std::string_view>& msg_hashes) {
-    return db_->delete_by_hash(pubkey.str(), msg_hashes);
+        const std::vector<std::string>& msg_hashes) {
+    return db_->delete_by_hash(pubkey, msg_hashes);
 }
 
 std::optional<std::vector<std::string>> ServiceNode::delete_messages_before(
         const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp) {
-    return db_->delete_by_timestamp(pubkey.str(), timestamp);
+    return db_->delete_by_timestamp(pubkey, timestamp);
 }
 
 std::optional<std::vector<std::string>>
 ServiceNode::update_messages_expiry(
         const user_pubkey_t& pubkey,
-        const std::vector<std::string_view>& msg_hashes,
+        const std::vector<std::string>& msg_hashes,
         std::chrono::system_clock::time_point new_exp) {
-    return db_->update_expiry(pubkey.str(), msg_hashes, new_exp);
+    return db_->update_expiry(pubkey, msg_hashes, new_exp);
 }
 
 std::optional<std::vector<std::string>>
 ServiceNode::update_all_expiries(
         const user_pubkey_t& pubkey,
         std::chrono::system_clock::time_point new_exp) {
-    return db_->update_all_expiries(pubkey.str(), new_exp);
+    return db_->update_all_expiries(pubkey, new_exp);
 }
 
 void to_json(nlohmann::json& j, const test_result_t& val) {
@@ -1394,13 +1340,9 @@ std::string ServiceNode::get_status_line() const {
     return s.str();
 }
 
-bool ServiceNode::get_all_messages(std::vector<Item>& all_entries) const {
-
-    std::lock_guard guard(sn_mutex_);
-
+std::vector<message_t> ServiceNode::get_all_messages() const {
     OXEN_LOG(trace, "Get all messages");
-
-    return db_->retrieve("", all_entries, "");
+    return db_->retrieve_all();
 }
 
 void ServiceNode::process_push_batch(const std::string& blob) {
@@ -1410,7 +1352,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    std::vector<storage::Item> items = deserialize_messages(blob);
+    std::vector<message_t> items = deserialize_messages(blob);
 
     OXEN_LOG(trace, "Saving all: begin");
 
