@@ -2,8 +2,9 @@
 #include <iostream>
 
 #include "oxend_key.h"
-#include "swarm.h"
 #include "request_handler.h"
+#include "swarm.h"
+#include "time.hpp"
 
 #include <oxenmq/base64.h>
 
@@ -70,18 +71,35 @@ TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
 
     const auto timestamp = std::chrono::system_clock::time_point{1616650862026ms};
-    const auto ttl = 48h;
-    const auto pk = "05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48";
-    const auto data = oxenmq::from_base64("CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSagrtpeEpY31L7VxawfS8aSya0SiDa4J025SkjP13YX8g5pxgQ8Z6hgfNArMqr/tSijJ9miVKVDJ63YWE85O8kyWF8tdtZR5j0Vxb+JH5U8Rg1bp7ftKk3OSf7JJMcrUUrDnctQHe540zJ2OTDJ03DfubkX5NmKqEu5nhXGxeeDv3mTiL63fjtCvZYcikfjf6Nh1AX++HTgJ9SGoEIMastGUorFrmmXb2sbjHxNiJn0Radj/VzcA9VxYwBW5+AbGQ2d9+vvm7X+8vh+jIenJfjxf+8CWER+9adNfb4YUH07I+godNCV0O0J05gzqfKdT7J8MBZzFBtKrbk8oCagPpTsq/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
+    const auto expiry = timestamp + 48h;
+    oxen::user_pubkey_t pk;
+    REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
+    const auto data = oxenmq::from_base64(
+            "CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSag"
+            "rtpeEpY31L7VxawfS8aSya0SiDa4J025SkjP13YX8g5pxgQ8Z6hgfNArMqr/tSijJ9miVKVDJ63YWE85O8kyW"
+            "F8tdtZR5j0Vxb+JH5U8Rg1bp7ftKk3OSf7JJMcrUUrDnctQHe540zJ2OTDJ03DfubkX5NmKqEu5nhXGxeeDv3"
+            "mTiL63fjtCvZYcikfjf6Nh1AX++HTgJ9SGoEIMastGUorFrmmXb2sbjHxNiJn0Radj/VzcA9VxYwBW5+AbGQ2"
+            "d9+vvm7X+8vh+jIenJfjxf+8CWER+9adNfb4YUH07I+godNCV0O0J05gzqfKdT7J8MBZzFBtKrbk8oCagPpTs"
+            "q/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
 
-    // The hash used here deliberately changed with the RPC overhaul as it now computes the hash
-    // from the expiry date (instead of TTL) and the binary data (instead of b64-encoded data).
-    const auto expected = "b44adb755e9bca15d2f22fb0775b75e48d1689c4e314cd38c73cc4f1b2a609d06ef3df928c5175ba1447ad168a126419674083f1d5537de8fc622c22632f3aa5";
+    auto expected_old =
+        "dd5f46395dbab44c9d96711a68cd70e326c4a39d6ccce7a319b0262c18699d20"
+        "44610196519ad7283e3defebcdf3bccd6499fce1254fdee661e68f0611dc3104";
+    CHECK(computeMessageHash(timestamp, expiry, pk, data, true /*old*/) == expected_old);
+    CHECK(oxen::compute_hash_sha512_hex({
+                std::to_string(oxen::to_epoch_ms(timestamp)) +
+                std::to_string(oxen::to_epoch_ms(expiry) - oxen::to_epoch_ms(timestamp)) +
+                pk.prefixed_hex() +
+                oxenmq::to_base64(data)})
+            == expected_old);
 
-    auto hash = oxen::computeMessageHash(timestamp, timestamp+ttl, pk, data);
-    CHECK(hash == expected);
-
-    hash = oxen::computeMessageHash("16166508620261616823662026"s + pk + data);
-    CHECK(hash == expected);
+    auto expected_new = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";
+    CHECK(computeMessageHash(timestamp, expiry, pk, data, false /*!old*/) == expected_new);
+    CHECK(oxen::compute_hash_blake2b_b64({
+                std::to_string(oxen::to_epoch_ms(timestamp)) +
+                std::to_string(oxen::to_epoch_ms(expiry)) +
+                pk.prefixed_raw() +
+                data})
+            == expected_new);
 
 }
