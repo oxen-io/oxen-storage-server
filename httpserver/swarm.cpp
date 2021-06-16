@@ -103,14 +103,9 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     /// See if there are any new swarms
 
-    for (const auto& swarm_info : swarms) {
-
-        const bool found = this->is_existing_swarm(swarm_info.swarm_id);
-
-        if (!found) {
+    for (const auto& swarm_info : swarms)
+        if (!is_existing_swarm(swarm_info.swarm_id))
             events.new_swarms.push_back(swarm_info.swarm_id);
-        }
-    }
 
     /// NOTE: need to be careful and make sure we don't miss any
     /// swarm update (e.g. if we don't update frequently enough)

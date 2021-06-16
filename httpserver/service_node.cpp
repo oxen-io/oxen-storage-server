@@ -53,7 +53,7 @@ ServiceNode::ServiceNode(
     OXEN_LOG(info, "Requesting initial swarm state");
 
 #ifdef INTEGRATION_TEST
-    this->syncing_ = false;
+    syncing_ = false;
 #endif
 
     omq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
@@ -436,7 +436,7 @@ static SnodeStatus derive_snode_status(const block_update_t& bu,
 
 void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
-    if (this->hardfork_ != bu.hardfork) {
+    if (hardfork_ != bu.hardfork) {
         OXEN_LOG(debug, "New hardfork: {}", bu.hardfork);
         hardfork_ = bu.hardfork;
     }
@@ -489,9 +489,9 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
 
     const auto status = derive_snode_status(bu, our_address_);
 
-    if (this->status_ != status) {
+    if (status_ != status) {
         OXEN_LOG(info, "Node status updated: {}", status);
-        this->status_ = status;
+        status_ = status;
     }
 
     swarm_->set_swarm_id(events.our_swarm_id);
@@ -517,7 +517,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     }
 
     if (!events.new_swarms.empty()) {
-        this->bootstrap_swarms(events.new_swarms);
+        bootstrap_swarms(events.new_swarms);
     }
 
     if (events.dissolved) {
@@ -526,7 +526,7 @@ void ServiceNode::on_swarm_update(block_update_t&& bu) {
     }
 
 #ifndef INTEGRATION_TEST
-    this->initiate_peer_test();
+    initiate_peer_test();
 #endif
 }
 
@@ -599,7 +599,7 @@ void ServiceNode::update_swarms() {
                     } else {
                         OXEN_LOG(info, "Detected some missing SN data ({}/{}); "
                                 "querying bootstrap nodes for help", missing, total);
-                        this->bootstrap_data();
+                        bootstrap_data();
                     }
 #endif
                 }
@@ -627,8 +627,7 @@ void ServiceNode::ping_peers() {
 
     // TODO: Don't do anything until we are fully funded
 
-    if (this->status_ == SnodeStatus::UNSTAKED ||
-        this->status_ == SnodeStatus::UNKNOWN) {
+    if (status_ == SnodeStatus::UNSTAKED || status_ == SnodeStatus::UNKNOWN) {
         OXEN_LOG(trace, "Skipping peer testing (unstaked)");
         return;
     }
@@ -638,7 +637,7 @@ void ServiceNode::ping_peers() {
     // Check if we've been tested (reached) recently ourselves
     reach_records_.check_incoming_tests(now);
 
-    if (this->status_ == SnodeStatus::DECOMMISSIONED) {
+    if (status_ == SnodeStatus::DECOMMISSIONED) {
         OXEN_LOG(trace, "Skipping peer testing (decommissioned)");
         return;
     }
@@ -985,9 +984,9 @@ void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int
     }
 }
 
-// Deterministically selects two random swarm members; returns true on success
-bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
-                                       sn_record_t& testee) {
+// Deterministically selects two random swarm members; returns the pair on success, nullopt on
+// failure.
+std::optional<std::pair<sn_record_t, sn_record_t>> ServiceNode::derive_tester_testee(uint64_t blk_height) {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -996,7 +995,7 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
 
     if (members.size() < 2) {
         OXEN_LOG(trace, "Could not initiate peer test: swarm too small");
-        return false;
+        return std::nullopt;
     }
 
     std::sort(members.begin(), members.end(),
@@ -1015,18 +1014,18 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
         } else {
             OXEN_LOG(trace, "Could not find hash for a given block height");
             // TODO: request from oxend?
-            return false;
+            return std::nullopt;
         }
     } else {
         assert(false);
         OXEN_LOG(debug, "Could not find hash: block height is in the future");
-        return false;
+        return std::nullopt;
     }
 
     uint64_t seed;
     if (block_hash.size() < sizeof(seed)) {
         OXEN_LOG(err, "Could not initiate peer test: invalid block hash");
-        return false;
+        return std::nullopt;
     }
 
     std::memcpy(&seed, block_hash.data(), sizeof(seed));
@@ -1034,16 +1033,13 @@ bool ServiceNode::derive_tester_testee(uint64_t blk_height, sn_record_t& tester,
     std::mt19937_64 mt(seed);
     const auto tester_idx =
         util::uniform_distribution_portable(mt, members.size());
-    tester = members[tester_idx];
 
     uint64_t testee_idx;
     do {
         testee_idx = util::uniform_distribution_portable(mt, members.size());
     } while (testee_idx == tester_idx);
 
-    testee = members[testee_idx];
-
-    return true;
+    return std::make_pair(std::move(members[tester_idx]), std::move(members[testee_idx]));
 }
 
 std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
@@ -1064,9 +1060,12 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
 
     // 2. Check tester/testee pair
     {
-        sn_record_t tester;
-        sn_record_t testee;
-        this->derive_tester_testee(blk_height, tester, testee);
+        auto tester_testee = derive_tester_testee(blk_height);
+        if (!tester_testee) {
+            OXEN_LOG(err, "We have no snodes to derive tester/testee from");
+            return {MessageTestStatus::WRONG_REQ, ""};
+        }
+        auto [tester, testee] = *std::move(tester_testee);
 
         if (testee != our_address_) {
             OXEN_LOG(err, "We are NOT the testee for height: {}", blk_height);
@@ -1099,7 +1098,6 @@ void ServiceNode::initiate_peer_test() {
     std::lock_guard guard(sn_mutex_);
 
     // 1. Select the tester/testee pair
-    sn_record_t tester, testee;
 
     /// We test based on the height a few blocks back to minimise discrepancies
     /// between nodes (we could also use checkpoints, but that is still not
@@ -1115,9 +1113,10 @@ void ServiceNode::initiate_peer_test() {
 
     const uint64_t test_height = block_height_ - TEST_BLOCKS_BUFFER;
 
-    if (!this->derive_tester_testee(test_height, tester, testee)) {
+    auto tester_testee = derive_tester_testee(test_height);
+    if (!tester_testee)
         return;
-    }
+    auto [tester, testee] = *std::move(tester_testee);
 
     OXEN_LOG(trace, "For height {}; tester: {} testee: {}", test_height,
             tester.pubkey_legacy, testee.pubkey_legacy);

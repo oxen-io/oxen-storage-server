@@ -127,8 +127,7 @@ class ServiceNode {
     void oxend_ping();
 
     /// Return tester/testee pair based on block_height
-    bool derive_tester_testee(uint64_t block_height, sn_record_t& tester,
-                              sn_record_t& testee);
+    std::optional<std::pair<sn_record_t, sn_record_t>> derive_tester_testee(uint64_t block_height);
 
     /// Send a request to a SN under test
     void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
