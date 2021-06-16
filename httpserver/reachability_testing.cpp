@@ -50,7 +50,7 @@ void reachability_testing::incoming_ping(ReachType type, const time_point_t& now
     (type == ReachType::OMQ ? last_omq : last_https).last_test = now;
 }
 
-std::optional<sn_record_t> reachability_testing::next_random(
+std::optional<sn_record> reachability_testing::next_random(
         const Swarm& swarm,
         const time_point_t& now,
         bool requeue) {
@@ -65,7 +65,7 @@ std::optional<sn_record_t> reachability_testing::next_random(
     auto& my_pk = swarm.our_address().pubkey_legacy;
     while (!testing_queue.empty()) {
         auto& pk = testing_queue.back();
-        std::optional<sn_record_t> sn;
+        std::optional<sn_record> sn;
         if (pk != my_pk && !failing.count(pk))
             sn = swarm.find_node(pk);
         testing_queue.pop_back();
@@ -94,12 +94,12 @@ std::optional<sn_record_t> reachability_testing::next_random(
     return next_random(swarm, now, false);
 }
 
-std::vector<std::pair<sn_record_t, int>> reachability_testing::get_failing(
+std::vector<std::pair<sn_record, int>> reachability_testing::get_failing(
         const Swarm& swarm,
         const time_point_t& now) {
     // Our failing_queue puts the oldest retest times at the top, so pop them off into our result
     // until the top node should be retested sometime in the future
-    std::vector<std::pair<sn_record_t, int>> result;
+    std::vector<std::pair<sn_record, int>> result;
     while (result.size() < MAX_RETESTS_PER_TICK && !failing_queue.empty()) {
         auto& [pk, retest_time, failures] = failing_queue.top();
         if (retest_time > now)

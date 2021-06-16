@@ -391,8 +391,8 @@ int64_t Database::get_used_bytes() {
     return impl->prepared_get<int64_t>("PRAGMA page_count") * impl->page_size;
 }
 
-static std::optional<message_t> get_message(DatabaseImpl& impl, SQLite::Statement& st) {
-    std::optional<message_t> msg;
+static std::optional<message> get_message(DatabaseImpl& impl, SQLite::Statement& st) {
+    std::optional<message> msg;
     while (st.executeStep()) {
         assert(!msg);
         auto [hash, otype, opubkey, ts, exp, data] = get<std::string, uint8_t, std::string, int64_t, int64_t, std::string>(st);
@@ -406,7 +406,7 @@ static std::optional<message_t> get_message(DatabaseImpl& impl, SQLite::Statemen
     return msg;
 }
 
-std::optional<message_t> Database::retrieve_random() {
+std::optional<message> Database::retrieve_random() {
     clean_expired();
     auto st = impl->prepared_st("SELECT hash, type, pubkey, timestamp, expiry, data"
         " FROM owned_messages "
@@ -414,14 +414,14 @@ std::optional<message_t> Database::retrieve_random() {
     return get_message(*impl, st);
 }
 
-std::optional<message_t> Database::retrieve_by_hash(const std::string& msg_hash) {
+std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
     auto st = impl->prepared_st("SELECT hash, type, pubkey, timestamp, expiry, data"
             " FROM owned_messages WHERE hash = ?");
     st->bindNoCopy(1, msg_hash);
     return get_message(*impl, st);
 }
 
-std::optional<bool> Database::store(const message_t& msg) {
+std::optional<bool> Database::store(const message& msg) {
     auto st = impl->prepared_st("INSERT INTO owned_messages"
            " (pubkey, type, hash, timestamp, expiry, data) VALUES (?, ?, ?, ?, ?, ?)");
 
@@ -448,7 +448,7 @@ std::optional<bool> Database::store(const message_t& msg) {
 }
 
 
-void Database::bulk_store(const std::vector<message_t>& items) {
+void Database::bulk_store(const std::vector<message>& items) {
     SQLite::Transaction t{impl->db};
     auto get_owner = impl->prepared_st(
             "SELECT id FROM owners WHERE pubkey = ? AND type = ?");
@@ -498,12 +498,12 @@ void Database::bulk_store(const std::vector<message_t>& items) {
     t.commit();
 }
 
-std::vector<message_t> Database::retrieve(
+std::vector<message> Database::retrieve(
         const user_pubkey_t& pubkey,
         const std::string& last_hash,
         std::optional<int> num_results) {
 
-    std::vector<message_t> results;
+    std::vector<message> results;
 
     auto owner_st = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto ownerid = exec_and_maybe_get<int64_t>(owner_st, pubkey);
@@ -532,8 +532,8 @@ std::vector<message_t> Database::retrieve(
     return results;
 }
 
-std::vector<message_t> Database::retrieve_all() {
-    std::vector<message_t> results;
+std::vector<message> Database::retrieve_all() {
+    std::vector<message> results;
     auto st = impl->prepared_st("SELECT type, pubkey, hash, timestamp, expiry, data"
             " FROM owned_messages ORDER BY mid");
 

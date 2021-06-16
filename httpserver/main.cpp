@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        sn_record_t me{"0.0.0.0", options.port, options.omq_port,
+        sn_record me{"0.0.0.0", options.port, options.omq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");

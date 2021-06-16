@@ -6,7 +6,7 @@
 
 namespace oxen {
 
-struct message_t;
+struct message;
 
 inline constexpr size_t SERIALIZATION_BATCH_SIZE = 9'000'000;
 
@@ -17,15 +17,15 @@ inline constexpr uint8_t SERIALIZATION_VERSION_COMPAT = 0;
 // version guard for upgrades).
 inline constexpr uint8_t SERIALIZATION_VERSION_NEXT = 1;
 
-std::vector<std::string> serialize_messages(std::function<const message_t*()> next_msg, uint8_t version);
+std::vector<std::string> serialize_messages(std::function<const message*()> next_msg, uint8_t version);
 
 template <typename It>
 std::vector<std::string> serialize_messages(It begin, It end, uint8_t version) {
-    return serialize_messages([&begin, &end]() mutable -> const message_t* {
+    return serialize_messages([&begin, &end]() mutable -> const message* {
         return begin == end ? nullptr : &*begin++;
     }, version);
 }
 
-std::vector<message_t> deserialize_messages(std::string_view blob);
+std::vector<message> deserialize_messages(std::string_view blob);
 
 } // namespace oxen

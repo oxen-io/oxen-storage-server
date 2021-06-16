@@ -40,23 +40,23 @@ class Database {
     // 
     // This means `if (db.store(...))` will be true if inserted *or* already present; to check only
     // for insertion use `ins && *ins`.
-    std::optional<bool> store(const message_t& msg);
+    std::optional<bool> store(const message& msg);
 
-    void bulk_store(const std::vector<message_t>& items);
+    void bulk_store(const std::vector<message>& items);
 
     // Retrieves messages owned by pubkey received since `last_hash` (which must also be owned by
     // pubkey).  If last_hash is empty or not found then returns all messages (up to the limit).
     // Optionally takes a maximum number of messages to return.
     //
-    // Note that the `pubkey` value of the returned message_t's will be left default constructed,
+    // Note that the `pubkey` value of the returned message's will be left default constructed,
     // i.e. *not* filled with the given pubkey.
-    std::vector<message_t> retrieve(
+    std::vector<message> retrieve(
             const user_pubkey_t& pubkey,
             const std::string& last_hash,
             std::optional<int> num_results = std::nullopt);
 
     // Retrieves all messages.
-    std::vector<message_t> retrieve_all();
+    std::vector<message> retrieve_all();
 
     // Return the total number of messages stored
     int64_t get_message_count();
@@ -68,10 +68,10 @@ class Database {
     int64_t get_used_bytes();
 
     // Get random message. Returns nullopt if there are no messages.
-    std::optional<message_t> retrieve_random();
+    std::optional<message> retrieve_random();
 
     // Get message by `msg_hash`, return true if found.  Note that this does *not* filter by pubkey!
-    std::optional<message_t> retrieve_by_hash(const std::string& msg_hash);
+    std::optional<message> retrieve_by_hash(const std::string& msg_hash);
 
     // Removes expired messages from the database; the `Database` instance owner should call this
     // periodically.

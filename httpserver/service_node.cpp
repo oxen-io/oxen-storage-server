@@ -36,7 +36,7 @@ constexpr std::chrono::seconds OXEND_PING_INTERVAL = 30s;
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 
 ServiceNode::ServiceNode(
-        sn_record_t address,
+        sn_record address,
         const legacy_seckey& skey,
         OxenmqServer& omq_server,
         const std::filesystem::path& db_location,
@@ -87,7 +87,7 @@ void ServiceNode::on_oxend_connected() {
             reachability_testing::TESTING_TIMER_INTERVAL);
 }
 
-static block_update_t
+static block_update
 parse_swarm_update(const std::string& response_body) {
 
     if (response_body.empty()) {
@@ -95,8 +95,8 @@ parse_swarm_update(const std::string& response_body) {
         throw std::runtime_error("Failed to parse swarm update");
     }
 
-    std::map<swarm_id_t, std::vector<sn_record_t>> swarm_map;
-    block_update_t bu;
+    std::map<swarm_id_t, std::vector<sn_record>> swarm_map;
+    block_update bu;
 
     OXEN_LOG(trace, "swarm repsonse: <{}>", response_body);
 
@@ -138,7 +138,7 @@ parse_swarm_update(const std::string& response_body) {
                 continue;
             }
 
-            auto sn = sn_record_t{
+            auto sn = sn_record{
                 sn_json.at("public_ip").get_ref<const std::string&>(),
                 sn_json.at("storage_port").get<uint16_t>(),
                 sn_json.at("storage_lmq_port").get<uint16_t>(),
@@ -304,7 +304,7 @@ bool ServiceNode::snode_ready(std::string* reason) {
 }
 
 void ServiceNode::send_onion_to_sn(
-        const sn_record_t& sn,
+        const sn_record& sn,
         std::string_view payload,
         OnionRequestMetadata&& data,
         std::function<void(bool success, std::vector<std::string> data)> cb) const {
@@ -320,7 +320,7 @@ void ServiceNode::send_onion_to_sn(
 }
 
 void ServiceNode::relay_data_reliable(const std::string& blob,
-                                      const sn_record_t& sn) const {
+                                      const sn_record& sn) const {
 
     OXEN_LOG(debug, "Relaying data to: {} (x25519 pubkey {})",
             sn.pubkey_legacy, sn.pubkey_x25519);
@@ -338,7 +338,7 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
-bool ServiceNode::process_store(message_t msg, bool* new_msg) {
+bool ServiceNode::process_store(message msg, bool* new_msg) {
 
     std::lock_guard guard{sn_mutex_};
 
@@ -370,7 +370,7 @@ bool ServiceNode::process_store(message_t msg, bool* new_msg) {
     return true;
 }
 
-void ServiceNode::save_bulk(const std::vector<message_t>& msgs) {
+void ServiceNode::save_bulk(const std::vector<message>& msgs) {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -383,7 +383,7 @@ void ServiceNode::save_bulk(const std::vector<message_t>& msgs) {
     OXEN_LOG(trace, "saved messages count: {}", msgs.size());
 }
 
-void ServiceNode::on_bootstrap_update(block_update_t&& bu) {
+void ServiceNode::on_bootstrap_update(block_update&& bu) {
 
     // Used in a callback to needs a mutex even if it is private
     std::lock_guard guard(sn_mutex_);
@@ -409,8 +409,8 @@ OStream& operator<<(OStream& os, const SnodeStatus& status) {
     }
 }
 
-static SnodeStatus derive_snode_status(const block_update_t& bu,
-                                       const sn_record_t& our_address) {
+static SnodeStatus derive_snode_status(const block_update& bu,
+                                       const sn_record& our_address) {
 
     // TODO: try not to do this again in `derive_swarm_events`
     const auto our_swarm_it =
@@ -434,7 +434,7 @@ static SnodeStatus derive_snode_status(const block_update_t& bu,
     return SnodeStatus::UNSTAKED;
 }
 
-void ServiceNode::on_swarm_update(block_update_t&& bu) {
+void ServiceNode::on_swarm_update(block_update&& bu) {
 
     if (hardfork_ != bu.hardfork) {
         OXEN_LOG(debug, "New hardfork: {}", bu.hardfork);
@@ -569,7 +569,7 @@ void ServiceNode::update_swarms() {
             }
             try {
                 std::lock_guard guard(sn_mutex_);
-                block_update_t bu = parse_swarm_update(data[1]);
+                block_update bu = parse_swarm_update(data[1]);
                 if (!got_first_response_) {
                     OXEN_LOG(
                         info,
@@ -664,7 +664,7 @@ std::vector<std::pair<std::string, std::string>> ServiceNode::sign_request(std::
     return headers;
 }
 
-void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures) {
+void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) {
 
     OXEN_LOG(debug, "Testing {} SN {} for reachability",
             previous_failures > 0 ? "previously failing" : "random",
@@ -683,7 +683,7 @@ void ServiceNode::test_reachability(const sn_record_t& sn, int previous_failures
     // We start off two separate tests below; they share this pair and use the atomic int here to
     // figure out whether they were called first (in which case they do nothing) or second (in which
     // case they have to report the final result to oxend).
-    auto test_results = std::make_shared<std::pair<const sn_record_t, std::atomic<uint8_t>>>(
+    auto test_results = std::make_shared<std::pair<const sn_record, std::atomic<uint8_t>>>(
             sn, 0);
 
     bool old_ping_test = !hf_at_least(HARDFORK_HTTPS_PING_TEST_URL);
@@ -825,8 +825,8 @@ void ServiceNode::oxend_ping() {
     });
 }
 
-void ServiceNode::process_storage_test_response(const sn_record_t& testee,
-                                                const message_t& msg,
+void ServiceNode::process_storage_test_response(const sn_record& testee,
+                                                const message& msg,
                                                 uint64_t test_height,
                                                 std::string status,
                                                 std::string answer) {
@@ -862,9 +862,9 @@ void ServiceNode::process_storage_test_response(const sn_record_t& testee,
     all_stats_.record_storage_test_result(testee.pubkey_legacy, result);
 }
 
-void ServiceNode::send_storage_test_req(const sn_record_t& testee,
+void ServiceNode::send_storage_test_req(const sn_record& testee,
                                         uint64_t test_height,
-                                        const message_t& msg) {
+                                        const message& msg) {
 
     if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
         // Deprecated HTTPS storage test: remove after HF19
@@ -941,7 +941,7 @@ void ServiceNode::send_storage_test_req(const sn_record_t& testee,
     );
 }
 
-void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int previous_failures) {
+void ServiceNode::report_reachability(const sn_record& sn, bool reachable, int previous_failures) {
     auto cb = [sn_pk=sn.pubkey_legacy, reachable](bool success, std::vector<std::string> data) {
         if (!success) {
             OXEN_LOG(warn, "Could not report node status: {}",
@@ -986,11 +986,11 @@ void ServiceNode::report_reachability(const sn_record_t& sn, bool reachable, int
 
 // Deterministically selects two random swarm members; returns the pair on success, nullopt on
 // failure.
-std::optional<std::pair<sn_record_t, sn_record_t>> ServiceNode::derive_tester_testee(uint64_t blk_height) {
+std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee(uint64_t blk_height) {
 
     std::lock_guard guard(sn_mutex_);
 
-    std::vector<sn_record_t> members = swarm_->other_nodes();
+    std::vector<sn_record> members = swarm_->other_nodes();
     members.push_back(our_address_);
 
     if (members.size() < 2) {
@@ -1148,9 +1148,9 @@ void ServiceNode::bootstrap_swarms(
     const auto& all_swarms = swarm_->all_valid_swarms();
 
     std::unordered_map<user_pubkey_t, swarm_id_t> pk_swarm_cache;
-    std::unordered_map<swarm_id_t, std::vector<message_t>> to_relay;
+    std::unordered_map<swarm_id_t, std::vector<message>> to_relay;
 
-    std::vector<message_t> all_entries = get_all_messages();
+    std::vector<message> all_entries = get_all_messages();
     OXEN_LOG(debug, "We have {} messages", all_entries.size());
     for (auto& entry : all_entries) {
         if (!entry.pubkey) {
@@ -1177,8 +1177,8 @@ void ServiceNode::bootstrap_swarms(
         relay_messages(items, all_swarms[swarm_id_to_idx[swarm_id]].snodes);
 }
 
-void ServiceNode::relay_messages(const std::vector<message_t>& messages,
-                                 const std::vector<sn_record_t>& snodes) const {
+void ServiceNode::relay_messages(const std::vector<message>& messages,
+                                 const std::vector<sn_record>& snodes) const {
     std::vector<std::string> batches = serialize_messages(messages.begin(), messages.end(),
             is_mainnet ? SERIALIZATION_VERSION_COMPAT : SERIALIZATION_VERSION_NEXT);
 
@@ -1193,12 +1193,12 @@ void ServiceNode::relay_messages(const std::vector<message_t>& messages,
         OXEN_LOG(debug, "Serialised batches: {}", batches.size());
     }
 
-    for (const sn_record_t& sn : snodes)
+    for (const sn_record& sn : snodes)
         for (auto& batch : batches)
             relay_data_reliable(batch, sn);
 }
 
-std::vector<message_t> ServiceNode::retrieve(
+std::vector<message> ServiceNode::retrieve(
         const user_pubkey_t& pubkey, const std::string& last_hash) {
     all_stats_.bump_retrieve_requests();
     return db_->retrieve(pubkey, last_hash, CLIENT_RETRIEVE_MESSAGE_LIMIT);
@@ -1235,7 +1235,7 @@ ServiceNode::update_all_expiries(
     return db_->update_all_expiries(pubkey, new_exp);
 }
 
-void to_json(nlohmann::json& j, const test_result_t& val) {
+void to_json(nlohmann::json& j, const test_result& val) {
     j["timestamp"] = std::chrono::duration<double>(val.timestamp.time_since_epoch()).count();
     j["result"] = to_str(val.result);
 }
@@ -1337,7 +1337,7 @@ std::string ServiceNode::get_status_line() const {
     return s.str();
 }
 
-std::vector<message_t> ServiceNode::get_all_messages() const {
+std::vector<message> ServiceNode::get_all_messages() const {
     OXEN_LOG(trace, "Get all messages");
     return db_->retrieve_all();
 }
@@ -1349,7 +1349,7 @@ void ServiceNode::process_push_batch(const std::string& blob) {
     if (blob.empty())
         return;
 
-    std::vector<message_t> items = deserialize_messages(blob);
+    std::vector<message> items = deserialize_messages(blob);
 
     OXEN_LOG(trace, "Saving all: begin");
 
@@ -1372,7 +1372,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-std::vector<sn_record_t>
+std::vector<sn_record>
 ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
 
     std::lock_guard guard(sn_mutex_);
@@ -1385,7 +1385,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
     return get_swarm_by_pk(swarm_->all_valid_swarms(), pk).snodes;
 }
 
-std::vector<sn_record_t>
+std::vector<sn_record>
 ServiceNode::get_swarm_peers() {
     std::lock_guard guard{sn_mutex_};
 

@@ -68,16 +68,16 @@ class user_pubkey_t {
 };
 
 /// message received from a client
-struct message_t {
+struct message {
     user_pubkey_t pubkey;
     std::string hash;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;
     std::string data;
 
-    message_t() = default;
+    message() = default;
 
-    message_t(
+    message(
             user_pubkey_t pubkey,
             std::string hash,
             std::chrono::system_clock::time_point timestamp,
@@ -87,7 +87,7 @@ struct message_t {
         data{std::move(data)}
     {}
 
-    message_t(
+    message(
             std::string hash,
             std::chrono::system_clock::time_point timestamp,
             std::chrono::system_clock::time_point expiry,

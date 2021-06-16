@@ -22,7 +22,7 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
     return it != all_swarms.end();
 }
 
-void debug_print(std::ostream& os, const block_update_t& bu) {
+void debug_print(std::ostream& os, const block_update& bu) {
 
     os << "Block update: {\n";
     os << "     height: " << bu.height << '\n';
@@ -131,7 +131,7 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
 
 static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
 
-    std::unordered_map<legacy_pubkey, sn_record_t> snode_map;
+    std::unordered_map<legacy_pubkey, sn_record> snode_map;
     for (const auto& swarm : swarms) {
         for (const auto& snode : swarm.snodes) {
             snode_map.emplace(snode.pubkey_legacy, snode);
@@ -185,7 +185,7 @@ void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
 }
 
 void Swarm::update_state(const all_swarms_t& swarms,
-                         const std::vector<sn_record_t>& decommissioned,
+                         const std::vector<sn_record>& decommissioned,
                          const SwarmEvents& events, bool active) {
 
     if (active) {
@@ -196,7 +196,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
             OXEN_LOG(info, "EVENT: our old swarm got DISSOLVED!");
         }
 
-        for (const sn_record_t& sn : events.new_snodes) {
+        for (const sn_record& sn : events.new_snodes) {
             OXEN_LOG(info, "EVENT: detected new SN: {}", sn.pubkey_legacy);
         }
 
@@ -217,7 +217,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
 
         std::copy_if(members.begin(), members.end(),
                      std::back_inserter(swarm_peers_),
-                     [this](const sn_record_t& record) {
+                     [this](const sn_record& record) {
                          return record != our_address_;
                      });
     }
@@ -243,21 +243,21 @@ void Swarm::update_state(const all_swarms_t& swarms,
     }
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const legacy_pubkey& pk) const {
     if (auto it = all_funded_nodes_.find(pk); it != all_funded_nodes_.end())
         return it->second;
     return std::nullopt;
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const ed25519_pubkey& pk) const {
     if (auto it = all_funded_ed25519_.find(pk); it != all_funded_ed25519_.end())
         return find_node(it->second);
     return std::nullopt;
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const x25519_pubkey& pk) const {
     if (auto it = all_funded_x25519_.find(pk); it != all_funded_x25519_.end())
         return find_node(it->second);
@@ -352,7 +352,7 @@ const SwarmInfo& get_swarm_by_pk(
     return *cur_best;
 }
 
-std::pair<int, int> count_missing_data(const block_update_t& bu) {
+std::pair<int, int> count_missing_data(const block_update& bu) {
     auto result = std::make_pair(0, 0);
     auto& [missing, total] = result;
 

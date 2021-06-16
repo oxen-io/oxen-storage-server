@@ -10,7 +10,7 @@
 
 using namespace std::literals;
 
-static auto create_dummy_sn_record() -> oxen::sn_record_t {
+static auto create_dummy_sn_record() -> oxen::sn_record {
 
     const auto pk = oxen::legacy_pubkey::from_hex(
         "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
@@ -28,18 +28,18 @@ using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
                            ip_ports expected) -> void {
 
-    using oxen::sn_record_t;
+    using oxen::sn_record;
 
     auto sn = create_dummy_sn_record();
 
     std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
 
-    oxen::SwarmInfo si{0, std::vector<sn_record_t>{sn}};
+    oxen::SwarmInfo si{0, std::vector<sn_record>{sn}};
     auto current = std::vector<oxen::SwarmInfo>{si};
 
     std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
 
-    oxen::SwarmInfo si2{0, std::vector<sn_record_t>{sn}};
+    oxen::SwarmInfo si2{0, std::vector<sn_record>{sn}};
     auto incoming = std::vector<oxen::SwarmInfo>{si2};
 
     auto new_records = apply_ips(current, incoming);

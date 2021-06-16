@@ -16,7 +16,7 @@ TEST_CASE("v0 serialization - basic values", "[serialization]") {
     const auto hash = "hash";
     const std::chrono::system_clock::time_point timestamp{12'345'678ms};
     const auto ttl = 3456s;
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     msgs.emplace_back(pub_key, hash, timestamp, timestamp + ttl, data);
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 0);
     REQUIRE(serialized.size() == 1);
@@ -51,7 +51,7 @@ TEST_CASE("v0 serialization - batch serialization", "[serialization]") {
     const auto hash = "hash";
     const std::chrono::system_clock::time_point timestamp{1'622'576'077s};
     const auto ttl = 24h;
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     msgs.emplace_back(pub_key, hash, timestamp, timestamp + ttl, data);
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 0);
     REQUIRE(serialized.size() == 1);
@@ -72,7 +72,7 @@ TEST_CASE("v1 serialization - basic values", "[serialization]") {
     const auto hash = "hash\x00\x01\x02\x03"s;
     const std::chrono::system_clock::time_point timestamp{12'345'678ms};
     const auto expiry = timestamp + 3456s;
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     msgs.emplace_back(pub_key, hash, timestamp, expiry, data);
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 1);
     REQUIRE(serialized.size() == 1);
@@ -110,7 +110,7 @@ TEST_CASE("v1 serialization - batch serialization", "[serialization]") {
     const auto hash = "hash";
     const std::chrono::system_clock::time_point timestamp{1'622'576'077s};
     const auto ttl = 24h;
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     msgs.emplace_back(pub_key, hash, timestamp, timestamp + ttl, data);
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 1);
     REQUIRE(serialized.size() == 1);

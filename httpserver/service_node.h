@@ -43,7 +43,6 @@ struct Item;
 
 class OxenmqServer;
 struct OnionRequestMetadata;
-struct oxend_key_pair_t;
 class Swarm;
 struct signature;
 struct Response;
@@ -69,7 +68,7 @@ class ServiceNode {
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
-    const sn_record_t our_address_;
+    const sn_record our_address_;
     const legacy_seckey our_seckey_;
 
     /// Cache for block_height/block_hash mapping
@@ -96,11 +95,11 @@ class ServiceNode {
     std::forward_list<std::future<void>> outstanding_https_reqs_;
 
     // Save multiple messages to the database at once (i.e. in a single transaction)
-    void save_bulk(const std::vector<message_t>& msgs);
+    void save_bulk(const std::vector<message>& msgs);
 
-    void on_bootstrap_update(block_update_t&& bu);
+    void on_bootstrap_update(block_update&& bu);
 
-    void on_swarm_update(block_update_t&& bu);
+    void on_swarm_update(block_update&& bu);
 
     void bootstrap_data();
 
@@ -113,11 +112,11 @@ class ServiceNode {
     /// Reliably push message/batch to a service node
     void
     relay_data_reliable(const std::string& blob,
-                        const sn_record_t& address) const; // mutex not needed
+                        const sn_record& address) const; // mutex not needed
 
     void relay_messages(
-        const std::vector<message_t>& msgs,
-        const std::vector<sn_record_t>& snodes) const; // mutex not needed
+        const std::vector<message>& msgs,
+        const std::vector<sn_record>& snodes) const; // mutex not needed
 
     // Conducts any ping peer tests that are due; (this is designed to be called frequently and does
     // nothing if there are no tests currently due).
@@ -127,14 +126,14 @@ class ServiceNode {
     void oxend_ping();
 
     /// Return tester/testee pair based on block_height
-    std::optional<std::pair<sn_record_t, sn_record_t>> derive_tester_testee(uint64_t block_height);
+    std::optional<std::pair<sn_record, sn_record>> derive_tester_testee(uint64_t block_height);
 
     /// Send a request to a SN under test
-    void send_storage_test_req(const sn_record_t& testee, uint64_t test_height,
-                               const message_t& msg);
+    void send_storage_test_req(const sn_record& testee, uint64_t test_height,
+                               const message& msg);
 
-    void process_storage_test_response(const sn_record_t& testee,
-                                       const message_t& msg,
+    void process_storage_test_response(const sn_record& testee,
+                                       const message& msg,
                                        uint64_t test_height,
                                        std::string status,
                                        std::string answer);
@@ -143,24 +142,24 @@ class ServiceNode {
     void initiate_peer_test();
 
     // Initiate node ping tests
-    void test_reachability(const sn_record_t& sn, int previous_failures);
+    void test_reachability(const sn_record& sn, int previous_failures);
 
     // Reports node reachability result to oxend and, if a failure, queues the node for retesting.
-    void report_reachability(const sn_record_t& sn, bool reachable, int previous_failures);
+    void report_reachability(const sn_record& sn, bool reachable, int previous_failures);
 
     /// Deprecated; can be removed after HF19
     /// Returns headers to add to the request containing signature info for the given body
     std::vector<std::pair<std::string, std::string>> sign_request(std::string_view body) const;
 
   public:
-    ServiceNode(sn_record_t address,
+    ServiceNode(sn_record address,
                 const legacy_seckey& skey,
                 OxenmqServer& omq_server,
                 const std::filesystem::path& db_location,
                 bool force_start);
 
     // Return info about this node as it is advertised to other nodes
-    const sn_record_t& own_address() { return our_address_; }
+    const sn_record& own_address() { return our_address_; }
 
     // Record the time of our last being tested over omq/https
     void update_last_ping(ReachType type);
@@ -172,7 +171,7 @@ class ServiceNode {
 
     /// Sends an onion request to the next SS
     void send_onion_to_sn(
-            const sn_record_t& sn,
+            const sn_record& sn,
             std::string_view payload,
             OnionRequestMetadata&& data,
             std::function<void(bool success, std::vector<std::string> data)> cb) const;
@@ -200,7 +199,7 @@ class ServiceNode {
 
     /// Process message received from a client, return false if not in a swarm.  If new_msg is not
     /// nullptr, sets it to true if we stored as a new message, false if we already had it.
-    bool process_store(message_t msg, bool* new_msg = nullptr);
+    bool process_store(message msg, bool* new_msg = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
@@ -212,14 +211,14 @@ class ServiceNode {
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    std::vector<sn_record_t> get_snodes_by_pk(const user_pubkey_t& pk);
+    std::vector<sn_record> get_snodes_by_pk(const user_pubkey_t& pk);
 
-    std::vector<sn_record_t> get_swarm_peers();
+    std::vector<sn_record> get_swarm_peers();
 
-    std::vector<message_t> get_all_messages() const;
+    std::vector<message> get_all_messages() const;
 
     /// return all messages for a particular PK
-    std::vector<message_t> retrieve(const user_pubkey_t& pubkey, const std::string& last_hash);
+    std::vector<message> retrieve(const user_pubkey_t& pubkey, const std::string& last_hash);
 
     /// Deletes all messages belonging to a pubkey; returns the deleted hashes
     std::optional<std::vector<std::string>> delete_all_messages(
@@ -264,7 +263,7 @@ class ServiceNode {
     std::string get_status_line() const;
 
     template <typename PubKey>
-    std::optional<sn_record_t>
+    std::optional<sn_record>
     find_node(const PubKey& pk) const {
         std::lock_guard guard{sn_mutex_};
         if (swarm_)

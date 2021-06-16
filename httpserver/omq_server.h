@@ -14,7 +14,6 @@
 
 namespace oxen {
 
-struct oxend_key_pair_t;
 class ServiceNode;
 class RequestHandler;
 class RateLimiter;
@@ -92,7 +91,7 @@ class OxenmqServer {
 
   public:
     OxenmqServer(
-            const sn_record_t& me,
+            const sn_record& me,
             const x25519_seckey& privkey,
             const std::vector<x25519_pubkey>& stats_access_keys_hex);
 

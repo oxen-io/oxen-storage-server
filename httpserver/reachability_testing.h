@@ -111,14 +111,14 @@ class reachability_testing {
     //
     // `requeue` is mainly for internal use: if false it avoids rebuilding the queue if we run
     // out (and instead just return nullopt).
-    std::optional<sn_record_t> next_random(
+    std::optional<sn_record> next_random(
             const Swarm& swarm,
             const time_point_t& now = std::chrono::steady_clock::now(),
             bool requeue = true);
 
     // Removes and returns up to MAX_RETESTS_PER_TICK nodes that are due to be tested (i.e.
     // next-testing-time <= now).  Returns [snrecord, #previous-failures] for each.
-    std::vector<std::pair<sn_record_t, int>> get_failing(
+    std::vector<std::pair<sn_record, int>> get_failing(
             const Swarm& swarm,
             const time_point_t& now = std::chrono::steady_clock::now());
 

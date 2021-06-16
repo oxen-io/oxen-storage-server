@@ -369,7 +369,7 @@ void omq_logger(oxenmq::LogLevel level, const char* file, int line,
 }
 
 OxenmqServer::OxenmqServer(
-        const sn_record_t& me,
+        const sn_record& me,
         const x25519_seckey& privkey,
         const std::vector<x25519_pubkey>& stats_access_keys) :
     omq_{

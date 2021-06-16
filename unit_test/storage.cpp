@@ -208,7 +208,7 @@ TEST_CASE("storage - bulk data storage", "[storage]") {
 
     // bulk store
     {
-        std::vector<message_t> items;
+        std::vector<message> items;
         for (int i = 0; i < num_items; ++i) {
             items.emplace_back(pubkey, std::to_string(i), timestamp, timestamp + ttl, bytes);
         }
@@ -248,7 +248,7 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
 
     // bulk store
     {
-        std::vector<message_t> items;
+        std::vector<message> items;
         for (int i = 0; i < num_items; ++i) {
             items.emplace_back(pubkey, std::to_string(i), timestamp, timestamp + ttl, bytes);
         }

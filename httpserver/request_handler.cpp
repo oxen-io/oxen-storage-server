@@ -50,7 +50,7 @@ std::string to_string(const Response& res) {
 
 namespace {
 
-json snodes_to_json(const std::vector<sn_record_t>& snodes) {
+json snodes_to_json(const std::vector<sn_record>& snodes) {
 
     json res_body;
     json snodes_json = json::array();
@@ -405,7 +405,7 @@ void RequestHandler::process_client_req(
     bool new_msg;
     bool success = false;
     try {
-        success = service_node_.process_store(message_t{
+        success = service_node_.process_store(message{
             req.pubkey, message_hash, req.timestamp, req.expiry, std::move(req.data)}, &new_msg);
     } catch (const std::exception& e) {
         OXEN_LOG(critical, "Internal Server Error. Could not store message for {}: {}",
@@ -484,7 +484,7 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     try {
         msgs = service_node_.retrieve(req.pubkey, req.last_hash.value_or(""));
     } catch (const std::exception& e) {
@@ -773,7 +773,7 @@ void RequestHandler::process_client_req(
 
 Response RequestHandler::process_retrieve_all() {
 
-    std::vector<message_t> msgs;
+    std::vector<message> msgs;
     try {
         msgs = service_node_.get_all_messages();
     } catch (const std::exception& e) {

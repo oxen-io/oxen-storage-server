@@ -28,7 +28,7 @@ void serialize(std::string& buf, const std::string& str) {
     buf += str;
 }
 
-void serialize_message(std::string& res, const message_t& msg) {
+void serialize_message(std::string& res, const message& msg) {
 
     res += msg.pubkey.prefixed_hex();
     serialize(res, msg.hash);
@@ -71,8 +71,8 @@ static std::optional<std::string> deserialize_string(std::string_view& slice) {
     return std::nullopt;
 }
 
-std::vector<message_t> deserialize_messages_old(std::string_view slice) {
-    std::vector<message_t> result;
+std::vector<message> deserialize_messages_old(std::string_view slice) {
+    std::vector<message> result;
 
     while (!slice.empty()) {
         auto& item = result.emplace_back();
@@ -143,7 +143,7 @@ std::vector<message_t> deserialize_messages_old(std::string_view slice) {
 }
 }
 
-std::vector<std::string> serialize_messages(std::function<const message_t*()> next_msg, uint8_t version) {
+std::vector<std::string> serialize_messages(std::function<const message*()> next_msg, uint8_t version) {
 
     std::vector<std::string> res;
 
@@ -195,7 +195,7 @@ std::vector<std::string> serialize_messages(std::function<const message_t*()> ne
 
 
 
-std::vector<message_t> deserialize_messages(std::string_view slice) {
+std::vector<message> deserialize_messages(std::string_view slice) {
 
     OXEN_LOG(trace, "=== Deserializing ===");
 
@@ -212,7 +212,7 @@ std::vector<message_t> deserialize_messages(std::string_view slice) {
         return v0::deserialize_messages_old(slice);
 
     // v1:
-    std::vector<message_t> result;
+    std::vector<message> result;
     try {
         oxenmq::bt_list_consumer l{slice};
         while (!l.is_finished()) {

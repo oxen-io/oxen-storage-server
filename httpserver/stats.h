@@ -21,13 +21,9 @@ inline constexpr std::chrono::seconds STATS_CLEANUP_INTERVAL = 10min;
 // STATS_WINDOWS*STATS_CLEANUP_INTERVAL plus however long since the last cleanup.
 inline constexpr size_t RECENT_STATS_COUNT = 6;
 
-struct time_entry_t {
-    time_t timestamp;
-};
-
 enum class ResultType { OK, MISMATCH, OTHER, REJECTED };
 
-struct test_result_t {
+struct test_result {
     std::chrono::system_clock::time_point timestamp;
     ResultType result;
 };
@@ -55,7 +51,7 @@ struct peer_stats_t {
     // causing this node to give up re-transmitting
     uint64_t pushes_failed = 0;
 
-    std::deque<test_result_t> storage_tests;
+    std::deque<test_result> storage_tests;
 };
 
 struct period_stats {
