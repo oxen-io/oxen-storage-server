@@ -50,6 +50,7 @@ struct no_args : endpoint {
 /// following:
 /// - "timeout": true if the inter-swarm request timed out
 /// - "code": X if the inter-swarm request returned error code X
+/// - "reason": a reason string, e.g. propagating a thrown exception messages
 /// - "bad_peer_response": true if the peer returned an unparseable response
 /// - "query_failure": true if the database failed to perform the query
 struct recursive : endpoint {
@@ -83,7 +84,20 @@ namespace {
 /// timestamp.  (Unlike ttl, this cannot be passed as a stringified integer).
 /// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
 /// 76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
-struct store final : endpoint {
+///
+/// Returns dict of:
+/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
+///       (TIMESTAMP || EXPIRY || PUBKEY || DATA), where PUBKEY is in bytes (not hex!); and DATA is
+///       in bytes (not base64).  (Note: while transitioning to the 2.2.0 update, this may
+///       instead return a hex-encoded SHA512 hash of (TIMESTAMP || TTL || PUBKEY_HEX || DATA_BASE64)).
+///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).  Returns
+///       in base64 for JSON requests, raw bytes for OMQ requests.
+///     - "already": will be true if a message with this hash was already stored (note that the hash
+///       is still included and signed even if this occurs).
+///
+struct store final : recursive {
     static constexpr auto names() { return NAMES("store"); }
 
     /// Maximum `data` size in bytes (max acceptable b64 size will be 4/3 of this).
@@ -96,6 +110,7 @@ struct store final : endpoint {
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;
+    oxenmq::bt_value to_bt() const override;
 };
 
 /// Retrieves data from this service node. Takes keys of:

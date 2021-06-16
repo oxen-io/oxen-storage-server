@@ -233,6 +233,14 @@ static void load(store& s, Dict& d) {
 }
 void store::load_from(json params) { load(*this, params); }
 void store::load_from(bt_dict_consumer params) { load(*this, params); }
+bt_value store::to_bt() const {
+    return bt_dict{
+        {"pubkey", pubkey.prefixed_raw()},
+        {"timestamp", to_epoch_ms(timestamp)},
+        {"expiry", to_epoch_ms(expiry)},
+        {"data", std::string_view{data}}
+    };
+}
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {

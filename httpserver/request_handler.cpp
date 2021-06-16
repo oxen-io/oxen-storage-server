@@ -276,6 +276,102 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
         snodes_to_json(service_node_.get_snodes_by_pk(pubKey))};
 }
 
+struct swarm_response {
+    std::mutex mutex;
+    int pending;
+    bool b64;
+    nlohmann::json result;
+    std::function<void(oxen::Response)> cb;
+};
+
+// Replies to a recursive swarm request via its callback; sends an http::OK unless all of the swarm
+// entries returned things with "failed" in them, in which case we send back an
+// INTERNAL_SERVER_ERROR along with the response.
+void reply_or_fail(const std::shared_ptr<swarm_response>& res) {
+    auto res_code = http::INTERNAL_SERVER_ERROR;
+    for (const auto& [snode, reply] : res->result.items()) {
+        if (!reply.count("failed")) {
+            res_code = http::OK;
+            break;
+        }
+    }
+    res->cb(Response{res_code, std::move(res->result)});
+}
+
+
+static void distribute_command(
+        ServiceNode& sn,
+        std::shared_ptr<swarm_response>& res,
+        std::string_view cmd,
+        const rpc::recursive& req) {
+    auto peers = sn.get_swarm_peers();
+    res->pending += peers.size();
+
+    for (auto& peer : peers) {
+        sn.omq_server()->request(
+                peer.pubkey_x25519.view(),
+                "sn.storage_cc",
+                [res, peer, cmd](bool success, auto parts) {
+                    json peer_result;
+                    if (!success)
+                        OXEN_LOG(warn, "Response timeout from {} for forwarded command {}",
+                                peer.pubkey_legacy, cmd);
+                    bool good_result = success && parts.size() == 1;
+                    if (good_result) {
+                        try {
+                            peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
+                        } catch (const std::exception& e) {
+                            OXEN_LOG(warn, "Received unparseable response to {} from {}: {}",
+                                    cmd, peer.pubkey_legacy, e.what());
+                            good_result = false;
+                        }
+                    }
+
+                    std::lock_guard lock{res->mutex};
+
+                    // If we're the last response then we reply:
+                    bool send_reply = --res->pending == 0;
+
+                    if (!good_result) {
+                        peer_result = json{{"failed", true}};
+                        if (!success) peer_result["timeout"] = true;
+                        else if (parts.size() == 2) peer_result["code"] = parts[0];
+                        else peer_result["bad_peer_response"] = true;
+                    }
+                    else if (res->b64) {
+                        if (auto it = peer_result.find("signature"); it != peer_result.end() && it->is_string())
+                            *it = oxenmq::to_base64(it->get_ref<const std::string&>());
+                    }
+
+                    res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
+
+                    if (send_reply)
+                        reply_or_fail(res);
+                },
+                cmd,
+                bt_serialize(req.to_bt()),
+                oxenmq::send_option::request_timeout{5s}
+        );
+    }
+}
+
+template <typename RPC, typename = std::enable_if_t<std::is_base_of_v<rpc::recursive, RPC>>>
+std::pair<std::shared_ptr<swarm_response>, std::unique_lock<std::mutex>>
+static setup_recursive_request(ServiceNode& sn, RPC& req, std::function<void(Response)> cb) {
+    auto res = std::make_shared<swarm_response>();
+    res->cb = std::move(cb);
+    res->pending = 1;
+    res->b64 = req.b64;
+
+    std::unique_lock<std::mutex> lock{res->mutex, std::defer_lock};
+    if (req.recurse) {
+        // Send it off to our peers right away, before we process it ourselves
+        distribute_command(sn, res, RPC::names()[0], req);
+        lock.lock();
+    }
+    return {std::move(res), std::move(lock)};
+}
+
 void RequestHandler::process_client_req(
         rpc::store&& req, std::function<void(Response)> cb) {
 
@@ -296,7 +392,10 @@ void RequestHandler::process_client_req(
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
-    auto messageHash = computeMessageHash(req.timestamp, req.expiry, req.pubkey.str(), req.data);
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+    auto mine = req.recurse
+        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+        : res->result;
 
     // FIXME: need to use the "old" backwards compat hash up to the HF that changes hash structure.
     bool use_old_hash = false;
@@ -306,26 +405,33 @@ void RequestHandler::process_client_req(
     bool new_msg;
     bool success = false;
     try {
-        success = service_node_.process_store(message_t{req.pubkey.str(), std::move(req.data), messageHash, req.timestamp, req.expiry});
+        success = service_node_.process_store(message_t{
+            req.pubkey, message_hash, req.timestamp, req.expiry, std::move(req.data)}, &new_msg);
     } catch (const std::exception& e) {
-        OXEN_LOG(critical, "Internal Server Error. Could not store message for {}",
-                 obfuscate_pubkey(req.pubkey));
-        return cb(Response{http::INTERNAL_SERVER_ERROR, std::string{e.what()}});
+        OXEN_LOG(critical, "Internal Server Error. Could not store message for {}: {}",
+                obfuscate_pubkey(req.pubkey), e.what());
+        mine["reason"] = e.what();
     }
-
-    if (!success) {
-        OXEN_LOG(warn, "Service node is initializing");
-        return cb(Response{http::SERVICE_UNAVAILABLE, "Service node is initializing"sv});
+    if (success) {
+        mine["hash"] = message_hash;
+        auto sig = create_signature(ed25519_sk_, message_hash);
+        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        if (!new_msg) mine["already"] = true;
+        if (req.recurse) {
+            // Backwards compat: put the hash at top level, too.  TODO: remove eventually
+            res->result["hash"] = message_hash;
+            // No longer used, but here to avoid breaking older clients.  TODO: remove eventually
+            res->result["difficulty"] = 1;
+        }
+    } else {
+        mine["failed"] = true;
+        mine["query_failure"] = true;
     }
 
     OXEN_LOG(trace, "Successfully stored message {} for {}", message_hash, obfuscate_pubkey(req.pubkey));
 
-    json res_body{
-        {"hash", messageHash},
-        {"difficulty", 1}, // No longer used, but here to avoid breaking older clients.  TODO: remove eventually
-    };
-
-    cb(Response{http::OK, std::move(res_body)});
+    if (--res->pending == 0)
+        reply_or_fail(res);
 }
 
 void RequestHandler::process_client_req(
@@ -378,32 +484,29 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
-    std::vector<storage::Item> items;
-
-    if (!service_node_.retrieve(req.pubkey.str(), req.last_hash.value_or(""), items)) {
+    std::vector<message_t> msgs;
+    try {
+        msgs = service_node_.retrieve(req.pubkey, req.last_hash.value_or(""));
+    } catch (const std::exception& e) {
         auto msg = fmt::format("Internal Server Error. Could not retrieve messages for {}",
                 obfuscate_pubkey(req.pubkey));
         OXEN_LOG(critical, msg);
         return cb(Response{http::INTERNAL_SERVER_ERROR, std::move(msg)});
     }
 
-    OXEN_LOG(trace, "Retrieved {} messages for {}", items.size(), obfuscate_pubkey(req.pubkey));
+    OXEN_LOG(trace, "Retrieved {} messages for {}", msgs.size(), obfuscate_pubkey(req.pubkey));
 
     json messages = json::array();
-    for (const auto& item : items) {
+    for (const auto& msg : msgs) {
         messages.push_back(json{
-            {"hash", item.hash},
-            {"timestamp", duration_cast<milliseconds>(item.timestamp.time_since_epoch()).count()},
-            {"expiration", duration_cast<milliseconds>(item.expiration.time_since_epoch()).count()},
-            {"data", req.b64 ? oxenmq::to_base64(item.data) : std::move(item.data)},
+            {"hash", msg.hash},
+            {"timestamp", to_epoch_ms(msg.timestamp)},
+            {"expiration", to_epoch_ms(msg.expiry)},
+            {"data", req.b64 ? oxenmq::to_base64(msg.data) : std::move(msg.data)},
         });
     }
 
-    json body{
-        {"messages", std::move(messages)}
-    };
-
-    return cb(Response{http::OK, std::move(body)});
+    return cb(Response{http::OK, json{{"messages", std::move(messages)}}});
 }
 
 void RequestHandler::process_client_req(
@@ -412,89 +515,8 @@ void RequestHandler::process_client_req(
     return cb(Response{http::OK,
         json{
             {"version", STORAGE_SERVER_VERSION},
-            {"timestamp",
-                duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count()},
+            {"timestamp", to_epoch_ms(system_clock::now())}
         }});
-}
-
-struct swarm_response {
-    std::mutex mutex;
-    int pending;
-    bool b64;
-    nlohmann::json result;
-    std::function<void(oxen::Response)> cb;
-};
-
-static void distribute_command(
-        ServiceNode& sn,
-        std::shared_ptr<swarm_response>& res,
-        std::string_view cmd,
-        const rpc::recursive& req) {
-    auto peers = sn.get_swarm_peers();
-    res->pending += peers.size();
-
-    for (auto& peer : peers) {
-        sn.omq_server()->request(
-                peer.pubkey_x25519.view(),
-                "sn.storage_cc",
-                [res, peer, cmd](bool success, auto parts) {
-                    json peer_result;
-                    if (!success)
-                        OXEN_LOG(warn, "Response timeout from {} for forwarded command {}",
-                                peer.pubkey_legacy, cmd);
-                    bool good_result = success && parts.size() == 1;
-                    if (good_result) {
-                        try {
-                            peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
-                        } catch (const std::exception& e) {
-                            OXEN_LOG(warn, "Received unparseable response to {} from {}: {}",
-                                    cmd, peer.pubkey_legacy, e.what());
-                            good_result = false;
-                        }
-                    }
-
-                    std::lock_guard lock{res->mutex};
-
-                    // If we're the last response then we reply:
-                    bool send_reply = --res->pending == 0;
-
-                    if (!good_result) {
-                        peer_result = json{{"failed", true}};
-                        if (!success) peer_result["timeout"] = true;
-                        else if (parts.size() == 2) peer_result["code"] = parts[0];
-                        else peer_result["bad_peer_response"] = true;
-                    }
-                    else if (res->b64) {
-                        if (auto it = peer_result.find("signature"); it != peer_result.end() && it->is_string())
-                            *it = oxenmq::to_base64(it->get_ref<const std::string&>());
-                    }
-
-                    res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
-
-                    if (send_reply)
-                        return res->cb(Response{http::OK, std::move(res->result)});
-                },
-                cmd,
-                bt_serialize(req.to_bt()),
-                oxenmq::send_option::request_timeout{5s});
-    }
-}
-
-template <typename RPC>
-std::pair<std::shared_ptr<swarm_response>, std::unique_lock<std::mutex>>
-static setup_recursive_request(ServiceNode& sn, RPC& req, std::function<void(Response)> cb) {
-    auto res = std::make_shared<swarm_response>();
-    res->cb = std::move(cb);
-    res->pending = 1;
-    res->b64 = req.b64;
-
-    std::unique_lock<std::mutex> lock{res->mutex, std::defer_lock};
-    if (req.recurse) {
-        // Send it off to our peers right away, before we process it ourselves
-        distribute_command(sn, res, RPC::names()[0], req);
-        lock.lock();
-    }
-    return {std::move(res), std::move(lock)};
 }
 
 void RequestHandler::process_client_req(
