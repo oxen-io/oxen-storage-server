@@ -1,136 +1,113 @@
 #pragma once
 
-#include "Item.hpp"
 #include "oxen_common.h"
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-struct sqlite3;
-struct sqlite3_stmt;
-
 namespace oxen {
+
+class DatabaseImpl;
 
 // Storage database class.
 class Database {
+    std::unique_ptr<DatabaseImpl> impl;
+    friend class DatabaseImpl;
+
   public:
     // Recommended period for calling clean_expired()
     inline static constexpr auto CLEANUP_PERIOD = 10s;
 
-    inline static constexpr int64_t PAGE_SIZE = 4096;
     inline static constexpr int64_t SIZE_LIMIT = int64_t(3584) * 1024 * 1024; // 3.5 GB
-    inline static constexpr int64_t PAGE_LIMIT = SIZE_LIMIT / PAGE_SIZE;
 
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
     explicit Database(const std::filesystem::path& db_path);
 
-    enum class DuplicateHandling { IGNORE, FAIL };
+    ~Database();
 
-    bool store(std::string_view hash, std::string_view pubKey, std::string_view bytes,
-            std::chrono::system_clock::time_point timestamp, std::chrono::system_clock::time_point expiry,
-            DuplicateHandling behaviour = DuplicateHandling::FAIL);
+    // if the database is full then print an error only once ever N errors
+    inline static constexpr int DB_FULL_FREQUENCY = 100;
 
-    bool store(const storage::Item& item, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
-        return store(item.hash, item.pub_key, item.data, item.timestamp, item.expiration, behaviour);
-    }
-    bool store(const message_t& msg, DuplicateHandling behaviour = DuplicateHandling::FAIL) {
-        return store(msg.hash, msg.pub_key, msg.data, msg.timestamp, msg.expiry, behaviour);
-    }
+    // Attempts to store a message in the database.  Returns true if inserted, false on failure due
+    // to the message already existing, and nullopt if the insertion failed because the database
+    // is full.  For other query failures, throws.
+    // 
+    // This means `if (db.store(...))` will be true if inserted *or* already present; to check only
+    // for insertion use `ins && *ins`.
+    std::optional<bool> store(const message_t& msg);
 
-    bool bulk_store(const std::vector<storage::Item>& items);
+    void bulk_store(const std::vector<message_t>& items);
 
-    bool retrieve(const std::string& key, std::vector<storage::Item>& items,
-                  const std::string& lastHash, int num_results = -1);
+    // Retrieves messages owned by pubkey received since `last_hash` (which must also be owned by
+    // pubkey).  If last_hash is empty or not found then returns all messages (up to the limit).
+    // Optionally takes a maximum number of messages to return.
+    //
+    // Note that the `pubkey` value of the returned message_t's will be left default constructed,
+    // i.e. *not* filled with the given pubkey.
+    std::vector<message_t> retrieve(
+            const user_pubkey_t& pubkey,
+            const std::string& last_hash,
+            std::optional<int> num_results = std::nullopt);
 
-    // Returns the number of used database pages
-    bool get_used_pages(uint64_t& count);
+    // Retrieves all messages.
+    std::vector<message_t> retrieve_all();
 
     // Return the total number of messages stored
-    bool get_message_count(uint64_t& count);
+    int64_t get_message_count();
 
-    // Get random message. Returns false if there are no messages (or the db query failed)
-    bool retrieve_random(storage::Item& item);
+    // Returns the number of distinct owner pubkeys with stored messages
+    int64_t get_owner_count();
 
-    // Get message by `msg_hash`, return true if found
-    bool retrieve_by_hash(std::string_view msg_hash, storage::Item& item);
+    // Returns the number of used bytes (i.e. used pages * page size) of the database
+    int64_t get_used_bytes();
 
-    // Removes expired messages from the database; the Database owner should call this periodically.
+    // Get random message. Returns nullopt if there are no messages.
+    std::optional<message_t> retrieve_random();
+
+    // Get message by `msg_hash`, return true if found.  Note that this does *not* filter by pubkey!
+    std::optional<message_t> retrieve_by_hash(const std::string& msg_hash);
+
+    // Removes expired messages from the database; the `Database` instance owner should call this
+    // periodically.
     void clean_expired();
 
     // Deletes all messages owned by the given pubkey.  Returns the hashes of any deleted messages
     // on success (including the case where no messages are deleted), nullopt on query failure.
-    std::optional<std::vector<std::string>> delete_all(std::string_view pubkey);
+    std::vector<std::string> delete_all(const user_pubkey_t& pubkey);
 
     // Delete a message owned by the given pubkey having the given hashes.  Returns the hashes of
     // any delete messages on success (including the case where no messages are deleted), nullopt on
     // query failure.
-    std::optional<std::vector<std::string>> delete_by_hash(
-            std::string_view pubkey, const std::vector<std::string_view>& msg_hashes);
+    std::vector<std::string> delete_by_hash(
+            const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
 
     // Deletes all messages owned by the given pubkey with a timestamp <= timestamp.  Returns the
     // hashes of any deleted messages (including the case where no messages are deleted), nullopt on
     // query failure.
-    std::optional<std::vector<std::string>> delete_by_timestamp(
-            std::string_view pubkey, std::chrono::system_clock::time_point timestamp);
+    std::vector<std::string> delete_by_timestamp(
+            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp);
 
     // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
     // be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
     // hashes of messages that had their expiries updates.  (Missing messages and messages that
     // already had an expiry <= the given expiry value are not returned).
-    std::optional<std::vector<std::string>>
-    update_expiry(
-            std::string_view pubkey,
-            const std::vector<std::string_view>& msg_hashes,
+    std::vector<std::string> update_expiry(
+            const user_pubkey_t& pubkey,
+            const std::vector<std::string>& msg_hashes,
             std::chrono::system_clock::time_point new_exp
             );
 
     // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
     // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
     // hashes of messages that had their expiries shorten.
-    std::optional<std::vector<std::string>>
-    update_all_expiries(
-            std::string_view pubkey, std::chrono::system_clock::time_point new_exp);
-
-  private:
-    struct sqlite_destructor {
-        void operator()(sqlite3_stmt* ptr);
-        void operator()(sqlite3* ptr);
-    };
-
-  public:
-    using StatementPtr = std::unique_ptr<sqlite3_stmt, sqlite_destructor>;
-    using SqlitePtr = std::unique_ptr<sqlite3, sqlite_destructor>;
-
-  private:
-
-    StatementPtr prepare_statement(std::string_view desc, std::string_view query);
-    void open_and_prepare(const std::filesystem::path& db_path);
-
-    // keep track of db full errorss so we don't print them on every store
-    std::atomic<int> db_full_counter = 0;
-
-    SqlitePtr db;
-    StatementPtr save_stmt;
-    StatementPtr save_or_ignore_stmt;
-    StatementPtr get_all_for_pk_stmt;
-    StatementPtr get_all_stmt;
-    StatementPtr get_stmt;
-    StatementPtr get_row_count_stmt;
-    StatementPtr get_random_stmt;
-    StatementPtr get_by_hash_stmt;
-    StatementPtr delete_expired_stmt;
-    StatementPtr delete_by_timestamp_stmt;
-    StatementPtr delete_all_stmt;
-    StatementPtr update_all_expiries_stmt;
-    StatementPtr page_count_stmt;
+    std::vector<std::string> update_all_expiries(
+            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp);
 };
 
 } // namespace oxen

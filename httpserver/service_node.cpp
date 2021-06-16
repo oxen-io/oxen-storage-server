@@ -338,7 +338,7 @@ void ServiceNode::record_proxy_request() { all_stats_.bump_proxy_requests(); }
 
 void ServiceNode::record_onion_request() { all_stats_.bump_onion_requests(); }
 
-bool ServiceNode::process_store(message_t msg) {
+bool ServiceNode::process_store(message_t msg, bool* new_msg) {
 
     std::lock_guard guard{sn_mutex_};
 
@@ -352,8 +352,11 @@ bool ServiceNode::process_store(message_t msg) {
     all_stats_.bump_store_requests();
 
     /// store in the database (if not already present)
-    if (db_->store(msg))
-        OXEN_LOG(trace, "saved message: {}", msg.data);
+    auto stored = db_->store(msg);
+    if (stored)
+        OXEN_LOG(trace, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
+    if (new_msg)
+        *new_msg = stored.value_or(false);
 
     // TODO: don't need to relay this anymore after 2.2.0 because the store itself becomes
     // recursive.
@@ -1278,12 +1281,9 @@ std::string ServiceNode::get_stats() const {
     val["height"] = block_height_;
     val["target_height"] = target_height_;
 
-    if (uint64_t total_stored; db_->get_message_count(total_stored))
-        val["total_stored"] = total_stored;
-    if (uint64_t db_pages; db_->get_used_pages(db_pages)) {
-        val["db_used"] = db_pages * Database::PAGE_SIZE;
-        val["db_max"] = Database::SIZE_LIMIT;
-    }
+    val["total_stored"] = db_->get_message_count();
+    val["db_used"] = db_->get_used_bytes();
+    val["db_max"] = Database::SIZE_LIMIT;
 
     return val.dump();
 }
@@ -1312,23 +1312,21 @@ std::string ServiceNode::get_status_line() const {
         s << swarm.substr(0, 4) << u8"…" << swarm.substr(swarm.size()-3);
         s << "(n=" << (1 + swarm_->other_nodes().size()) << ")";
     }
-    if (uint64_t msgs_stored; db_->get_message_count(msgs_stored)) {
-        s << "; " << msgs_stored << " msgs";
-        if (uint64_t bytes_stored; db_->get_used_pages(bytes_stored)) {
-            bytes_stored *= Database::PAGE_SIZE;
-            s << " (";
-            auto oldprec = s.precision(3);
-            if (bytes_stored >= 999'500'000)
-                s << bytes_stored * 1e-9 << 'G';
-            else if (bytes_stored >= 999'500)
-                s << bytes_stored * 1e-6 << 'M';
-            else if (bytes_stored >= 1000)
-                s << bytes_stored * 1e-3 << 'k';
-            else
-                s << bytes_stored;
-            s.precision(oldprec);
-            s << "B)";
-        }
+    s << "; " << db_->get_message_count() << " msgs";
+
+    if (auto bytes_stored = db_->get_used_bytes(); bytes_stored > 0) {
+        s << " (";
+        auto oldprec = s.precision(3);
+        if (bytes_stored >= 999'500'000)
+            s << bytes_stored * 1e-9 << 'G';
+        else if (bytes_stored >= 999'500)
+            s << bytes_stored * 1e-6 << 'M';
+        else if (bytes_stored >= 1000)
+            s << bytes_stored * 1e-3 << 'k';
+        else
+            s << bytes_stored;
+        s.precision(oldprec);
+        s << "B)";
     }
 
     auto [window, stats] = all_stats_.get_recent_requests();

@@ -557,9 +557,7 @@ void RequestHandler::process_client_req(
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
         : res->result;
 
-    std::vector<std::string_view> msgs{req.messages.begin(), req.messages.end()};
-
-    if (auto deleted = service_node_.delete_messages(req.pubkey, msgs)) {
+    if (auto deleted = service_node_.delete_messages(req.pubkey, req.messages)) {
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, *deleted);
         mine["deleted"] = std::move(*deleted);
@@ -678,9 +676,7 @@ void RequestHandler::process_client_req(
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
         : res->result;
 
-    std::vector<std::string_view> msgs{req.messages.begin(), req.messages.end()};
-
-    if (auto updated = service_node_.update_messages_expiry(req.pubkey, msgs, req.expiry)) {
+    if (auto updated = service_node_.update_messages_expiry(req.pubkey, req.messages, req.expiry)) {
         std::sort(updated->begin(), updated->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, *updated);
         mine["updated"] = std::move(*updated);
@@ -755,16 +751,16 @@ void RequestHandler::process_client_req(
 
 Response RequestHandler::process_retrieve_all() {
 
-    std::vector<storage::Item> all_entries;
-
-    bool res = service_node_.get_all_messages(all_entries);
-
-    if (!res)
-        return {http::INTERNAL_SERVER_ERROR, "could not retrieve all entries"s};
+    std::vector<message_t> msgs;
+    try {
+        msgs = service_node_.get_all_messages();
+    } catch (const std::exception& e) {
+        return {http::INTERNAL_SERVER_ERROR, "could not retrieve all messages"s};
+    }
 
     json messages = json::array();
-    for (auto& entry : all_entries)
-        messages.push_back({ {"data", entry.data}, {"pk", entry.pub_key} });
+    for (auto& m : msgs)
+        messages.push_back(json{{"data", std::move(m.data)}, {"pk", m.pubkey.prefixed_hex()}});
 
     return {http::OK, json{{"messages", std::move(messages)}}};
 }

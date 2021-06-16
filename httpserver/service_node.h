@@ -231,7 +231,7 @@ class ServiceNode {
     /// on query failure.
     std::optional<std::vector<std::string>> delete_messages(
             const user_pubkey_t& pubkey,
-            const std::vector<std::string_view>& msg_hashes);
+            const std::vector<std::string>& msg_hashes);
 
     /// Deletes all messages owned by the given pubkey with a timestamp <= `timestamp`.  Returns the
     /// hashes of any deleted messages (including the case where no messages are deleted), nullopt
@@ -246,7 +246,7 @@ class ServiceNode {
     std::optional<std::vector<std::string>>
     update_messages_expiry(
             const user_pubkey_t& pubkey,
-            const std::vector<std::string_view>& msg_hashes,
+            const std::vector<std::string>& msg_hashes,
             std::chrono::system_clock::time_point new_exp);
 
     /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
