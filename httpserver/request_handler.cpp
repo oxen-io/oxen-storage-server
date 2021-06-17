@@ -334,7 +334,10 @@ static void distribute_command(
                     if (!good_result) {
                         peer_result = json{{"failed", true}};
                         if (!success) peer_result["timeout"] = true;
-                        else if (parts.size() == 2) peer_result["code"] = parts[0];
+                        else if (parts.size() == 2) {
+                            peer_result["code"] = parts[0];
+                            peer_result["reason"] = parts[1];
+                        }
                         else peer_result["bad_peer_response"] = true;
                     }
                     else if (res->b64) {
