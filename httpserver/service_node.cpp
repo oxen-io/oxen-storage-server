@@ -1372,8 +1372,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-std::vector<sn_record>
-ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
+SwarmInfo ServiceNode::get_swarm(const user_pubkey_t& pk) {
 
     std::lock_guard guard(sn_mutex_);
 
@@ -1382,7 +1381,7 @@ ServiceNode::get_snodes_by_pk(const user_pubkey_t& pk) {
         return {};
     }
 
-    return get_swarm_by_pk(swarm_->all_valid_swarms(), pk).snodes;
+    return get_swarm_by_pk(swarm_->all_valid_swarms(), pk);
 }
 
 std::vector<sn_record>

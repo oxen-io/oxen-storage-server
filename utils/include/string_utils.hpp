@@ -84,7 +84,7 @@ void trim(std::string_view& s);
 /// Parses an integer of some sort from a string, requiring that the entire string be consumed
 /// during parsing.  Return false if parsing failed, sets `value` and returns true if the entire
 /// string was consumed.
-template <typename T>
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 bool parse_int(const std::string_view str, T& value, int base = 10) {
   T tmp;
   auto* strend = str.data() + str.size();
@@ -93,6 +93,15 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
     return false;
   value = tmp;
   return true;
+}
+
+/// Converts an integer value into a string via std::to_chars (i.e. without locale).
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+std::string int_to_string(const T& value, int base = 10) {
+    char buf[8*sizeof(T) + std::is_signed_v<T>]; // maximum possible size with smallest possible base (2)
+    auto [p, ec] = std::to_chars(std::begin(buf), std::end(buf), value, base);
+    assert(ec == std::errc{}); // Our buffer should be big enough for anything
+    return {buf, p};
 }
 
 /// Returns a string_view that views the data of the given object; this is not something you want to

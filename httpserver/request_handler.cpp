@@ -50,12 +50,10 @@ std::string to_string(const Response& res) {
 
 namespace {
 
-json snodes_to_json(const std::vector<sn_record>& snodes) {
+json swarm_to_json(const SwarmInfo& swarm) {
 
-    json res_body;
     json snodes_json = json::array();
-
-    for (const auto& sn : snodes) {
+    for (const auto& sn : swarm.snodes) {
         snodes_json.push_back(json{
                 {"address", oxenmq::to_base32z(sn.pubkey_legacy.view()) + ".snode"}, // Deprecated, use pubkey_legacy instead
                 {"pubkey_legacy", sn.pubkey_legacy.hex()},
@@ -65,9 +63,10 @@ json snodes_to_json(const std::vector<sn_record>& snodes) {
                 {"ip", sn.ip}});
     }
 
-    res_body["snodes"] = std::move(snodes_json);
-
-    return res_body;
+    return json{
+        {"snodes", std::move(snodes_json)},
+        {"swarm", util::int_to_string(swarm.swarm_id, 16)}
+    };
 }
 
 std::string obfuscate_pubkey(const user_pubkey_t& pk) {
@@ -273,7 +272,7 @@ Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
 
     return {
         http::MISDIRECTED_REQUEST,
-        snodes_to_json(service_node_.get_snodes_by_pk(pubKey))};
+        swarm_to_json(service_node_.get_swarm(pubKey))};
 }
 
 struct swarm_response {
@@ -466,11 +465,12 @@ void RequestHandler::process_client_req(
 void RequestHandler::process_client_req(
         rpc::get_swarm&& req, std::function<void(oxen::Response)> cb) {
 
-    const auto nodes = service_node_.get_snodes_by_pk(req.pubkey);
+    const auto swarm = service_node_.get_swarm(req.pubkey);
 
-    OXEN_LOG(debug, "get swarm for {}, swarm size: {}", obfuscate_pubkey(req.pubkey), nodes.size());
+    OXEN_LOG(debug, "get swarm for {}, swarm size: {}",
+            obfuscate_pubkey(req.pubkey), swarm.snodes.size());
 
-    auto body = snodes_to_json(nodes);
+    auto body = swarm_to_json(swarm);
 
     if (OXEN_LOG_ENABLED(trace))
         OXEN_LOG(trace, "swarm details for pk {}: {}", obfuscate_pubkey(req.pubkey), body.dump());
