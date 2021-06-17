@@ -50,6 +50,10 @@ std::pair<int, int> count_missing_data(const block_update& bu);
 auto apply_ips(const all_swarms_t& swarms_to_keep,
                const all_swarms_t& other_swarms) -> all_swarms_t;
 
+/// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one has a
+/// swarm id closest to this pubkey-derived value.
+uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk);
+
 struct SwarmEvents {
 
     /// our (potentially new) swarm id

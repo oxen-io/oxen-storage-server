@@ -103,3 +103,15 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
             == expected_new);
 
 }
+
+TEST_CASE("service nodes - pubkey to swarm id") {
+    oxen::user_pubkey_t pk;
+    REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
+    CHECK(pubkey_to_swarm_space(pk) == 4532060000165252872ULL);
+
+    REQUIRE(pk.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    CHECK(pubkey_to_swarm_space(pk) == 0);
+
+    REQUIRE(pk.load("050000000000000000000000000000000000000000000000000123456789abcdef"));
+    CHECK(pubkey_to_swarm_space(pk) == 0x0123456789abcdefULL);
+}

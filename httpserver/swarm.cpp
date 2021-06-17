@@ -264,7 +264,7 @@ Swarm::find_node(const x25519_pubkey& pk) const {
     return std::nullopt;
 }
 
-static uint64_t hex_to_u64(const user_pubkey_t& pk) {
+uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
 
     const auto bytes = pk.raw();
     assert(bytes.size() == 32);
@@ -292,7 +292,7 @@ const SwarmInfo& get_swarm_by_pk(
         const std::vector<SwarmInfo>& all_swarms,
         const user_pubkey_t& pk) {
 
-    const uint64_t res = hex_to_u64(pk);
+    const uint64_t res = pubkey_to_swarm_space(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
