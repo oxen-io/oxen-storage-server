@@ -268,7 +268,7 @@ CREATE TRIGGER owned_messages_insert
             while (old_owners.executeStep()) {
                 int type;
                 std::array<char, 32> pubkey;
-                std::string old_owner = old_owners.getColumn(1);
+                std::string old_owner = old_owners.getColumn(0);
                 if (old_owner.size() == 66 && util::starts_with(old_owner, "05") && oxenmq::is_hex(old_owner)) {
                     type = 5;
                     oxenmq::from_hex(old_owner.begin() + 2, old_owner.end(), pubkey.begin());
@@ -281,6 +281,7 @@ CREATE TRIGGER owned_messages_insert
                 }
 
                 int id = exec_and_get<int>(ins_owner, type, old_owner);
+                ins_owner.reset();
                 owner_ids.emplace(std::move(old_owner), id);
             }
 
@@ -300,6 +301,7 @@ CREATE TRIGGER owned_messages_insert
                     continue;
                 }
                 exec_query(ins_msg, hash, it->second, ts, exp, data);
+                ins_msg.reset();
                 msgs++;
             }
 
