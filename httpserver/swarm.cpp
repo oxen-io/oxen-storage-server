@@ -8,6 +8,7 @@
 #include <ostream>
 #include <unordered_map>
 
+#include "string_utils.hpp"
 #include "utils.hpp"
 
 namespace oxen {
@@ -120,9 +121,9 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     } else {
 
         if (cur_swarm_id_ == INVALID_SWARM_ID) {
-            OXEN_LOG(info, "EVENT: started SN in swarm: {}", sid);
+            OXEN_LOG(info, "EVENT: started SN in swarm: 0x{}", util::int_to_string(sid, 16));
         } else if (cur_swarm_id_ != sid) {
-            OXEN_LOG(info, "EVENT: got moved into a new swarm: {}", sid);
+            OXEN_LOG(info, "EVENT: got moved into a new swarm: 0x{}", util::int_to_string(sid, 16));
         }
     }
 
