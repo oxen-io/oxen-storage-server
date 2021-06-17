@@ -392,7 +392,7 @@ void RequestHandler::process_client_req(
     }
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
-    auto mine = req.recurse
+    auto& mine = req.recurse
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
         : res->result;
 
