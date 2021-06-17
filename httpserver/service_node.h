@@ -36,6 +36,11 @@ inline constexpr int STORAGE_SERVER_HARDFORK = 18;
 inline constexpr int HARDFORK_HTTPS_PING_TEST_URL = 19;
 // HF at which we switch to OMQ storage tests instead of HTTPS
 inline constexpr int HARDFORK_OMQ_STORAGE_TESTS = 19;
+// HF at which `store` requests become recursive (rather than having unreported background
+// distribution).
+inline constexpr int HARDFORK_RECURSIVE_STORE = 19;
+// When we start using the more compact BT message serialization
+inline constexpr int HARDFORK_BT_MESSAGE_SERIALIZATION = 19;
 
 namespace storage {
 struct Item;

@@ -147,14 +147,14 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
 
     std::vector<std::string> res;
 
-    if (version == 0) {
+    if (version == SERIALIZATION_VERSION_OLD) {
         res.emplace_back();
         while (auto* msg = next_msg()) {
             if (res.back().size() > SERIALIZATION_BATCH_SIZE)
                 res.emplace_back();
             v0::serialize_message(res.back(), *msg);
         }
-    } else {
+    } else if (version == SERIALIZATION_VERSION_BT) {
         oxenmq::bt_list l;
         size_t counter = 2;
         while (auto* msg = next_msg()) {
@@ -171,7 +171,7 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
                 // Adding this message would push us over the limit, so finish it off and start a
                 // new serialization piece.
                 std::ostringstream oss;
-                oss << uint8_t{1} /*version*/ << oxenmq::bt_serializer(l);
+                oss << SERIALIZATION_VERSION_BT << oxenmq::bt_serializer(l);
                 res.push_back(oss.str());
                 l.clear();
                 counter = 1 + 2 + ser_size;
@@ -188,6 +188,9 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
         std::ostringstream oss;
         oss << uint8_t{1} /* version*/ << oxenmq::bt_serializer(l);
         res.push_back(oss.str());
+    } else {
+        OXEN_LOG(critical, "Invalid serialization version {}", +version);
+        throw std::logic_error{"Invalid serialization version " + std::to_string(version)};
     }
 
     return res;
@@ -202,14 +205,19 @@ std::vector<message> deserialize_messages(std::string_view slice) {
     // v0 didn't send a version at all, and sent things incredibly inefficiently.
     // v1+ put the version as the first byte (but can't use any of '0'..'9','a'..'f','A'..'F'
     // because v0 starts out with a hex pubkey).
-    uint8_t version = 0;
+    uint8_t version = SERIALIZATION_VERSION_OLD;
     if (!slice.empty() && slice.front() < '0' && slice.front() != 0) {
         version = slice.front();
         slice.remove_prefix(1);
     }
 
-    if (version == 0)
+    if (version == SERIALIZATION_VERSION_OLD)
         return v0::deserialize_messages_old(slice);
+
+    else if (version != SERIALIZATION_VERSION_BT) {
+        OXEN_LOG(err, "Invalid deserialization version {}", +version);
+        return {};
+    }
 
     // v1:
     std::vector<message> result;

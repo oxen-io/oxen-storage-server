@@ -358,15 +358,15 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     if (new_msg)
         *new_msg = stored.value_or(false);
 
-    // TODO: don't need to relay this anymore after 2.2.0 because the store itself becomes
-    // recursive.
-    auto sversion = is_mainnet ? SERIALIZATION_VERSION_COMPAT : SERIALIZATION_VERSION_NEXT;
-    auto serialized = std::move(serialize_messages(&msg, &msg+1, sversion).front());
+    bool legacy_store = is_mainnet && !hf_at_least(HARDFORK_RECURSIVE_STORE);
+    if (legacy_store) {
+        auto serialized = std::move(serialize_messages(&msg, &msg+1, SERIALIZATION_VERSION_OLD).front());
 
-    for (auto& peer : swarm_->other_nodes())
-        relay_data_reliable(serialized, peer);
+        for (auto& peer : swarm_->other_nodes())
+            relay_data_reliable(serialized, peer);
 
-    OXEN_LOG(debug, "Relayed message to {} swarm peers", swarm_->other_nodes().size());
+        OXEN_LOG(debug, "Relayed message to {} swarm peers", swarm_->other_nodes().size());
+    }
     return true;
 }
 
@@ -1180,7 +1180,8 @@ void ServiceNode::bootstrap_swarms(
 void ServiceNode::relay_messages(const std::vector<message>& messages,
                                  const std::vector<sn_record>& snodes) const {
     std::vector<std::string> batches = serialize_messages(messages.begin(), messages.end(),
-            is_mainnet ? SERIALIZATION_VERSION_COMPAT : SERIALIZATION_VERSION_NEXT);
+            is_mainnet && !hf_at_least(HARDFORK_BT_MESSAGE_SERIALIZATION)
+                ? SERIALIZATION_VERSION_OLD : SERIALIZATION_VERSION_BT);
 
     if (OXEN_LOG_ENABLED(debug)) {
         OXEN_LOG(debug, "Relayed messages:");
