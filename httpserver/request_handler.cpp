@@ -407,7 +407,7 @@ void RequestHandler::process_client_req(
         success = service_node_.process_store(message{
             req.pubkey, message_hash, req.timestamp, req.expiry, std::move(req.data)}, &new_msg);
     } catch (const std::exception& e) {
-        OXEN_LOG(critical, "Internal Server Error. Could not store message for {}: {}",
+        OXEN_LOG(err, "Internal Server Error. Could not store message for {}: {}",
                 obfuscate_pubkey(req.pubkey), e.what());
         mine["reason"] = e.what();
     }
@@ -430,7 +430,7 @@ void RequestHandler::process_client_req(
     OXEN_LOG(trace, "Successfully stored message {} for {}", message_hash, obfuscate_pubkey(req.pubkey));
 
     if (--res->pending == 0)
-        reply_or_fail(res);
+        reply_or_fail(std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -556,7 +556,7 @@ void RequestHandler::process_client_req(
     }
 
     if (--res->pending == 0)
-        res->cb(Response{http::OK, std::move(res->result)});
+        reply_or_fail(std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -590,7 +590,7 @@ void RequestHandler::process_client_req(
     }
 
     if (--res->pending == 0)
-        res->cb(Response{http::OK, std::move(res->result)});
+        reply_or_fail(std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -630,7 +630,7 @@ void RequestHandler::process_client_req(
     }
 
     if (--res->pending == 0)
-        res->cb(Response{http::OK, std::move(res->result)});
+        reply_or_fail(std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -670,7 +670,7 @@ void RequestHandler::process_client_req(
     }
 
     if (--res->pending == 0)
-        res->cb(Response{http::OK, std::move(res->result)});
+        reply_or_fail(std::move(res));
 }
 void RequestHandler::process_client_req(
         rpc::expire_msgs&& req, std::function<void(Response)> cb) {
@@ -709,7 +709,7 @@ void RequestHandler::process_client_req(
     }
 
     if (--res->pending == 0)
-        res->cb(Response{http::OK, std::move(res->result)});
+        reply_or_fail(std::move(res));
 }
 
 void RequestHandler::process_client_req(
