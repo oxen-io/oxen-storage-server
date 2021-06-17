@@ -41,6 +41,8 @@ inline constexpr int HARDFORK_OMQ_STORAGE_TESTS = 19;
 inline constexpr int HARDFORK_RECURSIVE_STORE = 19;
 // When we start using the more compact BT message serialization
 inline constexpr int HARDFORK_BT_MESSAGE_SERIALIZATION = 19;
+// Hardfork where we switch the hash function to base64(blake2b) from hex(sha512)
+inline constexpr int HARDFORK_HASH_BLAKE2B = 19;
 
 namespace storage {
 struct Item;
