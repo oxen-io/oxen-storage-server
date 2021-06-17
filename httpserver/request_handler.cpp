@@ -844,7 +844,7 @@ Response RequestHandler::wrap_proxy_response(Response res,
     std::string body;
     if (std::holds_alternative<std::string>(res.body))
         body = json{{"status", status}, {"body", std::move(std::get<std::string>(res.body))}}.dump();
-    if (std::holds_alternative<std::string_view>(res.body))
+    else if (std::holds_alternative<std::string_view>(res.body))
         body = json{{"status", status}, {"body", std::get<std::string_view>(res.body)}}.dump();
     else if (embed_json)
         body = json{{"status", status}, {"body", std::move(std::get<json>(res.body))}}.dump();
