@@ -363,7 +363,7 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     if (new_msg)
         *new_msg = stored.value_or(false);
 
-    bool legacy_store = is_mainnet && !hf_at_least(HARDFORK_RECURSIVE_STORE);
+    bool legacy_store = !hf_at_least(HARDFORK_RECURSIVE_STORE);
     if (legacy_store) {
         auto serialized = std::move(serialize_messages(&msg, &msg+1, SERIALIZATION_VERSION_OLD).front());
 
@@ -1187,7 +1187,7 @@ void ServiceNode::bootstrap_swarms(
 void ServiceNode::relay_messages(const std::vector<message>& messages,
                                  const std::vector<sn_record>& snodes) const {
     std::vector<std::string> batches = serialize_messages(messages.begin(), messages.end(),
-            is_mainnet && !hf_at_least(HARDFORK_BT_MESSAGE_SERIALIZATION)
+            !hf_at_least(HARDFORK_BT_MESSAGE_SERIALIZATION)
                 ? SERIALIZATION_VERSION_OLD : SERIALIZATION_VERSION_BT);
 
     if (OXEN_LOG_ENABLED(debug)) {

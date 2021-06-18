@@ -399,7 +399,7 @@ void RequestHandler::process_client_req(
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
         : res->result;
 
-    bool use_old_hash = is_mainnet && !service_node_.hf_at_least(HARDFORK_HASH_BLAKE2B);
+    bool use_old_hash = !service_node_.hf_at_least(HARDFORK_HASH_BLAKE2B);
     std::string message_hash = computeMessageHash(
             req.timestamp, req.expiry, req.pubkey, req.data, use_old_hash);
 
