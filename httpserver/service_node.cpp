@@ -87,6 +87,13 @@ void ServiceNode::on_oxend_connected() {
             reachability_testing::TESTING_TIMER_INTERVAL);
 }
 
+template <typename T>
+static T get_or(const json& j, std::string_view key, std::common_type_t<T> default_val) {
+    if (auto it = j.find(key); it != j.end())
+        return it->get<T>();
+    return default_val;
+}
+
 static block_update
 parse_swarm_update(const std::string& response_body) {
 
@@ -106,8 +113,8 @@ parse_swarm_update(const std::string& response_body) {
         bu.height = result.at("height").get<uint64_t>();
         bu.block_hash = result.at("block_hash").get<std::string>();
         bu.hardfork = result.at("hardfork").get<int>();
-        bu.unchanged =
-            result.count("unchanged") && result.at("unchanged").get<bool>();
+        bu.snode_revision = get_or<int>(result, "snode_revision", 0);
+        bu.unchanged = get_or<bool>(result, "unchanged", false);
         if (bu.unchanged)
             return bu;
 
@@ -193,6 +200,7 @@ void ServiceNode::bootstrap_data() {
             {"height", true},
             {"block_hash", true},
             {"hardfork", true},
+            {"snode_revision", true},
             {"funded", true},
             {"pubkey_x25519", true},
             {"pubkey_ed25519", true},
@@ -291,7 +299,8 @@ bool ServiceNode::snode_ready(std::string* reason) {
     std::vector<std::string> problems;
 
     if (!hf_at_least(STORAGE_SERVER_HARDFORK))
-        problems.push_back("not yet on hardfork " + std::to_string(STORAGE_SERVER_HARDFORK));
+        problems.push_back(fmt::format("not yet on hardfork {}.{}",
+                    STORAGE_SERVER_HARDFORK.first, STORAGE_SERVER_HARDFORK.second));
     if (!swarm_ || !swarm_->is_valid())
         problems.push_back("not in any swarm");
     if (syncing_)
@@ -436,9 +445,10 @@ static SnodeStatus derive_snode_status(const block_update& bu,
 
 void ServiceNode::on_swarm_update(block_update&& bu) {
 
-    if (hardfork_ != bu.hardfork) {
-        OXEN_LOG(debug, "New hardfork: {}", bu.hardfork);
-        hardfork_ = bu.hardfork;
+    hf_revision net_ver{bu.hardfork, bu.snode_revision};
+    if (hardfork_ != net_ver) {
+        OXEN_LOG(info, "New hardfork: {}.{}", net_ver.first, net_ver.second);
+        hardfork_ = net_ver;
     }
 
     if (syncing_ && target_height_ != 0) {
@@ -550,6 +560,7 @@ void ServiceNode::update_swarms() {
             {"height", true},
             {"block_hash", true},
             {"hardfork", true},
+            {"snode_revision", true},
             {"funded", true},
             {"pubkey_x25519", true},
             {"pubkey_ed25519", true},

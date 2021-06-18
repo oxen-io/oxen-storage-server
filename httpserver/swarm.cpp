@@ -28,7 +28,7 @@ void debug_print(std::ostream& os, const block_update& bu) {
     os << "Block update: {\n";
     os << "     height: " << bu.height << '\n';
     os << "     block hash: " << bu.block_hash << '\n';
-    os << "     hardfork: " << bu.hardfork << '\n';
+    os << "     hardfork: " << bu.hardfork << '.' << bu.snode_revision << '\n';
     os << "     swarms: [\n";
 
     for (const SwarmInfo& swarm : bu.swarms) {

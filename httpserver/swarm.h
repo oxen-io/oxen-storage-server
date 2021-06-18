@@ -27,6 +27,7 @@ struct block_update {
     uint64_t height;
     std::string block_hash;
     int hardfork;
+    int snode_revision;
     bool unchanged = false;
 };
 

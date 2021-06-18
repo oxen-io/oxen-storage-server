@@ -30,19 +30,22 @@ inline constexpr auto STORAGE_TEST_TIMEOUT = 15s;
 // Timeout for bootstrap node OMQ requests
 inline constexpr auto BOOTSTRAP_TIMEOUT = 10s;
 
+// We use the network hardfork and snode revision from oxend to version-gate upgrade features.
+using hf_revision = std::pair<int, int>;
+
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr int STORAGE_SERVER_HARDFORK = 18;
+inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 0};
 // HF at which we switch to /ping_test/v1 instead of /swarms/ping_test/v1 for HTTPS pings
-inline constexpr int HARDFORK_HTTPS_PING_TEST_URL = 19;
+inline constexpr hf_revision HARDFORK_HTTPS_PING_TEST_URL = {18, 1};
 // HF at which we switch to OMQ storage tests instead of HTTPS
-inline constexpr int HARDFORK_OMQ_STORAGE_TESTS = 19;
+inline constexpr hf_revision HARDFORK_OMQ_STORAGE_TESTS = {18, 1};
 // HF at which `store` requests become recursive (rather than having unreported background
 // distribution).
-inline constexpr int HARDFORK_RECURSIVE_STORE = 19;
+inline constexpr hf_revision HARDFORK_RECURSIVE_STORE = {18, 1};
 // When we start using the more compact BT message serialization
-inline constexpr int HARDFORK_BT_MESSAGE_SERIALIZATION = 19;
+inline constexpr hf_revision HARDFORK_BT_MESSAGE_SERIALIZATION = {18, 1};
 // Hardfork where we switch the hash function to base64(blake2b) from hex(sha512)
-inline constexpr int HARDFORK_HASH_BLAKE2B = 19;
+inline constexpr hf_revision HARDFORK_HASH_BLAKE2B = {18, 1};
 
 namespace storage {
 struct Item;
@@ -66,7 +69,7 @@ class ServiceNode {
     bool got_first_response_ = false;
     bool force_start_ = false;
     std::atomic<bool> shutting_down_ = false;
-    int hardfork_ = 0;
+    hf_revision hardfork_ = {0, 0};
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
     std::string block_hash_;
@@ -183,7 +186,7 @@ class ServiceNode {
             OnionRequestMetadata&& data,
             std::function<void(bool success, std::vector<std::string> data)> cb) const;
 
-    bool hf_at_least(int hardfork) const { return hardfork_ >= hardfork; }
+    bool hf_at_least(hf_revision version) const { return hardfork_ >= version; }
 
     // Return true if the service node is ready to handle requests, which means the storage server
     // is fully initialized (and not trying to shut down), the service node is active and assigned
