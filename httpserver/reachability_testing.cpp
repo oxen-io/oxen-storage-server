@@ -106,7 +106,8 @@ std::vector<std::pair<sn_record, int>> reachability_testing::get_failing(
             break;
         if (auto sn = swarm.find_node(pk))
             result.emplace_back(std::move(*sn), failures);
-        failing.erase(pk);
+        else // Node is apparently no longer active, so stop testing it.
+            remove_node_from_failing(pk);
         failing_queue.pop();
     }
     return result;
@@ -123,6 +124,10 @@ void reachability_testing::add_failing_node(const legacy_pubkey& pk, int previou
 
     failing.insert(pk);
     failing_queue.emplace(pk, steady_clock::now() + next_test_in, previous_failures + 1);
+}
+
+void reachability_testing::remove_node_from_failing(const legacy_pubkey& pk) {
+    failing.erase(pk);
 }
 
 } // namespace oxen

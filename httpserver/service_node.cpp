@@ -985,9 +985,12 @@ void ServiceNode::report_reachability(const sn_record& sn, bool reachable, int p
     omq_server_.oxend_request("admin.report_peer_storage_server_status",
             std::move(cb), params.dump());
 
-    if (!reachable) {
+    if (!reachable || previous_failures > 0) {
         std::lock_guard guard(sn_mutex_);
-        reach_records_.add_failing_node(sn.pubkey_legacy, previous_failures);
+        if (!reachable)
+            reach_records_.add_failing_node(sn.pubkey_legacy, previous_failures);
+        else
+            reach_records_.remove_node_from_failing(sn.pubkey_legacy);
     }
 }
 

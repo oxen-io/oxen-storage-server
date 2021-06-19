@@ -128,6 +128,10 @@ class reachability_testing {
     // by `get_failing` for repeated failures.
     void add_failing_node(const legacy_pubkey& pk, int previous_failures = 0);
 
+    // Removes a node from the set of failing nodes; should be called whenever we stop testing a
+    // node (e.g. because it is not passing, or because it deregistered).
+    void remove_node_from_failing(const legacy_pubkey& pk);
+
     // Called when this storage server receives an incoming HTTP or OMQ ping
     void incoming_ping(ReachType type, const time_point_t& now = std::chrono::steady_clock::now());
 
