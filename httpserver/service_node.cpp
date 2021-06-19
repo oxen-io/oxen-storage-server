@@ -977,12 +977,12 @@ void ServiceNode::report_reachability(const sn_record& sn, bool reachable, int p
     };
 
     json params{
-        {"type", "reachability"},
+        {"type", "storage"},
         {"pubkey", sn.pubkey_legacy.hex()},
         {"passed", reachable}
     };
 
-    omq_server_.oxend_request("admin.report_peer_storage_server_status",
+    omq_server_.oxend_request("admin.report_peer_status",
             std::move(cb), params.dump());
 
     if (!reachable || previous_failures > 0) {
