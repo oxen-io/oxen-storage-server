@@ -73,7 +73,7 @@ class reachability_testing {
     // How often we whine in the logs about being unreachable
     inline static constexpr auto WHINING_INTERVAL = 2min;
 
-    using time_point_t = std::chrono::steady_clock::time_point;
+    using clock = std::chrono::steady_clock;
 
   private:
 
@@ -83,16 +83,16 @@ class reachability_testing {
     std::vector<legacy_pubkey> testing_queue;
 
     // The next time for a general test
-    time_point_t next_general_test = time_point_t::min();
+    clock::time_point next_general_test = clock::time_point::min();
 
     // When we started, so that we know not to hold off on whining about no pings for a while.
-    const time_point_t startup = std::chrono::steady_clock::now();
+    const clock::time_point startup = clock::now();
 
     // Pubkeys, next test times, and sequential failure counts of service nodes that are currently
     // in "failed" status along with the last time they failed; we retest them first after 10s then
     // back off linearly by an additional 10s up to a max testing interval of 2m30s, until we get a
     // successful response.
-    using FailingPK = std::tuple<legacy_pubkey, time_point_t, int>;
+    using FailingPK = std::tuple<legacy_pubkey, clock::time_point, int>;
     std::priority_queue<FailingPK, std::vector<FailingPK>, detail::nth_greater<FailingPK, 1>> failing_queue;
     std::unordered_set<legacy_pubkey> failing;
 
@@ -113,14 +113,14 @@ class reachability_testing {
     // out (and instead just return nullopt).
     std::optional<sn_record> next_random(
             const Swarm& swarm,
-            const time_point_t& now = std::chrono::steady_clock::now(),
+            const clock::time_point& now = clock::now(),
             bool requeue = true);
 
     // Removes and returns up to MAX_RETESTS_PER_TICK nodes that are due to be tested (i.e.
     // next-testing-time <= now).  Returns [snrecord, #previous-failures] for each.
     std::vector<std::pair<sn_record, int>> get_failing(
             const Swarm& swarm,
-            const time_point_t& now = std::chrono::steady_clock::now());
+            const clock::time_point& now = clock::now());
 
     // Adds a bad node pubkey to the failing list, to be re-tested soon (with a backoff depending on
     // `failures`; see TESTING_BACKOFF).  `previous_failures` should be the number of previous
@@ -133,10 +133,10 @@ class reachability_testing {
     void remove_node_from_failing(const legacy_pubkey& pk);
 
     // Called when this storage server receives an incoming HTTP or OMQ ping
-    void incoming_ping(ReachType type, const time_point_t& now = std::chrono::steady_clock::now());
+    void incoming_ping(ReachType type, const clock::time_point& now = clock::now());
 
     // Check whether we received incoming pings recently
-    void check_incoming_tests(const time_point_t& now = std::chrono::steady_clock::now());
+    void check_incoming_tests(const clock::time_point& now = clock::now());
 };
 
 } // namespace oxen

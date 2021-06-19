@@ -12,8 +12,8 @@ using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
 
 static void check_incoming_tests_impl(
         std::string_view name,
-        const reachability_testing::time_point_t& now,
-        const reachability_testing::time_point_t& startup,
+        const reachability_testing::clock::time_point& now,
+        const reachability_testing::clock::time_point& startup,
         detail::incoming_test_state& incoming) {
 
     const auto elapsed = now - std::max(startup, incoming.last_test);
@@ -41,23 +41,23 @@ static void check_incoming_tests_impl(
     }
 }
 
-void reachability_testing::check_incoming_tests(const time_point_t& now) {
+void reachability_testing::check_incoming_tests(const clock::time_point& now) {
     check_incoming_tests_impl("HTTP", now, startup, last_https);
     check_incoming_tests_impl("OxenMQ", now, startup, last_omq);
 }
 
-void reachability_testing::incoming_ping(ReachType type, const time_point_t& now) {
+void reachability_testing::incoming_ping(ReachType type, const clock::time_point& now) {
     (type == ReachType::OMQ ? last_omq : last_https).last_test = now;
 }
 
 std::optional<sn_record> reachability_testing::next_random(
         const Swarm& swarm,
-        const time_point_t& now,
+        const clock::time_point& now,
         bool requeue) {
 
     if (next_general_test > now)
         return std::nullopt;
-    next_general_test = now + std::chrono::duration_cast<time_point_t::duration>(
+    next_general_test = now + std::chrono::duration_cast<clock::duration>(
             fseconds(TESTING_INTERVAL(util::rng())));
 
     // Pull the next element off the queue, but skip ourself, any that are no longer registered, and
@@ -96,7 +96,7 @@ std::optional<sn_record> reachability_testing::next_random(
 
 std::vector<std::pair<sn_record, int>> reachability_testing::get_failing(
         const Swarm& swarm,
-        const time_point_t& now) {
+        const clock::time_point& now) {
     // Our failing_queue puts the oldest retest times at the top, so pop them off into our result
     // until the top node should be retested sometime in the future
     std::vector<std::pair<sn_record, int>> result;
@@ -117,7 +117,7 @@ void reachability_testing::add_failing_node(const legacy_pubkey& pk, int previou
     using namespace std::chrono;
 
     if (previous_failures < 0) previous_failures = 0;
-    auto next_test_in = duration_cast<time_point_t::duration>(
+    auto next_test_in = duration_cast<clock::duration>(
             previous_failures * TESTING_BACKOFF + fseconds{TESTING_INTERVAL(util::rng())});
     if (next_test_in > TESTING_BACKOFF_MAX)
         next_test_in = TESTING_BACKOFF_MAX;
