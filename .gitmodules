@@ -22,3 +22,6 @@
 [submodule "vendors/SQLiteCpp"]
 	path = vendors/SQLiteCpp
 	url = https://github.com/SRombauts/SQLiteCpp.git
+[submodule "tests/pyoxenmq"]
+	path = tests/pyoxenmq
+	url = https://github.com/oxen-io/loki-pylokimq.git
