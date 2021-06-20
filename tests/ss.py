@@ -1,7 +1,10 @@
 import time
 import json
 import base64
+from nacl.encoding import HexEncoder, Base64Encoder
 from nacl.signing import SigningKey
+from nacl.hash import blake2b
+import random
 
 def expire_all(sk, *, delta=120, timestamp=None):
     ts = timestamp if timestamp else int((time.time() + delta) * 1000)
@@ -44,9 +47,43 @@ def delete_before(sk, *, ago=120, timestamp=None):
         separators=(',',':'))
 
 
-
-
 def get_swarm(omq, conn, sk):
     r = omq.request(conn, "storage.get_swarm", [json.dumps({"pubkey": sk.verify_key.encode().hex()}).encode()])
     assert(len(r) == 1)
     return json.loads(r[0])
+
+
+def random_swarm_members(swarm, n, exclude={}):
+    return random.sample([s for s in swarm['snodes'] if s['pubkey_ed25519'] not in exclude], n)
+
+
+def store_n(omq, conn, sk, basemsg, n, offset=0):
+    msgs = []
+    for i in range(n):
+        data = basemsg + "{}".format(i).encode()
+        ts = int((time.time() - i) * 1000)
+        exp = int((time.time() - i + 30) * 1000)
+        msgs.append({
+                "data": data,
+                "req": {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "expiry": exp,
+                    "data": base64.b64encode(data).decode()}
+                })
+        msgs[-1]['future'] = omq.request_future(conn, "storage.store", [json.dumps(msgs[-1]['req']).encode()])
+        msgs[-1]['hash'] = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + msgs[-1]['data'],
+                encoder=Base64Encoder).decode().rstrip('=')
+
+    assert len({m['hash'] for m in msgs}) == len(msgs)
+
+    for m in msgs:
+        resp = m['future'].get()
+        assert len(resp) == 1
+        m['store'] = json.loads(resp[0].decode())
+
+        assert len(m['store']['swarm']) >= 5
+        assert not any('failed' in v for v in m['store']['swarm'].values())
+        assert all(v['hash'] == m['hash'] for v in m['store']['swarm'].values())
+
+    return msgs

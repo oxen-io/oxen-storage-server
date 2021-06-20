@@ -4,6 +4,10 @@ import pyoxenmq
 import json
 import random
 
+def pytest_addoption(parser):
+    parser.addoption("--exclude", action="store", default="")
+
+
 @pytest.fixture(scope="module")
 def omq():
     omq = pyoxenmq.OxenMQ()
@@ -18,6 +22,7 @@ def sns(omq):
     assert(len(x) == 2 and x[0] == b'200')
     return json.loads(x[1])
 
+
 @pytest.fixture(scope="module")
 def random_sn(omq, sns):
     sn = random.choice(sns['service_node_states'])
@@ -31,3 +36,9 @@ def random_sn(omq, sns):
 def sk():
     from nacl.signing import SigningKey
     return SigningKey.generate()
+
+
+@pytest.fixture
+def exclude(pytestconfig):
+    s = pytestconfig.getoption("exclude")
+    return {s} if s and len(s) else {}
