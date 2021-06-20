@@ -259,8 +259,17 @@ static void load(retrieve& r, Dict& d) {
     if (last_hash) {
         if (last_hash->empty()) // Treat empty string as not provided
             last_hash.reset();
-        else if (last_hash->size() != 128 || !oxenmq::is_hex(*last_hash))
-            throw parse_error{"last_hash must be 128 hex digits long"};
+        else if (last_hash->size() == 43) {
+            if (!oxenmq::is_base64(*last_hash))
+                throw parse_error{"Invalid last_hash: not base64"};
+        }
+        // TODO: Old hash format, can remove 14+ days after 2.2.0 upgrade takes effect
+        else if (last_hash->size() == 128) {
+            if (!oxenmq::is_hex(*last_hash))
+                throw parse_error{"Invalid last_hash: not hex"};
+        }
+        else
+            throw parse_error{"Invalid last_hash: expected base64 (43 chars) or hex (128 chars)"};
     }
     r.last_hash = std::move(last_hash);
 }
