@@ -364,7 +364,7 @@ namespace {
 
 void HTTPSServer::create_endpoints(uWS::SSLApp& https)
 {
-    // Legacy target, can be removed post-HF19:
+    // Legacy target, can be removed post-HF18.1:
     https.post("/swarms/ping_test/v1", [this](HttpResponse* res, HttpRequest* req) {
         OXEN_LOG(trace, "Received (old) https ping_test");
         service_node_.update_last_ping(ReachType::HTTPS);
@@ -377,7 +377,7 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
         OXEN_LOG(trace, "Received https ping_test");
         service_node_.update_last_ping(ReachType::HTTPS);
         Response resp{http::OK};
-        resp.headers.emplace_back(http::SNODE_PUBKEY_HEADER, oxenmq::to_base64(legacy_keys_.first.hex()));
+        resp.headers.emplace_back(http::SNODE_PUBKEY_HEADER, oxenmq::to_base64(legacy_keys_.first.view()));
         queue_response_internal(*this, *res, std::move(resp));
     });
 
