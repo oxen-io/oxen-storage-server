@@ -59,7 +59,9 @@ json swarm_to_json(const SwarmInfo& swarm) {
                 {"pubkey_legacy", sn.pubkey_legacy.hex()},
                 {"pubkey_x25519", sn.pubkey_x25519.hex()},
                 {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
-                {"port", std::to_string(sn.port)}, // Why is this a string?
+                {"port", std::to_string(sn.port)}, // Deprecated port (as a string) for backwards compat; use "port_https" instead
+                {"port_https", sn.port},
+                {"port_omq", sn.omq_port},
                 {"ip", sn.ip}});
     }
 
