@@ -132,10 +132,11 @@ HTTPSServer::HTTPSServer(
         try {
             bool required_bind_failed = false;
             for (const auto& [addr, port, required] : bind)
-                https.listen(addr, port, [&listening, req=required, &required_bind_failed](us_listen_socket_t* sock) {
-                    if (sock) listening.push_back(sock);
-                    else if (req) required_bind_failed = true;
-                });
+                https.listen(addr, port, LIBUS_LISTEN_EXCLUSIVE_PORT,
+                        [&listening, req=required, &required_bind_failed](us_listen_socket_t* sock) {
+                            if (sock) listening.push_back(sock);
+                            else if (req) required_bind_failed = true;
+                        });
 
             if (listening.empty() || required_bind_failed) {
                 std::ostringstream error;
