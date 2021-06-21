@@ -176,7 +176,7 @@ bool verify_signature(
     std::string data = concatenate_sig_message_parts(val...);
     const auto& raw = pubkey.raw();
     const unsigned char* pk;
-    if (pubkey.type() == 5 && pk_ed25519) {
+    if ((pubkey.type() == 5 || (pubkey.type() == 0 && !is_mainnet)) && pk_ed25519) {
         pk = pk_ed25519->data();
 
         // Verify that the given ed pubkey actually converts to the x25519 pubkey
