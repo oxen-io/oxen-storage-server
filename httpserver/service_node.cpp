@@ -928,7 +928,8 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
         return;
     }
 
-    assert(oxenmq::is_hex(msg.hash));
+    // TODO: can drop the "is hex" part of this 14+ days after HF 18.1 takes effect
+    assert(oxenmq::is_hex(msg.hash) || oxenmq::is_base64(msg.hash));
 
     omq_server_->request(
         testee.pubkey_x25519.view(), "sn.storage_test",

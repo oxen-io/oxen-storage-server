@@ -35,7 +35,7 @@ std::string user_pubkey_t::prefixed_hex() const {
         return hex;
     hex.reserve(USER_PUBKEY_SIZE_HEX);
     auto bi = std::back_inserter(hex);
-    if (uint8_t netid = type(); !(netid != 0 && !is_mainnet))
+    if (uint8_t netid = type(); !(netid == 0 && !is_mainnet))
         oxenmq::to_hex(&netid, &netid+1, bi);
     oxenmq::to_hex(pubkey_.begin(), pubkey_.end(), bi);
     return hex;
