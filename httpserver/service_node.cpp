@@ -874,7 +874,7 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
                                         const message& msg) {
 
     if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
-        // Deprecated HTTPS storage test: remove after HF19
+        // Deprecated HTTPS storage test: remove after HF18.1
         cpr::Body body{json{{"height", test_height}, {"hash", msg.hash}}.dump()};
         cpr::Header headers{
             {"Host", testee.pubkey_ed25519
@@ -929,7 +929,12 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
     }
 
     // TODO: can drop the "is hex" part of this 14+ days after HF 18.1 takes effect
-    assert(oxenmq::is_hex(msg.hash) || oxenmq::is_base64(msg.hash));
+    bool is_hex = msg.hash.size() == 128;
+    bool is_b64 = !is_hex && oxenmq::is_base64(msg.hash);
+    if (!is_hex && !is_b64) {
+        OXEN_LOG(err, "Unable to initiate storage test: retrieved msg hash is neither SHA512+hex nor BLAKE2b+base64");
+        return;
+    }
 
     omq_server_->request(
         testee.pubkey_x25519.view(), "sn.storage_test",
@@ -945,7 +950,7 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
         oxenmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
         // Data parts: test height and msg hash (in bytes)
         std::to_string(block_height_),
-        oxenmq::from_hex(msg.hash)
+        is_hex ? oxenmq::from_hex(msg.hash) : oxenmq::from_base64(msg.hash)
     );
 }
 

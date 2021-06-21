@@ -6,6 +6,7 @@
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "channel_encryption.hpp"
+#include "oxenmq/base64.h"
 #include "rate_limiter.h"
 #include "request_handler.h"
 #include "service_node.h"
@@ -91,13 +92,20 @@ void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
                 tester_pk, message.remote, height);
         return message.send_reply("invalid height");
     }
-    if (message.data[1].size() != 64) {
-        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, expected 64",
+    std::string msg_hash;
+    if (message.data[1].size() == 64)
+        msg_hash = oxenmq::to_hex(message.data[1]);
+    else if (message.data[1].size() == 32) {
+        msg_hash = oxenmq::to_base64(message.data[1]);
+        assert(msg_hash.back() == '=');
+        msg_hash.pop_back();
+    } else {
+        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, expected 64 or 32",
                 tester_pk, message.remote, message.data[1].size());
         return message.send_reply("invalid msg hash");
     }
 
-    request_handler_->process_storage_test_req(height, tester_pk, oxenmq::to_hex(message.data[1]),
+    request_handler_->process_storage_test_req(height, tester_pk, msg_hash,
             [reply=message.send_later()](MessageTestStatus status, std::string answer, std::chrono::steady_clock::duration elapsed) {
                 switch (status) {
                     case MessageTestStatus::SUCCESS:
