@@ -57,7 +57,7 @@ def random_swarm_members(swarm, n, exclude={}):
     return random.sample([s for s in swarm['snodes'] if s['pubkey_ed25519'] not in exclude], n)
 
 
-def store_n(omq, conn, sk, basemsg, n, offset=0):
+def store_n(omq, conn, sk, basemsg, n, offset=0, netid=5):
     msgs = []
     for i in range(n):
         data = basemsg + "{}".format(i).encode()
@@ -66,13 +66,13 @@ def store_n(omq, conn, sk, basemsg, n, offset=0):
         msgs.append({
                 "data": data,
                 "req": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "pubkey": "{:02x}".format(netid) + sk.verify_key.encode().hex(),
                     "timestamp": ts,
                     "expiry": exp,
                     "data": base64.b64encode(data).decode()}
                 })
         msgs[-1]['future'] = omq.request_future(conn, "storage.store", [json.dumps(msgs[-1]['req']).encode()])
-        msgs[-1]['hash'] = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + msgs[-1]['data'],
+        msgs[-1]['hash'] = blake2b("{}{}".format(ts, exp).encode() + chr(netid).encode() + sk.verify_key.encode() + msgs[-1]['data'],
                 encoder=Base64Encoder).decode().rstrip('=')
 
     assert len({m['hash'] for m in msgs}) == len(msgs)

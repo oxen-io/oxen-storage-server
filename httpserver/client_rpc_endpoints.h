@@ -220,7 +220,7 @@ struct delete_all final : recursive {
 /// be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 /// hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert to
 /// the given `pubkey` value (without the `05` prefix).
-/// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stores messages
+/// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stored messages
 ///   with timestamps <= this value will be deleted.  Should be <= now, but tolerance acceptance
 ///   allows it to be <= 60s from now.
 /// - signature -- Ed25519 signature of ("delete_before" || before), signed by `pubkey`.  Must be
