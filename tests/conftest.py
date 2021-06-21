@@ -27,7 +27,6 @@ def sns(omq):
 def random_sn(omq, sns):
     sn = random.choice(sns['service_node_states'])
     addr = "curve://{}:{}/{}".format(sn['public_ip'], sn['storage_lmq_port'], sn['pubkey_x25519'])
-    print(addr)
     conn = omq.connect_remote(addr)
     return conn
 

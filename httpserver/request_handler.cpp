@@ -706,7 +706,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "expire", req.messages)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "expire", req.expiry, req.messages)) {
         OXEN_LOG(debug, "expire_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_msgs signature verification failed"sv});
     }
