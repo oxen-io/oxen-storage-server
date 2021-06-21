@@ -50,7 +50,7 @@ def test_delete_all(omq, random_sn, sk, exclude):
 
 
 def test_delete(omq, random_sn, sk, exclude):
-    swarm = ss.get_swarm(omq, random_sn, sk)
+    swarm = ss.get_swarm(omq, random_sn, sk, netid=2)
     sns = ss.random_swarm_members(swarm, 2, exclude)
     conns = [omq.connect_remote("curve://{}:{}/{}".format(sn['ip'], sn['port_omq'], sn['pubkey_x25519']))
             for sn in sns]

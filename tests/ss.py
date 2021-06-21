@@ -47,8 +47,9 @@ def delete_before(sk, *, ago=120, timestamp=None):
         separators=(',',':'))
 
 
-def get_swarm(omq, conn, sk):
-    r = omq.request(conn, "storage.get_swarm", [json.dumps({"pubkey": sk.verify_key.encode().hex()}).encode()])
+def get_swarm(omq, conn, sk, netid=5):
+    pubkey = "{:02x}".format(netid) + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode().hex()
+    r = omq.request(conn, "storage.get_swarm", [json.dumps({"pubkey": pubkey}).encode()])
     assert(len(r) == 1)
     return json.loads(r[0])
 
@@ -59,6 +60,7 @@ def random_swarm_members(swarm, n, exclude={}):
 
 def store_n(omq, conn, sk, basemsg, n, offset=0, netid=5):
     msgs = []
+    pubkey = chr(netid).encode() + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode()
     for i in range(n):
         data = basemsg + "{}".format(i).encode()
         ts = int((time.time() - i) * 1000)
@@ -66,13 +68,13 @@ def store_n(omq, conn, sk, basemsg, n, offset=0, netid=5):
         msgs.append({
                 "data": data,
                 "req": {
-                    "pubkey": "{:02x}".format(netid) + sk.verify_key.encode().hex(),
+                    "pubkey": pubkey.hex(),
                     "timestamp": ts,
                     "expiry": exp,
                     "data": base64.b64encode(data).decode()}
                 })
         msgs[-1]['future'] = omq.request_future(conn, "storage.store", [json.dumps(msgs[-1]['req']).encode()])
-        msgs[-1]['hash'] = blake2b("{}{}".format(ts, exp).encode() + chr(netid).encode() + sk.verify_key.encode() + msgs[-1]['data'],
+        msgs[-1]['hash'] = blake2b("{}{}".format(ts, exp).encode() + pubkey + msgs[-1]['data'],
                 encoder=Base64Encoder).decode().rstrip('=')
 
     assert len({m['hash'] for m in msgs}) == len(msgs)
