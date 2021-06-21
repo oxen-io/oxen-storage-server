@@ -23,6 +23,7 @@
 #include <oxenmq/hex.h>
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_sign.h>
+#include <sodium/crypto_scalarmult_curve25519.h>
 #include <type_traits>
 #include <variant>
 
@@ -167,15 +168,31 @@ std::string concatenate_sig_message_parts(const T&... vals) {
 }
 
 template <typename... T>
-bool verify_signature(const user_pubkey_t& pubkey, const std::array<unsigned char, 64>& sig, const T&... val) {
+bool verify_signature(
+        const user_pubkey_t& pubkey,
+        const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
+        const std::array<unsigned char, 64>& sig,
+        const T&... val) {
     std::string data = concatenate_sig_message_parts(val...);
-    const auto& pk = pubkey.raw();
+    const auto& raw = pubkey.raw();
+    const unsigned char* pk;
+    if (pubkey.type() == 5 && pk_ed25519) {
+        pk = pk_ed25519->data();
+
+        // Verify that the given ed pubkey actually converts to the x25519 pubkey
+        std::array<unsigned char, crypto_scalarmult_curve25519_BYTES> xpk;
+        if (crypto_sign_ed25519_pk_to_curve25519(xpk.data(), pk) != 0
+                || std::memcmp(xpk.data(), raw.data(), crypto_scalarmult_curve25519_BYTES) != 0)
+            return false;
+    }
+    else
+        pk = reinterpret_cast<const unsigned char*>(raw.data());
 
     return 0 == crypto_sign_verify_detached(
             sig.data(),
             reinterpret_cast<const unsigned char*>(data.data()),
             data.size(),
-            reinterpret_cast<const unsigned char*>(pk.data()));
+            pk);
 }
 
 template <typename... T>
@@ -536,7 +553,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "delete_all timestamp too far from current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, "delete_all", req.timestamp)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "delete_all", req.timestamp)) {
         OXEN_LOG(debug, "delete_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_all signature verification failed"sv});
     }
@@ -570,7 +587,7 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
-    if (!verify_signature(req.pubkey, req.signature, "delete", req.messages)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "delete", req.messages)) {
         OXEN_LOG(debug, "delete_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
     }
@@ -610,7 +627,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "delete_before timestamp too far in the future"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, "delete_before", req.before)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "delete_before", req.before)) {
         OXEN_LOG(debug, "delete_before: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_before signature verification failed"sv});
     }
@@ -650,7 +667,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, "expire_all", req.expiry)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "expire_all", req.expiry)) {
         OXEN_LOG(debug, "expire_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_all signature verification failed"sv});
     }
@@ -689,7 +706,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
     }
 
-    if (!verify_signature(req.pubkey, req.signature, "expire", req.messages)) {
+    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "expire", req.messages)) {
         OXEN_LOG(debug, "expire_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_msgs signature verification failed"sv});
     }

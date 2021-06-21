@@ -159,13 +159,28 @@ template <typename RPC, typename Dict>
 static void load_pk_signature(
         RPC &rpc,
         const Dict&,
-        std::optional<std::string> pk,
-        std::optional<std::string_view> sig) {
+        const std::optional<std::string>& pk,
+        const std::optional<std::string_view>& pk_ed,
+        const std::optional<std::string_view>& sig) {
     require("pubkey", pk);
     require("signature", sig);
     if (!rpc.pubkey.load(std::move(*pk)))
         throw parse_error{fmt::format("Pubkey must be {} hex digits ({} bytes) long",
                 USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
+
+    if (pk_ed) {
+        if (rpc.pubkey.type() != 5)
+            throw parse_error{"pubkey_ed25519 is only permitted for 05[...] pubkeys"};
+        if (pk_ed->size() == 64) {
+            if (!oxenmq::is_hex(*pk_ed))
+                throw parse_error{"invalid pubkey_ed25519: value is not hex"};
+            oxenmq::from_hex(pk_ed->begin(), pk_ed->end(), rpc.pubkey_ed25519.emplace().begin());
+        } else if (pk_ed->size() == 32) {
+            std::memcpy(rpc.pubkey_ed25519.emplace().data(), pk_ed->data(), pk_ed->size());
+        } else {
+            throw parse_error{"Invalid pubkey_ed25519: expected 64 hex char or 32 byte pubkey"};
+        }
+    }
 
     if constexpr (std::is_same_v<json, Dict>) {
         if (!oxenmq::is_base64(*sig) || !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
@@ -287,11 +302,11 @@ static bool is_valid_message_hash(std::string_view hash) {
 
 template <typename Dict>
 static void load(delete_msgs& dm, Dict& d) {
-    auto [messages, pubkey, signature] =
-        load_fields<std::vector<std::string>, std::string, std::string_view>(
-            d, "messages", "pubkey", "signature");
+    auto [messages, pubkey, pubkey_ed25519, signature] =
+        load_fields<std::vector<std::string>, std::string, std::string_view, std::string_view>(
+            d, "messages", "pubkey", "pubkey_ed25519", "signature");
 
-    load_pk_signature(dm, d, pubkey, signature);
+    load_pk_signature(dm, d, pubkey, pubkey_ed25519, signature);
     require("messages", messages);
     dm.messages = std::move(*messages);
     if (dm.messages.empty())
@@ -316,11 +331,11 @@ bt_value delete_msgs::to_bt() const {
 
 template <typename Dict>
 static void load(delete_all& da, Dict& d) {
-    auto [pubkey, signature, timestamp] =
-        load_fields<std::string, std::string_view, system_clock::time_point>(
-            d, "pubkey", "signature", "timestamp");
+    auto [pubkey, pubkey_ed25519, signature, timestamp] =
+        load_fields<std::string, std::string_view, std::string_view, system_clock::time_point>(
+            d, "pubkey", "pubkey_ed25519", "signature", "timestamp");
 
-    load_pk_signature(da, d, pubkey, signature);
+    load_pk_signature(da, d, pubkey, pubkey_ed25519, signature);
     require("timestamp", timestamp);
     da.timestamp = std::move(*timestamp);
 }
@@ -336,11 +351,11 @@ bt_value delete_all::to_bt() const {
 
 template <typename Dict>
 static void load(delete_before& db, Dict& d) {
-    auto [before, pubkey, signature] =
-        load_fields<system_clock::time_point, std::string, std::string_view>(
-            d, "before", "pubkey", "signature");
+    auto [before, pubkey, pubkey_ed25519, signature] =
+        load_fields<system_clock::time_point, std::string, std::string_view, std::string_view>(
+            d, "before", "pubkey", "pubkey_ed25519", "signature");
 
-    load_pk_signature(db, d, pubkey, signature);
+    load_pk_signature(db, d, pubkey, pubkey_ed25519, signature);
     require("before", before);
     db.before = std::move(*before);
 }
@@ -356,11 +371,11 @@ bt_value delete_before::to_bt() const {
 
 template <typename Dict>
 static void load(expire_all& e, Dict& d) {
-    auto [expiry, pubkey, signature] =
-        load_fields<system_clock::time_point, std::string, std::string_view>(
-            d, "expiry", "pubkey", "signature");
+    auto [expiry, pubkey, pubkey_ed25519, signature] =
+        load_fields<system_clock::time_point, std::string, std::string_view, std::string_view>(
+            d, "expiry", "pubkey", "pubkey_ed25519", "signature");
 
-    load_pk_signature(e, d, pubkey, signature);
+    load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
 }
@@ -376,11 +391,11 @@ bt_value expire_all::to_bt() const {
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
-    auto [expiry, messages, pubkey, signature] =
-        load_fields<system_clock::time_point, std::vector<std::string>, std::string, std::string_view>(
-            d, "expiry", "messages", "pubkey", "signature");
+    auto [expiry, messages, pubkey, pubkey_ed25519, signature] =
+        load_fields<system_clock::time_point, std::vector<std::string>, std::string, std::string_view, std::string_view>(
+            d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature");
 
-    load_pk_signature(e, d, pubkey, signature);
+    load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     require("messages", messages);
