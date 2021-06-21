@@ -321,11 +321,15 @@ bt_value delete_msgs::to_bt() const {
     bt_list msgs;
     for (auto& m : messages)
         msgs.emplace_back(std::string_view{m});
-    return bt_dict{
+    bt_dict ret{
         {"pubkey", pubkey.prefixed_raw()},
         {"messages", std::move(msgs)},
         {"signature", util::view_guts(signature)},
     };
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+            reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
 }
 
 
@@ -342,11 +346,15 @@ static void load(delete_all& da, Dict& d) {
 void delete_all::load_from(json params) { load(*this, params); }
 void delete_all::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value delete_all::to_bt() const {
-    return bt_dict{
+    bt_dict ret{
         {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
         {"timestamp", to_epoch_ms(timestamp)}
     };
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+            reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
 }
 
 template <typename Dict>
@@ -362,11 +370,15 @@ static void load(delete_before& db, Dict& d) {
 void delete_before::load_from(json params) { load(*this, params); }
 void delete_before::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value delete_before::to_bt() const {
-    return bt_dict{
+    bt_dict ret{
         {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
         {"before", to_epoch_ms(before)}
     };
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+            reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
 }
 
 template <typename Dict>
@@ -382,11 +394,15 @@ static void load(expire_all& e, Dict& d) {
 void expire_all::load_from(json params) { load(*this, params); }
 void expire_all::load_from(bt_dict_consumer params) { load(*this, params); }
 bt_value expire_all::to_bt() const {
-    return bt_dict{
+    bt_dict ret{
         {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
         {"expiry", to_epoch_ms(expiry)}
     };
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+            reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
 }
 
 template <typename Dict>
@@ -412,12 +428,16 @@ bt_value expire_msgs::to_bt() const {
     bt_list msgs;
     for (const auto& m : messages)
         msgs.emplace_back(std::string_view{m});
-    return bt_dict{
+    bt_dict ret{
         {"pubkey", pubkey.prefixed_raw()},
         {"signature", util::view_guts(signature)},
         {"expiry", to_epoch_ms(expiry)},
         {"messages", std::move(msgs)},
     };
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+            reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
 }
 
 template <typename Dict>
