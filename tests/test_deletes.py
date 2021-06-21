@@ -49,6 +49,36 @@ def test_delete_all(omq, random_sn, sk, exclude):
     assert not r['messages']
 
 
+def test_stale_delete_all(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk)
+    sn = ss.random_swarm_members(swarm, 2, exclude)[0]
+    conn = omq.connect_remote("curve://{}:{}/{}".format(sn['ip'], sn['port_omq'], sn['pubkey_x25519']))
+
+    msgs = ss.store_n(omq, conn, sk, b"omg123", 5)
+
+    my_ss_id = '05' + sk.verify_key.encode().hex()
+
+    ts = int((time.time() - 120) * 1000)
+    to_sign = "delete_all{}".format(ts).encode()
+    sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+    params = {
+            "pubkey": my_ss_id,
+            "timestamp": ts,
+            "signature": sig
+    }
+
+    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    assert resp == [b'406', b'delete_all timestamp too far from current time']
+
+    ts = int((time.time() + 120) * 1000)
+    to_sign = "delete_all{}".format(ts).encode()
+    sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+    params["signature"] = sig
+
+    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    assert resp == [b'406', b'delete_all timestamp too far from current time']
+
+
 def test_delete(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk, netid=2)
     sns = ss.random_swarm_members(swarm, 2, exclude)
