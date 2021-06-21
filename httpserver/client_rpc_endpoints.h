@@ -157,10 +157,11 @@ struct info final : no_args {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": list of hashes of messages that were found and deleted
+///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii value
 ///     - "signature": signature of:
 ///             ( PUBKEY_HEX || RMSG[0] || ... || RMSG[N] || DMSG[0] || ... || DMSG[M] )
-///       where RMSG are the requested deletion hashes and DMSG are the actual deletion hashes.
+///       where RMSG are the requested deletion hashes and DMSG are the actual deletion hashes (note
+///       that DMSG... and RMSG... will not necessarily be in the same order or of the same length).
 ///       The signature uses the node's ed25519 pubkey.
 struct delete_msgs final : recursive {
     static constexpr auto names() { return NAMES("delete"); }
@@ -194,7 +195,7 @@ struct delete_msgs final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": hashes of deleted messages.
+///     - "deleted": hashes of deleted messages, sorted by ascii value
 ///     - "signature": signature of ( PUBKEY_HEX || TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
 ///       by the node's ed25519 pubkey.
 struct delete_all final : recursive {
@@ -228,7 +229,7 @@ struct delete_all final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": hashes of deleted messages.
+///     - "deleted": hashes of deleted messages, sorted by ascii value
 ///     - "signature": signature of ( PUBKEY_HEX || BEFORE || DELETEDHASH[0] || ... || DELETEDHASH[N] ), signed
 ///       by the node's ed25519 pubkey.
 struct delete_before final : recursive {
@@ -262,7 +263,9 @@ struct delete_before final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": dict of hashes that had their expiries updated to `expiry`
+///     - "updated": list of (ascii-sorted) hashes that had their expiries updated to `expiry`;
+///       messages that did not exist or that already had an expiry <= the given expiry are not
+///       included.
 ///     - "signature": signature of ( PUBKEY_HEX || EXPIRY || UPDATED[0] || ... || UPDATED[N] ), signed
 ///       by the node's ed25519 pubkey.
 struct expire_all final : recursive {
@@ -297,10 +300,11 @@ struct expire_all final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": list of hashes of messages that had their expiries updated
+///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated
+///       (messages that already had an expiry <= the given expiry are not included).
 ///     - "signature": signature of:
 ///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
-///       where RMSG are the requested deletion hashes and UMSG are the actual updated hashes.
+///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.
 ///       The signature uses the node's ed25519 pubkey.
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
