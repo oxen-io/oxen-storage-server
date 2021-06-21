@@ -261,17 +261,6 @@ std::string computeMessageHash(
 
 
 
-bool validateTimestamp(system_clock::time_point timestamp, system_clock::time_point expiry) {
-    auto now = system_clock::now();
-    return timestamp <= now + 10s // Timestamp must not be in the future (with some tolerance)
-        && expiry >= now - 10s; // Expiry must not be in the past (with some tolerance)
-}
-
-bool validateTTL(system_clock::duration ttl) {
-    return ttl >= TTL_MINIMUM && ttl <= TTL_MAXIMUM;
-}
-
-
 RequestHandler::RequestHandler(
         ServiceNode& sn,
         const ChannelEncryption& ce,
@@ -404,11 +393,12 @@ void RequestHandler::process_client_req(
 
     using namespace std::chrono;
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
-    if (!validateTTL(ttl)) {
+    if (ttl < TTL_MINIMUM || ttl > TTL_MAXIMUM) {
         OXEN_LOG(warn, "Forbidden. Invalid TTL: {}ms", ttl.count());
         return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
     }
-    if (!validateTimestamp(req.timestamp, req.expiry)) {
+    if (auto now = system_clock::now();
+            req.timestamp > now + STORE_TOLERANCE || req.expiry < now - STORE_TOLERANCE) {
         OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}", to_epoch_ms(req.timestamp));
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
@@ -548,9 +538,10 @@ void RequestHandler::process_client_req(
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
-    if (req.timestamp < now - 1min || req.timestamp > now + 1min) {
+    const auto tolerance = req.recurse ? SIGNATURE_TOLERANCE : SIGNATURE_TOLERANCE_FORWARDED;
+    if (req.timestamp < now - tolerance || req.timestamp > now + tolerance) {
         OXEN_LOG(debug, "delete_all: invalid timestamp ({}s from now)", duration_cast<seconds>(req.timestamp - now).count());
-        return cb(Response{http::UNAUTHORIZED, "delete_all timestamp too far from current time"sv});
+        return cb(Response{http::NOT_ACCEPTABLE, "delete_all timestamp too far from current time"sv});
     }
 
     if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "delete_all", req.timestamp)) {
@@ -662,9 +653,9 @@ void RequestHandler::process_client_req(
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
-    if (req.expiry < now - 1min) {
+    if (req.expiry < now - (req.recurse ? SIGNATURE_TOLERANCE : SIGNATURE_TOLERANCE_FORWARDED)) {
         OXEN_LOG(debug, "expire_all: invalid timestamp ({}s ago)", duration_cast<seconds>(now - req.expiry).count());
-        return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
+        return cb(Response{http::NOT_ACCEPTABLE, "expire_all timestamp should be >= current time"sv});
     }
 
     if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "expire_all", req.expiry)) {

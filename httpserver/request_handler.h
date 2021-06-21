@@ -32,6 +32,17 @@ inline constexpr auto TEST_RETRY_PERIOD = 55s;
 inline constexpr auto TTL_MINIMUM = 10s;
 inline constexpr auto TTL_MAXIMUM = 14 * 24h;
 
+// Tolerance for store requests: we don't allow stores with a timestamp more than this into the
+// future, and don't allow stores with an expiry in the past by more than this amount.
+inline constexpr auto STORE_TOLERANCE = 10s;
+
+// Tolerance for timestamp-dependent, signed requests (such as `delete_all`); we accept the initial
+// request if within SIGNATURE_TOLERANCE of now, and accept a recursive request if within
+// SIGNATURE_TOLERANCE_FORWARDED (generally slightly larger to account for swarm forwarding
+// latency).
+inline constexpr auto SIGNATURE_TOLERANCE = 60s;
+inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
+
 
 // Simpler wrapper that works for most of our responses
 struct Response {
@@ -104,14 +115,6 @@ std::string computeMessageHash(
         const user_pubkey_t& pubkey,
         std::string_view data,
         bool old);
-
-// Validates a TTL value to see if it is acceptable.
-bool validateTTL(std::chrono::system_clock::duration ttl);
-
-// Validates a timestamp to see if it is acceptable.  Takes the timestamp and the expiry (when using
-// a ttl, give expiry as timestamp+ttl).
-bool validateTimestamp(std::chrono::system_clock::time_point timestamp, std::chrono::system_clock::time_point expiry);
-
 
 struct OnionRequestMetadata {
     x25519_pubkey ephem_key;
