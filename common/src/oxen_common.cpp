@@ -13,10 +13,10 @@ user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
         network_ = static_cast<uint8_t>(pk.front());
         pubkey_ = pk.substr(1);
     } else if (!is_mainnet && pk.size() == USER_PUBKEY_SIZE_HEX - 2 && oxenmq::is_hex(pk)) {
-        network_ = 0;
+        network_ = 5;
         pubkey_ = oxenmq::from_hex(pk);
     } else if (!is_mainnet && pk.size() == USER_PUBKEY_SIZE_BYTES - 1) {
-        network_ = 0;
+        network_ = 5;
         pubkey_ = pk;
     } else {
         network_ = -1;
