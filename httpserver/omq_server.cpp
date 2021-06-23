@@ -437,7 +437,7 @@ OxenmqServer::OxenmqServer(
         10 * 1024 * 1024; // 10 MB (needed by the fileserver, and swarm msg serialization)
 
     // Be explicit about wanting per-SN unique connection IDs:
-    omq_.EPHEMERAL_ROUTING_ID = true;
+    omq_.EPHEMERAL_ROUTING_ID = false;
 }
 
 void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
