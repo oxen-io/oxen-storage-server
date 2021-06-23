@@ -10,12 +10,16 @@
 #include "rate_limiter.h"
 #include "request_handler.h"
 #include "service_node.h"
+#include "string_utils.hpp"
 
+#include <chrono>
+#include <exception>
 #include <nlohmann/json.hpp>
 #include <oxenmq/bt_serialize.h>
 #include <oxenmq/hex.h>
 
 #include <optional>
+#include <stdexcept>
 #include <variant>
 
 namespace oxen {
@@ -391,15 +395,6 @@ OxenmqServer::OxenmqServer(
     for (const auto& key : stats_access_keys)
         stats_access_keys_.emplace(key.view());
 
-    OXEN_LOG(info, "OxenMQ is listenting on port {}", me.omq_port);
-
-    omq_.listen_curve(
-        fmt::format("tcp://0.0.0.0:{}", me.omq_port),
-        [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
-            return stats_access_keys_.count(std::string{pk})
-                ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;
-        });
-
     // clang-format off
 
     // Endpoints invoked by other SNs
@@ -447,28 +442,74 @@ OxenmqServer::OxenmqServer(
 
 void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
     // Establish our persistent connection to oxend.
-    oxend_conn_ = omq_.connect_remote(oxend_rpc,
-        [this](auto&&) {
-            OXEN_LOG(info, "connection to oxend established");
-            service_node_->on_oxend_connected();
-        },
-        [this, oxend_rpc](auto&&, std::string_view reason) {
-            OXEN_LOG(warn, "failed to connect to local oxend @ {}: {}; retrying", oxend_rpc, reason);
-            connect_oxend(oxend_rpc);
-        },
-        // Turn this off since we are using oxenmq's own key and don't want to replace some existing
-        // connection to it that might also be using that pubkey:
-        oxenmq::connect_option::ephemeral_routing_id{},
-        oxenmq::AuthLevel::admin);
+    auto start = std::chrono::steady_clock::now();
+    while (true) {
+        std::promise<bool> prom;
+        OXEN_LOG(info, "Establishing connection to oxend...");
+        omq_.connect_remote(oxend_rpc,
+            [this, &prom](auto cid) { oxend_conn_ = cid; prom.set_value(true); },
+            [&prom, &oxend_rpc](auto&&, std::string_view reason) {
+                OXEN_LOG(warn, "failed to connect to local oxend @ {}: {}; retrying", oxend_rpc, reason);
+                prom.set_value(false);
+            },
+            // Turn this off since we are using oxenmq's own key and don't want to replace some existing
+            // connection to it that might also be using that pubkey:
+            oxenmq::connect_option::ephemeral_routing_id{},
+            oxenmq::AuthLevel::admin);
+
+        if (prom.get_future().get()) {
+            OXEN_LOG(info, "Connected to oxend in {}",
+                    util::short_duration(std::chrono::steady_clock::now() - start));
+            break;
+        }
+        std::this_thread::sleep_for(500ms);
+    }
 }
 
 void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc) {
+    // Initialization happens in 3 steps:
+    // - connect to oxend
+    // - get initial block update from oxend
+    // - start OMQ and HTTPS listeners
     assert(!service_node_);
     service_node_ = sn;
     request_handler_ = rh;
     rate_limiter_ = rl;
     omq_.start();
+    // Block until we are connected to oxend:
     connect_oxend(oxend_rpc);
+
+    // Block until we get a block update from oxend:
+    service_node_->on_oxend_connected();
+
+    // start omq listener
+    const auto& me = service_node_->own_address();
+    OXEN_LOG(info, "Starting listening for OxenMQ connections on port {}", me.omq_port);
+    auto omq_prom = std::make_shared<std::promise<void>>();
+    auto omq_future = omq_prom->get_future();
+    omq_.listen_curve(
+        fmt::format("tcp://0.0.0.0:{}", me.omq_port),
+        [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
+            return stats_access_keys_.count(std::string{pk})
+                ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;
+        },
+        [prom=std::move(omq_prom)](bool listen_success) {
+            if (listen_success)
+                prom->set_value();
+            else {
+                try { throw std::runtime_error{""}; }
+                catch (...) { prom->set_exception(std::current_exception()); }
+            }
+        });
+    try {
+        omq_future.get();
+    } catch (const std::runtime_error&) {
+        auto msg = fmt::format("OxenMQ server failed to bind to port {}", me.omq_port);
+        OXEN_LOG(critical, msg);
+        throw std::runtime_error{msg};
+    }
+
+    // The https server startup happens in main(), after we return
 }
 
 std::string OxenmqServer::encode_onion_data(std::string_view payload, const OnionRequestMetadata& data) {

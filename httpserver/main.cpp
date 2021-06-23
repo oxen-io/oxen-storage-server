@@ -115,10 +115,6 @@ int main(int argc, char* argv[]) {
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
     OXEN_LOG(info, "Setting database location to {}", data_dir);
     OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
-    OXEN_LOG(info, "HTTPS server is listening at {}:{}", options.ip,
-             options.port);
-    OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
-             options.omq_port);
 
     if (sodium_init() != 0) {
         OXEN_LOG(err, "Could not initialize libsodium");

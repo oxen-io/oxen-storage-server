@@ -87,6 +87,8 @@ class OxenmqServer {
     // Access pubkeys for the 'service' command category (for access stats & logs), in binary.
     std::unordered_set<std::string> stats_access_keys_;
 
+    // Connects (and blocks until connected) to oxend.  When this returns an oxend connection will
+    // be available (and oxend_conn_ will be set to the connection id to reach it).
     void connect_oxend(const oxenmq::address& oxend_rpc);
 
   public:
@@ -95,7 +97,8 @@ class OxenmqServer {
             const x25519_seckey& privkey,
             const std::vector<x25519_pubkey>& stats_access_keys_hex);
 
-    // Initialize oxenmq
+    // Initialize oxenmq; return a future that completes once we have connected to and initialized
+    // from oxend.
     void init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc);
 
     /// Dereferencing via * or -> accesses the contained OxenMQ instance.

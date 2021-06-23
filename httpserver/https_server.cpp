@@ -133,15 +133,23 @@ HTTPSServer::HTTPSServer(
             bool required_bind_failed = false;
             for (const auto& [addr, port, required] : bind)
                 https.listen(addr, port, LIBUS_LISTEN_EXCLUSIVE_PORT,
-                        [&listening, req=required, &required_bind_failed](us_listen_socket_t* sock) {
-                            if (sock) listening.push_back(sock);
-                            else if (req) required_bind_failed = true;
+                        [&listening, req=required, &required_bind_failed, addr=fmt::format("{}:{}", addr, port)]
+                        (us_listen_socket_t* sock) {
+                            if (sock) {
+                                OXEN_LOG(info, "HTTPS server listening at {}", addr);
+                                listening.push_back(sock);
+                            } else if (req) {
+                                required_bind_failed = true;
+                                OXEN_LOG(critical, "HTTPS server failed to bind to required address {}", addr);
+                            } else {
+                                OXEN_LOG(warn, "HTTPS server failed to bind to (non-required) address {}", addr);
+                            }
                         });
 
             if (listening.empty() || required_bind_failed) {
                 std::ostringstream error;
                 error << "RPC HTTP server failed to bind; ";
-                if (listening.empty()) error << "no valid bind address(es) given";
+                if (listening.empty()) error << "no valid bind address(es) given; ";
                 error << "tried to bind to:";
                 for (const auto& [addr, port, required] : bind)
                     error << ' ' << addr << ':' << port;

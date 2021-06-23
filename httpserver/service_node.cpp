@@ -12,6 +12,7 @@
 #include "version.h"
 
 #include <boost/endian/conversion.hpp>
+#include <chrono>
 #include <cpr/cpr.h>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -80,11 +81,22 @@ ServiceNode::ServiceNode(
 }
 
 void ServiceNode::on_oxend_connected() {
+    auto started = std::chrono::steady_clock::now();
     update_swarms();
     oxend_ping();
     omq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
     omq_server_->add_timer([this] { ping_peers(); },
             reachability_testing::TESTING_TIMER_INTERVAL);
+
+    std::unique_lock lock{first_response_mutex_};
+    while (true) {
+        if (first_response_cv_.wait_for(lock, 5s, [this] { return got_first_response_; })) {
+            OXEN_LOG(info, "Got initial block update from oxend in {}", util::short_duration(
+                        std::chrono::steady_clock::now() - started));
+            break;
+        }
+        OXEN_LOG(warn, "Still waiting for initial block update from oxend...");
+    }
 }
 
 template <typename T>
@@ -543,7 +555,7 @@ void ServiceNode::update_swarms() {
         return;
     }
 
-    std::lock_guard guard(sn_mutex_);
+    std::lock_guard lock{sn_mutex_};
 
     OXEN_LOG(debug, "Swarm update triggered");
 
@@ -575,13 +587,16 @@ void ServiceNode::update_swarms() {
                 return;
             }
             try {
-                std::lock_guard guard(sn_mutex_);
+                std::lock_guard lock{sn_mutex_};
                 block_update bu = parse_swarm_update(data[1]);
                 if (!got_first_response_) {
-                    OXEN_LOG(
-                        info,
-                        "Got initial swarm information from local Oxend");
-                    got_first_response_ = true;
+                    OXEN_LOG(info, "Got initial swarm information from local Oxend");
+
+                    {
+                        std::lock_guard l{first_response_mutex_};
+                        got_first_response_ = true;
+                    }
+                    first_response_cv_.notify_all();
 
 #ifndef INTEGRATION_TEST
                     // If this is our very first response then we *may* want to try falling back to

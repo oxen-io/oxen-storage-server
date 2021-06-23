@@ -88,10 +88,14 @@ std::string short_duration(std::chrono::duration<double> dur) {
     if (dur >= 1s)
         return fmt::format("{:.1f}s", dur / 1s);
 
-    if (dur >= 1ms)
+    if (dur >= 100ms)
         return fmt::format(u8"{:.0f}ms", dur / 1ms);
-    if (dur >= 1us)
+    if (dur >= 1ms)
+        return fmt::format(u8"{:.1f}ms", dur / 1ms);
+    if (dur >= 100us)
         return fmt::format(u8"{:.0f}µs", dur / 1us);
+    if (dur >= 1us)
+        return fmt::format(u8"{:.1f}µs", dur / 1us);
     if (dur >= 1ns)
         return fmt::format(u8"{:.0f}ns", dur / 1ns);
     return "0s";

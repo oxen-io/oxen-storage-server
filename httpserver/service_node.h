@@ -67,6 +67,8 @@ class ServiceNode {
     bool syncing_ = true;
     bool active_ = false;
     bool got_first_response_ = false;
+    std::condition_variable first_response_cv_;
+    std::mutex first_response_mutex_;
     bool force_start_ = false;
     std::atomic<bool> shutting_down_ = false;
     hf_revision hardfork_ = {0, 0};
@@ -282,7 +284,8 @@ class ServiceNode {
     }
 
     // Called once we have established the initial connection to our local oxend to set up initial
-    // data and timers that rely on an oxend connection.
+    // data and timers that rely on an oxend connection.  This blocks until we get an initial
+    // service node block update back from oxend.
     void on_oxend_connected();
 
     // Called when oxend notifies us of a new block to update swarm info
