@@ -716,6 +716,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
         {"Host", sn.pubkey_ed25519
             ? oxenmq::to_base32z(sn.pubkey_ed25519.view()) + ".snode"
             : "service-node.snode"},
+        {"Content-Type", "application/octet-stream"},
         {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
     };
 
