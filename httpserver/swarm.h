@@ -18,10 +18,8 @@ struct SwarmInfo {
     std::vector<sn_record> snodes;
 };
 
-using all_swarms_t = std::vector<SwarmInfo>;
-
 struct block_update {
-    all_swarms_t swarms;
+    std::vector<SwarmInfo> swarms;
     std::vector<sn_record> decommissioned_nodes;
     oxenmq::pubkey_set active_x25519_pubkeys;
     uint64_t height;
@@ -48,8 +46,9 @@ std::pair<int, int> count_missing_data(const block_update& bu);
 /// For every node in `swarms_to_keep`, this checks whether the node
 /// exists in incoming `other_swarms` and has a new IP address.
 /// If it does and the value is not "0.0.0.0", it updates the value for that node.
-auto apply_ips(const all_swarms_t& swarms_to_keep,
-               const all_swarms_t& other_swarms) -> all_swarms_t;
+std::vector<SwarmInfo> apply_ips(
+        const std::vector<SwarmInfo>& swarms_to_keep,
+        const std::vector<SwarmInfo>& other_swarms);
 
 /// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one has a
 /// swarm id closest to this pubkey-derived value.
@@ -91,15 +90,15 @@ class Swarm {
     ~Swarm();
 
     /// Extract relevant information from incoming swarm composition
-    SwarmEvents derive_swarm_events(const all_swarms_t& swarms) const;
+    SwarmEvents derive_swarm_events(const std::vector<SwarmInfo>& swarms) const;
 
     /// Update swarm state according to `events`. If not `is_active`
     /// only update the list of all nodes
-    void update_state(const all_swarms_t& swarms,
+    void update_state(const std::vector<SwarmInfo>& swarms,
                       const std::vector<sn_record>& decommissioned,
                       const SwarmEvents& events, bool is_active);
 
-    void apply_swarm_changes(const all_swarms_t& new_swarms);
+    void apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 

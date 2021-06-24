@@ -91,9 +91,9 @@ ParsedInfo process_ciphertext_v2(
         const x25519_pubkey& ephem_key,
         EncryptType enc_type);
 
-auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson;
+CiphertextPlusJson parse_combined_payload(std::string_view payload);
 
-auto process_inner_request(std::string plaintext) -> ParsedInfo;
+ParsedInfo process_inner_request(std::string plaintext);
 
 // Returns true if `target` is a permitted target for proxying http/https requests through an onion
 // request.  Requires that the target start with /oxen/, end with /lsrpc, and does not contain a

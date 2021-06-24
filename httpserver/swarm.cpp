@@ -13,7 +13,7 @@
 
 namespace oxen {
 
-static bool swarm_exists(const all_swarms_t& all_swarms,
+static bool swarm_exists(const std::vector<SwarmInfo>& all_swarms,
                          const swarm_id_t& swarm) {
 
     const auto it = std::find_if(
@@ -51,7 +51,7 @@ bool Swarm::is_existing_swarm(swarm_id_t sid) const {
                        });
 }
 
-SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
+SwarmEvents Swarm::derive_swarm_events(const std::vector<SwarmInfo>& swarms) const {
 
     SwarmEvents events = {};
 
@@ -130,7 +130,7 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     cur_swarm_id_ = sid;
 }
 
-static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
+static auto get_snode_map_from_swarms(const std::vector<SwarmInfo>& swarms) {
 
     std::unordered_map<legacy_pubkey, sn_record> snode_map;
     for (const auto& swarm : swarms) {
@@ -150,10 +150,11 @@ bool update_if_changed(T& val, const T& new_val, const std::common_type_t<T>& ig
     return false;
 }
 
-auto apply_ips(const all_swarms_t& swarms_to_keep,
-               const all_swarms_t& other_swarms) -> all_swarms_t {
+std::vector<SwarmInfo> apply_ips(
+        const std::vector<SwarmInfo>& swarms_to_keep,
+        const std::vector<SwarmInfo>& other_swarms) {
 
-    all_swarms_t result_swarms = swarms_to_keep;
+    std::vector<SwarmInfo> result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
 
     int updates_count = 0;
@@ -178,14 +179,14 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
     return result_swarms;
 }
 
-void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
+void Swarm::apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms) {
 
     OXEN_LOG(trace, "Applying swarm changes");
 
     all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
 }
 
-void Swarm::update_state(const all_swarms_t& swarms,
+void Swarm::update_state(const std::vector<SwarmInfo>& swarms,
                          const std::vector<sn_record>& decommissioned,
                          const SwarmEvents& events, bool active) {
 

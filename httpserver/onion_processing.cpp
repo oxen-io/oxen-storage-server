@@ -18,7 +18,7 @@ using nlohmann::json;
 
 namespace oxen {
 
-auto process_inner_request(std::string plaintext) -> ParsedInfo {
+ParsedInfo process_inner_request(std::string plaintext) {
 
     ParsedInfo ret;
 
@@ -103,7 +103,7 @@ bool is_onion_url_target_allowed(std::string_view target) {
 
 /// We are expecting a payload of the following shape:
 /// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
-auto parse_combined_payload(std::string_view payload) -> CiphertextPlusJson {
+CiphertextPlusJson parse_combined_payload(std::string_view payload) {
 
     OXEN_LOG(trace, "Parsing payload of length: {}", payload.size());
 
