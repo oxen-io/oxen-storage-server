@@ -602,7 +602,10 @@ void RequestHandler::process_onion_req(
                 cb(std::move(res));
             },
             cpr::Url{std::move(urlstr)},
-            cpr::Header{{"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}}},
+            cpr::Header{
+                {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
+                {"Content-Type", "application/octet-stream"}
+            },
             cpr::Timeout{ONION_URL_TIMEOUT},
             cpr::Ssl(cpr::ssl::TLSv1_2{}),
             cpr::MaxRedirects{0},
