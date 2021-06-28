@@ -13,7 +13,7 @@ all_stats_t::all_stats_t(oxenmq::OxenMQ& omq) {
 }
 
 static void cleanup_old(std::deque<test_result>& tests, std::chrono::system_clock::time_point cutoff_time) {
-    while (tests.front().timestamp <= cutoff_time)
+    while (!tests.empty() && tests.front().timestamp <= cutoff_time)
         tests.pop_front();
 }
 
