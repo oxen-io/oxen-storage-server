@@ -16,9 +16,6 @@
 [submodule "unit_test/Catch2"]
 	path = unit_test/Catch2
 	url = https://github.com/catchorg/Catch2
-[submodule "vendors/jemalloc"]
-	path = vendors/jemalloc
-	url = https://github.com/jemalloc/jemalloc.git
 [submodule "vendors/SQLiteCpp"]
 	path = vendors/SQLiteCpp
 	url = https://github.com/SRombauts/SQLiteCpp.git

@@ -146,47 +146,13 @@ target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
 
 
-option(USE_JEMALLOC "Use jemalloc for memory allocations" ON)
-option(FORCE_JEMALLOC_SUBMODULE "force using jemalloc submodule" OFF)
+option(USE_JEMALLOC "Link to jemalloc for memory allocations, if found" ON)
 add_library(jemalloc INTERFACE)
 add_library(jemalloc::jemalloc ALIAS jemalloc)
-if (USE_JEMALLOC)
-  if(NOT STATIC AND NOT FORCE_JEMALLOC_SUBMODULE)
-    pkg_check_modules(JEMALLOC jemalloc>=5.2 IMPORTED_TARGET)
-  endif()
+if (USE_JEMALLOC AND NOT STATIC)
+  pkg_check_modules(JEMALLOC jemalloc IMPORTED_TARGET)
   if(JEMALLOC_FOUND)
     target_link_libraries(jemalloc INTERFACE PkgConfig::JEMALLOC)
-  else()
-    set(jemalloc_cc "${CMAKE_C_COMPILER}")
-    set(jemalloc_cxx "${CMAKE_CXX_COMPILER}")
-    if(CMAKE_C_COMPILER_LAUNCHER)
-      set(jemalloc_cc "${CMAKE_C_COMPILER_LAUNCHER} ${jemalloc_cc}")
-    endif()
-    if(CMAKE_CXX_COMPILER_LAUNCHER)
-      set(jemalloc_cxx "${CMAKE_CXX_COMPILER_LAUNCHER} ${jemalloc_cxx}")
-    endif()
-
-    include(ExternalProject)
-    ExternalProject_Add(jemalloc_external
-      PREFIX jemalloc
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc
-      BINARY_DIR jemalloc
-      CONFIGURE_COMMAND cd ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc && ./autogen.sh
-      COMMAND cd ${CMAKE_CURRENT_BINARY_DIR}/jemalloc && ${CMAKE_CURRENT_SOURCE_DIR}/jemalloc/configure
-        --enable-static --disable-shared --prefix=<INSTALL_DIR>
-        "CC=${jemalloc_cc}" "CXX=${jemalloc_cxx}"
-      EXCLUDE_FROM_ALL TRUE
-      INSTALL_DIR jemalloc-install
-      BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
-    )
-    add_library(jemalloc_a STATIC IMPORTED GLOBAL)
-    add_dependencies(jemalloc_a jemalloc_external)
-    set_target_properties(jemalloc_a PROPERTIES
-      IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/lib/libjemalloc.a
-    )
-    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/jemalloc-install/include)
-    target_link_libraries(jemalloc_a INTERFACE ${CMAKE_DL_LIBS})
-    target_link_libraries(jemalloc INTERFACE jemalloc_a)
   endif()
 endif()
 
