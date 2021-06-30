@@ -213,6 +213,11 @@ int main(int argc, char* argv[]) {
         }, 10s);
 #endif
 
+        // Log general stats at startup and again every hour
+        OXEN_LOG(info, service_node.get_status_line());
+        oxenmq_server->add_timer(
+                [&service_node] { OXEN_LOG(info, service_node.get_status_line()); }, 1h);
+
         while (signalled.load() == 0)
             std::this_thread::sleep_for(100ms);
 
