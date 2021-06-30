@@ -1330,7 +1330,7 @@ std::string ServiceNode::get_status_line() const {
 
     std::lock_guard guard(sn_mutex_);
 
-    // v2.3.4; sw=abcd…789(n=7); 123 msgs (47.3MB); reqs(S/R/O/P): 123/456/789/1011 (last 62.3min)
+    // v2.3.4; sw=abcd…789(n=7); 1234 msgs (47.3MB) for 567 users; reqs(S/R/O/P): 123/456/789/1011 (last 62.3min)
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
     if (!oxen::is_mainnet)
@@ -1362,6 +1362,8 @@ std::string ServiceNode::get_status_line() const {
         s.precision(oldprec);
         s << "B)";
     }
+
+    s << " for " << db_->get_owner_count() << " users";
 
     auto [window, stats] = all_stats_.get_recent_requests();
     s << "; reqs(S/R/O/P): " << stats.client_store_requests << '/'
