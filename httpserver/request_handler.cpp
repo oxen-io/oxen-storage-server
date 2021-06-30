@@ -403,6 +403,12 @@ void RequestHandler::process_client_req(
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
+    bool entry_router = req.recurse = true;
+    if (!service_node_.hf_at_least(HARDFORK_RECURSIVE_STORE))
+        // "store" exists before 18.1, so don't forward requests since non-upgraded nodes can't
+        // handle sn.storage_cc at all.
+        req.recurse = false;
+
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
     auto& mine = req.recurse
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
@@ -427,7 +433,7 @@ void RequestHandler::process_client_req(
         auto sig = create_signature(ed25519_sk_, message_hash);
         mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg) mine["already"] = true;
-        if (req.recurse) {
+        if (entry_router) {
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
             res->result["hash"] = message_hash;
             // No longer used, but here to avoid breaking older clients.  TODO: remove eventually
