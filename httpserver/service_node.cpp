@@ -575,7 +575,7 @@ void ServiceNode::update_swarms() {
         }},
         {"active_only", false}
     };
-    if (!got_first_response_ && !block_hash_.empty())
+    if (got_first_response_ && !block_hash_.empty())
         params["poll_block_hash"] = block_hash_;
 
     omq_server_.oxend_request("rpc.get_service_nodes",
