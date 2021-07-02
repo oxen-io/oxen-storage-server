@@ -30,6 +30,11 @@ inline constexpr auto STORAGE_TEST_TIMEOUT = 15s;
 // Timeout for bootstrap node OMQ requests
 inline constexpr auto BOOTSTRAP_TIMEOUT = 10s;
 
+/// We test based on the height a few blocks back to minimise discrepancies between nodes (we could
+/// also use checkpoints, but that is still not bulletproof: swarms are calculated based on the
+/// latest block, so they might be still different and thus derive different pairs)
+inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
+
 // We use the network hardfork and snode revision from oxend to version-gate upgrade features.
 using hf_revision = std::pair<int, int>;
 

@@ -492,8 +492,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
         while (block_hashes_cache_.size() >= BLOCK_HASH_CACHE_SIZE)
             block_hashes_cache_.erase(block_hashes_cache_.begin());
 
-        block_hashes_cache_.emplace_hint(block_hashes_cache_.end(),
-                bu.height, std::move(bu.block_hash));
+        block_hashes_cache_.insert_or_assign(block_hashes_cache_.end(), bu.height, std::move(bu.block_hash));
     } else {
         OXEN_LOG(trace, "already seen this block");
         return;
@@ -597,6 +596,24 @@ void ServiceNode::update_swarms() {
                         got_first_response_ = true;
                     }
                     first_response_cv_.notify_all();
+
+                    // Request some recent block hash heights so that we can properly carry out and
+                    // respond to storage testing (for which we need to know recent block hashes).
+                    // Incoming tests are *usually* height - TEST_BLOCKS_BUFFER, but request a
+                    // couple extra as a buffer.
+                    for (uint64_t h = bu.height - TEST_BLOCKS_BUFFER - 2; h < bu.height; h++)
+                        omq_server_.oxend_request("rpc.get_block_hash",
+                                [this, h](bool success, std::vector<std::string> data) {
+                                    if (!(success && data.size() == 2 && data[0] == "200" && data[1].size() == 66 &&
+                                                data[1].front() == '"' && data[1].back() == '"'))
+                                        return;
+                                    std::string_view hash{data[1].data() + 1, data[1].size() - 2};
+                                    if (oxenmq::is_hex(hash)) {
+                                        OXEN_LOG(debug, "Pre-loaded hash {} for height {}", hash, h);
+                                        block_hashes_cache_.insert_or_assign(h, hash);
+                                    }
+                                },
+                                "{\"height\":[" + util::int_to_string(h) + "]}");
 
 #ifndef INTEGRATION_TEST
                     // If this is our very first response then we *may* want to try falling back to
@@ -1046,12 +1063,10 @@ std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee
         if (auto it = block_hashes_cache_.find(blk_height); it != block_hashes_cache_.end()) {
             block_hash = it->second;
         } else {
-            OXEN_LOG(trace, "Could not find hash for a given block height");
-            // TODO: request from oxend?
+            OXEN_LOG(debug, "Could not find hash for a given block height");
             return std::nullopt;
         }
     } else {
-        assert(false);
         OXEN_LOG(debug, "Could not find hash: block height is in the future");
         return std::nullopt;
     }
@@ -1132,12 +1147,6 @@ void ServiceNode::initiate_peer_test() {
     std::lock_guard guard(sn_mutex_);
 
     // 1. Select the tester/testee pair
-
-    /// We test based on the height a few blocks back to minimise discrepancies
-    /// between nodes (we could also use checkpoints, but that is still not
-    /// bulletproof: swarms are calculated based on the latest block, so they
-    /// might be still different and thus derive different pairs)
-    constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 
     if (block_height_ < TEST_BLOCKS_BUFFER) {
         OXEN_LOG(debug, "Height {} is too small, skipping all tests",
