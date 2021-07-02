@@ -195,6 +195,8 @@ void queue_response_internal(
         for (const auto& [h, v] : res.headers)
             r.writeHeader(h, v);
 
+        // NB: if the dump() here throws then it means we messed up and put some invalid data
+        // (probably binary) into a json value.
         r.end(is_json ? std::get<json>(res.body).dump() : view_body(res),
                 force_close || https.closing());
     });
@@ -390,7 +392,7 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
         queue_response_internal(*this, *res, std::move(resp));
     });
 
-    // Legacy storage testing over HTTPS; can be removed after HF19
+    // Legacy storage testing over HTTPS; can be removed after HF18.1
     https.post("/swarms/storage_test/v1", [this](HttpResponse* res, HttpRequest* req) {
         if (!check_ready(*res)) return;
         process_storage_test_req(*req, *res);
@@ -571,7 +573,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                                     util::friendly_duration(elapsed));
                             resp.body = json{
                                     {"status", "OK"},
-                                    {"value", std::move(answer)}};
+                                    {"value", oxenmq::to_base64(answer)}};
                             return queue_response(std::move(data), std::move(resp));
                         case MessageTestStatus::WRONG_REQ:
                             resp.body = json{{"status", "wrong request"}};

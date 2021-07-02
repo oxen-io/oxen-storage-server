@@ -938,7 +938,11 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
                         try {
                             json res_json = json::parse(r.text);
                             status = res_json.at("status").get<std::string>();
-                            answer = res_json.at("value").get<std::string>();
+                            auto& ans = res_json.at("value").get_ref<const std::string&>();
+                            if (oxenmq::is_base64(ans))
+                                answer = oxenmq::from_base64(ans);
+                            else
+                                OXEN_LOG(debug, "FAILED storage test of {}: body of legacy HTTP request was not base64");
                         } catch (const std::exception& e) {
                             OXEN_LOG(debug, "FAILED storage test of {}: invalid json response ({})", pk, e.what());
                             status.clear();
