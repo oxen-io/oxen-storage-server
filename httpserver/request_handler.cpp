@@ -403,7 +403,7 @@ void RequestHandler::process_client_req(
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
-    bool entry_router = req.recurse = true;
+    bool entry_router = req.recurse == true;
     if (!service_node_.hf_at_least(HARDFORK_RECURSIVE_STORE))
         // "store" exists before 18.1, so don't forward requests since non-upgraded nodes can't
         // handle sn.storage_cc at all.
