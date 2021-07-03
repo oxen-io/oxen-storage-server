@@ -120,11 +120,32 @@ struct store final : recursive {
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
 /// stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
 /// omitted value.
+///
+/// Authentication parameters: these are currently optional during a transition period, and will
+/// eventually become required.  New clients should always pass them.  *If* provided then the
+/// request will be denied if the signature does not match.  If omitted, during the transition
+/// period, then messages will be retrieved without authentication.
+///
+/// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
+/// epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+/// timestamp via `info` first, to avoid client time sync issues).
+/// - signature -- Ed25519 signature of ("retrieve" || timestamp), where timestamp is the base10
+/// expression of the timestamp value.  Muust be base64 encoded for json requests; binary for OMQ
+/// requests.
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+/// be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+/// hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert to
+/// the given `pubkey` value (without the `05` prefix).
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
     user_pubkey_t pubkey;
     std::optional<std::string> last_hash;
+
+    bool check_signature = false;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::chrono::system_clock::time_point timestamp;
+    std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenmq::bt_dict_consumer params) override;

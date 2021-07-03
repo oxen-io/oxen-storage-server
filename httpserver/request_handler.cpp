@@ -182,17 +182,22 @@ bool verify_signature(
         // Verify that the given ed pubkey actually converts to the x25519 pubkey
         std::array<unsigned char, crypto_scalarmult_curve25519_BYTES> xpk;
         if (crypto_sign_ed25519_pk_to_curve25519(xpk.data(), pk) != 0
-                || std::memcmp(xpk.data(), raw.data(), crypto_scalarmult_curve25519_BYTES) != 0)
+                || std::memcmp(xpk.data(), raw.data(), crypto_scalarmult_curve25519_BYTES) != 0) {
+            OXEN_LOG(debug, "Signature verification failed: ed -> x conversion did not match");
             return false;
+        }
     }
     else
         pk = reinterpret_cast<const unsigned char*>(raw.data());
 
-    return 0 == crypto_sign_verify_detached(
+    bool verified = 0 == crypto_sign_verify_detached(
             sig.data(),
             reinterpret_cast<const unsigned char*>(data.data()),
             data.size(),
             pk);
+    if (!verified)
+        OXEN_LOG(debug, "Signature verification failed");
+    return verified;
 }
 
 template <typename... T>
@@ -500,6 +505,18 @@ void RequestHandler::process_client_req(
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
+
+    if (req.check_signature) {
+        auto now = system_clock::now();
+        if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
+            OXEN_LOG(debug, "retrieve: invalid timestamp ({}s from now)", duration_cast<seconds>(req.timestamp - now).count());
+            return cb(Response{http::NOT_ACCEPTABLE, "retrieve timestamp too far from current time"sv});
+        }
+        if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "retrieve", req.timestamp)) {
+            OXEN_LOG(debug, "retrieve: signature verification failed");
+            return cb(Response{http::UNAUTHORIZED, "retrieve signature verification failed"sv});
+        }
+    }
 
     std::vector<message> msgs;
     try {

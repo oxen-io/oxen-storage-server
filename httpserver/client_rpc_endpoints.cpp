@@ -159,7 +159,7 @@ template <typename RPC, typename Dict>
 static void load_pk_signature(
         RPC &rpc,
         const Dict&,
-        const std::optional<std::string>& pk,
+        std::optional<std::string>& pk,
         const std::optional<std::string_view>& pk_ed,
         const std::optional<std::string_view>& sig) {
     require("pubkey", pk);
@@ -259,14 +259,28 @@ bt_value store::to_bt() const {
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {
-    auto [lastHash, last_hash, pubKey, pubkey] =
-        load_fields<std::string, std::string, std::string, std::string>(
-                d, "lastHash", "last_hash", "pubKey", "pubkey");
+    auto [lastHash, last_hash, pubKey, pubkey, pk_ed25519, sig, ts] =
+        load_fields<
+            std::string,
+            std::string,
+            std::string,
+            std::string,
+            std::string_view,
+            std::string_view,
+            system_clock::time_point
+            >(d, "lastHash", "last_hash", "pubKey", "pubkey", "pubkey_ed25519", "signature", "timestamp");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
-    if (!r.pubkey.load(std::move(pubkey ? *pubkey : *pubKey)))
-        throw parse_error{fmt::format("Pubkey must be {} hex digits/{} bytes long",
-                USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
+
+    if (pk_ed25519 || sig || ts) {
+        load_pk_signature(r, d, pubkey ? pubkey : pubKey, pk_ed25519, sig);
+        r.timestamp = std::move(*ts);
+        r.check_signature = true;
+    } else {
+        if (!r.pubkey.load(std::move(pubkey ? *pubkey : *pubKey)))
+            throw parse_error{fmt::format("Pubkey must be {} hex digits/{} bytes long",
+                    USER_PUBKEY_SIZE_HEX, USER_PUBKEY_SIZE_BYTES)};
+    }
 
     require_at_most_one_of("last_hash", last_hash, "lastHash", lastHash);
     if (lastHash)
