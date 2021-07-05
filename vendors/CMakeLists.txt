@@ -199,6 +199,7 @@ if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target i
     add_library(SQLite::SQLite3 STATIC IMPORTED GLOBAL)
     add_dependencies(SQLite::SQLite3 sqlite3_external)
     set_target_properties(SQLite::SQLite3 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a)
+    target_include_directories(SQLite::SQLite3 INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/include)
   endif()
 endif()
 
