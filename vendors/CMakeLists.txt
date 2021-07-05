@@ -179,7 +179,8 @@ if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target i
       set(deps_cc "${CMAKE_C_COMPILER_LAUNCHER} ${deps_cc}")
     endif()
     set(deps_CFLAGS "-O2")
-    if(USE_LTO)
+    if(USE_LTO AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+      # For unknown reasons, clang has trouble linking sqlite3 if we build it with lto
       set(deps_CFLAGS "${deps_CFLAGS} -flto")
     endif()
 
