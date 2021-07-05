@@ -52,15 +52,9 @@ inline constexpr hf_revision HARDFORK_BT_MESSAGE_SERIALIZATION = {18, 1};
 // Hardfork where we switch the hash function to base64(blake2b) from hex(sha512)
 inline constexpr hf_revision HARDFORK_HASH_BLAKE2B = {18, 1};
 
-namespace storage {
-struct Item;
-} // namespace storage
-
 class OxenmqServer;
 struct OnionRequestMetadata;
 class Swarm;
-struct signature;
-struct Response;
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };

@@ -17,7 +17,7 @@ namespace oxen {
 class ServiceNode;
 class RequestHandler;
 class RateLimiter;
-class Response;
+struct Response;
 struct OnionRequestMetadata;
 
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
