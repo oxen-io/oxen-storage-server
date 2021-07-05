@@ -302,7 +302,7 @@ set(Boost_VERSION ${BOOST_VERSION})
 build_external(sqlite3
   BUILD_COMMAND true
   INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES)
-add_static_target(sqlite3 sqlite3_external libsqlite3.a)
+add_static_target(SQLite::SQLite3 sqlite3_external libsqlite3.a)
 
 
 

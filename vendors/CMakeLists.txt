@@ -156,10 +156,7 @@ if (USE_JEMALLOC AND NOT STATIC)
   endif()
 endif()
 
-if(BUILD_STATIC_DEPS)
-  # sqlite3 target already set up
-  add_library(SQLite::SQLite3 ALIAS sqlite3)
-else()
+if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target is already set up
   # We require 3.35.x for some queries we use (such as "RETURNING"), and 3.35.5 for bug fixes, but
   # that release is very new as of this writing so we build a static release if the system one is
   # too old.
@@ -198,10 +195,9 @@ else()
       INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES
       BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/include/sqlite3.h
       )
-    add_library(sqlite3 STATIC IMPORTED GLOBAL)
-    add_dependencies(sqlite3 sqlite3_external)
-    set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a)
-    add_library(SQLite::SQLite3 ALIAS sqlite3)
+    add_library(SQLite::SQLite3 STATIC IMPORTED GLOBAL)
+    add_dependencies(SQLite::SQLite3 sqlite3_external)
+    set_target_properties(SQLite::SQLite3 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a)
   endif()
 endif()
 
