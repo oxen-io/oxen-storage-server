@@ -8,18 +8,16 @@ storage server needs boost 1.66+
  1 file changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e603b98..0402b9c 100644
+index fc79c9c..0a8bc77 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -103,7 +103,6 @@ if(BUILD_STATIC_DEPS)
+@@ -103,12 +103,19 @@ if(BUILD_STATIC_DEPS)
    include(StaticBuild)
  else()
    find_package(PkgConfig REQUIRED)
 -  find_package(Boost REQUIRED program_options)
    find_package(OpenSSL REQUIRED)
  endif()
- 
-@@ -112,6 +111,14 @@ link_libatomic()
  
  include(cmake/check_for_std_filesystem.cmake)
  
