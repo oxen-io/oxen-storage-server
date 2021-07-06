@@ -4,24 +4,24 @@ Subject: build static boost
 
 storage server needs boost 1.66+
 ---
- CMakeLists.txt | 13 ++++++++++++-
- 1 file changed, 12 insertions(+), 1 deletion(-)
+ CMakeLists.txt | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e5e93ad..bf4fcb1 100644
+index e603b98..0402b9c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -59,7 +59,6 @@ if(BUILD_STATIC_DEPS)
+@@ -103,7 +103,6 @@ if(BUILD_STATIC_DEPS)
    include(StaticBuild)
  else()
    find_package(PkgConfig REQUIRED)
--  find_package(Boost REQUIRED system program_options)
+-  find_package(Boost REQUIRED program_options)
    find_package(OpenSSL REQUIRED)
  endif()
  
-@@ -95,6 +94,18 @@ include(cmake/check_for_std_filesystem.cmake)
- if(NOT BUILD_STATIC_DEPS)
- endif()
+@@ -112,6 +111,14 @@ link_libatomic()
+ 
+ include(cmake/check_for_std_filesystem.cmake)
  
 +add_library(boost_core INTERFACE)
 +target_include_directories(boost_core SYSTEM INTERFACE "${CMAKE_SOURCE_DIR}/boost/include")
@@ -30,11 +30,7 @@ index e5e93ad..bf4fcb1 100644
 +set_target_properties(Boost::program_options PROPERTIES
 +    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/boost/lib/libboost_program_options.a"
 +    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/boost/include")
-+add_library(Boost::system STATIC IMPORTED GLOBAL)
-+set_target_properties(Boost::system PROPERTIES
-+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/boost/lib/libboost_system.a"
-+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/boost/include")
 +
- pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.3)
- add_library(oxenmq_pkgconfig INTERFACE)
- target_link_libraries(oxenmq_pkgconfig INTERFACE PkgConfig::OXENMQ)
+ add_subdirectory(common)
+ add_subdirectory(utils)
+ add_subdirectory(crypto)
