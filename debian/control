@@ -5,7 +5,7 @@ Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11),
     cmake,
     g++,
-    liboxenmq-dev (>= 1.2.3~),
+    liboxenmq-dev (>= 1.2.6~),
     libboost-dev (>= 1.66),
     libboost-system-dev,
     libboost-program-options-dev,
