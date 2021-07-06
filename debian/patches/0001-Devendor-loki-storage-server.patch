@@ -4,8 +4,8 @@ Subject: Devendor loki-storage-server
 
 ---
  httpserver/CMakeLists.txt | 13 +------------
- vendors/CMakeLists.txt    | 20 ++------------------
- 2 files changed, 3 insertions(+), 30 deletions(-)
+ vendors/CMakeLists.txt    |  3 ---
+ 2 files changed, 1 insertion(+), 15 deletions(-)
 
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
 index 5900db7..e63a38c 100644
@@ -39,33 +39,16 @@ index 5900db7..e63a38c 100644
  message(STATUS "using git commit hash ${SHORT_HASH}")
  message(STATUS "using UTC build time ${BUILD_TIME}")
 diff --git a/vendors/CMakeLists.txt b/vendors/CMakeLists.txt
-index bbf47ab..3c8baa0 100644
+index bbf47ab..66f5cfe 100644
 --- a/vendors/CMakeLists.txt
 +++ b/vendors/CMakeLists.txt
-@@ -48,24 +48,8 @@ if(NOT TARGET sodium)
-   export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+@@ -63,9 +63,6 @@ else()
+   add_subdirectory(oxen-mq)
  endif()
  
--option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
--if(NOT STATIC AND NOT FORCE_OXENMQ_SUBMODULE)
--  pkg_check_modules(OXENMQ liboxenmq>=1.2.6 IMPORTED_TARGET)
--endif()
--if(OXENMQ_FOUND)
--  add_library(oxenmq INTERFACE)
--  target_link_libraries(oxenmq INTERFACE PkgConfig::OXENMQ)
--  add_library(oxenmq::oxenmq ALIAS oxenmq)
--  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
--else()
--  message(STATUS "using oxenmq submodule")
--  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
--  add_subdirectory(oxen-mq)
--endif()
--
 -set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 -add_subdirectory(nlohmann_json)
 -
-+pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET liboxenmq>=1.2.6)
-+add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
  
  add_library(oxen-crypto-ops STATIC
    oxen/crypto-ops/keccak.c
