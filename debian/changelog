@@ -1,3 +1,171 @@
+oxen-storage-server (2.2.0-1~ubuntu2104) hirsute; urgency=medium
+
+  * Rediff patches
+  * Fix properly tracking failing nodes
+  * Move all vendors cmake code to vendors/CMakeLists.txt
+  * Move server cert generation out of header
+  * Clean up data_dir handling
+  * Replace boost::beast with uWebSockets
+  * oops
+  * Rename lmq -> omq internally
+  * Fix --lmq-port backwards compat; test suite fixes
+  * Banish windows linefeeds
+  * Logger: use file/line instead of func
+  * Bump missing threshold to a weak inequality
+  * Improve logging output
+  * Deal with boost::asio's event loop deficiencies
+  * https_server fixes
+  * Move RequestHandler method implementations to request_handler.cpp
+  * Move parse_pubkey into oxend_key
+  * Remove boost beast & many intertwined changes
+  * Convert unit tests to Catch2
+  * Add check for up-to-date submodules
+  * Add HTTPS ping test debug
+  * Fix reversed logic on https ping test url
+  * More debug
+  * Fix bad url
+  * Slow down testing tick timer
+  * Stats cleanup and refactor
+  * Better status line (for systemd Status)
+  * Fix onion/proxy request recording
+  * Fix use-after-move crashes
+  * Fix how cmake finds spdlog
+  * Fix recent stats window being 10min too large
+  * Add used page count stats
+  * Database: use logger
+  * Database: enable WAL
+  * Fix stats showing wrong store reqs value
+  * Remove buffered message relaying
+  * Increase swarm batch serialization size to 9MB
+  * Build static jemalloc
+  * Build fixes
+  * Remove unused Findsodium cmake script
+  * jemalloc build fix
+  * Drone: remove boost deps, add curl deps
+  * Need make too
+  * Fix batch serialization unit test for new larger batches
+  * jemalloc build fixes for older cmake compat
+  * Status line tweaks
+  * Allow using system jemalloc for non-static build
+  * Add curl to static deps build
+  * Add missing unordered_map header
+  * Optimize random message retrieval
+  * Refactor how TTL & timestamps are stored
+  * Replace unsafe static local vars with atomics
+  * Add FIXME comments around some broken database queries
+  * Remove -Wfatal-errors
+  * Refactor user_pubkey_t
+  * Remove dead omq endpoints sn.proxy_exit and sn.onion_req_v2
+  * RPC: refactor and wire up to OMQ
+  * Make SS respond to signals when trying to get the initial keys
+  * Update hash test and hashing construction
+  * Add bt-encoded OMQ RPC interface
+  * OMQ RPC: allow omitted params
+  * Tweak TTL validation and error handling
+  * Support bt-encoded response (needed for forwarding)
+  * Add delete/expiry and swarm propagation stubs
+  * Add missing status line argument
+  * DRY out database & switch to smart pointers
+  * Update required sqlite3 to 3.35.0
+  * Database: implement delete/expiry-update calls
+  * WIP: Wire up delete/expire rpc endpoints, part 1
+  * Remove idea of passing the client IP
+  * Don't use sodium piecewise ed25519 construction
+  * Fix pending, add request debugging
+  * Store relayer's own result in "swarm" dict when recursive
+  * Remove unused constant
+  * Make get_results return # rows, -1 on error
+  * Fix forward request handling
+  * Document response codes
+  * Fix "Store relayer's own result"
+  * Change message hash to blake2b-256 + base64
+  * Reduce swarm propagation timeout to 5s
+  * Check request being for us before replying
+  * Wire up remaining delete/expiry endpoints
+  * Add method name to signature generation
+  * Fix message hash acceptance
+  * Include timestamp in retrieve request
+  * Fix: valid message hash
+  * Add SQLiteCpp
+  * Fix/update boost mirror URL
+  * SS refactor/cleanups
+  * Database redesign, refactor & migration
+  * Make `store` recursive
+  * Make unit test logger go via Catch2 UNSCOPED_INFO
+  * Test suite fixes for recent changes
+  * Bump version to 2.2.0
+  * C++ improvements
+  * Remove `_t` suffix from concrete structs
+  * Remove unused/uncommitted header
+  * Rename badly named hex_to_u64, document it, and test it.
+  * Add swarm (as hex string) into swarm members response
+  * Print swarmid info message in hex
+  * SQLiteCpp: Disable column metadata
+  * DB migration fixes
+  * Fix variant error on string proxy callback
+  * Use 500 status if all answers are failures
+  * Fix store response not being set in swarms
+  * If we get a recursive failure put the message in "reason"
+  * HF version gating & store distribution fix
+  * Version-guard blake2b hash
+  * Add support for minor forks (spoons? sporks? snode revisions?)
+  * Re-add seed1/seed3 to seed node list
+  * Remove testnet exceptions to HF guards
+  * Fix duplicate failing enqueuing
+  * typedef the clock, not the clock's time
+  * Update oxend endpoint for reachability reporting
+  * get_swarm: +port_https/port_omq; deprecate "port"
+  * Add basic swarm testnet test suite
+  * Fix pubkey encoding in https header
+  * Fix last_hash parsing to accept blake2b+b64 hashes
+  * More test suite
+  * Work around Session not exposing ed25519 pubkeys
+  * Make sure SS https is listening exclusively on the port
+  * Explicitly mention that returned hashes are sorted
+  * Bug fixes
+  * Allow ed25519 pubkeys for unprefixed addresses on testnet
+  * Add delete endpoint tests
+  * Add expire tests
+  * Fix storage tests (v2)
+  * Fix propagation of session ed25519 pubkey
+  * Add session ed25519 pubkey hack test
+  * Use constants for tolerance checks
+  * Add delete_all/expire_all signature timestamp tests
+  * network-tests: Add readme; rename to `network-tests`
+  * Change unprefixed netid to 05 for testnet instead of 00
+  * Make startup more synchronous; oxenmq update
+  * Disable ephemeral routing id for SN-to-SN connections
+  * g++-11 compilation fix
+  * Remove superfluous trailing return types and obfuscating typedef
+  * Allow payload/control input from files
+  * Replace user-agent on outgoing http requests
+  * Set content-type for post requests
+  * Fix segfault in stats cleanup
+  * Fix submodule repo url
+  * Remove embedded jemalloc submodule
+  * Add user count to status line
+  * Add hourly stats to log file
+  * Avoid forwarding "store" requests before HF18.1
+  * Remove removed submodule from submodule check
+  * Update oxen-mq to fix connection error
+  * Preload recent block hashes at startup
+  * Fix logic on block polling
+  * Fix legacy http storage tests: base64 encode the data
+  * Update oxenmq
+  * Fix infinitely recursive store requests
+  * Add optional retrieve authentication
+  * Add authenticated retrieve network test
+  * Remove unused fwd decls; fix class/struct mismatch
+  * Bump oxenmq to stable 1.2.6 release
+  * Update spdlog to latest stable version
+  * Avoid alias to imported global lib for older cmake compatibility
+  * Disable LTO for sqlite3+clang
+  * Properly set include dirs for locally build sqlite3
+  * Add timestamp to all client rpc responses
+  * Build with jemalloc
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 06 Jul 2021 13:25:19 -0300
+
 oxen-storage-server (2.1.1-1~ubuntu2104) hirsute; urgency=medium
 
   * Attempt hirsute workaround for gpgv
