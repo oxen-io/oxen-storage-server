@@ -9,11 +9,11 @@ Subject: Add check for -latomic (needed for armhf build)
  create mode 100644 cmake/check_atomic.cmake
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d9366a1..c992e38 100644
+index fc79c9c..e603b98 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -87,6 +87,9 @@ if(NOT TARGET sodium)
-   export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
+@@ -107,6 +107,9 @@ else()
+   find_package(OpenSSL REQUIRED)
  endif()
  
 +include(cmake/check_atomic.cmake)
@@ -21,7 +21,7 @@ index d9366a1..c992e38 100644
 +
  include(cmake/check_for_std_filesystem.cmake)
  
- if(NOT BUILD_STATIC_DEPS)
+ add_subdirectory(common)
 diff --git a/cmake/check_atomic.cmake b/cmake/check_atomic.cmake
 new file mode 100644
 index 0000000..94d0cec
