@@ -107,6 +107,9 @@ else()
   find_package(OpenSSL REQUIRED)
 endif()
 
+include(cmake/check_atomic.cmake)
+link_libatomic()
+
 include(cmake/check_for_std_filesystem.cmake)
 
 add_subdirectory(common)
