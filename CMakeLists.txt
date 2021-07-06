@@ -13,7 +13,7 @@ endif()
 cmake_minimum_required(VERSION 3.10)
 
 project(storage_server
-    VERSION 2.1.1
+    VERSION 2.2.0
     LANGUAGES CXX C)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
@@ -52,6 +52,50 @@ endif()
 
 option(BUILD_TESTS "build storage server unit tests" OFF)
 
+find_package(Git)
+option(MANUAL_SUBMODULES "Don't check for out-of-date submodules" OFF)
+if(NOT GIT_FOUND)
+  message(WARNING "Git not found, unable to check that submodules are up-to-date")
+else()
+  function (check_submodule relative_path)
+    execute_process(COMMAND git rev-parse "HEAD" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path} OUTPUT_VARIABLE localHead)
+    execute_process(COMMAND git rev-parse "HEAD:${relative_path}" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE checkedHead)
+    string(COMPARE EQUAL "${localHead}" "${checkedHead}" upToDate)
+    if (upToDate)
+      message(STATUS "Submodule '${relative_path}' is up-to-date")
+    elseif(MANUAL_SUBMODULES)
+      message(WARNING "Submodule '${relative_path}' is not up-to-date")
+    else()
+      message(FATAL_ERROR "Submodule '${relative_path}' is not up-to-date. Please update with\ngit submodule update --init --recursive\nor run cmake with -DMANUAL_SUBMODULES=1")
+    endif()
+
+    # Extra arguments check nested submodules
+    foreach(submod ${ARGN})
+      execute_process(COMMAND git rev-parse "HEAD" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path}/${submod} OUTPUT_VARIABLE localHead)
+      execute_process(COMMAND git rev-parse "HEAD:${submod}" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path} OUTPUT_VARIABLE checkedHead)
+      string(COMPARE EQUAL "${localHead}" "${checkedHead}" upToDate)
+      if (NOT upToDate)
+        if(MANUAL_SUBMODULES)
+          message(WARNING "Nested submodule '${relative_path}/${submod}' is not up-to-date")
+        else()
+          message(FATAL_ERROR "Nested submodule '${relative_path}/${submod}' is not up-to-date. Please update with\ngit submodule update --init --recursive\nor run cmake with -DMANUAL_SUBMODULES=1")
+        endif()
+      endif()
+    endforeach()
+  endfunction ()
+
+  message(STATUS "Checking submodules")
+  check_submodule(vendors/spdlog)
+  check_submodule(vendors/oxen-mq cppzmq)
+  check_submodule(vendors/nlohmann_json)
+  check_submodule(vendors/uWebSockets uSockets)
+  check_submodule(vendors/cpr)
+  if(BUILD_TESTS)
+    check_submodule(unit_test/Catch2)
+  endif()
+endif()
+
+
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 option(BUILD_STATIC_DEPS "Download, build and statically link against core dependencies" OFF)
@@ -59,38 +103,11 @@ if(BUILD_STATIC_DEPS)
   include(StaticBuild)
 else()
   find_package(PkgConfig REQUIRED)
-  find_package(Boost REQUIRED system program_options)
+  find_package(Boost REQUIRED program_options)
   find_package(OpenSSL REQUIRED)
 endif()
 
-if(NOT TARGET sodium)
-  # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
-  option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
-  if(NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SODIUM libsodium>=1.0.18 IMPORTED_TARGET)
-  endif()
-
-  add_library(sodium INTERFACE)
-  if(SODIUM_FOUND AND NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-    target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
-  else()
-    if(NOT DOWNLOAD_SODIUM AND NOT BUILD_STATIC_DEPS)
-      message(FATAL_ERROR "Could not find libsodium >= 1.0.18; either install it on your system or use -DDOWNLOAD_SODIUM=ON to download and build an internal copy")
-    endif()
-    message(STATUS "Sodium >= 1.0.18 not found, but DOWNLOAD_SODIUM specified, so downloading it")
-    include(DownloadLibSodium)
-    target_link_libraries(sodium INTERFACE sodium_vendor)
-  endif()
-
-  # Need this target export so that loki-mq properly picks up sodium
-  export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
-endif()
-
 include(cmake/check_for_std_filesystem.cmake)
-
-if(NOT BUILD_STATIC_DEPS)
-endif()
 
 add_subdirectory(common)
 add_subdirectory(utils)
@@ -98,24 +115,7 @@ add_subdirectory(crypto)
 add_subdirectory(storage)
 add_subdirectory(httpserver)
 
-
-
-option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
-if(NOT FORCE_OXENMQ_SUBMODULE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(OXENMQ liboxenmq>=1.2.5)
-endif()
-if(OXENMQ_FOUND)
-  add_library(oxenmq INTERFACE)
-  link_dep_libs(oxenmq INTERFACE "${OXENMQ_LIBRARY_DIRS}" ${OXENMQ_LIBRARIES})
-  target_include_directories(oxenmq INTERFACE ${OXENMQ_INCLUDE_DIRS})
-  add_library(oxenmq::oxenmq ALIAS oxenmq)
-  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
-else()
-  message(STATUS "using oxenmq submodule")
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
-  add_subdirectory(vendors/loki-mq)
-endif()
+add_subdirectory(vendors)
 
 if (BUILD_TESTS)
     add_subdirectory(unit_test)

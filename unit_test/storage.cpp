@@ -1,205 +1,206 @@
 #include "Database.hpp"
 #include "utils.hpp"
 
+#include "oxen_logger.h"
+
 #include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <string>
 #include <thread>
 
-#include <boost/test/unit_test.hpp>
-
-using oxen::storage::Item;
+#include <catch2/catch.hpp>
 
 using namespace oxen;
 
 using namespace std::literals;
 
-struct StorageRAIIFixture {
-    StorageRAIIFixture() {
-        if (std::filesystem::remove("storage.db")) {
-            std::cout << "Pre-test db removal" << std::endl;
-        }
+struct StorageDeleter {
+    StorageDeleter() {
+        std::filesystem::remove("storage.db");
     }
-    ~StorageRAIIFixture() {
-        if (std::filesystem::remove("storage.db")) {
-            std::cout << "Post-test db removal" << std::endl;
-        }
+    ~StorageDeleter() {
+        std::filesystem::remove("storage.db");
     }
 };
 
-BOOST_AUTO_TEST_SUITE(storage)
-
-BOOST_AUTO_TEST_CASE(it_creates_the_database_file) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - database file creation", "[storage]") {
+    StorageDeleter fixture;
 
     Database storage{"."};
-    BOOST_CHECK(std::filesystem::exists("storage.db"));
+    CHECK(std::filesystem::exists("storage.db"));
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_persistently) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - data persistence", "[storage]") {
+    StorageDeleter fixture;
 
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     const auto hash = "myhash";
-    const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
+        CHECK(storage.store({pubkey, hash, now, now+ttl, bytes}));
+
+        CHECK(storage.get_owner_count() == 1);
+        CHECK(storage.get_message_count() == 1);
+
         // the database is closed when storage goes out of scope
     }
     {
         // re-open the database
         Database storage{"."};
 
-        std::vector<Item> items;
-        const auto lastHash = "";
+        CHECK(storage.get_owner_count() == 1);
+        CHECK(storage.get_message_count() == 1);
 
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
+        auto items = storage.retrieve(pubkey, "");
 
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].pub_key, pubkey);
-        BOOST_CHECK_EQUAL(items[0].hash, hash);
-        BOOST_CHECK_EQUAL((items[0].expiration_timestamp - items[0].timestamp),
-                          ttl);
-        BOOST_CHECK_EQUAL(items[0].data, bytes);
+        REQUIRE(items.size() == 1);
+        CHECK_FALSE(items[0].pubkey); // pubkey is left unset when we retrieve for pubkey
+        CHECK(items[0].hash == hash);
+        CHECK(items[0].expiry - items[0].timestamp == ttl);
+        CHECK(items[0].data == bytes);
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_returns_false_when_storing_existing_hash) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - returns false when storing existing hash", "[storage]") {
+    StorageDeleter fixture;
 
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     const auto hash = "myhash";
-    const auto pubkey = "mypubkey";
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
-    // store using the same hash, FAIL is default behaviour
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
-                              Database::DuplicateHandling::FAIL) == false);
+    auto ins = storage.store({pubkey, hash, timestamp, timestamp + ttl, bytes});
+    REQUIRE(ins);
+    CHECK(*ins);
+    // store using the same hash, will fail
+    ins = storage.store({pubkey, hash, timestamp, timestamp + ttl, bytes});
+    REQUIRE(ins);
+    CHECK_FALSE(*ins);
+
+    CHECK(storage.get_owner_count() == 1);
+    CHECK(storage.get_message_count() == 1);
 }
 
-BOOST_AUTO_TEST_CASE(
-    it_returns_true_when_storing_existing_with_ignore_constraint) {
-    StorageRAIIFixture fixture;
-
-    const auto hash = "myhash";
-    const auto pubkey = "mypubkey";
-    const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
+    StorageDeleter fixture;
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce));
-    // store using the same hash
-    BOOST_CHECK(storage.store(hash, pubkey, bytes, ttl, timestamp, nonce,
-                              Database::DuplicateHandling::IGNORE) == true);
-}
+    user_pubkey_t pubkey1, pubkey2;
+    REQUIRE(pubkey1.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    REQUIRE(pubkey2.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee"));
 
-BOOST_AUTO_TEST_CASE(it_only_returns_entries_for_specified_pubkey) {
-    StorageRAIIFixture fixture;
+    auto now = std::chrono::system_clock::now();
+    CHECK(storage.store({pubkey1, "hash0", now, now + 100s, "bytesasstring0"}));
+    CHECK(storage.store({pubkey2, "hash1", now, now + 100s, "bytesasstring1"}));
 
-    Database storage{"."};
+    CHECK(storage.get_owner_count() == 2);
+    CHECK(storage.get_message_count() == 2);
 
-    BOOST_CHECK(storage.store("hash0", "mypubkey", "bytesasstring0", 100000,
-                              util::get_time_ms(), "nonce"));
-    BOOST_CHECK(storage.store("hash1", "otherpubkey", "bytesasstring1", 100000,
-                              util::get_time_ms(), "nonce"));
-
+    const auto lastHash = "";
     {
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash0");
+        auto items = storage.retrieve(pubkey1, lastHash);
+        REQUIRE(items.size() == 1);
+        CHECK(items[0].hash == "hash0");
     }
 
     {
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("otherpubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash1");
+        auto items = storage.retrieve(pubkey2, lastHash);
+        REQUIRE(items.size() == 1);
+        CHECK(items[0].hash == "hash1");
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_returns_entries_older_than_lasthash) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - return entries older than lasthash", "[storage]") {
+    StorageDeleter fixture;
 
     Database storage{"."};
 
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+
+    auto now = std::chrono::system_clock::now();
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
-        const auto hash = std::string("hash") + std::to_string(i);
-        storage.store(hash, "mypubkey", "bytesasstring", 100000,
-                      util::get_time_ms(), "nonce");
+        const auto hash = "hash" + std::to_string(i);
+        storage.store({pubkey, hash, now, now + 100s, "bytesasstring"});
     }
 
+    CHECK(storage.get_owner_count() == 1);
+    CHECK(storage.get_message_count() == 100);
+
     {
-        std::vector<Item> items;
         const auto lastHash = "hash0";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries - 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash1");
+        auto items = storage.retrieve(pubkey, lastHash);
+        REQUIRE(items.size() == num_entries - 1);
+        CHECK(items[0].hash == "hash1");
     }
 
     {
-        std::vector<Item> items;
         const auto lastHash =
             std::string("hash") + std::to_string(num_entries / 2 - 1);
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries / 2);
-        BOOST_CHECK_EQUAL(items[0].hash, std::string("hash") +
-                                             std::to_string(num_entries / 2));
+        auto items = storage.retrieve(pubkey, lastHash);
+        REQUIRE(items.size() == num_entries / 2);
+        CHECK(items[0].hash == "hash" + std::to_string(num_entries / 2));
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_removes_expired_entries) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - remove expired entries", "[storage]") {
+    StorageDeleter fixture;
 
-    const auto pubkey = "mypubkey";
+    user_pubkey_t pubkey1, pubkey2, pubkey3;
+    REQUIRE(pubkey1.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    REQUIRE(pubkey2.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee"));
+    REQUIRE(pubkey3.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcded"));
 
     Database storage{"."};
 
-    BOOST_CHECK(storage.store("hash0", pubkey, "bytesasstring0", 100000,
-                              util::get_time_ms(), "nonce"));
-    BOOST_CHECK(storage.store("hash1", pubkey, "bytesasstring0", 0,
-                              util::get_time_ms(), "nonce"));
+    auto now = std::chrono::system_clock::now();
+    CHECK(storage.store({pubkey1, "hash0", now, now + 1s, "bytesasstring0"}));
+    CHECK(storage.store({pubkey1, "hash1", now, now, "bytesasstring0"}));
+    CHECK(storage.store({pubkey2, "hash2", now, now + 1s, "bytesasstring0"}));
+    CHECK(storage.store({pubkey3, "hash3", now, now, "bytesasstring0"}));
+    CHECK(storage.store({pubkey3, "hash4", now, now, "bytesasstring0"}));
+    CHECK(storage.store({pubkey3, "hash5", now, now, "bytesasstring0"}));
+
+    CHECK(storage.get_owner_count() == 3);
+    CHECK(storage.get_message_count() == 6);
+
     {
-        std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 2);
+        auto items = storage.retrieve(pubkey1, lastHash);
+        REQUIRE(items.size() == 2);
     }
     std::this_thread::sleep_for(5ms);
     storage.clean_expired();
     {
-        std::vector<Item> items;
         const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve(pubkey, items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), 1);
-        BOOST_CHECK_EQUAL(items[0].hash, "hash0");
+        auto items = storage.retrieve(pubkey1, lastHash);
+        REQUIRE(items.size() == 1);
+        CHECK(items[0].hash == "hash0");
     }
+
+    CHECK(storage.get_owner_count() == 2);
+    CHECK(storage.get_message_count() == 2);
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - bulk data storage", "[storage]") {
+    StorageDeleter fixture;
 
-    const auto pubkey = "mypubkey";
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     const size_t num_items = 100;
 
@@ -207,106 +208,95 @@ BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk) {
 
     // bulk store
     {
-        std::vector<Item> items;
+        std::vector<message> items;
         for (int i = 0; i < num_items; ++i) {
-            items.push_back({std::to_string(i), pubkey, timestamp, ttl,
-                             timestamp + ttl, nonce, bytes});
+            items.emplace_back(pubkey, std::to_string(i), timestamp, timestamp + ttl, bytes);
         }
 
-        BOOST_CHECK(storage.bulk_store(items));
+        CHECK_NOTHROW(storage.bulk_store(items));
     }
 
     // retrieve
     {
-        std::vector<Item> items;
-
-        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
-        BOOST_CHECK_EQUAL(items.size(), num_items);
+        auto items = storage.retrieve(pubkey, "");
+        CHECK(items.size() == num_items);
     }
+
+    CHECK(storage.get_owner_count() == 1);
+    CHECK(storage.get_message_count() == num_items);
 }
 
-BOOST_AUTO_TEST_CASE(it_stores_data_in_bulk_even_when_overlaps) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - bulk storage with overlap", "[storage]") {
+    StorageDeleter fixture;
 
-    const auto pubkey = "mypubkey";
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     const auto bytes = "bytesasstring";
-    const auto nonce = "nonce";
-    const uint64_t ttl = 123456;
-    const uint64_t timestamp = util::get_time_ms();
+    const auto ttl = 123456ms;
+    const auto timestamp = std::chrono::system_clock::now();
 
     const size_t num_items = 100;
 
     Database storage{"."};
 
-    // insert existing
-    BOOST_CHECK(storage.store("0", pubkey, bytes, ttl, timestamp, nonce));
+    // insert existing; the bulk store shouldn't fail when these conflicts already exist
+    CHECK(storage.store({pubkey, "0", timestamp, timestamp + ttl, bytes}));
+    CHECK(storage.store({pubkey, "5", timestamp, timestamp + ttl, bytes}));
+
+    CHECK(storage.get_owner_count() == 1);
+    CHECK(storage.get_message_count() == 2);
 
     // bulk store
     {
-        std::vector<Item> items;
+        std::vector<message> items;
         for (int i = 0; i < num_items; ++i) {
-            items.push_back({std::to_string(i), pubkey, timestamp, ttl,
-                             timestamp + ttl, nonce, bytes});
+            items.emplace_back(pubkey, std::to_string(i), timestamp, timestamp + ttl, bytes);
         }
 
-        BOOST_CHECK(storage.bulk_store(items));
+        CHECK_NOTHROW(storage.bulk_store(items));
     }
+
+    CHECK(storage.get_owner_count() == 1);
+    CHECK(storage.get_message_count() == num_items);
 
     // retrieve
     {
-        std::vector<Item> items;
-
-        BOOST_CHECK(storage.retrieve(pubkey, items, ""));
-        BOOST_CHECK_EQUAL(items.size(), num_items);
+        auto items = storage.retrieve(pubkey, "");
+        CHECK(items.size() == num_items);
     }
 }
 
-BOOST_AUTO_TEST_CASE(it_checks_the_retrieve_limit_works) {
-    StorageRAIIFixture fixture;
+TEST_CASE("storage - retrieve limit", "[storage]") {
+    StorageDeleter fixture;
 
     Database storage{"."};
 
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+
+    auto now = std::chrono::system_clock::now();
     const size_t num_entries = 100;
     for (size_t i = 0; i < num_entries; i++) {
-        const auto hash = std::string("hash") + std::to_string(i);
-        storage.store(hash, "mypubkey", "bytesasstring", 100000,
-                      util::get_time_ms(), "nonce");
+        const auto hash = "hash" + std::to_string(i);
+        storage.store({pubkey, hash, now, now + 100s, "bytesasstring"});
     }
 
-    // should return all items
-    {
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash));
-        BOOST_CHECK_EQUAL(items.size(), num_entries);
+    user_pubkey_t pubkey2;
+    REQUIRE(pubkey2.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee"));
+
+    for (size_t i = 0; i < 5; i++) {
+        const auto hash = "anotherhash" + std::to_string(i);
+        storage.store({pubkey2, hash, now, now + 100s, "bytesasstring"});
     }
 
-    // should return 10 items
-    {
-        const int num_results = 10;
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_results);
-    }
+    CHECK(storage.get_owner_count() == 2);
+    CHECK(storage.get_message_count() == num_entries + 5);
 
-    // should return 88 items
-    {
-        const int num_results = 88;
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_results);
-    }
-
-    // should return num_entries items
-    {
-        const int num_results = 2 * num_entries;
-        std::vector<Item> items;
-        const auto lastHash = "";
-        BOOST_CHECK(storage.retrieve("mypubkey", items, lastHash, num_results));
-        BOOST_CHECK_EQUAL(items.size(), num_entries);
-    }
+    CHECK(storage.retrieve(pubkey, "").size() == num_entries);
+    CHECK(storage.retrieve(pubkey, "", 10).size() == 10);
+    CHECK(storage.retrieve(pubkey, "", 88).size() == 88);
+    CHECK(storage.retrieve(pubkey, "", 99).size() == 99);
+    CHECK(storage.retrieve(pubkey, "", 100).size() == 100);
+    CHECK(storage.retrieve(pubkey, "", 101).size() == 100);
+    CHECK(storage.retrieve(pubkey2, "", 10).size() == 5);
 }
-
-BOOST_AUTO_TEST_SUITE_END()

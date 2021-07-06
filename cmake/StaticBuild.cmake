@@ -12,7 +12,7 @@ set(OPENSSL_HASH SHA256=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df
     CACHE STRING "openssl source hash")
 
 set(BOOST_VERSION 1.76.0 CACHE STRING "boost version")
-set(BOOST_MIRROR ${LOCAL_MIRROR} https://dl.bintray.com/boostorg/release/${BOOST_VERSION}/source
+set(BOOST_MIRROR ${LOCAL_MIRROR} https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
@@ -28,12 +28,7 @@ set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
 set(SODIUM_HASH SHA512=17e8638e46d8f6f7d024fe5559eccf2b8baf23e143fadd472a7d29d228b186d86686a5e6920385fe2020729119a5f12f989c3a782afbd05a8db4819bb18666ef
   CACHE STRING "libsodium source hash")
 
-set(SQLITE3_VERSION 3350500 CACHE STRING "sqlite3 version")
-set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2021
-    CACHE STRING "sqlite3 download mirror(s)")
-set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=039af796f79fc4517be0bd5ba37886264d49da309e234ae6fccdb488ef0109ed2b917fc3e6c1fc7224dff4f736824c653aaf8f0a37550c5ebc14d035cb8ac737
-    CACHE STRING "sqlite3 source hash")
+include(sqlite3_source)
 
 set(ZMQ_VERSION 4.3.4 CACHE STRING "libzmq version")
 set(ZMQ_MIRROR ${LOCAL_MIRROR} https://github.com/zeromq/libzmq/releases/download/v${ZMQ_VERSION}
@@ -41,6 +36,27 @@ set(ZMQ_MIRROR ${LOCAL_MIRROR} https://github.com/zeromq/libzmq/releases/downloa
 set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
     CACHE STRING "libzmq source hash")
+
+set(LIBUV_VERSION 1.41.0 CACHE STRING "libuv version")
+set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
+    CACHE STRING "libuv mirror(s)")
+set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
+set(LIBUV_HASH SHA512=33613fa28e8136507300eba374351774849b6b39aab4e53c997a918d3bc1d1094c6123e0e509535095b14dc5daa885eadb1a67bed46622ad3cc79d62dc817e84
+    CACHE STRING "libuv source hash")
+
+set(ZLIB_VERSION 1.2.11 CACHE STRING "zlib version")
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+    CACHE STRING "zlib mirror(s)")
+set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
+set(ZLIB_HASH SHA512=73fd3fff4adeccd4894084c15ddac89890cd10ef105dd5e1835e1e9bbb6a49ff229713bd197d203edfa17c2727700fce65a2a235f07568212d820dca88b528ae
+    CACHE STRING "zlib source hash")
+
+set(CURL_VERSION 7.76.1 CACHE STRING "curl version")
+set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.haxx.se/download https://curl.askapache.com
+    CACHE STRING "curl mirror(s)")
+set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
+set(CURL_HASH SHA256=64bb5288c39f0840c07d077e30d9052e1cbb9fa6c2dc52523824cc859e679145
+    CACHE STRING "curl source hash")
 
 
 
@@ -162,6 +178,26 @@ function(build_external target)
   )
 endfunction()
 
+if (WIN32 OR (APPLE AND NOT IOS))
+  build_external(libuv
+    CONFIGURE_COMMAND ./autogen.sh && ./configure ${cross_host} ${cross_rc} --prefix=${DEPS_DESTDIR} --with-pic --disable-shared --enable-static "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}"
+    BUILD_BYPRODUCTS
+      ${DEPS_DESTDIR}/lib/libuv.a
+      ${DEPS_DESTDIR}/include/uv.h
+    )
+  add_static_target(libuv libuv_external libuv.a)
+  target_link_libraries(libuv INTERFACE ${CMAKE_DL_LIBS})
+endif()
+
+
+
+build_external(zlib
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} ./configure --prefix=${DEPS_DESTDIR} --static
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libz.a
+    ${DEPS_DESTDIR}/include/zlib.h
+)
+add_static_target(zlib zlib_external libz.a)
 
 
 set(openssl_configure ./config)
@@ -178,7 +214,7 @@ build_external(openssl
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
     --prefix=${DEPS_DESTDIR} ${openssl_extra_opts} no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
     no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
-    no-static-engine no-tests no-weak-ssl-ciphers no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+    no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
   INSTALL_COMMAND make install_sw
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
@@ -225,12 +261,8 @@ if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
   string(APPEND boost_buildflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
-set(boost_libs program_options system)
+set(boost_libs program_options)
 set(boost_with_libs_extra)
-if(BUILD_TESTS)
-    list(APPEND boost_libs unit_test_framework)
-    list(APPEND boost_with_libs_extra --with-test)
-endif()
 string(REPLACE ";" "," boost_with_libraries "${boost_libs}")
 set(boost_static_libraries)
 foreach(lib ${boost_libs})
@@ -270,7 +302,7 @@ set(Boost_VERSION ${BOOST_VERSION})
 build_external(sqlite3
   BUILD_COMMAND true
   INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES)
-add_static_target(sqlite3 sqlite3_external libsqlite3.a)
+add_static_target(SQLite::SQLite3 sqlite3_external libsqlite3.a)
 
 
 
@@ -304,3 +336,45 @@ endif()
 set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
+
+
+set(curl_extra)
+if(WIN32)
+  set(curl_ssl_opts --without-ssl --with-schannel)
+elseif(APPLE)
+  set(curl_ssl_opts --without-ssl --with-secure-transport)
+else()
+  set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
+  set(curl_extra "LIBS=-pthread")
+endif()
+
+build_external(curl
+  DEPENDS openssl_external zlib_external
+  CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${DEPS_DESTDIR} --disable-shared
+  --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
+  --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
+  --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http
+  --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
+  --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
+  --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
+  --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
+  --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
+  --without-zsh-functions-dir --without-fish-functions-dir
+  "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
+  BUILD_COMMAND true
+  INSTALL_COMMAND make -C lib install && make -C include install
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libcurl.a
+    ${DEPS_DESTDIR}/include/curl/curl.h
+)
+
+add_static_target(CURL::libcurl curl_external libcurl.a)
+set(libcurl_link_libs zlib)
+if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
+  list(APPEND libcurl_link_libs crypt32)
+elseif(APPLE)
+  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation")
+endif()
+set_target_properties(CURL::libcurl PROPERTIES
+  INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
+  INTERFACE_COMPILE_DEFINITIONS "CURL_STATICLIB")

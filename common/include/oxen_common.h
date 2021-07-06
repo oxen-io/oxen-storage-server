@@ -1,10 +1,7 @@
 #pragma once
 
-#include <array>
 #include <chrono>
 #include <cstdint>
-#include <limits>
-#include <ostream>
 #include <string>
 #include <string_view>
 
@@ -14,62 +11,89 @@ namespace oxen {
 
 using namespace std::literals;
 
-using time_point_t = std::chrono::steady_clock::time_point;
-
-inline constexpr size_t MAINNET_USER_PUBKEY_SIZE = 66;
-inline constexpr size_t TESTNET_USER_PUBKEY_SIZE = 64;
+// Network byte + Ed25519 pubkey, encoded in bytes or hex.  On testnet we allow the network byte to
+// be missing (and treat it as an implicit 00).
+inline constexpr size_t USER_PUBKEY_SIZE_BYTES = 33;
+inline constexpr size_t USER_PUBKEY_SIZE_HEX = USER_PUBKEY_SIZE_BYTES * 2;
 
 inline bool is_mainnet = true;
 
-inline size_t get_user_pubkey_size() {
-    /// TODO: eliminate the need to check condition every time
-    return is_mainnet ? MAINNET_USER_PUBKEY_SIZE : TESTNET_USER_PUBKEY_SIZE;
-}
-
 class user_pubkey_t {
 
+    int network_ = -1;
     std::string pubkey_;
 
-    user_pubkey_t() {}
+    user_pubkey_t(int network, std::string raw_pk)
+        : network_{network}, pubkey_{std::move(raw_pk)} {}
 
-    user_pubkey_t(std::string pk) : pubkey_(std::move(pk)) {}
+    friend class DatabaseImpl;
 
   public:
-    static user_pubkey_t create(std::string pk, bool& success) {
-        success = true;
-        if (pk.size() != get_user_pubkey_size() || !oxenmq::is_hex(pk)) {
-            success = false;
-            return {};
-        }
-        return user_pubkey_t(std::move(pk));
+    // Default constructor; constructs an invalid pubkey
+    user_pubkey_t() = default;
+
+    // bool conversion: returns true if this object contains a valid pubkey
+    explicit operator bool() const { return !pubkey_.empty(); }
+
+    bool operator==(const user_pubkey_t& other) const {
+        return type() == other.type() && raw() == other.raw();
     }
 
-    // Returns a reference to the user pubkey hex string, including mainnet prefix if on mainnet
-    const std::string& str() const { return pubkey_; }
+    // Replaces the stored pubkey with one parsed from the string `pk`.  `pk` can be either raw
+    // bytes (33 bytes of netid + pubkey), or hex (66 hex digits).  If `pk` is not a valid pubkey
+    // then `this` is put into an invalid-pubkey state (i.e. `(bool)pk` will be false).  Returns a
+    // reference to *this (primary that `if (upk.load(pk)) { ... }` can be used to load-and-test).
+    user_pubkey_t& load(std::string_view pk);
 
-    // Returns the un-prefixed pubkey hex string
-    std::string_view key() const {
-        std::string_view r{pubkey_};
-        if (is_mainnet)
-            r.remove_prefix(2);
-        return r;
-    }
+    // Returns the network id (0-255) that is typically prefixed on the beginning of the pubkey
+    // string; currently 5 is used for Session Ed25519 pubkey IDs on mainnet, 0 is used for Session
+    // IDs on testnet.  Returns -1 if this object does not contain a valid pubkey.
+    int type() const { return network_; }
+
+    // Returns the user pubkey hex string, not including the network prefix.  Returns an empty
+    // string for an invalid (default constructed) pubkey.
+    std::string hex() const;
+
+    // Returns the user pubkey hex string, including the network prefix (unless on testnet with
+    // netid == 0, in which case there is no prefix).  Returns an empty string for an invalid
+    // (default constructed) pubkey.
+    std::string prefixed_hex() const;
+
+    // Returns the raw bytes that make up the pubkey (not including the type/network prefix).
+    const std::string& raw() const { return pubkey_; }
+
+    // Returns the raw bytes that makes up the pubkey, including the type/network prefix byte.
+    // Returns an empty string for an invalid (default constructed) pubkey.
+    std::string prefixed_raw() const;
 };
 
-/// message as received by client
-struct message_t {
-
-    std::string pub_key;
-    std::string data;
+/// message received from a client
+struct message {
+    user_pubkey_t pubkey;
     std::string hash;
-    uint64_t ttl;
-    uint64_t timestamp;
-    /// Nonce is now meaningless, but we keep it to avoid breaking the protocol
-    std::string nonce;
+    std::chrono::system_clock::time_point timestamp;
+    std::chrono::system_clock::time_point expiry;
+    std::string data;
 
-    message_t(const std::string& pk, const std::string& text,
-              const std::string& hash, uint64_t ttl, uint64_t timestamp)
-        : pub_key(pk), data(text), hash(hash), ttl(ttl), timestamp(timestamp) {}
+    message() = default;
+
+    message(
+            user_pubkey_t pubkey,
+            std::string hash,
+            std::chrono::system_clock::time_point timestamp,
+            std::chrono::system_clock::time_point expiry,
+            std::string data) :
+        pubkey{std::move(pubkey)}, hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry},
+        data{std::move(data)}
+    {}
+
+    message(
+            std::string hash,
+            std::chrono::system_clock::time_point timestamp,
+            std::chrono::system_clock::time_point expiry,
+            std::string data) :
+        hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry}, data{std::move(data)}
+    {}
 };
 
 using swarm_id_t = uint64_t;
@@ -77,3 +101,14 @@ using swarm_id_t = uint64_t;
 constexpr swarm_id_t INVALID_SWARM_ID = UINT64_MAX;
 
 } // namespace oxen
+
+namespace std {
+
+template <>
+struct hash<oxen::user_pubkey_t> {
+    size_t operator()(const oxen::user_pubkey_t& pk) const {
+        return static_cast<size_t>(pk.type()) ^ hash<std::string>{}(pk.raw());
+    }
+};
+
+}
