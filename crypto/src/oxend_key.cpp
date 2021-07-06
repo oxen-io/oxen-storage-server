@@ -1,10 +1,13 @@
 #include "oxend_key.h"
 
+#include "oxen_logger.h"
+
 #include <cstring>
 #include <type_traits>
 
 #include <sodium.h>
 #include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
 #include <oxenmq/hex.h>
 
 namespace oxen {
@@ -56,5 +59,35 @@ x25519_pubkey x25519_seckey::pubkey() const {
     crypto_scalarmult_curve25519_base(pk.data(), data());
     return pk;
 };
+
+template <typename T>
+static T parse_pubkey(std::string_view pubkey_in) {
+    T pk{};
+    static_assert(pk.size() == 32);
+    if (pubkey_in.size() == 32)
+        detail::load_from_bytes(pk.data(), 32, pubkey_in);
+    else if (pubkey_in.size() == 64 && oxenmq::is_hex(pubkey_in))
+        oxenmq::from_hex(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+    else if ((pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '='))
+            && oxenmq::is_base64(pubkey_in))
+        oxenmq::from_base64(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+    else if (pubkey_in.size() == 52 && oxenmq::is_base32z(pubkey_in))
+        oxenmq::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+    else {
+        OXEN_LOG(warn, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
+        OXEN_LOG(debug, "Received public key encoded value of size {}: {}", pubkey_in.size(), pubkey_in);
+    }
+    return pk;
+}
+
+legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in) {
+    return parse_pubkey<legacy_pubkey>(pubkey_in);
+}
+ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in) {
+    return parse_pubkey<ed25519_pubkey>(pubkey_in);
+}
+x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in) {
+    return parse_pubkey<x25519_pubkey>(pubkey_in);
+}
 
 } // namespace oxen
