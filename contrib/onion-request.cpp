@@ -60,6 +60,9 @@ the connection details such as:
 
         {"host": "jagerman.com", "target": "/oxen/lsrpc"}
 
+Both PAYLOAD and CONTROL may be passed filenames to read prefixed with `@` (for example:
+@payload.data, @/path/to/control.json)
+
 )";
     return 1;
 }
@@ -92,7 +95,15 @@ int main(int argc, char** argv) {
 
             // Could parse control to make sure it's valid json here, but it can be useful to
             // deliberate send invalid json for testing purposes to see how the remote handles it.
-            (i == argc - 2 ? payload : control) = arg;
+            auto& var = (i == argc - 2 ? payload : control);
+            var = arg;
+            if (!var.empty() && var.front() == '@') {
+                std::ifstream f;
+                f.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+                f.open(var.data()+1, std::ios::in | std::ios::binary);
+                var.clear();
+                var.append(std::istreambuf_iterator<char>{f}, std::istreambuf_iterator<char>{});
+            }
         } else {
             if (!(hex && arg.size() == 64))
                 return usage(argv[0], "Invalid pubkey '" + std::string{arg} + "'");

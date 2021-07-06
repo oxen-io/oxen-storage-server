@@ -1,23 +1,23 @@
 #include "channel_encryption.hpp"
 #include "command_line.h"
-#include "http_connection.h"
+#include "https_server.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "oxend_rpc.h"
-#include "rate_limiter.h"
-#include "security.h"
+#include "server_certificates.h"
 #include "service_node.h"
 #include "swarm.h"
 #include "utils.hpp"
 #include "version.h"
 
-#include "lmq_server.h"
+#include "omq_server.h"
 #include "request_handler.h"
 
 #include <sodium/core.h>
 #include <oxenmq/oxenmq.h>
 #include <oxenmq/hex.h>
 
+#include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -34,7 +34,15 @@ extern "C" {
 
 namespace fs = std::filesystem;
 
+std::atomic<int> signalled = 0;
+extern "C" void handle_signal(int sig) {
+    signalled = sig;
+}
+
 int main(int argc, char* argv[]) {
+
+    std::signal(SIGINT, handle_signal);
+    std::signal(SIGTERM, handle_signal);
 
     oxen::command_line_parser parser;
 
@@ -58,20 +66,22 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+    std::filesystem::path data_dir;
     if (options.data_dir.empty()) {
         if (auto home_dir = util::get_home_dir()) {
-            if (options.testnet) {
-                options.data_dir =
-                    (*home_dir / ".oxen" / "testnet" / "storage").u8string();
-            } else {
-                options.data_dir = (*home_dir / ".oxen" / "storage").u8string();
-            }
+            data_dir = options.testnet
+                ? *home_dir / ".oxen" / "testnet" / "storage"
+                : *home_dir / ".oxen" / "storage";
+        } else {
+            std::cerr << "Could not determine your home directory; please use --data-dir to specify a data directory\n";
+            return EXIT_FAILURE;
         }
+    } else {
+        data_dir = std::filesystem::u8path(options.data_dir);
     }
 
-    if (!fs::exists(options.data_dir)) {
-        fs::create_directories(options.data_dir);
-    }
+    if (!fs::exists(data_dir))
+        fs::create_directories(data_dir);
 
     oxen::LogLevel log_level;
     if (!oxen::parse_log_level(options.log_level, log_level)) {
@@ -80,7 +90,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    oxen::init_logging(options.data_dir, log_level);
+    oxen::init_logging(data_dir, log_level);
 
     if (options.testnet) {
         oxen::is_mainnet = false;
@@ -103,17 +113,11 @@ int main(int argc, char* argv[]) {
     }
 
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
-    OXEN_LOG(info, "Setting database location to {}", options.data_dir);
+    OXEN_LOG(info, "Setting database location to {}", data_dir);
     OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
-    OXEN_LOG(info, "HTTPS server is listening at {}:{}", options.ip,
-             options.port);
-    OXEN_LOG(info, "OxenMQ is listening at {}:{}", options.ip,
-             options.lmq_port);
-
-    boost::asio::io_context ioc{1};
 
     if (sodium_init() != 0) {
-        OXEN_LOG(error, "Could not initialize libsodium");
+        OXEN_LOG(err, "Could not initialize libsodium");
         return EXIT_FAILURE;
     }
 
@@ -137,7 +141,7 @@ int main(int argc, char* argv[]) {
 
 #ifndef INTEGRATION_TEST
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            get_sn_privkeys(options.oxend_omq_rpc);
+            get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
 #else
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
@@ -155,8 +159,12 @@ int main(int argc, char* argv[]) {
             throw;
         }
 #endif
+        if (signalled) {
+            OXEN_LOG(err, "Received signal {}, aborting startup", signalled.load());
+            return EXIT_FAILURE;
+        }
 
-        sn_record_t me{"0.0.0.0", options.port, options.lmq_port,
+        sn_record me{"0.0.0.0", options.port, options.omq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
@@ -167,22 +175,36 @@ int main(int argc, char* argv[]) {
 
         ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
+        auto ssl_cert = data_dir / "cert.pem";
+        auto ssl_key = data_dir / "key.pem";
+        auto ssl_dh = data_dir / "dh.pem";
+        if (!exists(ssl_cert) || !exists(ssl_key))
+            generate_cert(ssl_cert, ssl_key);
+        if (!exists(ssl_dh))
+            generate_dh_pem(ssl_dh);
+
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).
-        OxenmqServer oxenmq_server{me, private_key_x25519, stats_access_keys};
+        auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
+        auto& oxenmq_server = *oxenmq_server_ptr;
 
-        // TODO: SN doesn't need oxenmq_server, just the lmq components
-        ServiceNode service_node(ioc, me, private_key, oxenmq_server,
-                                       options.data_dir, options.force_start);
+        ServiceNode service_node{
+            me, private_key, oxenmq_server, data_dir, options.force_start};
 
-        RequestHandler request_handler(ioc, service_node, channel_encryption);
+        RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
-        oxenmq_server.init(&service_node, &request_handler,
+        RateLimiter rate_limiter{*oxenmq_server};
+
+        HTTPSServer https_server{service_node, request_handler, rate_limiter,
+            {{options.ip, options.port, true}},
+            ssl_cert, ssl_key, ssl_dh,
+            {me.pubkey_legacy, private_key}};
+
+
+        oxenmq_server.init(&service_node, &request_handler, &rate_limiter,
                 oxenmq::address{options.oxend_omq_rpc});
 
-        RateLimiter rate_limiter;
-
-        Security security(legacy_keypair{me.pubkey_legacy, private_key}, options.data_dir);
+        https_server.start();
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
@@ -191,9 +213,21 @@ int main(int argc, char* argv[]) {
         }, 10s);
 #endif
 
-        http_server::run(ioc, options.ip, options.port, options.data_dir,
-                               service_node, request_handler, rate_limiter,
-                               security);
+        // Log general stats at startup and again every hour
+        OXEN_LOG(info, service_node.get_status_line());
+        oxenmq_server->add_timer(
+                [&service_node] { OXEN_LOG(info, service_node.get_status_line()); }, 1h);
+
+        while (signalled.load() == 0)
+            std::this_thread::sleep_for(100ms);
+
+        OXEN_LOG(warn, "Received signal {}; shutting down...", signalled.load());
+        service_node.shutdown();
+        OXEN_LOG(info, "Stopping https server");
+        https_server.shutdown(true);
+        OXEN_LOG(info, "Stopping omq server");
+        oxenmq_server_ptr.reset();
+        OXEN_LOG(info, "Shutting down");
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
