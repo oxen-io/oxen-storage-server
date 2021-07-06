@@ -1,9 +1,24 @@
 [submodule "vendors/spdlog"]
 	path = vendors/spdlog
 	url = https://github.com/gabime/spdlog.git
-[submodule "vendors/loki-mq"]
-	path = vendors/loki-mq
-	url = https://github.com/loki-project/loki-mq.git
+[submodule "vendors/oxen-mq"]
+	path = vendors/oxen-mq
+	url = https://github.com/oxen-io/oxen-mq.git
 [submodule "vendors/nlohmann_json"]
 	path = vendors/nlohmann_json
 	url = https://github.com/nlohmann/json.git
+[submodule "vendors/uWebSockets"]
+	path = vendors/uWebSockets
+	url = https://github.com/uNetworking/uWebSockets.git
+[submodule "vendors/cpr"]
+	path = vendors/cpr
+	url = https://github.com/whoshuu/cpr.git
+[submodule "unit_test/Catch2"]
+	path = unit_test/Catch2
+	url = https://github.com/catchorg/Catch2
+[submodule "vendors/SQLiteCpp"]
+	path = vendors/SQLiteCpp
+	url = https://github.com/SRombauts/SQLiteCpp.git
+[submodule "network-tests/pyoxenmq"]
+	path = network-tests/pyoxenmq
+	url = https://github.com/oxen-io/oxen-pyoxenmq.git

@@ -2,12 +2,13 @@
 Storage server for Loki Service Nodes
 
 Requirements:
-* Boost >= 1.66 (for boost.beast)
+* Boost >= 1.66 (for boost.program_options)
 * OpenSSL >= 1.1.1a (for X25519 curves)
 * sodium >= 1.0.17 (for ed25119 to curve25519 conversion)
+* autoconf (for building jemalloc)
 
-You can, however, download and build static versions these dependencies
-as part of the build by adding the `-DBUILD_STATIC_DEPS=ON` option to cmake.
+You can, however, download and build static versions these dependencies (other than autoconf) as
+part of the build by adding the `-DBUILD_STATIC_DEPS=ON` option to cmake.
 
 Can use `RelWithDebInfo` instead of `Release` if you want to include debug symbols to provide developers with valueable core dumps from crashes.
 Also make sure you don't have an older (than 4.3.0) libzmq header in /usr/local/include, if so please install a new version.

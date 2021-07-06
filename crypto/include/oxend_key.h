@@ -83,6 +83,14 @@ using legacy_keypair = std::pair<legacy_pubkey, legacy_seckey>;
 using ed25519_keypair = std::pair<ed25519_pubkey, ed25519_seckey>;
 using x25519_keypair = std::pair<x25519_pubkey, x25519_seckey>;
 
+/// Parse a pubkey string value encoded in any of base32z, b64, hex, or raw bytes, based on the
+/// length of the value.  Returns a null pk (i.e. operator bool() returns false) and warns on
+/// invalid input (i.e. wrong length or invalid encoding).
+legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in);
+ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
+x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
+
+
 } // namespace oxen
 
 namespace std {

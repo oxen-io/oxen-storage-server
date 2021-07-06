@@ -1,77 +1,48 @@
 #include "serialization.h"
 
-/// TODO: should only be aware of messages
-#include "Item.hpp"
 #include "oxen_logger.h"
+#include "oxenmq/bt_serialize.h"
 #include "service_node.h"
+#include "time.hpp"
+#include "string_utils.hpp"
 
 #include <boost/endian/conversion.hpp>
-#include <boost/format.hpp>
+#include <oxenmq/base64.h>
+
+#include <chrono>
 
 namespace oxen {
 
-using storage::Item;
+namespace v0 {
+// Old serialization format; TODO: can go once everyone has updated to 2.2.0+
+namespace {
 
 template <typename T>
-static void serialize_integer(std::string& buf, T a) {
+void serialize_integer(std::string& buf, T a) {
     boost::endian::native_to_little_inplace(a);
-    buf += std::string_view{reinterpret_cast<const char*>(&a), sizeof(T)};
+    buf += util::view_guts(a);
 }
 
-static void serialize(std::string& buf, const std::string& str) {
+void serialize(std::string& buf, const std::string& str) {
     serialize_integer<uint64_t>(buf, str.size());
     buf += str;
 }
 
-template <typename T>
-void serialize_message(std::string& res, const T& msg) {
+void serialize_message(std::string& res, const message& msg) {
 
-    /// TODO: use binary / base64 representation for pk
-    res += msg.pub_key;
+    res += msg.pubkey.prefixed_hex();
     serialize(res, msg.hash);
-    serialize(res, msg.data);
-    serialize_integer(res, msg.ttl);
-    serialize_integer(res, msg.timestamp);
-    serialize(res, msg.nonce);
+    serialize(res, oxenmq::to_base64(msg.data));
+    // For backwards compat, we send expiry as a ttl
+    serialize_integer(res, to_epoch_ms(msg.expiry) - to_epoch_ms(msg.timestamp));
+    serialize_integer(res, to_epoch_ms(msg.timestamp));
+    serialize(res, ""s); // Empty nonce string, no longer used, but serialization currently requires it be here
 
     OXEN_LOG(trace, "serialized message: {}", msg.data);
 }
 
-template void serialize_message(std::string& res, const message_t& msg);
-template void serialize_message(std::string& res, const Item& msg);
-
 template <typename T>
-std::vector<std::string> serialize_messages(const std::vector<T>& msgs) {
-
-    std::vector<std::string> res;
-
-    std::string buf;
-
-    constexpr size_t BATCH_SIZE = 500000;
-
-    for (const auto& msg : msgs) {
-        serialize_message(buf, msg);
-        if (buf.size() > BATCH_SIZE) {
-            res.push_back(std::move(buf));
-            buf.clear();
-        }
-    }
-
-    if (!buf.empty()) {
-        res.push_back(std::move(buf));
-    }
-
-    return res;
-}
-
-template std::vector<std::string>
-serialize_messages(const std::vector<message_t>& msgs);
-
-template std::vector<std::string>
-serialize_messages(const std::vector<Item>& msgs);
-
-template <typename T>
-static std::optional<T> deserialize_integer(std::string_view& slice) {
+std::optional<T> deserialize_integer(std::string_view& slice) {
     static_assert(std::is_trivial_v<T>);
     T val;
     std::memcpy(reinterpret_cast<char*>(&val), slice.data(), sizeof(T));
@@ -81,8 +52,7 @@ static std::optional<T> deserialize_integer(std::string_view& slice) {
 }
 
 
-static std::optional<std::string> deserialize_string(std::string_view& slice,
-                                                     size_t len) {
+std::optional<std::string> deserialize_string(std::string_view& slice, size_t len) {
 
     if (slice.size() < len) {
         return std::nullopt;
@@ -101,48 +71,57 @@ static std::optional<std::string> deserialize_string(std::string_view& slice) {
     return std::nullopt;
 }
 
-std::vector<message_t> deserialize_messages(std::string_view slice) {
-
-    OXEN_LOG(trace, "=== Deserializing ===");
-
-    std::vector<message_t> result;
+std::vector<message> deserialize_messages_old(std::string_view slice) {
+    std::vector<message> result;
 
     while (!slice.empty()) {
+        auto& item = result.emplace_back();
 
         /// Deserialize PK
-        auto pk = deserialize_string(slice, oxen::get_user_pubkey_size());
-        if (!pk) {
+        size_t pksize = USER_PUBKEY_SIZE_HEX;
+        if (!is_mainnet)
+            pksize -= 2;
+        if (auto pk = deserialize_string(slice, pksize);
+                !(pk && item.pubkey.load(std::move(*pk)))) {
             OXEN_LOG(debug, "Could not deserialize pk");
             return {};
         }
 
         /// Deserialize Hash
-        auto hash = deserialize_string(slice);
-        if (!hash) {
+        if (auto hash = deserialize_string(slice))
+            item.hash = std::move(*hash);
+        else {
             OXEN_LOG(debug, "Could not deserialize hash");
             return {};
         }
 
         /// Deserialize Data
-        auto data = deserialize_string(slice);
-        if (!data) {
+        if (auto data = deserialize_string(slice);
+                data && oxenmq::is_base64(*data))
+            item.data = oxenmq::from_base64(*data);
+        else {
             OXEN_LOG(debug, "Could not deserialize data");
             return {};
         }
 
         /// Deserialize TTL
-        auto ttl = deserialize_integer<uint64_t>(slice);
-        if (!ttl) {
+        std::chrono::milliseconds ttl;
+        if (auto ttl_ms = deserialize_integer<int64_t>(slice))
+            ttl = std::chrono::milliseconds{*ttl_ms};
+        else {
             OXEN_LOG(debug, "Could not deserialize ttl");
             return {};
         }
 
         /// Deserialize Timestamp
-        auto timestamp = deserialize_integer<uint64_t>(slice);
-        if (!timestamp) {
+        if (auto timestamp = deserialize_integer<int64_t>(slice))
+            item.timestamp = from_epoch_ms(*timestamp);
+        else {
             OXEN_LOG(debug, "Could not deserialize timestamp");
             return {};
         }
+
+        item.expiry = item.timestamp + ttl;
 
         /// Deserialize Nonce
         /// TODO: Nonce is unused but we have to call this for backwards compat (and if we don't
@@ -153,11 +132,113 @@ std::vector<message_t> deserialize_messages(std::string_view slice) {
         /// values as hex, and using a rigid fixed ordering of fields.
         [[maybe_unused]] auto unused_nonce = deserialize_string(slice);
 
-        OXEN_LOG(trace, "Deserialized data: {}", *data);
+        OXEN_LOG(trace, "pk: {}, msg: {}", item.pubkey.prefixed_hex(), oxenmq::to_base64(item.data));
+    }
 
-        OXEN_LOG(trace, "pk: {}, msg: {}", *pk, *data);
+    OXEN_LOG(trace, "=== END ===");
 
-        result.emplace_back(std::move(*pk), std::move(*data), std::move(*hash), *ttl, *timestamp);
+    return result;
+}
+
+}
+}
+
+std::vector<std::string> serialize_messages(std::function<const message*()> next_msg, uint8_t version) {
+
+    std::vector<std::string> res;
+
+    if (version == SERIALIZATION_VERSION_OLD) {
+        res.emplace_back();
+        while (auto* msg = next_msg()) {
+            if (res.back().size() > SERIALIZATION_BATCH_SIZE)
+                res.emplace_back();
+            v0::serialize_message(res.back(), *msg);
+        }
+    } else if (version == SERIALIZATION_VERSION_BT) {
+        oxenmq::bt_list l;
+        size_t counter = 2;
+        while (auto* msg = next_msg()) {
+            size_t ser_size =
+                1 + // version byte
+                2 + // l...e
+                36 + // 33:pubkey
+                2*15 + // millisecond epochs (13 digits) + `i...e`
+                (4 + msg->hash.size()) + // xxx:HASH
+                (6 + msg->data.size()) // xxxxx:DATA
+            ;
+            counter += ser_size;
+            if (!l.empty() && counter > SERIALIZATION_BATCH_SIZE) {
+                // Adding this message would push us over the limit, so finish it off and start a
+                // new serialization piece.
+                std::ostringstream oss;
+                oss << SERIALIZATION_VERSION_BT << oxenmq::bt_serializer(l);
+                res.push_back(oss.str());
+                l.clear();
+                counter = 1 + 2 + ser_size;
+            }
+            assert(msg->pubkey);
+            l.push_back(oxenmq::bt_list{{
+                msg->pubkey.prefixed_raw(),
+                msg->hash,
+                to_epoch_ms(msg->timestamp),
+                to_epoch_ms(msg->expiry),
+                msg->data}});
+        }
+
+        std::ostringstream oss;
+        oss << uint8_t{1} /* version*/ << oxenmq::bt_serializer(l);
+        res.push_back(oss.str());
+    } else {
+        OXEN_LOG(critical, "Invalid serialization version {}", +version);
+        throw std::logic_error{"Invalid serialization version " + std::to_string(version)};
+    }
+
+    return res;
+}
+
+
+
+std::vector<message> deserialize_messages(std::string_view slice) {
+
+    OXEN_LOG(trace, "=== Deserializing ===");
+
+    // v0 didn't send a version at all, and sent things incredibly inefficiently.
+    // v1+ put the version as the first byte (but can't use any of '0'..'9','a'..'f','A'..'F'
+    // because v0 starts out with a hex pubkey).
+    uint8_t version = SERIALIZATION_VERSION_OLD;
+    if (!slice.empty() && slice.front() < '0' && slice.front() != 0) {
+        version = slice.front();
+        slice.remove_prefix(1);
+    }
+
+    if (version == SERIALIZATION_VERSION_OLD)
+        return v0::deserialize_messages_old(slice);
+
+    else if (version != SERIALIZATION_VERSION_BT) {
+        OXEN_LOG(err, "Invalid deserialization version {}", +version);
+        return {};
+    }
+
+    // v1:
+    std::vector<message> result;
+    try {
+        oxenmq::bt_list_consumer l{slice};
+        while (!l.is_finished()) {
+            auto& item = result.emplace_back();
+            auto m = l.consume_list_consumer();
+            if (!item.pubkey.load(m.consume_string_view())) {
+                OXEN_LOG(debug, "Unable to deserialize(v1) pubkey");
+                return {};
+            }
+            item.hash = m.consume_string();
+            item.timestamp = from_epoch_ms(m.consume_integer<int64_t>());
+            item.expiry = from_epoch_ms(m.consume_integer<int64_t>());
+            item.data = m.consume_string();
+        }
+    } catch (const std::exception& e) {
+        throw e;
+        OXEN_LOG(debug, "Failed to deserialize(v1): {}", e.what());
+        return {};
     }
 
     OXEN_LOG(trace, "=== END ===");
