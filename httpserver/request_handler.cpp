@@ -68,7 +68,8 @@ json swarm_to_json(const SwarmInfo& swarm) {
 
     return json{
         {"snodes", std::move(snodes_json)},
-        {"swarm", util::int_to_string(swarm.swarm_id, 16)}
+        {"swarm", util::int_to_string(swarm.swarm_id, 16)},
+        {"t", to_epoch_ms(std::chrono::system_clock::now())},
     };
 }
 
@@ -402,8 +403,8 @@ void RequestHandler::process_client_req(
         OXEN_LOG(warn, "Forbidden. Invalid TTL: {}ms", ttl.count());
         return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
     }
-    if (auto now = system_clock::now();
-            req.timestamp > now + STORE_TOLERANCE || req.expiry < now - STORE_TOLERANCE) {
+    auto now = system_clock::now();
+    if (req.timestamp > now + STORE_TOLERANCE || req.expiry < now - STORE_TOLERANCE) {
         OXEN_LOG(debug, "Forbidden. Invalid Timestamp: {}", to_epoch_ms(req.timestamp));
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
@@ -448,6 +449,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (entry_router)
+        mine["t"] = to_epoch_ms(now);
 
     OXEN_LOG(trace, "Successfully stored message {} for {}", message_hash, obfuscate_pubkey(req.pubkey));
 
@@ -475,7 +478,10 @@ void RequestHandler::process_client_req(
                     OXEN_LOG(warn, "Invalid oxend response to client request: result is not valid json");
                     return cb({http::BAD_GATEWAY, "oxend returned unparseable data"s});
                 }
-                return cb({http::OK, json{{"result", std::move(result)}}});
+                return cb({http::OK, json{
+                    {"result", std::move(result)},
+                    {"t", to_epoch_ms(std::chrono::system_clock::now())},
+                }});
             }
             return cb({http::BAD_REQUEST,
                 data.size() >= 2 && !data[1].empty()
@@ -506,8 +512,8 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
+    auto now = system_clock::now();
     if (req.check_signature) {
-        auto now = system_clock::now();
         if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
             OXEN_LOG(debug, "retrieve: invalid timestamp ({}s from now)", duration_cast<seconds>(req.timestamp - now).count());
             return cb(Response{http::NOT_ACCEPTABLE, "retrieve timestamp too far from current time"sv});
@@ -540,7 +546,10 @@ void RequestHandler::process_client_req(
         });
     }
 
-    return cb(Response{http::OK, json{{"messages", std::move(messages)}}});
+    return cb(Response{http::OK, json{
+        {"messages", std::move(messages)},
+        {"t", to_epoch_ms(now)},
+    }});
 }
 
 void RequestHandler::process_client_req(
@@ -589,6 +598,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (req.recurse)
+        mine["t"] = to_epoch_ms(now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -623,6 +634,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (req.recurse)
+        mine["t"] = to_epoch_ms(std::chrono::system_clock::now());
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -663,6 +676,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (req.recurse)
+        mine["t"] = to_epoch_ms(now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -703,6 +718,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (req.recurse)
+        mine["t"] = to_epoch_ms(now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -742,6 +759,8 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
+    if (req.recurse)
+        mine["t"] = to_epoch_ms(now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
