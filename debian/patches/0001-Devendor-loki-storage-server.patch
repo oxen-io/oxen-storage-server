@@ -3,23 +3,15 @@ Date: Tue, 16 Jul 2019 16:08:10 -0300
 Subject: Devendor loki-storage-server
 
 ---
- httpserver/CMakeLists.txt | 13 +------------
- vendors/CMakeLists.txt    | 20 ++------------------
- 2 files changed, 3 insertions(+), 30 deletions(-)
+ httpserver/CMakeLists.txt | 12 +-----------
+ vendors/CMakeLists.txt    | 16 ++--------------
+ 2 files changed, 3 insertions(+), 25 deletions(-)
 
 diff --git a/httpserver/CMakeLists.txt b/httpserver/CMakeLists.txt
-index 5900db7..e63a38c 100644
+index 5900db7..cf17e19 100644
 --- a/httpserver/CMakeLists.txt
 +++ b/httpserver/CMakeLists.txt
-@@ -27,7 +27,6 @@ target_link_libraries(httpserver_lib PUBLIC
-     cpr::cpr
-     jemalloc::jemalloc
-     OpenSSL::SSL OpenSSL::Crypto
--    nlohmann_json::nlohmann_json
-     oxenmq::oxenmq
-     Boost::boost Boost::program_options)
- 
-@@ -45,17 +44,7 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
+@@ -45,17 +45,7 @@ set_target_properties(httpserver PROPERTIES OUTPUT_NAME ${BIN_NAME})
  target_link_libraries(httpserver PRIVATE httpserver_lib)
  install(TARGETS httpserver DESTINATION bin)
  # Build Info
@@ -39,10 +31,10 @@ index 5900db7..e63a38c 100644
  message(STATUS "using git commit hash ${SHORT_HASH}")
  message(STATUS "using UTC build time ${BUILD_TIME}")
 diff --git a/vendors/CMakeLists.txt b/vendors/CMakeLists.txt
-index bbf47ab..64a70e0 100644
+index bbf47ab..8006a47 100644
 --- a/vendors/CMakeLists.txt
 +++ b/vendors/CMakeLists.txt
-@@ -48,24 +48,8 @@ if(NOT TARGET sodium)
+@@ -48,20 +48,8 @@ if(NOT TARGET sodium)
    export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
  endif()
  
@@ -60,12 +52,8 @@ index bbf47ab..64a70e0 100644
 -  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
 -  add_subdirectory(oxen-mq)
 -endif()
--
--set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
--add_subdirectory(nlohmann_json)
--
 +pkg_check_modules(OXENMQ REQUIRED IMPORTED_TARGET GLOBAL liboxenmq>=1.2.6)
 +add_library(oxenmq::oxenmq ALIAS PkgConfig::OXENMQ)
  
- add_library(oxen-crypto-ops STATIC
-   oxen/crypto-ops/keccak.c
+ set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+ add_subdirectory(nlohmann_json)

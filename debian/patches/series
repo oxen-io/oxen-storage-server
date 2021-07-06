@@ -1,4 +1,1 @@
 0001-Devendor-loki-storage-server.patch
-0002-Re-vendor-spdlog.patch
-0003-Re-vendor-nlohmann_json.patch
-0004-Add-check-for-latomic-needed-for-armhf-build.patch
