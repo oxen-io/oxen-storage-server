@@ -1,18 +1,19 @@
 #include "swarm.h"
-#include "http_connection.h"
 #include "oxen_logger.h"
 
 #include "service_node.h"
 
+#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ostream>
 #include <unordered_map>
 
+#include "string_utils.hpp"
 #include "utils.hpp"
 
 namespace oxen {
 
-static bool swarm_exists(const all_swarms_t& all_swarms,
+static bool swarm_exists(const std::vector<SwarmInfo>& all_swarms,
                          const swarm_id_t& swarm) {
 
     const auto it = std::find_if(
@@ -22,12 +23,12 @@ static bool swarm_exists(const all_swarms_t& all_swarms,
     return it != all_swarms.end();
 }
 
-void debug_print(std::ostream& os, const block_update_t& bu) {
+void debug_print(std::ostream& os, const block_update& bu) {
 
     os << "Block update: {\n";
     os << "     height: " << bu.height << '\n';
     os << "     block hash: " << bu.block_hash << '\n';
-    os << "     hardfork: " << bu.hardfork << '\n';
+    os << "     hardfork: " << bu.hardfork << '.' << bu.snode_revision << '\n';
     os << "     swarms: [\n";
 
     for (const SwarmInfo& swarm : bu.swarms) {
@@ -50,7 +51,7 @@ bool Swarm::is_existing_swarm(swarm_id_t sid) const {
                        });
 }
 
-SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
+SwarmEvents Swarm::derive_swarm_events(const std::vector<SwarmInfo>& swarms) const {
 
     SwarmEvents events = {};
 
@@ -103,14 +104,9 @@ SwarmEvents Swarm::derive_swarm_events(const all_swarms_t& swarms) const {
 
     /// See if there are any new swarms
 
-    for (const auto& swarm_info : swarms) {
-
-        const bool found = this->is_existing_swarm(swarm_info.swarm_id);
-
-        if (!found) {
+    for (const auto& swarm_info : swarms)
+        if (!is_existing_swarm(swarm_info.swarm_id))
             events.new_swarms.push_back(swarm_info.swarm_id);
-        }
-    }
 
     /// NOTE: need to be careful and make sure we don't miss any
     /// swarm update (e.g. if we don't update frequently enough)
@@ -125,18 +121,18 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     } else {
 
         if (cur_swarm_id_ == INVALID_SWARM_ID) {
-            OXEN_LOG(info, "EVENT: started SN in swarm: {}", sid);
+            OXEN_LOG(info, "EVENT: started SN in swarm: 0x{}", util::int_to_string(sid, 16));
         } else if (cur_swarm_id_ != sid) {
-            OXEN_LOG(info, "EVENT: got moved into a new swarm: {}", sid);
+            OXEN_LOG(info, "EVENT: got moved into a new swarm: 0x{}", util::int_to_string(sid, 16));
         }
     }
 
     cur_swarm_id_ = sid;
 }
 
-static auto get_snode_map_from_swarms(const all_swarms_t& swarms) {
+static auto get_snode_map_from_swarms(const std::vector<SwarmInfo>& swarms) {
 
-    std::unordered_map<legacy_pubkey, sn_record_t> snode_map;
+    std::unordered_map<legacy_pubkey, sn_record> snode_map;
     for (const auto& swarm : swarms) {
         for (const auto& snode : swarm.snodes) {
             snode_map.emplace(snode.pubkey_legacy, snode);
@@ -154,10 +150,11 @@ bool update_if_changed(T& val, const T& new_val, const std::common_type_t<T>& ig
     return false;
 }
 
-auto apply_ips(const all_swarms_t& swarms_to_keep,
-               const all_swarms_t& other_swarms) -> all_swarms_t {
+std::vector<SwarmInfo> apply_ips(
+        const std::vector<SwarmInfo>& swarms_to_keep,
+        const std::vector<SwarmInfo>& other_swarms) {
 
-    all_swarms_t result_swarms = swarms_to_keep;
+    std::vector<SwarmInfo> result_swarms = swarms_to_keep;
     const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
 
     int updates_count = 0;
@@ -171,7 +168,7 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
                 bool updated = false;
                 if (update_if_changed(snode.ip, sn.ip, "0.0.0.0")) updated = true;
                 if (update_if_changed(snode.port, sn.port, 0)) updated = true;
-                if (update_if_changed(snode.lmq_port, sn.lmq_port, 0)) updated = true;
+                if (update_if_changed(snode.omq_port, sn.omq_port, 0)) updated = true;
                 if (updated)
                     updates_count++;
             }
@@ -182,15 +179,15 @@ auto apply_ips(const all_swarms_t& swarms_to_keep,
     return result_swarms;
 }
 
-void Swarm::apply_swarm_changes(const all_swarms_t& new_swarms) {
+void Swarm::apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms) {
 
     OXEN_LOG(trace, "Applying swarm changes");
 
     all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
 }
 
-void Swarm::update_state(const all_swarms_t& swarms,
-                         const std::vector<sn_record_t>& decommissioned,
+void Swarm::update_state(const std::vector<SwarmInfo>& swarms,
+                         const std::vector<sn_record>& decommissioned,
                          const SwarmEvents& events, bool active) {
 
     if (active) {
@@ -201,7 +198,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
             OXEN_LOG(info, "EVENT: our old swarm got DISSOLVED!");
         }
 
-        for (const sn_record_t& sn : events.new_snodes) {
+        for (const sn_record& sn : events.new_snodes) {
             OXEN_LOG(info, "EVENT: detected new SN: {}", sn.pubkey_legacy);
         }
 
@@ -222,7 +219,7 @@ void Swarm::update_state(const all_swarms_t& swarms,
 
         std::copy_if(members.begin(), members.end(),
                      std::back_inserter(swarm_peers_),
-                     [this](const sn_record_t& record) {
+                     [this](const sn_record& record) {
                          return record != our_address_;
                      });
     }
@@ -248,40 +245,39 @@ void Swarm::update_state(const all_swarms_t& swarms,
     }
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const legacy_pubkey& pk) const {
     if (auto it = all_funded_nodes_.find(pk); it != all_funded_nodes_.end())
         return it->second;
     return std::nullopt;
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const ed25519_pubkey& pk) const {
     if (auto it = all_funded_ed25519_.find(pk); it != all_funded_ed25519_.end())
         return find_node(it->second);
     return std::nullopt;
 }
 
-std::optional<sn_record_t>
+std::optional<sn_record>
 Swarm::find_node(const x25519_pubkey& pk) const {
     if (auto it = all_funded_x25519_.find(pk); it != all_funded_x25519_.end())
         return find_node(it->second);
     return std::nullopt;
 }
 
-static uint64_t hex_to_u64(const user_pubkey_t& pk) {
+uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
 
-    /// Create a buffer for 16 characters null terminated
-    char buf[17] = {};
-
-    const auto hexpk = pk.key();
-    assert(hexpk.size() == 64 && oxenmq::is_hex(hexpk));
+    const auto bytes = pk.raw();
+    assert(bytes.size() == 32);
 
     uint64_t res = 0;
-    for (size_t i = 0; i < 64; i += 16) {
-        std::memcpy(buf, hexpk.data() + i, 16);
-        res ^= strtoull(buf, nullptr, 16);
+    for (size_t i = 0; i < 4; i++) {
+        uint64_t buf;
+        std::memcpy(&buf, bytes.data() + i*8, 8);
+        res ^= buf;
     }
+    boost::endian::big_to_native_inplace(res);
 
     return res;
 }
@@ -298,7 +294,7 @@ const SwarmInfo& get_swarm_by_pk(
         const std::vector<SwarmInfo>& all_swarms,
         const user_pubkey_t& pk) {
 
-    const uint64_t res = hex_to_u64(pk);
+    const uint64_t res = pubkey_to_swarm_space(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
@@ -358,17 +354,17 @@ const SwarmInfo& get_swarm_by_pk(
     return *cur_best;
 }
 
-std::pair<int, int> count_missing_data(const block_update_t& bu) {
+std::pair<int, int> count_missing_data(const block_update& bu) {
     auto result = std::make_pair(0, 0);
     auto& [missing, total] = result;
 
     for (auto& swarm : bu.swarms) {
         for (auto& snode : swarm.snodes) {
             total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.lmq_port ||
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
                     !snode.pubkey_ed25519 || !snode.pubkey_x25519)
             { OXEN_LOG(warn, "well wtf {} {} {} {} {}",
-                    snode.ip, snode.port, snode.lmq_port, snode.pubkey_ed25519, snode.pubkey_x25519);
+                    snode.ip, snode.port, snode.omq_port, snode.pubkey_ed25519, snode.pubkey_x25519);
                 missing++;
             }
         }
