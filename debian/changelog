@@ -162,8 +162,13 @@ oxen-storage-server (2.2.0-1~ubuntu2004) focal; urgency=medium
   * Properly set include dirs for locally build sqlite3
   * Add timestamp to all client rpc responses
   * Build with jemalloc
+  * Bump oxenmq required version
+  * Rediff patches
+  * Add curl dep
+  * Add check for -latomic (needed for armhf build)
+  * Rediff patches
 
- -- Jason Rhinelander <jason@imaginary.ca>  Tue, 06 Jul 2021 13:22:17 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 06 Jul 2021 16:07:44 -0300
 
 oxen-storage-server (2.1.1-1~ubuntu2004) focal; urgency=medium
 
