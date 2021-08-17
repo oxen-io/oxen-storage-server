@@ -1,5 +1,5 @@
-# loki-storage-server
-Storage server for Loki Service Nodes
+# Oxen-storage-server
+Storage server for Oxen Service Nodes
 
 Requirements:
 * Boost >= 1.66 (for boost.program_options)
@@ -17,7 +17,7 @@ git submodule update --init --recursive
 mkdir build && cd build
 cmake -DDISABLE_SNODE_SIGNATURE=OFF -DCMAKE_BUILD_TYPE=Release ..
 cmake --build .
-./loki-storage 0.0.0.0 8080
+./oxen-storage 0.0.0.0 8080
 ```
 
 The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
