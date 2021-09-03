@@ -449,8 +449,12 @@ void RequestHandler::process_client_req(
         mine["failed"] = true;
         mine["query_failure"] = true;
     }
-    if (entry_router)
+    if (entry_router) {
+        // Deprecated: we accidentally set this inside the entry router's "swarm" instead of in the
+        // outer response, so keep it here for now in case something is relying on that.
         mine["t"] = to_epoch_ms(now);
+        res->result["t"] = to_epoch_ms(now);
+    }
 
     OXEN_LOG(trace, "Successfully stored message {} for {}", message_hash, obfuscate_pubkey(req.pubkey));
 
