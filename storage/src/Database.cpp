@@ -180,6 +180,18 @@ public:
                 rc != SQLITE_OK)
             OXEN_LOG(err, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
 
+        if (int rc = db.tryExec("PRAGMA foreign_keys = ON");
+                rc != SQLITE_OK) {
+            auto m = fmt::format("Failed to enable foreign keys constraints: {}", sqlite3_errstr(rc));
+            OXEN_LOG(critical, m);
+            throw std::runtime_error{m};
+        }
+        int fk_enabled = db.execAndGet("PRAGMA foreign_keys").getInt();
+        if (fk_enabled != 1) {
+            OXEN_LOG(critical, "Failed to enable foreign key constraints; perhaps this sqlite3 is compiled without it?");
+            throw std::runtime_error{"Foreign key support is required"};
+        }
+
         page_size = db.execAndGet("PRAGMA page_size").getInt();
         // Would use a placeholder here, but sqlite3 apparently doesn't support them for PRAGMAs.
         if (int rc = db.tryExec("PRAGMA max_page_count = " + std::to_string(Database::SIZE_LIMIT / page_size));
