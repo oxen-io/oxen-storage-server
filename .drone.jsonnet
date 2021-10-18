@@ -14,7 +14,7 @@ local default_deps_nocxx = ['libsodium-dev'] + default_deps_base;  // libsodium-
 local default_deps = ['g++'] + default_deps_nocxx;  // g++ sometimes needs replacement
 local docker_base = 'registry.oxen.rocks/lokinet-ci-';
 
-local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1'];
+local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1 --jobs=4'];
 local submodules = {
   name: 'submodules',
   image: 'drone/git',
