@@ -1,3 +1,24 @@
+oxen-storage-server (2.2.1-1) unstable; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Rediff patches
+  * Disable LTO on armhf
+  * Add omq-rpc contrib script for SS RPC probing
+
+  [ Kee Jefferys ]
+  * Update Oxen mentions
+
+  [ Jason Rhinelander ]
+  * Set "t" in the outer part of the request
+  * Add network test check for "t" field
+  * Ensure foreign key support is enabled
+  * Use our prebuilt ci; tweak builds; reformat
+  * git submodules in parallel
+  * 2.2.1 version bump
+  * Drone: reformat & convert to our CI builder image
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 31 Oct 2021 11:20:41 -0300
+
 oxen-storage-server (2.2.0-1) unstable; urgency=medium
 
   * Fix properly tracking failing nodes
