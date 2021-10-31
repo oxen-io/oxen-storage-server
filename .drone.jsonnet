@@ -1,5 +1,5 @@
 local distro = 'hirsute';
-local distro_name = 'Debian ' + distro;
+local distro_name = 'Ubuntu ' + distro;
 local distro_docker = 'registry.oxen.rocks/lokinet-ci-ubuntu-' + distro + '-builder';
 
 local apt_get_quiet = 'apt-get -o=Dpkg::Use-Pty=0 -q';
