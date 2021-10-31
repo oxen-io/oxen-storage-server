@@ -35,6 +35,9 @@ def test_store(omq, random_sn, sk, exclude):
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
+    # NB: assumes the test machine is reasonably time synced
+    assert(ts - 30000 <= s['t'] <= ts + 30000)
+
 
 def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
     """Retrieves messages without authentication.  This test will break in the future when we turn
