@@ -37,6 +37,34 @@ ParsedInfo process_inner_request(std::string plaintext) {
                 b64 = it->get<bool>();
         } else if (auto it = inner_json.find("host"); it != inner_json.end()) {
             auto& [payload, host, port, protocol, target] = ret.emplace<RelayToServerInfo>();
+
+            // Setting the payload to the *entire* decrypted value here seems odd, and it is, but
+            // this is how it is implemented.  The reasoning, I'm guessing, is that essentially we
+            // have a payload that we have decrypted for the last hop that is encoded like this:
+            //
+            // [N][inner]{json}
+            //
+            // where json contains host/port/target/protocol keys for the last hop to tell it where
+            // to proxy the HTTP request.  But then for some reason, someone decided that rather
+            // than encode the information for the last hop inside [inner] itself (so that you can
+            // send it arbitrary data encoded however the last hop wants to encode things), instead
+            // it would cram extra data into the *same* json object that the last hop uses, and
+            // force the remove target to re-parse the last hop's request as its own request.
+            //
+            // That is, a clean design here would have been:
+            //
+            //     X=[...encoded data for the target SOGS or file server...]
+            //
+            //     [X.length][X]{"host":"...","etc":...}
+            //
+            // and then the remote target can interpret X however it wants.  (e.g. if it needs extra
+            // flags, they get encoded inside X).
+            //
+            // But this approach instead took the extremely dirty approach of forcing the remote to
+            // first have to understand how to parse the custom onion packing, and *then* either use
+            // its own data encoding, or else have the client put some more keys into the json and
+            // just hope that they never conflict with something the storage server wants to use.
+            //
             payload = std::move(plaintext);
             host = it->get<std::string>();
             target = inner_json.at("target").get<std::string>();
