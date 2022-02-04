@@ -1,3 +1,9 @@
+oxen-storage-server (2.2.1-2) unstable; urgency=medium
+
+  * Add libfmt compat patches from dev for building on sid
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 04 Feb 2022 10:59:07 -0400
+
 oxen-storage-server (2.2.1-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
