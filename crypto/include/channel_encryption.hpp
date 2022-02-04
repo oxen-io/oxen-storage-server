@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <iosfwd>
 
 #include "oxend_key.h"
 
@@ -26,6 +27,8 @@ inline constexpr std::string_view to_string(EncryptType type) {
     }
     return ""sv;
 }
+
+std::ostream& operator<<(std::ostream &o, const EncryptType& t);
 
 // Encryption/decription class for encryption/decrypting outgoing/incoming messages.
 class ChannelEncryption {

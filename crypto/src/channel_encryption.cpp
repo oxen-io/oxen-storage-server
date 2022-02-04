@@ -72,6 +72,11 @@ EncryptType parse_enc_type(std::string_view enc_type) {
     throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
 }
 
+std::ostream& operator<<(std::ostream& o, const EncryptType& t) {
+    return o << to_string(t);
+}
+
+
 std::string ChannelEncryption::encrypt(EncryptType type, std::string_view plaintext, const x25519_pubkey& pubkey) const {
     switch (type) {
         case EncryptType::xchacha20: return encrypt_xchacha20(plaintext, pubkey);
