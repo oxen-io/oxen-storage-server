@@ -250,16 +250,7 @@ std::string computeMessageHash(
         system_clock::time_point timestamp,
         system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
-        std::string_view data,
-        bool old) {
-    if (old) {
-        return compute_hash(compute_hash_sha512_hex,
-                timestamp,
-                to_epoch_ms(expiry) - to_epoch_ms(timestamp), // ttl
-                pubkey.prefixed_hex(),
-                oxenmq::to_base64(data));
-    }
-
+        std::string_view data) {
     char netid = static_cast<char>(pubkey.type());
     return compute_hash(compute_hash_blake2b_b64,
             timestamp, expiry, std::string_view{&netid, 1}, pubkey.raw(), data);
@@ -410,19 +401,13 @@ void RequestHandler::process_client_req(
     }
 
     bool entry_router = req.recurse == true;
-    if (!service_node_.hf_at_least(HARDFORK_RECURSIVE_STORE))
-        // "store" exists before 18.1, so don't forward requests since non-upgraded nodes can't
-        // handle sn.storage_cc at all.
-        req.recurse = false;
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
     auto& mine = req.recurse
         ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
         : res->result;
 
-    bool use_old_hash = !service_node_.hf_at_least(HARDFORK_HASH_BLAKE2B);
-    std::string message_hash = computeMessageHash(
-            req.timestamp, req.expiry, req.pubkey, req.data, use_old_hash);
+    std::string message_hash = computeMessageHash(req.timestamp, req.expiry, req.pubkey, req.data);
 
     bool new_msg;
     bool success = false;

@@ -39,18 +39,7 @@ inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 0};
-// HF at which we switch to /ping_test/v1 instead of /swarms/ping_test/v1 for HTTPS pings
-inline constexpr hf_revision HARDFORK_HTTPS_PING_TEST_URL = {18, 1};
-// HF at which we switch to OMQ storage tests instead of HTTPS
-inline constexpr hf_revision HARDFORK_OMQ_STORAGE_TESTS = {18, 1};
-// HF at which `store` requests become recursive (rather than having unreported background
-// distribution).
-inline constexpr hf_revision HARDFORK_RECURSIVE_STORE = {18, 1};
-// When we start using the more compact BT message serialization
-inline constexpr hf_revision HARDFORK_BT_MESSAGE_SERIALIZATION = {18, 1};
-// Hardfork where we switch the hash function to base64(blake2b) from hex(sha512)
-inline constexpr hf_revision HARDFORK_HASH_BLAKE2B = {18, 1};
+inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 1};
 
 class OxenmqServer;
 struct OnionRequestMetadata;

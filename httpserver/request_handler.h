@@ -107,14 +107,12 @@ std::string compute_hash(Func hasher, const T&... args) {
     return hasher({detail::to_hashable(args, b)...});
 }
 
-/// Computes a message hash using either the "new" (post-2.2) or "old" formats, which are blake2b
-/// and sha512 of the messages attributes (which differ a little between new/old).
+/// Computes a message hash using blake2b hash of various messages attributes.
 std::string computeMessageHash(
         std::chrono::system_clock::time_point timestamp,
         std::chrono::system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
-        std::string_view data,
-        bool old);
+        std::string_view data);
 
 struct OnionRequestMetadata {
     x25519_pubkey ephem_key;

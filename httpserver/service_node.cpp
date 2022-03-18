@@ -375,15 +375,6 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     if (new_msg)
         *new_msg = stored.value_or(false);
 
-    bool legacy_store = !hf_at_least(HARDFORK_RECURSIVE_STORE);
-    if (legacy_store) {
-        auto serialized = std::move(serialize_messages(&msg, &msg+1, SERIALIZATION_VERSION_OLD).front());
-
-        for (auto& peer : swarm_->other_nodes())
-            relay_data_reliable(serialized, peer);
-
-        OXEN_LOG(debug, "Relayed message to {} swarm peers", swarm_->other_nodes().size());
-    }
     return true;
 }
 
@@ -725,9 +716,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
     auto test_results = std::make_shared<std::pair<const sn_record, std::atomic<uint8_t>>>(
             sn, 0);
 
-    bool old_ping_test = !hf_at_least(HARDFORK_HTTPS_PING_TEST_URL);
-    cpr::Url url{fmt::format("https://{}:{}{}/ping_test/v1",
-            sn.ip, sn.port, old_ping_test ? "/swarms" : "")};
+    cpr::Url url{fmt::format("https://{}:{}/ping_test/v1", sn.ip, sn.port)};
     cpr::Body body{""};
     cpr::Header headers{
         {"Host", sn.pubkey_ed25519
@@ -737,14 +726,10 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
         {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
     };
 
-    if (old_ping_test)
-        for (auto& [h, v] : sign_request(body.str()))
-            headers[h] = std::move(v);
-
     OXEN_LOG(debug, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url);
     outstanding_https_reqs_.emplace_front(
         cpr::PostCallback(
-            [this, &omq=*omq_server(), old_ping_test, test_results, previous_failures]
+            [this, &omq=*omq_server(), test_results, previous_failures]
             (cpr::Response r) {
                 auto& [sn, result] = *test_results;
                 auto& pk = sn.pubkey_legacy;
@@ -755,27 +740,15 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                     OXEN_LOG(debug, "FAILED HTTPS ping test of {}: received non-200 status {} {}",
                             pk, r.status_code, r.status_line);
                 } else {
-                    if (old_ping_test) {
-                        if (r.header.count(http::SNODE_SIGNATURE_HEADER))
-                            // The signature returned is of the cert.pem which is impossible to
-                            // verify without going deeper into the low level SSL layer which isn't
-                            // worth the bother, so just accept anything with the signature header
-                            // set.
-                            success = true;
-                        else
-                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} response header missing",
-                                    pk, http::SNODE_SIGNATURE_HEADER);
-                    } else {
-                        if (auto it = r.header.find(http::SNODE_PUBKEY_HEADER);
-                                it == r.header.end())
-                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} response header missing",
-                                    pk, http::SNODE_PUBKEY_HEADER);
-                        else if (auto remote_pk = parse_legacy_pubkey(it->second); remote_pk != pk)
-                            OXEN_LOG(debug, "FAILED HTTPS ping test of {}: reply has wrong pubkey {}",
-                                    pk, remote_pk);
-                        else
-                            success = true;
-                    }
+                    if (auto it = r.header.find(http::SNODE_PUBKEY_HEADER);
+                            it == r.header.end())
+                        OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {} response header missing",
+                                pk, http::SNODE_PUBKEY_HEADER);
+                    else if (auto remote_pk = parse_legacy_pubkey(it->second); remote_pk != pk)
+                        OXEN_LOG(debug, "FAILED HTTPS ping test of {}: reply has wrong pubkey {}",
+                                pk, remote_pk);
+                    else
+                        success = true;
                 }
                 if (success)
                     OXEN_LOG(debug, "Successful HTTPS ping test of {}", pk);
@@ -907,71 +880,9 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
                                         uint64_t test_height,
                                         const message& msg) {
 
-    if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
-        // Deprecated HTTPS storage test: remove after HF18.1
-        cpr::Body body{json{{"height", test_height}, {"hash", msg.hash}}.dump()};
-        cpr::Header headers{
-            {"Host", testee.pubkey_ed25519
-                ? oxenmq::to_base32z(testee.pubkey_ed25519.view()) + ".snode"
-                : "service-node.snode"},
-            {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
-        };
-
-        for (auto& [h, v] : sign_request(body.str()))
-            headers[h] = std::move(v);
-
-        outstanding_https_reqs_.emplace_front(
-            cpr::PostCallback(
-                [this, testee, msg, height=block_height_]
-                (cpr::Response r) {
-                    auto& pk = testee.pubkey_legacy;
-                    std::string status;
-                    std::string answer;
-                    if (r.error.code != cpr::ErrorCode::OK)
-                        OXEN_LOG(debug, "FAILED storage test of {}: {}", pk, r.error.message);
-                    else if (r.status_code != 200)
-                        OXEN_LOG(debug, "FAILED storage test of {}: received non-200 status {} {}",
-                                pk, r.status_code, r.status_line);
-                    else if (r.text.empty())
-                        OXEN_LOG(debug, "FAILED storage test of {}: received empty body", pk);
-                    else {
-                        try {
-                            json res_json = json::parse(r.text);
-                            status = res_json.at("status").get<std::string>();
-                            auto& ans = res_json.at("value").get_ref<const std::string&>();
-                            if (oxenmq::is_base64(ans))
-                                answer = oxenmq::from_base64(ans);
-                            else
-                                OXEN_LOG(debug, "FAILED storage test of {}: body of legacy HTTP request was not base64");
-                        } catch (const std::exception& e) {
-                            OXEN_LOG(debug, "FAILED storage test of {}: invalid json response ({})", pk, e.what());
-                            status.clear();
-                            answer.clear();
-                        }
-                    }
-
-                    process_storage_test_response(testee, msg, height, std::move(status), std::move(answer));
-                },
-                cpr::Url{fmt::format("https://{}:{}/swarms/storage_test/v1", testee.ip, testee.port)},
-                cpr::Timeout{STORAGE_TEST_TIMEOUT},
-                cpr::Ssl(
-                        cpr::ssl::TLSv1_2{},
-                        cpr::ssl::VerifyHost{false},
-                        cpr::ssl::VerifyPeer{false},
-                        cpr::ssl::VerifyStatus{false}),
-                cpr::MaxRedirects{0},
-                std::move(headers),
-                std::move(body)
-            )
-        );
-        return;
-    }
-
-    // TODO: can drop the "is hex" part of this 14+ days after HF 18.1 takes effect
-    bool is_hex = msg.hash.size() == 128;
-    bool is_b64 = !is_hex && oxenmq::is_base64(msg.hash);
-    if (!is_hex && !is_b64) {
-        OXEN_LOG(err, "Unable to initiate storage test: retrieved msg hash is neither SHA512+hex nor BLAKE2b+base64");
+    bool is_b64 = oxenmq::is_base64(msg.hash);
+    if (!is_b64) {
+        OXEN_LOG(err, "Unable to initiate storage test: retrieved msg hash is not expected BLAKE2b+base64");
         return;
     }
 
@@ -989,7 +900,7 @@ void ServiceNode::send_storage_test_req(const sn_record& testee,
         oxenmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
         // Data parts: test height and msg hash (in bytes)
         std::to_string(block_height_),
-        is_hex ? oxenmq::from_hex(msg.hash) : oxenmq::from_base64(msg.hash)
+        oxenmq::from_base64(msg.hash)
     );
 }
 
@@ -1226,9 +1137,8 @@ void ServiceNode::bootstrap_swarms(
 
 void ServiceNode::relay_messages(const std::vector<message>& messages,
                                  const std::vector<sn_record>& snodes) const {
-    std::vector<std::string> batches = serialize_messages(messages.begin(), messages.end(),
-            !hf_at_least(HARDFORK_BT_MESSAGE_SERIALIZATION)
-                ? SERIALIZATION_VERSION_OLD : SERIALIZATION_VERSION_BT);
+    std::vector<std::string> batches = serialize_messages(
+            messages.begin(), messages.end(), SERIALIZATION_VERSION_BT);
 
     if (OXEN_LOG_ENABLED(debug)) {
         OXEN_LOG(debug, "Relayed messages:");

@@ -91,8 +91,7 @@ namespace {
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
 ///       (TIMESTAMP || EXPIRY || PUBKEY || DATA), where PUBKEY is in bytes (not hex!); and DATA is
-///       in bytes (not base64).  (Note: while transitioning to the 2.2.0 update, this may
-///       instead return a hex-encoded SHA512 hash of (TIMESTAMP || TTL || PUBKEY_HEX || DATA_BASE64)).
+///       in bytes (not base64).
 ///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).  Returns
 ///       in base64 for JSON requests, raw bytes for OMQ requests.
 ///     - "already": will be true if a message with this hash was already stored (note that the hash

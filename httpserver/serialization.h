@@ -10,9 +10,6 @@ struct message;
 
 inline constexpr size_t SERIALIZATION_BATCH_SIZE = 9'000'000;
 
-// Old serialization format; deprecated and to be removed after 2.2.0 is univeral.
-inline constexpr uint8_t SERIALIZATION_VERSION_OLD = 0;
-
 // Newer serialization version based on bt-encoding.
 inline constexpr uint8_t SERIALIZATION_VERSION_BT = 1;
 
