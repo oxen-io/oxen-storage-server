@@ -175,8 +175,6 @@ void generate_cert(const std::filesystem::path& cert_path, const std::filesystem
 
     OpenSSL_add_all_digests();
 
-    CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
-
     bio_err = BIO_new_fp(stderr, BIO_NOCLOSE);
 
     if (!mkcert(&x509, &pkey, 2048, 1, 10000))
