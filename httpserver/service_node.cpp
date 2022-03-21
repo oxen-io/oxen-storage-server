@@ -763,7 +763,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                     cpr::ssl::VerifyHost{false},
                     cpr::ssl::VerifyPeer{false},
                     cpr::ssl::VerifyStatus{false}),
-            cpr::MaxRedirects{0},
+            cpr::Redirect{0L},
             std::move(headers),
             std::move(body)
         )

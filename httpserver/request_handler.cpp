@@ -1021,7 +1021,7 @@ void RequestHandler::process_onion_req(
             },
             cpr::Timeout{ONION_URL_TIMEOUT},
             cpr::Ssl(cpr::ssl::TLSv1_2{}),
-            cpr::MaxRedirects{0},
+            cpr::Redirect{0L},
             cpr::Body{std::move(info.payload)}
         )
     );
