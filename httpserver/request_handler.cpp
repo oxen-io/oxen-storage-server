@@ -4,7 +4,6 @@
 #include "http.h"
 #include "omq_server.h"
 #include "oxen_logger.h"
-#include "oxenmq/oxenmq.h"
 #include "signature.h"
 #include "service_node.h"
 #include "string_utils.hpp"
@@ -18,9 +17,10 @@
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
+#include <oxenc/base32z.h>
+#include <oxenc/base64.h>
+#include <oxenc/hex.h>
+#include <oxenmq/oxenmq.h>
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_sign.h>
 #include <sodium/crypto_scalarmult_curve25519.h>
@@ -56,7 +56,7 @@ json swarm_to_json(const SwarmInfo& swarm) {
     json snodes_json = json::array();
     for (const auto& sn : swarm.snodes) {
         snodes_json.push_back(json{
-                {"address", oxenmq::to_base32z(sn.pubkey_legacy.view()) + ".snode"}, // Deprecated, use pubkey_legacy instead
+                {"address", oxenc::to_base32z(sn.pubkey_legacy.view()) + ".snode"}, // Deprecated, use pubkey_legacy instead
                 {"pubkey_legacy", sn.pubkey_legacy.hex()},
                 {"pubkey_x25519", sn.pubkey_x25519.hex()},
                 {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
@@ -77,8 +77,8 @@ std::string obfuscate_pubkey(const user_pubkey_t& pk) {
     const auto& pk_raw = pk.raw();
     if (pk_raw.empty())
         return "(none)";
-    return oxenmq::to_hex(pk_raw.begin(), pk_raw.begin() + 2)
-        + u8"…" + oxenmq::to_hex(std::prev(pk_raw.end()), pk_raw.end());
+    return oxenc::to_hex(pk_raw.begin(), pk_raw.begin() + 2)
+        + u8"…" + oxenc::to_hex(std::prev(pk_raw.end()), pk_raw.end());
 }
 
 template <typename RPC>
@@ -228,22 +228,11 @@ std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
     std::array<unsigned char, HASH_SIZE> hash;
     crypto_generichash_final(&state, hash.data(), HASH_SIZE);
 
-    std::string b64hash = oxenmq::to_base64(hash.begin(), hash.end());
+    std::string b64hash = oxenc::to_base64(hash.begin(), hash.end());
     // Trim padding:
     while (!b64hash.empty() && b64hash.back() == '=')
         b64hash.pop_back();
     return b64hash;
-}
-
-std::string compute_hash_sha512_hex(std::vector<std::string_view> parts) {
-    SHA512_CTX ctx;
-    SHA512_Init(&ctx);
-    for (const auto& p : parts)
-        SHA512_Update(&ctx, p.data(), p.size());
-
-    std::array<unsigned char, SHA512_DIGEST_LENGTH> hash;
-    SHA512_Final(hash.data(), &ctx);
-    return oxenmq::to_hex(hash.begin(), hash.end());
 }
 
 std::string computeMessageHash(
@@ -323,7 +312,7 @@ static void distribute_command(
                     bool good_result = success && parts.size() == 1;
                     if (good_result) {
                         try {
-                            peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
+                            peer_result = bt_to_json(oxenc::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
                             OXEN_LOG(warn, "Received unparseable response to {} from {}: {}",
                                     cmd, peer.pubkey_legacy, e.what());
@@ -347,7 +336,7 @@ static void distribute_command(
                     }
                     else if (res->b64) {
                         if (auto it = peer_result.find("signature"); it != peer_result.end() && it->is_string())
-                            *it = oxenmq::to_base64(it->get_ref<const std::string&>());
+                            *it = oxenc::to_base64(it->get_ref<const std::string&>());
                     }
 
                     res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
@@ -383,7 +372,7 @@ void RequestHandler::process_client_req(
         rpc::store&& req, std::function<void(Response)> cb) {
 
     if (OXEN_LOG_ENABLED(trace))
-        OXEN_LOG(trace, "Storing message: {}", oxenmq::to_base64(req.data));
+        OXEN_LOG(trace, "Storing message: {}", oxenc::to_base64(req.data));
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
@@ -422,7 +411,7 @@ void RequestHandler::process_client_req(
     if (success) {
         mine["hash"] = message_hash;
         auto sig = create_signature(ed25519_sk_, message_hash);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg) mine["already"] = true;
         if (entry_router) {
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
@@ -531,7 +520,7 @@ void RequestHandler::process_client_req(
             {"hash", msg.hash},
             {"timestamp", to_epoch_ms(msg.timestamp)},
             {"expiration", to_epoch_ms(msg.expiry)},
-            {"data", req.b64 ? oxenmq::to_base64(msg.data) : std::move(msg.data)},
+            {"data", req.b64 ? oxenc::to_base64(msg.data) : std::move(msg.data)},
         });
     }
 
@@ -582,7 +571,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -618,7 +607,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -660,7 +649,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.before, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -702,7 +691,7 @@ void RequestHandler::process_client_req(
         std::sort(updated->begin(), updated->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, *updated);
         mine["updated"] = std::move(*updated);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -743,7 +732,7 @@ void RequestHandler::process_client_req(
         std::sort(updated->begin(), updated->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, *updated);
         mine["updated"] = std::move(*updated);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -896,7 +885,7 @@ Response RequestHandler::wrap_proxy_response(Response res,
 
     std::string ciphertext = channel_cipher_.encrypt(enc_type, body, client_key);
     if (base64)
-        ciphertext = oxenmq::to_base64(std::move(ciphertext));
+        ciphertext = oxenc::to_base64(std::move(ciphertext));
 
     return Response{http::OK, std::move(ciphertext)};
 }

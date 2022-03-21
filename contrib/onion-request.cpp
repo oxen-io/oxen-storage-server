@@ -17,8 +17,8 @@
 #include <iostream>
 #include <random>
 #include <sodium.h>
-#include <oxenmq/hex.h>
-#include <oxenmq/base64.h>
+#include <oxenc/hex.h>
+#include <oxenc/base64.h>
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
         if (arg == "--aes-cbc"sv) { enc_type = EncryptType::aes_cbc; continue; }
         if (arg == "--random"sv) { enc_type = std::nullopt; continue; }
 
-        bool hex = arg.size() > 0 && oxenmq::is_hex(arg);
+        bool hex = arg.size() > 0 && oxenc::is_hex(arg);
         if (i >= argc - 2) {
             if (hex)
                 return usage(argv[0], "Missing PAYLOAD and CONTROL values");
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
                 auto& pk = sn.at("service_node_pubkey").get_ref<const std::string&>();
                 auto& e = sn.at("pubkey_ed25519").get_ref<const std::string&>();
                 auto& x = sn.at("pubkey_x25519").get_ref<const std::string&>();
-                if (e.size() != 64 || x.size() != 64 || !oxenmq::is_hex(x) || !oxenmq::is_hex(e))
+                if (e.size() != 64 || x.size() != 64 || !oxenc::is_hex(x) || !oxenc::is_hex(e))
                     throw std::runtime_error{sn.at("service_node_pubkey").get<std::string>() + " is missing ed/x25519 pubkeys"};
                 aux_keys.emplace(legacy_pubkey::from_hex(pk),
                         std::make_pair(ed25519_pubkey::from_hex(e), x25519_pubkey::from_hex(x)));
@@ -334,8 +334,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
     if (decrypted) {
         std::cerr << "Body is " << orig_size << " encrypted bytes, decrypted to " << body.size() << " bytes:\n";
-    } else if (oxenmq::is_base64(body)) {
-        body = oxenmq::from_base64(body);
+    } else if (oxenc::is_base64(body)) {
+        body = oxenc::from_base64(body);
         std::cerr << "Body was " << orig_size << " base64 bytes; decoded to " << body.size() << " bytes";
         try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
         catch (...) {}

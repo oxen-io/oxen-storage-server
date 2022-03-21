@@ -1,7 +1,6 @@
 #include "signature.h"
 
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
+#include <oxenc/base64.h>
 #include <catch2/catch.hpp>
 
 #include <vector>
@@ -49,7 +48,7 @@ TEST_CASE("signatures - it_signs_and_verifies_encoded_inputs", "[signature][...]
     raw_sig.reserve(sig.c.size() + sig.r.size());
     raw_sig.insert(raw_sig.begin(), sig.c.begin(), sig.c.end());
     raw_sig.insert(raw_sig.end(), sig.r.begin(), sig.r.end());
-    const std::string sig_b64 = oxenmq::to_base64(raw_sig);
+    const std::string sig_b64 = oxenc::to_base64(raw_sig);
 
     CHECK(check_signature(signature::from_base64(sig_b64), hash, public_key));
 }

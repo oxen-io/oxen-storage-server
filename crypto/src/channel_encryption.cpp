@@ -6,7 +6,6 @@
 #include <sodium/crypto_scalarmult.h>
 #include <sodium/crypto_auth_hmacsha256.h>
 #include <sodium/randombytes.h>
-#include <oxenmq/hex.h>
 
 #include "utils.hpp"
 

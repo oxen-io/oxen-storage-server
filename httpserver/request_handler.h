@@ -91,7 +91,6 @@ std::string_view to_hashable(const T& value, char*&) {
 
 /// Compute a hash from the given strings, concatenated together.
 std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts);
-std::string compute_hash_sha512_hex(std::vector<std::string_view> parts);
 
 /// Computes a message hash based on its constituent parts.  Takes a function (which accepts a
 /// container of string_views) and any number of std::string, std::string_view, system_clock values,

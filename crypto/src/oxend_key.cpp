@@ -6,22 +6,22 @@
 #include <type_traits>
 
 #include <sodium.h>
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
+#include <oxenc/base32z.h>
+#include <oxenc/base64.h>
+#include <oxenc/hex.h>
 
 namespace oxen {
 
 namespace detail {
 
 void load_from_hex(void* buffer, size_t length, std::string_view hex) {
-    if (!oxenmq::is_hex(hex))
+    if (!oxenc::is_hex(hex))
         throw std::runtime_error{"Hex key data is invalid: data is not hex"};
     if (hex.size() != 2*length)
         throw std::runtime_error{
             "Hex key data is invalid: expected " + std::to_string(length) +
                 " hex digits, received " + std::to_string(hex.size())};
-    oxenmq::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
+    oxenc::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
 }
 
 void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
@@ -33,13 +33,13 @@ void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
 }
 
 std::string to_hex(const unsigned char* buffer, size_t length) {
-    return oxenmq::to_hex(buffer, buffer + length);
+    return oxenc::to_hex(buffer, buffer + length);
 }
 
 }
 
 std::string ed25519_pubkey::snode_address() const {
-    auto addr = oxenmq::to_base32z(begin(), end());
+    auto addr = oxenc::to_base32z(begin(), end());
     addr += ".snode";
     return addr;
 }
@@ -66,13 +66,13 @@ static T parse_pubkey(std::string_view pubkey_in) {
     static_assert(pk.size() == 32);
     if (pubkey_in.size() == 32)
         detail::load_from_bytes(pk.data(), 32, pubkey_in);
-    else if (pubkey_in.size() == 64 && oxenmq::is_hex(pubkey_in))
-        oxenmq::from_hex(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+    else if (pubkey_in.size() == 64 && oxenc::is_hex(pubkey_in))
+        oxenc::from_hex(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else if ((pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '='))
-            && oxenmq::is_base64(pubkey_in))
-        oxenmq::from_base64(pubkey_in.begin(), pubkey_in.end(), pk.begin());
-    else if (pubkey_in.size() == 52 && oxenmq::is_base32z(pubkey_in))
-        oxenmq::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+            && oxenc::is_base64(pubkey_in))
+        oxenc::from_base64(pubkey_in.begin(), pubkey_in.end(), pk.begin());
+    else if (pubkey_in.size() == 52 && oxenc::is_base32z(pubkey_in))
+        oxenc::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else {
         OXEN_LOG(warn, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
         OXEN_LOG(debug, "Received public key encoded value of size {}: {}", pubkey_in.size(), pubkey_in);

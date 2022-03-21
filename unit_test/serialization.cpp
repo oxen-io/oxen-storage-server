@@ -1,5 +1,6 @@
 #include "serialization.h"
 #include "service_node.h"
+#include <oxenc/hex.h>
 
 #include <catch2/catch.hpp>
 
@@ -20,18 +21,18 @@ TEST_CASE("v0 serialization - basic values", "[serialization]") {
     msgs.emplace_back(pub_key, hash, timestamp, timestamp + ttl, data);
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 0);
     REQUIRE(serialized.size() == 1);
-    const auto expected_serialized = oxenmq::to_hex(pub_key.prefixed_hex()) +
+    const auto expected_serialized = oxenc::to_hex(pub_key.prefixed_hex()) +
         "040000000000000068617368" // size+hash
         "08000000000000005a47463059513d3d" // size+data (ZGF0YQ== in b64)
         "00bc340000000000" // ttl
         "4e61bc0000000000" // timestamp
         "0000000000000000"s; // nonce
-    CHECK(oxenmq::to_hex(serialized.front()) == expected_serialized);
+    CHECK(oxenc::to_hex(serialized.front()) == expected_serialized);
 
     msgs.push_back(msgs.front());
     const std::vector<std::string> batches = serialize_messages(msgs.begin(), msgs.end(), 0);
     CHECK(batches.size() == 1);
-    CHECK(oxenmq::to_hex(batches[0]) == expected_serialized + expected_serialized);
+    CHECK(oxenc::to_hex(batches[0]) == expected_serialized + expected_serialized);
 
     const auto messages = deserialize_messages(batches[0]);
     CHECK(messages.size() == 2);

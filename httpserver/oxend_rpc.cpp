@@ -9,7 +9,6 @@
 
 #include <nlohmann/json.hpp>
 #include <oxenmq/oxenmq.h>
-#include <oxenmq/hex.h>
 
 namespace oxen {
 

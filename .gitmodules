@@ -22,3 +22,6 @@
 [submodule "network-tests/pyoxenmq"]
 	path = network-tests/pyoxenmq
 	url = https://github.com/oxen-io/oxen-pyoxenmq.git
+[submodule "vendors/oxenc"]
+	path = vendors/oxenc
+	url = https://github.com/oxen-io/oxen-encoding.git

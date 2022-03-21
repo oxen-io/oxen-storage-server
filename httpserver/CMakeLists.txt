@@ -28,6 +28,7 @@ target_link_libraries(httpserver_lib PUBLIC
     jemalloc::jemalloc
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
+    oxenc::oxenc
     oxenmq::oxenmq
     Boost::boost Boost::program_options)
 

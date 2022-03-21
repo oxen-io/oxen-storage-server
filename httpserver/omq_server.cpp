@@ -6,7 +6,6 @@
 #include "oxen_logger.h"
 #include "oxend_key.h"
 #include "channel_encryption.hpp"
-#include "oxenmq/base64.h"
 #include "rate_limiter.h"
 #include "request_handler.h"
 #include "service_node.h"
@@ -15,8 +14,9 @@
 #include <chrono>
 #include <exception>
 #include <nlohmann/json.hpp>
-#include <oxenmq/bt_serialize.h>
-#include <oxenmq/hex.h>
+#include <oxenc/bt_serialize.h>
+#include <oxenc/hex.h>
+#include <oxenc/base64.h>
 
 #include <optional>
 #include <stdexcept>
@@ -44,7 +44,7 @@ void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
 
     OXEN_LOG(debug, "[LMQ] handle_sn_data");
     OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    OXEN_LOG(debug, "[LMQ]   from: {}", oxenmq::to_hex(message.conn.pubkey()));
+    OXEN_LOG(debug, "[LMQ]   from: {}", oxenc::to_hex(message.conn.pubkey()));
 
     std::stringstream ss;
 
@@ -98,9 +98,9 @@ void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
     }
     std::string msg_hash;
     if (message.data[1].size() == 64)
-        msg_hash = oxenmq::to_hex(message.data[1]);
+        msg_hash = oxenc::to_hex(message.data[1]);
     else if (message.data[1].size() == 32) {
-        msg_hash = oxenmq::to_base64(message.data[1]);
+        msg_hash = oxenc::to_base64(message.data[1]);
         assert(msg_hash.back() == '=');
         msg_hash.pop_back();
     } else {
@@ -204,7 +204,7 @@ void register_client_rpc_endpoint(OxenmqServer::rpc_map& regs) {
         if (params.empty())
             params = "{}"sv;
         if (params.front() == 'd') {
-            req.load_from(oxenmq::bt_dict_consumer{params});
+            req.load_from(oxenc::bt_dict_consumer{params});
             req.b64 = false;
         } else {
             auto body = nlohmann::json::parse(params, nullptr, false);
@@ -233,16 +233,15 @@ OxenmqServer::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
 
 } // anon. namespace
 
-oxenmq::bt_value json_to_bt(nlohmann::json j) {
-    using namespace oxenmq;
+oxenc::bt_value json_to_bt(nlohmann::json j) {
     if (j.is_object()) {
-        bt_dict res;
+        oxenc::bt_dict res;
         for (auto& [k, v] : j.items())
             res[k] = json_to_bt(v);
         return res;
     }
     if (j.is_array()) {
-        bt_list res;
+        oxenc::bt_list res;
         for (auto& v : j)
             res.push_back(json_to_bt(v));
         return res;
@@ -259,7 +258,7 @@ oxenmq::bt_value json_to_bt(nlohmann::json j) {
     throw std::runtime_error{"internal error"};
 }
 
-nlohmann::json bt_to_json(oxenmq::bt_dict_consumer d) {
+nlohmann::json bt_to_json(oxenc::bt_dict_consumer d) {
     nlohmann::json j;
     while (!d.is_finished()) {
         std::string key{d.key()};
@@ -279,7 +278,7 @@ nlohmann::json bt_to_json(oxenmq::bt_dict_consumer d) {
     return j;
 }
 
-nlohmann::json bt_to_json(oxenmq::bt_list_consumer l) {
+nlohmann::json bt_to_json(oxenc::bt_list_consumer l) {
     nlohmann::json j = nlohmann::json::array();
     while (!l.is_finished()) {
         if (l.is_string())
@@ -513,7 +512,7 @@ void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, ox
 }
 
 std::string OxenmqServer::encode_onion_data(std::string_view payload, const OnionRequestMetadata& data) {
-    return oxenmq::bt_serialize<oxenmq::bt_dict>({
+    return oxenc::bt_serialize<oxenc::bt_dict>({
             {"data", payload},
             {"enc_type", to_string(data.enc_type)},
             {"ephemeral_key", data.ephem_key.view()},
@@ -527,7 +526,7 @@ std::pair<std::string_view, OnionRequestMetadata> OxenmqServer::decode_onion_dat
     // requirements).
     std::pair<std::string_view, OnionRequestMetadata> result;
     auto& [payload, meta] = result;
-    oxenmq::bt_dict_consumer d{data};
+    oxenc::bt_dict_consumer d{data};
     if (!d.skip_until("data"))
         throw std::runtime_error{"required data payload not found"};
     payload = d.consume_string_view();

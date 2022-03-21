@@ -4,8 +4,8 @@
 #include "service_node.h"
 #include <boost/endian/conversion.hpp>
 #include <nlohmann/json.hpp>
-#include <oxenmq/base64.h>
-#include <oxenmq/variant.h>
+#include <oxenc/base64.h>
+#include <oxenc/variant.h>
 
 #include "onion_processing.h"
 
