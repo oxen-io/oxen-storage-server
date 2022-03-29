@@ -17,8 +17,6 @@ project(storage_server
     LANGUAGES CXX C)
 
 option(INTEGRATION_TEST "build for integration test" OFF)
-option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
-    OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -43,11 +41,6 @@ endif()
 
 if (INTEGRATION_TEST)
     add_definitions(-DINTEGRATION_TEST)
-endif()
-
-
-if (DISABLE_SNODE_SIGNATURE)
-    add_definitions(-DDISABLE_SNODE_SIGNATURE)
 endif()
 
 option(BUILD_TESTS "build storage server unit tests" OFF)
