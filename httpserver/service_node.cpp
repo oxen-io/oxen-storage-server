@@ -53,10 +53,6 @@ ServiceNode::ServiceNode(
 
     OXEN_LOG(info, "Requesting initial swarm state");
 
-#ifdef INTEGRATION_TEST
-    syncing_ = false;
-#endif
-
     omq_server->add_timer([this] { std::lock_guard l{sn_mutex_}; db_->clean_expired(); },
             Database::CLEANUP_PERIOD);
 
@@ -533,9 +529,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
         bootstrap_swarms();
     }
 
-#ifndef INTEGRATION_TEST
     initiate_peer_test();
-#endif
 }
 
 void ServiceNode::update_swarms() {
@@ -606,7 +600,6 @@ void ServiceNode::update_swarms() {
                                 },
                                 "{\"height\":[" + util::int_to_string(h) + "]}");
 
-#ifndef INTEGRATION_TEST
                     // If this is our very first response then we *may* want to try falling back to
                     // the bootstrap node *if* our response looks sparse: this will typically happen
                     // for a fresh service node because IP/port distribution through the network can
@@ -631,7 +624,6 @@ void ServiceNode::update_swarms() {
                                 "querying bootstrap nodes for help", missing, total);
                         bootstrap_data();
                     }
-#endif
                 }
 
                 if (!bu.unchanged) {
@@ -861,9 +853,6 @@ void ServiceNode::process_storage_test_response(const sn_record& testee,
             OXEN_LOG(debug,
                      "Test answer doesn't match for: {} at height {}",
                      testee.pubkey_legacy, test_height);
-#ifdef INTEGRATION_TEST
-            OXEN_LOG(warn, "got: {} expected: {}", value, msg.data);
-#endif
             result = ResultType::MISMATCH;
         }
     } else if (status == "wrong request") {
@@ -1039,10 +1028,6 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
         if (tester.pubkey_legacy != tester_pk) {
             OXEN_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk,
                      tester.pubkey_legacy);
-#ifdef INTEGRATION_TEST
-            OXEN_LOG(critical, "ABORT in integration test");
-            std::abort();
-#endif
             return {MessageTestStatus::WRONG_REQ, ""};
         } else {
             OXEN_LOG(trace, "Tester is valid: {}", tester_pk);

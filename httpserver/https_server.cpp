@@ -414,34 +414,6 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
             http::OK, json{{"version", STORAGE_SERVER_VERSION_STRING}}});
     });
 
-        
-
-#ifdef INTEGRATION_TEST
-
-    https.post("/retrieve_all", [this](HttpResponse* res, HttpRequest* req) {
-        handle_request(req, res, [this, started=std::chrono::steady_clock::now()]
-                (std::shared_ptr<call_data> data) mutable {
-            auto& omq = data->omq;
-            auto& request = data->request;
-            omq.inject_task("https", "https:" + request.uri, request.remote_addr,
-                    [data=std::move(data), started] mutable {
-
-                queue_response(std::move(data), request_handler_.process_retrieve_all());
-            });
-        });
-    });
-
-    https.post("/quit", [this](HttpResponse* res, HttpRequest* req) {
-        OXEN_LOG(info, "POST /quit");
-        res.cork([this, &res] {
-            res.writeStatus("200 OK");
-            res.end();
-            service_node_.shutdown();
-        });
-    });
-
-#endif
-
     // Fallback to send a 404 for anything else:
     https.any("/*", [this](HttpResponse* res, HttpRequest* req) {
         OXEN_LOG(info, "Invalid HTTP request for {} {} from {}",
