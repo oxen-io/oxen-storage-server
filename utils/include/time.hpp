@@ -11,4 +11,4 @@ inline std::chrono::system_clock::time_point from_epoch_ms(int64_t t) {
     return std::chrono::system_clock::time_point{std::chrono::milliseconds{t}};
 }
 
-}
+}  // namespace oxen

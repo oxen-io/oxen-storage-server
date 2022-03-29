@@ -17,10 +17,8 @@ std::mt19937_64& rng() {
     return generator;
 }
 
-uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
-                                       uint64_t n) {
-    const uint64_t secure_max =
-        mersenne_twister.max() - mersenne_twister.max() % n;
+uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n) {
+    const uint64_t secure_max = mersenne_twister.max() - mersenne_twister.max() % n;
     uint64_t x;
     do
         x = mersenne_twister();
@@ -29,7 +27,6 @@ uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
 }
 
 int get_fd_limit() {
-
 #ifdef _WIN32
     return -1;
 #endif
@@ -38,7 +35,6 @@ int get_fd_limit() {
 }
 
 std::optional<std::filesystem::path> get_home_dir() {
-
     /// TODO: support default dir for Windows
 #ifndef WIN32
     char* home = getenv("HOME");
@@ -53,4 +49,4 @@ std::optional<std::filesystem::path> get_home_dir() {
     return std::nullopt;
 }
 
-} // namespace util
+}  // namespace util

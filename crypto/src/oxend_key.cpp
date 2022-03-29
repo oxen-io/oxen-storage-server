@@ -5,38 +5,37 @@
 #include <cstring>
 #include <type_traits>
 
-#include <sodium.h>
 #include <oxenc/base32z.h>
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
+#include <sodium.h>
 
 namespace oxen {
 
 namespace detail {
+    void load_from_hex(void* buffer, size_t length, std::string_view hex) {
+        if (!oxenc::is_hex(hex))
+            throw std::runtime_error{"Hex key data is invalid: data is not hex"};
+        if (hex.size() != 2 * length)
+            throw std::runtime_error{
+                    "Hex key data is invalid: expected " + std::to_string(length)
+                    + " hex digits, received " + std::to_string(hex.size())};
+        oxenc::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
+    }
 
-void load_from_hex(void* buffer, size_t length, std::string_view hex) {
-    if (!oxenc::is_hex(hex))
-        throw std::runtime_error{"Hex key data is invalid: data is not hex"};
-    if (hex.size() != 2*length)
-        throw std::runtime_error{
-            "Hex key data is invalid: expected " + std::to_string(length) +
-                " hex digits, received " + std::to_string(hex.size())};
-    oxenc::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
-}
+    void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
+        if (bytes.size() != length)
+            throw std::runtime_error{
+                    "Key data is invalid: expected " + std::to_string(length) + " bytes, received "
+                    + std::to_string(bytes.size())};
+        std::memmove(buffer, bytes.data(), length);
+    }
 
-void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
-    if (bytes.size() != length)
-        throw std::runtime_error{
-            "Key data is invalid: expected " + std::to_string(length) +
-                " bytes, received " + std::to_string(bytes.size())};
-    std::memmove(buffer, bytes.data(), length);
-}
+    std::string to_hex(const unsigned char* buffer, size_t length) {
+        return oxenc::to_hex(buffer, buffer + length);
+    }
 
-std::string to_hex(const unsigned char* buffer, size_t length) {
-    return oxenc::to_hex(buffer, buffer + length);
-}
-
-}
+}  // namespace detail
 
 std::string ed25519_pubkey::snode_address() const {
     auto addr = oxenc::to_base32z(begin(), end());
@@ -68,14 +67,19 @@ static T parse_pubkey(std::string_view pubkey_in) {
         detail::load_from_bytes(pk.data(), 32, pubkey_in);
     else if (pubkey_in.size() == 64 && oxenc::is_hex(pubkey_in))
         oxenc::from_hex(pubkey_in.begin(), pubkey_in.end(), pk.begin());
-    else if ((pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '='))
+    else if (
+            (pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '='))
             && oxenc::is_base64(pubkey_in))
         oxenc::from_base64(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else if (pubkey_in.size() == 52 && oxenc::is_base32z(pubkey_in))
         oxenc::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else {
         OXEN_LOG(warn, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
-        OXEN_LOG(debug, "Received public key encoded value of size {}: {}", pubkey_in.size(), pubkey_in);
+        OXEN_LOG(
+                debug,
+                "Received public key encoded value of size {}: {}",
+                pubkey_in.size(),
+                pubkey_in);
     }
     return pk;
 }
@@ -90,4 +94,4 @@ x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in) {
     return parse_pubkey<x25519_pubkey>(pubkey_in);
 }
 
-} // namespace oxen
+}  // namespace oxen

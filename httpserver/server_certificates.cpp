@@ -92,12 +92,11 @@ namespace {
          * correct string type and performing checks on its length.
          * Normally we'd check the return value for errors...
          */
-        X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
-                                   (const unsigned char*)"AU", -1, -1, 0);
-        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-                                   (const unsigned char*)"localhost", -1, -1, 0);
-        X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
-                                   (const unsigned char*)"Oxen", -1, -1, 0);
+        X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (const unsigned char*)"AU", -1, -1, 0);
+        X509_NAME_add_entry_by_txt(
+                name, "CN", MBSTRING_ASC, (const unsigned char*)"localhost", -1, -1, 0);
+        X509_NAME_add_entry_by_txt(
+                name, "O", MBSTRING_ASC, (const unsigned char*)"Oxen", -1, -1, 0);
 
         /* Its self signed so set the issuer name to be the same as the
          * subject.
@@ -137,7 +136,7 @@ namespace {
         return (res);
     }
 
-}
+}  // namespace
 
 void generate_dh_pem(const std::filesystem::path& dh_path) {
     const int prime_len = 2048;
@@ -150,8 +149,7 @@ void generate_dh_pem(const std::filesystem::path& dh_path) {
     }
     OXEN_LOG(info, "Generating DH parameter, this might take a while...");
 
-    const int res =
-        DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
+    const int res = DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
         OXEN_LOG(err, "Alloc for dh failed");
@@ -199,4 +197,4 @@ err:
     BIO_free(bio_err);
 }
 
-}
+}  // namespace oxen

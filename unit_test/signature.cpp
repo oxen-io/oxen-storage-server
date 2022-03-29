@@ -1,7 +1,7 @@
 #include "signature.h"
 
-#include <oxenc/base64.h>
 #include <catch2/catch.hpp>
+#include <oxenc/base64.h>
 
 #include <vector>
 
@@ -10,13 +10,8 @@ TEST_CASE("signatures - hash generation", "[signature][hash]") {
 
     std::vector<hash> hashes;
 
-    const std::string inputs[] = {"L",
-                                  "",
-                                  "FOO",
-                                  "FOO_",
-                                  "FO0",
-                                  "FFO",
-                                  "FFFFFFFFFFFFFFFFFFFFOOOOOOOOOOOOOO"};
+    const std::string inputs[] = {
+            "L", "", "FOO", "FOO_", "FO0", "FFO", "FFFFFFFFFFFFFFFFFFFFOOOOOOOOOOOOOO"};
     for (const auto& str : inputs) {
         const auto hash = hash_data(str);
         CHECK(std::find(hashes.begin(), hashes.end(), hash) == hashes.end());
@@ -25,9 +20,9 @@ TEST_CASE("signatures - hash generation", "[signature][hash]") {
 }
 
 static const auto public_key = oxen::legacy_pubkey::from_hex(
-            "e35b7cf5057845284740af496ec323148db68ac2553a05e4677b96f3afdabcd1");
+        "e35b7cf5057845284740af496ec323148db68ac2553a05e4677b96f3afdabcd1");
 static const auto secret_key = oxen::legacy_seckey::from_hex(
-            "97fe49c2d436e5a39f8aa2e3374d19b532eecfb2b0367eaa6f703279e34ec102");
+        "97fe49c2d436e5a39f8aa2e3374d19b532eecfb2b0367eaa6f703279e34ec102");
 
 TEST_CASE("signatures - it_signs_and_verifies", "[signature][...]") {
     using namespace oxen;

@@ -11,12 +11,11 @@ namespace util {
 std::mt19937_64& rng();
 
 /// Returns a random number from [0, n); (copied from lokid)
-uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister,
-                                       uint64_t n);
+uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n);
 
 /// Return the open file limit (-1 on failure)
 int get_fd_limit();
 
 std::optional<std::filesystem::path> get_home_dir();
 
-} // namespace util
+}  // namespace util

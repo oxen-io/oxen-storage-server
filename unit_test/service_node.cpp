@@ -11,13 +11,12 @@
 using namespace std::literals;
 
 static auto create_dummy_sn_record() -> oxen::sn_record {
-
     const auto pk = oxen::legacy_pubkey::from_hex(
-        "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
+            "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
     const auto pk_x25519 = oxen::x25519_pubkey::from_hex(
-        "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414");
+            "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414");
     const auto pk_ed25519 = oxen::ed25519_pubkey::from_hex(
-        "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a");
+            "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a");
     const std::string ip = "0.0.0.0";
 
     return {ip, 8080, 8081, pk, pk_ed25519, pk_x25519};
@@ -25,9 +24,7 @@ static auto create_dummy_sn_record() -> oxen::sn_record {
 
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
-static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
-                           ip_ports expected) -> void {
-
+static auto test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) -> void {
     using oxen::sn_record;
 
     auto sn = create_dummy_sn_record();
@@ -50,7 +47,6 @@ static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
 }
 
 TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
-
     auto sn = create_dummy_sn_record();
 
     const auto default_ip = ip_ports{"0.0.0.0", 0, 0};
@@ -69,7 +65,6 @@ TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 
 /// Check that we don't inadvertently change how we compute message hashes
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
-
     const auto timestamp = std::chrono::system_clock::time_point{1616650862026ms};
     const auto expiry = timestamp + 48h;
     oxen::user_pubkey_t pk;
@@ -84,13 +79,10 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
 
     auto expected = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";
     CHECK(computeMessageHash(timestamp, expiry, pk, data) == expected);
-    CHECK(oxen::compute_hash_blake2b_b64({
-                std::to_string(oxen::to_epoch_ms(timestamp)) +
-                std::to_string(oxen::to_epoch_ms(expiry)) +
-                pk.prefixed_raw() +
-                data})
-            == expected);
-
+    CHECK(oxen::compute_hash_blake2b_b64(
+                  {std::to_string(oxen::to_epoch_ms(timestamp))
+                   + std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data})
+          == expected);
 }
 
 TEST_CASE("service nodes - pubkey to swarm id") {

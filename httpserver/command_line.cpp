@@ -3,27 +3,27 @@
 #include "utils.hpp"
 #include "version.h"
 
+#include <CLI/CLI.hpp>
 #include <CLI/Error.hpp>
 #include <filesystem>
 #include <iostream>
-#include <CLI/CLI.hpp>
 
 #ifdef __linux__
 extern "C" {
-#include <sys/ioctl.h>
 #include <stdio.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 }
 #endif
 
 namespace oxen {
-
 using namespace std::literals;
 
 class WrapFormatter : public CLI::Formatter {
-private:
+  private:
     size_t term_width_ = 0;
-public:
+
+  public:
     WrapFormatter() {
 #ifdef __linux__
         struct winsize w;
@@ -47,9 +47,10 @@ public:
         std::string_view d{desc};
         while (!d.empty()) {
             auto chop = npos;
-            // If we have a newline in the next chunk of the description then wrap and indent there
+            // If we have a newline in the next chunk of the description then wrap and indent
+            // there
             if (auto pos = d.find_first_of('\n');
-                    pos != npos && pos <= desc_width && pos + 1 < d.size())
+                pos != npos && pos <= desc_width && pos + 1 < d.size())
                 chop = pos;
             // If no newlines and the text is short enough then just send it as-is:
             else if (d.size() <= desc_width)
@@ -57,8 +58,8 @@ public:
             // Break on space:
             else if (pos = d.find_last_of(' ', desc_width); pos != npos && pos > 0)
                 chop = pos;
-            // We couldn't find a space anywhere before the end of the term so we'll let it overflow
-            // and then break at the next viable place:
+            // We couldn't find a space anywhere before the end of the term so we'll let it
+            // overflow and then break at the next viable place:
             else if (pos = d.find_first_of(" \n"sv); pos != npos)
                 chop = pos;
 
@@ -109,27 +110,74 @@ parse_result parse_cli_args(int argc, char* argv[]) {
     options.oxend_omq_rpc = "ipc://" + (base_dir / "oxend.sock").u8string();
     data_dir = base_dir / "storage";
 
-    cli.add_option("--data-dir", options.data_dir, "Path in which to store persistent data")->type_name("DIR")->capture_default_str();
-    cli.set_config("--config-file", (options.data_dir / "storage-server.conf").u8string(), "Path to config file specifying additional command-line options")->capture_default_str();
-    cli.add_option("--log-level", options.log_level, "Log verbosity level, see Log Levels below for accepted values")->type_name("LEVEL")->capture_default_str();
-    cli.add_option("--oxend-rpc", options.oxend_omq_rpc, "OMQ RPC address on which oxend is available; typically ipc:///path/to/oxend.sock or tcp://localhost:22025")->type_name("OMQ_URL")->capture_default_str();
-    cli.add_option("--omq-port,--lmq-port", options.omq_port, "Public port to listen on for OxenMQ connections")->capture_default_str()->type_name("PORT");
-    cli.add_option("--https-port", options.https_port, "Public port to listen on for HTTPS connections")->capture_default_str()->type_name("PORT");
-    cli.add_option("ignored", [](auto&&) { return true; }, "Deprecated positional argument; ignored");  // Ignored positional arg, but recognized for backwards compat.
-    cli.add_option("--port,port", options.https_port, "Deprecated port argument; use --https-port option instead")->capture_default_str()->type_name("PORT");
+    cli.add_option("--data-dir", options.data_dir, "Path in which to store persistent data")
+            ->type_name("DIR")
+            ->capture_default_str();
+    cli.set_config(
+               "--config-file",
+               (options.data_dir / "storage-server.conf").u8string(),
+               "Path to config file specifying additional command-line options")
+            ->capture_default_str();
+    cli.add_option(
+               "--log-level",
+               options.log_level,
+               "Log verbosity level, see Log Levels below for accepted values")
+            ->type_name("LEVEL")
+            ->capture_default_str();
+    cli.add_option(
+               "--oxend-rpc",
+               options.oxend_omq_rpc,
+               "OMQ RPC address on which oxend is available; typically "
+               "ipc:///path/to/oxend.sock or tcp://localhost:22025")
+            ->type_name("OMQ_URL")
+            ->capture_default_str();
+    cli.add_option(
+               "--omq-port,--lmq-port",
+               options.omq_port,
+               "Public port to listen on for OxenMQ connections")
+            ->capture_default_str()
+            ->type_name("PORT");
+    cli.add_option(
+               "--https-port", options.https_port, "Public port to listen on for HTTPS connections")
+            ->capture_default_str()
+            ->type_name("PORT");
+    cli.add_option(
+            "ignored",
+            [](auto&&) { return true; },
+            "Deprecated positional argument; ignored");  // Ignored positional arg, but recognized
+                                                         // for backwards compat.
+    cli.add_option(
+               "--port,port",
+               options.https_port,
+               "Deprecated port argument; use --https-port option instead")
+            ->capture_default_str()
+            ->type_name("PORT");
     // TODO: need to support multiple here (e.g. so we can listen on public + lokinet)
-    cli.add_option("--bind-ip", options.ip, "IP address on which to listen for connections; typically this should be the 0.0.0.0 (the IPv4 \"any\" address)")->capture_default_str()->type_name("IP");
+    cli.add_option(
+               "--bind-ip",
+               options.ip,
+               "IP address on which to listen for connections; typically this should be the "
+               "0.0.0.0 (the IPv4 \"any\" address)")
+            ->capture_default_str()
+            ->type_name("IP");
     cli.add_flag("--testnet", options.testnet, "Start storage server in testnet mode");
-    cli.add_flag("--force-start", options.force_start, "Ignore the initialisation ready check (primarily for debugging).");
-    cli.add_option("--stats-access-key", options.stats_access_keys, "One or more public keys (x25519) that will be granted access to the `get_stats` omq endpoint")->type_name("PUBKEY");
+    cli.add_flag(
+            "--force-start",
+            options.force_start,
+            "Ignore the initialisation ready check (primarily for debugging).");
+    cli.add_option(
+               "--stats-access-key",
+               options.stats_access_keys,
+               "One or more public keys (x25519) that will be granted access to the "
+               "`get_stats` omq endpoint")
+            ->type_name("PUBKEY");
     cli.set_version_flag("--version,-v", std::string{oxen::STORAGE_SERVER_VERSION_INFO});
 
     // Deprecated options, put in the "" group to hide them:
-    // Old versions had a janky interface where some options were as above, but for some reason IP
-    // and port were positional.  But then IP started getting ignored because we always want to use
-    // 0.0.0.0 but then the port was stranded as a second positional argument.  The lovely mess of
-    // not using forward-looking design.
-
+    // Old versions had a janky interface where some options were as above, but for some reason
+    // IP and port were positional.  But then IP started getting ignored because we always want
+    // to use 0.0.0.0 but then the port was stranded as a second positional argument.  The
+    // lovely mess of not using forward-looking design.
 
     try {
         cli.parse(argc, argv);
@@ -140,4 +188,4 @@ parse_result parse_cli_args(int argc, char* argv[]) {
     return options;
 }
 
-} // namespace oxen
+}  // namespace oxen

@@ -13,8 +13,8 @@
 #include "omq_server.h"
 #include "request_handler.h"
 
-#include <sodium/core.h>
 #include <oxenmq/oxenmq.h>
+#include <sodium/core.h>
 
 #include <csignal>
 #include <cstdlib>
@@ -24,8 +24,8 @@
 #include <vector>
 
 extern "C" {
-#include <sys/types.h>
 #include <pwd.h>
+#include <sys/types.h>
 
 #ifdef ENABLE_SYSTEMD
 #include <systemd/sd-daemon.h>
@@ -64,17 +64,17 @@ int main(int argc, char* argv[]) {
 
     if (options.testnet) {
         oxen::is_mainnet = false;
-        OXEN_LOG(warn,
-                 "Starting in testnet mode, make sure this is intentional!");
+        OXEN_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
     }
 
     // Always print version for the logs
     OXEN_LOG(info, "{}", oxen::STORAGE_SERVER_VERSION_INFO);
 
     if (options.ip == "127.0.0.1") {
-        OXEN_LOG(critical,
-                 "Tried to bind oxen-storage to localhost, please bind "
-                 "to outward facing address");
+        OXEN_LOG(
+                critical,
+                "Tried to bind oxen-storage to localhost, please bind "
+                "to outward facing address");
         return EXIT_FAILURE;
     }
 
@@ -106,15 +106,20 @@ int main(int argc, char* argv[]) {
         }
 
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
+                get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
 
         if (signalled) {
             OXEN_LOG(err, "Received signal {}, aborting startup", signalled.load());
             return EXIT_FAILURE;
         }
 
-        sn_record me{"0.0.0.0", options.https_port, options.omq_port,
-                private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
+        sn_record me{
+                "0.0.0.0",
+                options.https_port,
+                options.omq_port,
+                private_key.pubkey(),
+                private_key_ed25519.pubkey(),
+                private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
         OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
@@ -134,32 +139,42 @@ int main(int argc, char* argv[]) {
 
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).
-        auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
+        auto oxenmq_server_ptr =
+                std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
         auto& oxenmq_server = *oxenmq_server_ptr;
 
         ServiceNode service_node{
-            me, private_key, oxenmq_server, options.data_dir, options.force_start};
+                me, private_key, oxenmq_server, options.data_dir, options.force_start};
 
         RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
         RateLimiter rate_limiter{*oxenmq_server};
 
-        HTTPSServer https_server{service_node, request_handler, rate_limiter,
-            {{options.ip, options.https_port, true}},
-            ssl_cert, ssl_key, ssl_dh,
-            {me.pubkey_legacy, private_key}};
+        HTTPSServer https_server{
+                service_node,
+                request_handler,
+                rate_limiter,
+                {{options.ip, options.https_port, true}},
+                ssl_cert,
+                ssl_key,
+                ssl_dh,
+                {me.pubkey_legacy, private_key}};
 
-
-        oxenmq_server.init(&service_node, &request_handler, &rate_limiter,
+        oxenmq_server.init(
+                &service_node,
+                &request_handler,
+                &rate_limiter,
                 oxenmq::address{options.oxend_omq_rpc});
 
         https_server.start();
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
-        oxenmq_server->add_timer([&service_node] {
-            sd_notify(0, ("WATCHDOG=1\nSTATUS=" + service_node.get_status_line()).c_str());
-        }, 10s);
+        oxenmq_server->add_timer(
+                [&service_node] {
+                    sd_notify(0, ("WATCHDOG=1\nSTATUS=" + service_node.get_status_line()).c_str());
+                },
+                10s);
 #endif
 
         // Log general stats at startup and again every hour

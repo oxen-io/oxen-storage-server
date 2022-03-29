@@ -1,11 +1,11 @@
 #include "omq_server.h"
 
+#include "channel_encryption.hpp"
 #include "dev_sink.h"
 #include "http.h"
 #include "oxen_common.h"
 #include "oxen_logger.h"
 #include "oxend_key.h"
-#include "channel_encryption.hpp"
 #include "rate_limiter.h"
 #include "request_handler.h"
 #include "service_node.h"
@@ -14,18 +14,16 @@
 #include <chrono>
 #include <exception>
 #include <nlohmann/json.hpp>
+#include <oxenc/base64.h>
 #include <oxenc/bt_serialize.h>
 #include <oxenc/hex.h>
-#include <oxenc/base64.h>
 
 #include <optional>
 #include <stdexcept>
 #include <variant>
 
 namespace oxen {
-
 std::string OxenmqServer::peer_lookup(std::string_view pubkey_bin) const {
-
     OXEN_LOG(trace, "[LMQ] Peer Lookup");
 
     if (pubkey_bin.size() != sizeof(x25519_pubkey))
@@ -41,7 +39,6 @@ std::string OxenmqServer::peer_lookup(std::string_view pubkey_bin) const {
 }
 
 void OxenmqServer::handle_sn_data(oxenmq::Message& message) {
-
     OXEN_LOG(debug, "[LMQ] handle_sn_data");
     OXEN_LOG(debug, "[LMQ]   thread id: {}", std::this_thread::get_id());
     OXEN_LOG(debug, "[LMQ]   from: {}", oxenc::to_hex(message.conn.pubkey()));
@@ -73,12 +70,18 @@ void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
     if (message.conn.pubkey().size() != 32) {
         // This shouldn't happen as this endpoint should have remote-SN-only permissions, so be
         // noisy
-        OXEN_LOG(err, "bug: invalid sn.storage_test omq request from {} with no pubkey",
+        OXEN_LOG(
+                err,
+                "bug: invalid sn.storage_test omq request from {} with no pubkey",
                 message.remote);
         return message.send_reply("invalid parameters");
     } else if (message.data.size() < 2) {
-        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}: not enough data parts; expected 2, received {}",
-                message.remote, message.data.size());
+        OXEN_LOG(
+                warn,
+                "invalid sn.storage_test omq request from {}: not enough data parts; expected 2, "
+                "received {}",
+                message.remote,
+                message.data.size());
         return message.send_reply("invalid parameters");
     }
     legacy_pubkey tester_pk;
@@ -92,8 +95,12 @@ void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
 
     uint64_t height;
     if (!util::parse_int(message.data[0], height) || !height) {
-        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: '{}' is not a valid height",
-                tester_pk, message.remote, height);
+        OXEN_LOG(
+                warn,
+                "invalid sn.storage_test omq request from {}@{}: '{}' is not a valid height",
+                tester_pk,
+                message.remote,
+                height);
         return message.send_reply("invalid height");
     }
     std::string msg_hash;
@@ -104,36 +111,48 @@ void OxenmqServer::handle_storage_test(oxenmq::Message& message) {
         assert(msg_hash.back() == '=');
         msg_hash.pop_back();
     } else {
-        OXEN_LOG(warn, "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, expected 64 or 32",
-                tester_pk, message.remote, message.data[1].size());
+        OXEN_LOG(
+                warn,
+                "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, "
+                "expected 64 or 32",
+                tester_pk,
+                message.remote,
+                message.data[1].size());
         return message.send_reply("invalid msg hash");
     }
 
-    request_handler_->process_storage_test_req(height, tester_pk, msg_hash,
-            [reply=message.send_later()](MessageTestStatus status, std::string answer, std::chrono::steady_clock::duration elapsed) {
+    request_handler_->process_storage_test_req(
+            height,
+            tester_pk,
+            msg_hash,
+            [reply = message.send_later()](
+                    MessageTestStatus status,
+                    std::string answer,
+                    std::chrono::steady_clock::duration elapsed) {
                 switch (status) {
                     case MessageTestStatus::SUCCESS:
-                        OXEN_LOG(debug, "Storage test success after {}", util::friendly_duration(elapsed));
+                        OXEN_LOG(
+                                debug,
+                                "Storage test success after {}",
+                                util::friendly_duration(elapsed));
                         reply.reply("OK", answer);
                         return;
-                    case MessageTestStatus::WRONG_REQ:
-                        reply.reply("wrong request");
-                        return;
+                    case MessageTestStatus::WRONG_REQ: reply.reply("wrong request"); return;
                     case MessageTestStatus::RETRY:
-                        [[fallthrough]]; // If we're getting called then a retry ran out of time
+                        [[fallthrough]];  // If we're getting called then a retry ran out of time
                     case MessageTestStatus::ERROR:
                         // Promote this to `error` once we enforce storage testing
-                        OXEN_LOG(debug, "Failed storage test, tried for {}", util::friendly_duration(elapsed));
+                        OXEN_LOG(
+                                debug,
+                                "Failed storage test, tried for {}",
+                                util::friendly_duration(elapsed));
                         reply.reply("other");
                 }
             });
 }
 
 void OxenmqServer::handle_onion_request(
-        std::string_view payload,
-        OnionRequestMetadata&& data,
-        oxenmq::Message::DeferredSend send) {
-
+        std::string_view payload, OnionRequestMetadata&& data, oxenmq::Message::DeferredSend send) {
     data.cb = [send](oxen::Response res) {
         if (OXEN_LOG_ENABLED(trace))
             OXEN_LOG(trace, "on response: {}...", to_string(res).substr(0, 100));
@@ -168,11 +187,9 @@ void OxenmqServer::handle_onion_request(oxenmq::Message& message) {
 }
 
 void OxenmqServer::handle_get_logs(oxenmq::Message& message) {
-
     OXEN_LOG(debug, "Received get_logs request via LMQ");
 
-    auto dev_sink = dynamic_cast<oxen::dev_sink_mt*>(
-        spdlog::get("oxen_logger")->sinks()[2].get());
+    auto dev_sink = dynamic_cast<oxen::dev_sink_mt*>(spdlog::get("oxen_logger")->sinks()[2].get());
 
     if (dev_sink == nullptr) {
         OXEN_LOG(critical, "Sink #3 should be dev sink");
@@ -197,41 +214,45 @@ void OxenmqServer::handle_get_stats(oxenmq::Message& message) {
 
 namespace {
 
-template <typename RPC>
-void register_client_rpc_endpoint(OxenmqServer::rpc_map& regs) {
-    auto call = [](RequestHandler& h, std::string_view params, bool recursive, std::function<void(Response)> cb) {
-        RPC req;
-        if (params.empty())
-            params = "{}"sv;
-        if (params.front() == 'd') {
-            req.load_from(oxenc::bt_dict_consumer{params});
-            req.b64 = false;
-        } else {
-            auto body = nlohmann::json::parse(params, nullptr, false);
-            if (body.is_discarded()) {
-                OXEN_LOG(debug, "Bad OMQ client request: not valid json or bt_dict");
-                return cb(Response{http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
+    template <typename RPC>
+    void register_client_rpc_endpoint(OxenmqServer::rpc_map& regs) {
+        auto call = [](RequestHandler& h,
+                       std::string_view params,
+                       bool recursive,
+                       std::function<void(Response)> cb) {
+            RPC req;
+            if (params.empty())
+                params = "{}"sv;
+            if (params.front() == 'd') {
+                req.load_from(oxenc::bt_dict_consumer{params});
+                req.b64 = false;
+            } else {
+                auto body = nlohmann::json::parse(params, nullptr, false);
+                if (body.is_discarded()) {
+                    OXEN_LOG(debug, "Bad OMQ client request: not valid json or bt_dict");
+                    return cb(Response{
+                            http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
+                }
+                req.load_from(body);
             }
-            req.load_from(body);
+            if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
+                req.recurse = recursive;
+            h.process_client_req(std::move(req), std::move(cb));
+        };
+        for (auto& name : RPC::names()) {
+            [[maybe_unused]] auto [it, ins] = regs.emplace(name, call);
+            assert(ins);
         }
-        if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
-            req.recurse = recursive;
-        h.process_client_req(std::move(req), std::move(cb));
-    };
-    for (auto& name : RPC::names()) {
-        [[maybe_unused]] auto [it, ins] = regs.emplace(name, call);
-        assert(ins);
     }
-}
 
-template <typename... RPC>
-OxenmqServer::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
-    OxenmqServer::rpc_map regs;
-    (register_client_rpc_endpoint<RPC>(regs), ...);
-    return regs;
-}
+    template <typename... RPC>
+    OxenmqServer::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
+        OxenmqServer::rpc_map regs;
+        (register_client_rpc_endpoint<RPC>(regs), ...);
+        return regs;
+    }
 
-} // anon. namespace
+}  // namespace
 
 oxenc::bt_value json_to_bt(nlohmann::json j) {
     if (j.is_object()) {
@@ -254,7 +275,9 @@ oxenc::bt_value json_to_bt(nlohmann::json j) {
         return j.get<uint64_t>();
     if (j.is_number_integer())
         return j.get<int64_t>();
-    OXEN_LOG(warn, "client request returned json with an unhandled value type, unable to convert to bt");
+    OXEN_LOG(
+            warn,
+            "client request returned json with an unhandled value type, unable to convert to bt");
     throw std::runtime_error{"internal error"};
 }
 
@@ -298,61 +321,84 @@ nlohmann::json bt_to_json(oxenc::bt_list_consumer l) {
 }
 
 const OxenmqServer::rpc_map OxenmqServer::client_rpc_endpoints =
-    register_client_rpc_endpoints(rpc::client_rpc_types{});
+        register_client_rpc_endpoints(rpc::client_rpc_types{});
 
-void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded) {
+void OxenmqServer::handle_client_request(
+        std::string_view method, oxenmq::Message& message, bool forwarded) {
     OXEN_LOG(debug, "Handling OMQ RPC request for {}", method);
     auto it = client_rpc_endpoints.find(method);
-    assert(it != client_rpc_endpoints.end()); // This endpoint shouldn't have been registered if it isn't in here
+    assert(it != client_rpc_endpoints.end());  // This endpoint shouldn't have been registered
+                                               // if it isn't in here
 
     const size_t full_size = forwarded ? 2 : 1;
     const size_t empty_body = full_size - 1;
     if (message.data.size() != empty_body && message.data.size() != full_size) {
-        OXEN_LOG(warn, "Invalid {}OMQ RPC request for {}: incorrect number of message parts ({})",
-                forwarded ? "forwarded " : "", method, message.data.size());
+        OXEN_LOG(
+                warn,
+                "Invalid {}OMQ RPC request for {}: incorrect number of message parts ({})",
+                forwarded ? "forwarded " : "",
+                method,
+                message.data.size());
         message.send_reply(
                 std::to_string(http::BAD_REQUEST.first),
-                fmt::format("Invalid request: expected {} message parts, received {}",
-                    full_size, message.data.size()));
+                fmt::format(
+                        "Invalid request: expected {} message parts, received {}",
+                        full_size,
+                        message.data.size()));
         return;
     }
 
     if (!forwarded && rate_limiter_->should_rate_limit_client(message.remote)) {
         OXEN_LOG(debug, "Rate limiting client request from {}", message.remote);
-        return message.send_reply(std::to_string(http::TOO_MANY_REQUESTS.first), "Too many requests, try again later");
+        return message.send_reply(
+                std::to_string(http::TOO_MANY_REQUESTS.first),
+                "Too many requests, try again later");
     }
 
     try {
         std::string_view params = message.data.size() == full_size ? message.data.back() : ""sv;
-        it->second(*request_handler_, params, !forwarded,
-            [send=message.send_later(), bt_encoded = !params.empty() && params.front() == 'd']
-            (oxen::Response res) {
-                std::string dump;
-                std::string_view body;
-                if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
-                    if (bt_encoded)
-                        dump = bt_serialize(json_to_bt(std::move(*j)));
-                    else
-                        dump = j->dump();
-                    body = dump;
-                } else
-                    body = view_body(res);
+        it->second(
+                *request_handler_,
+                params,
+                !forwarded,
+                [send = message.send_later(),
+                 bt_encoded = !params.empty() && params.front() == 'd'](oxen::Response res) {
+                    std::string dump;
+                    std::string_view body;
+                    if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
+                        if (bt_encoded)
+                            dump = bt_serialize(json_to_bt(std::move(*j)));
+                        else
+                            dump = j->dump();
+                        body = dump;
+                    } else
+                        body = view_body(res);
 
-                if (res.status == http::OK) {
-                    OXEN_LOG(debug, "OMQ RPC request successful, returning {}-byte {} response",
-                            body.size(), dump.empty() ? "text" : bt_encoded ? "bt" : "json");
-                    // Success: return just the body
-                    send.reply(body);
-                } else {
-                    // On error return [errcode, body]
-                    OXEN_LOG(debug, "OMQ RPC request failed, replying with [{}, {}]", res.status.first, body);
-                    send.reply(std::to_string(res.status.first), body);
-                }
-            });
+                    if (res.status == http::OK) {
+                        OXEN_LOG(
+                                debug,
+                                "OMQ RPC request successful, returning {}-byte {} response",
+                                body.size(),
+                                dump.empty() ? "text"
+                                : bt_encoded ? "bt"
+                                             : "json");
+                        // Success: return just the body
+                        send.reply(body);
+                    } else {
+                        // On error return [errcode, body]
+                        OXEN_LOG(
+                                debug,
+                                "OMQ RPC request failed, replying with [{}, {}]",
+                                res.status.first,
+                                body);
+                        send.reply(std::to_string(res.status.first), body);
+                    }
+                });
     } catch (const rpc::parse_error& e) {
         // These exceptions carry a failure message to send back to the client
         OXEN_LOG(debug, "Invalid request: {}", e.what());
-        message.send_reply(std::to_string(http::BAD_REQUEST.first), "invalid request: "s + e.what());
+        message.send_reply(
+                std::to_string(http::BAD_REQUEST.first), "invalid request: "s + e.what());
     } catch (const std::exception& e) {
         // Other exceptions might contain something sensitive or irrelevant so warn about it and
         // send back a generic message.
@@ -361,12 +407,9 @@ void OxenmqServer::handle_client_request(std::string_view method, oxenmq::Messag
     }
 }
 
-void omq_logger(oxenmq::LogLevel level, const char* file, int line,
-        std::string message) {
-#define LMQ_LOG_MAP(LMQ_LVL, SS_LVL)                                           \
-    case oxenmq::LogLevel::LMQ_LVL:                                            \
-        OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message);                  \
-        break;
+void omq_logger(oxenmq::LogLevel level, const char* file, int line, std::string message) {
+#define LMQ_LOG_MAP(LMQ_LVL, SS_LVL) \
+    case oxenmq::LogLevel::LMQ_LVL: OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message); break;
 
     switch (level) {
         LMQ_LOG_MAP(fatal, critical);
@@ -383,14 +426,12 @@ OxenmqServer::OxenmqServer(
         const sn_record& me,
         const x25519_seckey& privkey,
         const std::vector<x25519_pubkey>& stats_access_keys) :
-    omq_{
-        std::string{me.pubkey_x25519.view()},
-        std::string{privkey.view()},
-        true, // is service node
-        [this](auto pk) { return peer_lookup(pk); }, // SN-by-key lookup func
-        omq_logger,
-        oxenmq::LogLevel::info}
-{
+        omq_{std::string{me.pubkey_x25519.view()},
+             std::string{privkey.view()},
+             true,                                         // is service node
+             [this](auto pk) { return peer_lookup(pk); },  // SN-by-key lookup func
+             omq_logger,
+             oxenmq::LogLevel::info} {
     for (const auto& key : stats_access_keys)
         stats_access_keys_.emplace(key.view());
 
@@ -433,7 +474,7 @@ OxenmqServer::OxenmqServer(
     omq_.set_general_threads(1);
 
     omq_.MAX_MSG_SIZE =
-        10 * 1024 * 1024; // 10 MB (needed by the fileserver, and swarm msg serialization)
+            10 * 1024 * 1024;  // 10 MB (needed by the fileserver, and swarm msg serialization)
 
     // Be explicit about wanting per-SN unique connection IDs:
     omq_.EPHEMERAL_ROUTING_ID = false;
@@ -445,19 +486,29 @@ void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
     while (true) {
         std::promise<bool> prom;
         OXEN_LOG(info, "Establishing connection to oxend...");
-        omq_.connect_remote(oxend_rpc,
-            [this, &prom](auto cid) { oxend_conn_ = cid; prom.set_value(true); },
-            [&prom, &oxend_rpc](auto&&, std::string_view reason) {
-                OXEN_LOG(warn, "failed to connect to local oxend @ {}: {}; retrying", oxend_rpc, reason);
-                prom.set_value(false);
-            },
-            // Turn this off since we are using oxenmq's own key and don't want to replace some existing
-            // connection to it that might also be using that pubkey:
-            oxenmq::connect_option::ephemeral_routing_id{},
-            oxenmq::AuthLevel::admin);
+        omq_.connect_remote(
+                oxend_rpc,
+                [this, &prom](auto cid) {
+                    oxend_conn_ = cid;
+                    prom.set_value(true);
+                },
+                [&prom, &oxend_rpc](auto&&, std::string_view reason) {
+                    OXEN_LOG(
+                            warn,
+                            "failed to connect to local oxend @ {}: {}; retrying",
+                            oxend_rpc,
+                            reason);
+                    prom.set_value(false);
+                },
+                // Turn this off since we are using oxenmq's own key and don't want to replace some
+                // existing connection to it that might also be using that pubkey:
+                oxenmq::connect_option::ephemeral_routing_id{},
+                oxenmq::AuthLevel::admin);
 
         if (prom.get_future().get()) {
-            OXEN_LOG(info, "Connected to oxend in {}",
+            OXEN_LOG(
+                    info,
+                    "Connected to oxend in {}",
                     util::short_duration(std::chrono::steady_clock::now() - start));
             break;
         }
@@ -465,7 +516,8 @@ void OxenmqServer::connect_oxend(const oxenmq::address& oxend_rpc) {
     }
 }
 
-void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc) {
+void OxenmqServer::init(
+        ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, oxenmq::address oxend_rpc) {
     // Initialization happens in 3 steps:
     // - connect to oxend
     // - get initial block update from oxend
@@ -487,19 +539,22 @@ void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, ox
     auto omq_prom = std::make_shared<std::promise<void>>();
     auto omq_future = omq_prom->get_future();
     omq_.listen_curve(
-        fmt::format("tcp://0.0.0.0:{}", me.omq_port),
-        [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
-            return stats_access_keys_.count(std::string{pk})
-                ? oxenmq::AuthLevel::admin : oxenmq::AuthLevel::none;
-        },
-        [prom=std::move(omq_prom)](bool listen_success) {
-            if (listen_success)
-                prom->set_value();
-            else {
-                try { throw std::runtime_error{""}; }
-                catch (...) { prom->set_exception(std::current_exception()); }
-            }
-        });
+            fmt::format("tcp://0.0.0.0:{}", me.omq_port),
+            [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
+                return stats_access_keys_.count(std::string{pk}) ? oxenmq::AuthLevel::admin
+                                                                 : oxenmq::AuthLevel::none;
+            },
+            [prom = std::move(omq_prom)](bool listen_success) {
+                if (listen_success)
+                    prom->set_value();
+                else {
+                    try {
+                        throw std::runtime_error{""};
+                    } catch (...) {
+                        prom->set_exception(std::current_exception());
+                    }
+                }
+            });
     try {
         omq_future.get();
     } catch (const std::runtime_error&) {
@@ -511,7 +566,8 @@ void OxenmqServer::init(ServiceNode* sn, RequestHandler* rh, RateLimiter* rl, ox
     // The https server startup happens in main(), after we return
 }
 
-std::string OxenmqServer::encode_onion_data(std::string_view payload, const OnionRequestMetadata& data) {
+std::string OxenmqServer::encode_onion_data(
+        std::string_view payload, const OnionRequestMetadata& data) {
     return oxenc::bt_serialize<oxenc::bt_dict>({
             {"data", payload},
             {"enc_type", to_string(data.enc_type)},
@@ -520,10 +576,11 @@ std::string OxenmqServer::encode_onion_data(std::string_view payload, const Onio
     });
 }
 
-std::pair<std::string_view, OnionRequestMetadata> OxenmqServer::decode_onion_data(std::string_view data) {
-    // NB: stream parsing here is alphabetical (that's also why these keys *aren't* constexprs: that
-    // would potentially be error-prone if someone changed them without noticing the sort order
-    // requirements).
+std::pair<std::string_view, OnionRequestMetadata> OxenmqServer::decode_onion_data(
+        std::string_view data) {
+    // NB: stream parsing here is alphabetical (that's also why these keys *aren't* constexprs:
+    // that would potentially be error-prone if someone changed them without noticing the sort
+    // order requirements).
     std::pair<std::string_view, OnionRequestMetadata> result;
     auto& [payload, meta] = result;
     oxenc::bt_dict_consumer d{data};
@@ -548,4 +605,4 @@ std::pair<std::string_view, OnionRequestMetadata> OxenmqServer::decode_onion_dat
     return result;
 }
 
-} // namespace oxen
+}  // namespace oxen

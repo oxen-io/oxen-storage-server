@@ -31,12 +31,10 @@ struct block_update {
 
 void debug_print(std::ostream& os, const block_update& bu);
 
-// Returns a reference to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
-// reference to a null SwarmInfo with swarm_id set to INVALID_SWARM_ID on error (which will only
-// happen if there are no swarms at all).
-const SwarmInfo& get_swarm_by_pk(
-        const std::vector<SwarmInfo>& all_swarms,
-        const user_pubkey_t& pk);
+// Returns a reference to the SwarmInfo member of `all_swarms` for the given user pub.  Returns
+// a reference to a null SwarmInfo with swarm_id set to INVALID_SWARM_ID on error (which will
+// only happen if there are no swarms at all).
+const SwarmInfo& get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk);
 
 // Takes a swarm update, returns the number of active SN entries with missing
 // IP/port/ed25519/x25519 data and the total number of entries.  (We don't include
@@ -47,15 +45,13 @@ std::pair<int, int> count_missing_data(const block_update& bu);
 /// exists in incoming `other_swarms` and has a new IP address.
 /// If it does and the value is not "0.0.0.0", it updates the value for that node.
 std::vector<SwarmInfo> apply_ips(
-        const std::vector<SwarmInfo>& swarms_to_keep,
-        const std::vector<SwarmInfo>& other_swarms);
+        const std::vector<SwarmInfo>& swarms_to_keep, const std::vector<SwarmInfo>& other_swarms);
 
-/// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one has a
-/// swarm id closest to this pubkey-derived value.
+/// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one
+/// has a swarm id closest to this pubkey-derived value.
 uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk);
 
 struct SwarmEvents {
-
     /// our (potentially new) swarm id
     swarm_id_t our_swarm_id;
     /// whether our swarm got dissolved and we
@@ -94,9 +90,11 @@ class Swarm {
 
     /// Update swarm state according to `events`. If not `is_active`
     /// only update the list of all nodes
-    void update_state(const std::vector<SwarmInfo>& swarms,
-                      const std::vector<sn_record>& decommissioned,
-                      const SwarmEvents& events, bool is_active);
+    void update_state(
+            const std::vector<SwarmInfo>& swarms,
+            const std::vector<sn_record>& decommissioned,
+            const SwarmEvents& events,
+            bool is_active);
 
     void apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms);
 
@@ -104,9 +102,7 @@ class Swarm {
 
     const std::vector<sn_record>& other_nodes() const { return swarm_peers_; }
 
-    const std::vector<SwarmInfo>& all_valid_swarms() const {
-        return all_valid_swarms_;
-    }
+    const std::vector<SwarmInfo>& all_valid_swarms() const { return all_valid_swarms_; }
 
     const sn_record& our_address() const { return our_address_; }
 
@@ -120,11 +116,11 @@ class Swarm {
         return all_funded_nodes_;
     }
 
-    // Get the node with public key `pk` if exists; these search *all* fully-funded SNs (including
-    // decommissioned ones), not just the current swarm.
+    // Get the node with public key `pk` if exists; these search *all* fully-funded SNs
+    // (including decommissioned ones), not just the current swarm.
     std::optional<sn_record> find_node(const legacy_pubkey& pk) const;
     std::optional<sn_record> find_node(const ed25519_pubkey& pk) const;
     std::optional<sn_record> find_node(const x25519_pubkey& pk) const;
 };
 
-} // namespace oxen
+}  // namespace oxen

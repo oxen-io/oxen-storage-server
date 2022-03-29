@@ -24,8 +24,8 @@ namespace oxen {
 // When a storage test returns a "retry" response, we retry again after this interval:
 inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
 
-// If a storage test is still returning "retry" after this long since the initial request then we
-// give up and send an error response back to the requestor:
+// If a storage test is still returning "retry" after this long since the initial request then
+// we give up and send an error response back to the requestor:
 inline constexpr auto TEST_RETRY_PERIOD = 55s;
 
 // Minimum and maximum TTL permitted for a message storage request
@@ -36,13 +36,12 @@ inline constexpr auto TTL_MAXIMUM = 14 * 24h;
 // future, and don't allow stores with an expiry in the past by more than this amount.
 inline constexpr auto STORE_TOLERANCE = 10s;
 
-// Tolerance for timestamp-dependent, signed requests (such as `delete_all`); we accept the initial
-// request if within SIGNATURE_TOLERANCE of now, and accept a recursive request if within
-// SIGNATURE_TOLERANCE_FORWARDED (generally slightly larger to account for swarm forwarding
-// latency).
+// Tolerance for timestamp-dependent, signed requests (such as `delete_all`); we accept the
+// initial request if within SIGNATURE_TOLERANCE of now, and accept a recursive request if
+// within SIGNATURE_TOLERANCE_FORWARDED (generally slightly larger to account for swarm
+// forwarding latency).
 inline constexpr auto SIGNATURE_TOLERANCE = 60s;
 inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
-
 
 // Simpler wrapper that works for most of our responses
 struct Response {
@@ -51,8 +50,8 @@ struct Response {
     std::vector<std::pair<std::string, std::string>> headers;
 };
 
-// Views the string or string_view body inside a Response.  Should only be called when the body has
-// already been verified to not contain a json object.
+// Views the string or string_view body inside a Response.  Should only be called when the body
+// has already been verified to not contain a json object.
 inline std::string_view view_body(const Response& r) {
     assert(!std::holds_alternative<nlohmann::json>(r.body));
     if (auto* sv = std::get_if<std::string_view>(&r.body))
@@ -65,43 +64,51 @@ inline std::string_view view_body(const Response& r) {
 std::string to_string(const Response& res);
 
 namespace detail {
+    // detail::to_hashable takes either an integral type, system_clock::time_point, or a string
+    // type and converts it to a string_view by writing an integer value (using std::to_chars)
+    // into the buffer space (which should be at least 20 bytes), and returning a string_view
+    // into the written buffer space.  For strings/string_views the string_view is returned
+    // directly from the argument. system_clock::time_points are converted into integral
+    // milliseconds since epoch then treated as an integer value.
+    template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+    std::string_view to_hashable(const T& val, char*& buffer) {
+        auto [p, ec] = std::to_chars(buffer, buffer + 20, val);
+        std::string_view s(buffer, p - buffer);
+        buffer = p;
+        return s;
+    }
+    inline std::string_view to_hashable(
+            const std::chrono::system_clock::time_point& val, char*& buffer) {
+        return to_hashable(
+                std::chrono::duration_cast<std::chrono::milliseconds>(val.time_since_epoch())
+                        .count(),
+                buffer);
+    }
+    template <typename T, std::enable_if_t<std::is_convertible_v<T, std::string_view>, int> = 0>
+    std::string_view to_hashable(const T& value, char*&) {
+        return value;
+    }
 
-// detail::to_hashable takes either an integral type, system_clock::time_point, or a string type and
-// converts it to a string_view by writing an integer value (using std::to_chars) into the buffer
-// space (which should be at least 20 bytes), and returning a string_view into the written buffer
-// space.  For strings/string_views the string_view is returned directly from the argument.
-// system_clock::time_points are converted into integral milliseconds since epoch then treated as an
-// integer value.
-template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
-std::string_view to_hashable(const T& val, char*& buffer) {
-    auto [p, ec] = std::to_chars(buffer, buffer+20, val);
-    std::string_view s(buffer, p-buffer);
-    buffer = p;
-    return s;
-}
-inline std::string_view to_hashable(const std::chrono::system_clock::time_point& val, char*& buffer) {
-    return to_hashable(std::chrono::duration_cast<std::chrono::milliseconds>(val.time_since_epoch()).count(), buffer);
-}
-template <typename T, std::enable_if_t<std::is_convertible_v<T, std::string_view>, int> = 0>
-std::string_view to_hashable(const T& value, char*&) {
-    return value;
-}
-
-}
+}  // namespace detail
 
 /// Compute a hash from the given strings, concatenated together.
 std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts);
 
 /// Computes a message hash based on its constituent parts.  Takes a function (which accepts a
-/// container of string_views) and any number of std::string, std::string_view, system_clock values,
-/// or integer values.  Strings are concatenated; integers are converted to strings via
+/// container of string_views) and any number of std::string, std::string_view, system_clock
+/// values, or integer values.  Strings are concatenated; integers are converted to strings via
 /// std::to_chars; clock values are treated as integer milliseconds-since-unix-epoch values.
 template <typename Func, typename... T>
 std::string compute_hash(Func hasher, const T&... args) {
-    // Allocate a buffer of 20 bytes per integral value (which is the largest the any integral value
-    // can be when stringified).
-    std::array<char, (0 + ... + (std::is_integral_v<T> ||
-                std::is_same_v<T, std::chrono::system_clock::time_point> ? 20 : 0))> buffer;
+    // Allocate a buffer of 20 bytes per integral value (which is the largest the any integral
+    // value can be when stringified).
+    std::array<
+            char,
+            (0 + ...
+             + (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>
+                        ? 20
+                        : 0))>
+            buffer;
     auto* b = buffer.data();
     return hasher({detail::to_hashable(args, b)...});
 }
@@ -119,7 +126,6 @@ struct OnionRequestMetadata {
     int hop_no = 0;
     EncryptType enc_type = EncryptType::aes_gcm;
 };
-
 
 class RequestHandler {
 
@@ -170,9 +176,9 @@ class RequestHandler {
     void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
 
     using rpc_map = std::unordered_map<
-        std::string_view,
-        std::function<void(RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>
-    >;
+            std::string_view,
+            std::function<void(
+                    RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>>;
     static const rpc_map client_rpc_endpoints;
 
     // Process a client request taking encoded json to be parsed containing something like
@@ -180,21 +186,20 @@ class RequestHandler {
     // handler.
     void process_client_req(std::string_view req_json, std::function<void(Response)> cb);
 
-    // Processes a pre-parsed client request taking the method name ("store", "retrieve", etc.) and
-    // the json params object.
+    // Processes a pre-parsed client request taking the method name ("store", "retrieve", etc.)
+    // and the json params object.
     void process_client_req(
-            std::string_view method,
-            nlohmann::json params,
-            std::function<void(Response)> cb);
+            std::string_view method, nlohmann::json params, std::function<void(Response)> cb);
 
-    // Processes a swarm test request; if it succeeds the callback is immediately invoked, otherwise
-    // the test is scheduled for retries for some time until it succeeds, fails, or times out, at
-    // which point the callback is invoked to return the result.
+    // Processes a swarm test request; if it succeeds the callback is immediately invoked,
+    // otherwise the test is scheduled for retries for some time until it succeeds, fails, or
+    // times out, at which point the callback is invoked to return the result.
     void process_storage_test_req(
             uint64_t height,
             legacy_pubkey tester,
             std::string msg_hash_hex,
-            std::function<void(MessageTestStatus, std::string, std::chrono::steady_clock::duration)> callback);
+            std::function<void(MessageTestStatus, std::string, std::chrono::steady_clock::duration)>
+                    callback);
 
     // Forwards a request to oxend RPC. `params` should contain:
     // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and
@@ -205,8 +210,7 @@ class RequestHandler {
     //
     // Returns (via the response callback) the oxend JSON object on success; on failure returns
     // a failure response with a body of the error string.
-    void process_oxend_request(const nlohmann::json& params,
-                               std::function<void(Response)> cb);
+    void process_oxend_request(const nlohmann::json& params, std::function<void(Response)> cb);
 
     // Test only: retrieve all db entires
     Response process_retrieve_all();
@@ -221,4 +225,4 @@ class RequestHandler {
     void process_onion_req(ProcessCiphertextError&& res, OnionRequestMetadata&& data);
 };
 
-} // namespace oxen
+}  // namespace oxen
