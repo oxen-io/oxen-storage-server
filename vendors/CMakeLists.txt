@@ -89,6 +89,9 @@ add_library(oxen-crypto-ops STATIC
 target_include_directories(oxen-crypto-ops PUBLIC .)
 
 
+add_subdirectory(CLI11)
+
+
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
 if (NOT CMAKE_VERSION VERSION_LESS 3.12)

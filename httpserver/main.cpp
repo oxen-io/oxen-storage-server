@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <variant>
 #include <vector>
 
 extern "C" {
@@ -43,44 +44,14 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    oxen::command_line_parser parser;
+    auto parsed = oxen::parse_cli_args(argc, argv);
+    if (auto* code = std::get_if<int>(&parsed))
+        return *code;
 
-    try {
-        parser.parse_args(argc, argv);
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        parser.print_usage();
-        return EXIT_FAILURE;
-    }
+    auto& options = var::get<oxen::command_line_options>(parsed);
 
-    auto options = parser.get_options();
-
-    if (options.print_help) {
-        parser.print_usage();
-        return EXIT_SUCCESS;
-    }
-
-    if (options.print_version) {
-        std::cout << oxen::STORAGE_SERVER_VERSION_INFO;
-        return EXIT_SUCCESS;
-    }
-
-    std::filesystem::path data_dir;
-    if (options.data_dir.empty()) {
-        if (auto home_dir = util::get_home_dir()) {
-            data_dir = options.testnet
-                ? *home_dir / ".oxen" / "testnet" / "storage"
-                : *home_dir / ".oxen" / "storage";
-        } else {
-            std::cerr << "Could not determine your home directory; please use --data-dir to specify a data directory\n";
-            return EXIT_FAILURE;
-        }
-    } else {
-        data_dir = std::filesystem::u8path(options.data_dir);
-    }
-
-    if (!fs::exists(data_dir))
-        fs::create_directories(data_dir);
+    if (!fs::exists(options.data_dir))
+        fs::create_directories(options.data_dir);
 
     oxen::LogLevel log_level;
     if (!oxen::parse_log_level(options.log_level, log_level)) {
@@ -89,7 +60,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    oxen::init_logging(data_dir, log_level);
+    oxen::init_logging(options.data_dir, log_level);
 
     if (options.testnet) {
         oxen::is_mainnet = false;
@@ -112,7 +83,7 @@ int main(int argc, char* argv[]) {
     }
 
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
-    OXEN_LOG(info, "Setting database location to {}", data_dir);
+    OXEN_LOG(info, "Setting database location to {}", options.data_dir);
     OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
 
     if (sodium_init() != 0) {
@@ -163,7 +134,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        sn_record me{"0.0.0.0", options.port, options.omq_port,
+        sn_record me{"0.0.0.0", options.https_port, options.omq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
@@ -174,9 +145,9 @@ int main(int argc, char* argv[]) {
 
         ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
-        auto ssl_cert = data_dir / "cert.pem";
-        auto ssl_key = data_dir / "key.pem";
-        auto ssl_dh = data_dir / "dh.pem";
+        auto ssl_cert = options.data_dir / "cert.pem";
+        auto ssl_key = options.data_dir / "key.pem";
+        auto ssl_dh = options.data_dir / "dh.pem";
         if (!exists(ssl_cert) || !exists(ssl_key))
             generate_cert(ssl_cert, ssl_key);
         if (!exists(ssl_dh))
@@ -188,14 +159,14 @@ int main(int argc, char* argv[]) {
         auto& oxenmq_server = *oxenmq_server_ptr;
 
         ServiceNode service_node{
-            me, private_key, oxenmq_server, data_dir, options.force_start};
+            me, private_key, oxenmq_server, options.data_dir, options.force_start};
 
         RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
         RateLimiter rate_limiter{*oxenmq_server};
 
         HTTPSServer https_server{service_node, request_handler, rate_limiter,
-            {{options.ip, options.port, true}},
+            {{options.ip, options.https_port, true}},
             ssl_cert, ssl_key, ssl_dh,
             {me.pubkey_legacy, private_key}};
 

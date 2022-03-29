@@ -16,6 +16,5 @@ target_link_libraries(crypto
     oxen-crypto-ops
     OpenSSL::SSL
     sodium
-    Boost::boost
     Threads::Threads
     ${CMAKE_DL_LIBS})
