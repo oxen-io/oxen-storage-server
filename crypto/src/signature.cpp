@@ -10,8 +10,7 @@ extern "C" {
 #include <sodium/crypto_scalarmult_ed25519.h>
 #include <sodium/randombytes.h>
 #include <sodium/utils.h>
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
+#include <oxenc/base64.h>
 
 #include <algorithm>
 #include <cassert>
@@ -164,7 +163,7 @@ bool check_signature(const signature& sig, const hash& prefix_hash,
 }
 
 signature signature::from_base64(std::string_view signature_b64) {
-    if (!oxenmq::is_base64(signature_b64))
+    if (!oxenc::is_base64(signature_b64))
         throw std::runtime_error{"Invalid data: not base64-encoded"};
 
     // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
@@ -175,7 +174,7 @@ signature signature::from_base64(std::string_view signature_b64) {
     // convert signature
     signature sig;
     static_assert(sizeof(sig) == 64);
-    oxenmq::from_base64(signature_b64.begin(), signature_b64.end(),
+    oxenc::from_base64(signature_b64.begin(), signature_b64.end(),
             reinterpret_cast<unsigned char*>(&sig));
     return sig;
 }

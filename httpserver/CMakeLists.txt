@@ -21,6 +21,8 @@ add_library(httpserver_lib STATIC
 # TODO: enable more warnings!
 target_compile_options(httpserver_lib PRIVATE -Wall -Werror)
 
+set_source_files_properties(server_certificates.cpp PROPERTIES COMPILE_FLAGS -Wno-error=deprecated-declarations)
+
 target_link_libraries(httpserver_lib PUBLIC
     common storage utils crypto
     uWebSockets
@@ -28,6 +30,7 @@ target_link_libraries(httpserver_lib PUBLIC
     jemalloc::jemalloc
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
+    oxenc::oxenc
     oxenmq::oxenmq
     Boost::boost Boost::program_options)
 

@@ -10,7 +10,7 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
-#include <oxenmq/bt_serialize.h>
+#include <oxenc/bt_serialize.h>
 
 namespace oxen::rpc {
 
@@ -30,7 +30,7 @@ struct parse_error : std::runtime_error {
 struct endpoint {
     // Loads the rpc request from json.  Throws on error (missing keys, bad values, etc.).
     virtual void load_from(nlohmann::json params) = 0;
-    virtual void load_from(oxenmq::bt_dict_consumer params) = 0;
+    virtual void load_from(oxenc::bt_dict_consumer params) = 0;
 
     bool b64 = true; // True if we need to base64-encode values (i.e. for json); false if we can deal with binary (i.e. bt-encoded)
 
@@ -40,7 +40,7 @@ struct endpoint {
 // Base type for no-argument endpoints
 struct no_args : endpoint {
     void load_from(nlohmann::json) override {}
-    void load_from(oxenmq::bt_dict_consumer) override {}
+    void load_from(oxenc::bt_dict_consumer) override {}
 };
 
 /// Base type for a "recursive" endpoint: that is, where the request gets forwarded from the initial
@@ -58,7 +58,7 @@ struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
     bool recurse;
 
-    virtual oxenmq::bt_value to_bt() const = 0;
+    virtual oxenc::bt_value to_bt() const = 0;
 };
 
 namespace {
@@ -109,8 +109,8 @@ struct store final : recursive {
     std::string data; // always stored here in bytes
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 /// Retrieves data from this service node. Takes keys of:
@@ -147,7 +147,7 @@ struct retrieve final : endpoint {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
 };
 
 /// Retrieves status information about this storage server.  Takes no parameters.
@@ -193,8 +193,8 @@ struct delete_msgs final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request to
@@ -228,8 +228,8 @@ struct delete_all final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 /// Deletes all stored messages with a timestamp earlier than the specified value and broadcasts the
@@ -262,8 +262,8 @@ struct delete_before final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
@@ -298,8 +298,8 @@ struct expire_all final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of one or more stored messages and broadcasts the update request
@@ -337,8 +337,8 @@ struct expire_msgs final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
 };
 
 
@@ -351,7 +351,7 @@ struct get_swarm final : endpoint {
     user_pubkey_t pubkey;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
 };
 
 /// Forwards an RPC request to the this storage server's oxend.  Takes keys of:
@@ -372,7 +372,7 @@ struct oxend_request final : endpoint {
     std::optional<nlohmann::json> params;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
 };
 
 

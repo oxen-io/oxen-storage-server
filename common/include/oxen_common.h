@@ -5,8 +5,6 @@
 #include <string>
 #include <string_view>
 
-#include <oxenmq/hex.h>
-
 namespace oxen {
 
 using namespace std::literals;

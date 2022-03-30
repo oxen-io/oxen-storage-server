@@ -5,18 +5,18 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 1.1.1k CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.2 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df33fbaee5
+set(OPENSSL_HASH SHA256=98e91ccead4d4756ae3c9cde5e09191a8e586d9f4d50838e7ec09d6411dfdb63
     CACHE STRING "openssl source hash")
 
-set(BOOST_VERSION 1.76.0 CACHE STRING "boost version")
+set(BOOST_VERSION 1.78.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
+set(BOOST_HASH SHA256=8681f175d4bdb26c52222665793eef08490d7758529330f98d3b29dd0735bccc
     CACHE STRING "boost source hash")
 
 set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
@@ -44,18 +44,18 @@ set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
 set(LIBUV_HASH SHA512=33613fa28e8136507300eba374351774849b6b39aab4e53c997a918d3bc1d1094c6123e0e509535095b14dc5daa885eadb1a67bed46622ad3cc79d62dc817e84
     CACHE STRING "libuv source hash")
 
-set(ZLIB_VERSION 1.2.11 CACHE STRING "zlib version")
+set(ZLIB_VERSION 1.2.12 CACHE STRING "zlib version")
 set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
-set(ZLIB_HASH SHA512=73fd3fff4adeccd4894084c15ddac89890cd10ef105dd5e1835e1e9bbb6a49ff229713bd197d203edfa17c2727700fce65a2a235f07568212d820dca88b528ae
+set(ZLIB_HASH SHA512=cc2366fa45d5dfee1f983c8c51515e0cff959b61471e2e8d24350dea22d3f6fcc50723615a911b046ffc95f51ba337d39ae402131a55e6d1541d3b095d6c0a14
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.76.1 CACHE STRING "curl version")
-set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.haxx.se/download https://curl.askapache.com
+set(CURL_VERSION 7.82.0 CACHE STRING "curl version")
+set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA256=64bb5288c39f0840c07d077e30d9052e1cbb9fa6c2dc52523824cc859e679145
+set(CURL_HASH SHA256=0aaa12d7bd04b0966254f2703ce80dd5c38dbbd76af0297d3d690cdce58a583c
     CACHE STRING "curl source hash")
 
 
@@ -212,7 +212,8 @@ if(CMAKE_CROSSCOMPILING)
 endif()
 build_external(openssl
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
-    --prefix=${DEPS_DESTDIR} ${openssl_extra_opts} no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
+    --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
+    no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
     no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
     no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
   INSTALL_COMMAND make install_sw
@@ -223,7 +224,6 @@ build_external(openssl
 add_static_target(OpenSSL::SSL openssl_external libssl.a)
 add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
 set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
-set(OPENSSL_VERSION 1.1.1)
 
 
 
@@ -358,7 +358,7 @@ build_external(curl
   --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
   --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
   --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
-  --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
+  --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
   --without-zsh-functions-dir --without-fish-functions-dir
   "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
   BUILD_COMMAND true
@@ -373,7 +373,7 @@ set(libcurl_link_libs zlib)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs crypt32)
 elseif(APPLE)
-  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation")
+  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation -framework SystemConfiguration")
 endif()
 set_target_properties(CURL::libcurl PROPERTIES
   INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"

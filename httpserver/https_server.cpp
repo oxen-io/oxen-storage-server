@@ -11,8 +11,8 @@
 
 #include <boost/endian/conversion.hpp>
 #include <chrono>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
+#include <oxenc/base64.h>
+#include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 #include <variant>
@@ -65,7 +65,7 @@ HTTPSServer::HTTPSServer(
     request_handler_{rh},
     rate_limiter_{rl},
     legacy_keys_{std::move(legacy_keys)},
-    cert_signature_{oxenmq::to_base64(util::view_guts(
+    cert_signature_{oxenc::to_base64(util::view_guts(
         generate_signature(hash_data(slurp_file(ssl_cert)), legacy_keys_)
     ))}
 {
@@ -307,7 +307,7 @@ namespace {
             result << ']';
         }
         else
-            result << "{unknown:" << oxenmq::to_hex(addr) << "}";
+            result << "{unknown:" << oxenc::to_hex(addr) << "}";
         return result.str();
     }
 
@@ -388,7 +388,7 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
         OXEN_LOG(trace, "Received https ping_test");
         service_node_.update_last_ping(ReachType::HTTPS);
         Response resp{http::OK};
-        resp.headers.emplace_back(http::SNODE_PUBKEY_HEADER, oxenmq::to_base64(legacy_keys_.first.view()));
+        resp.headers.emplace_back(http::SNODE_PUBKEY_HEADER, oxenc::to_base64(legacy_keys_.first.view()));
         queue_response_internal(*this, *res, std::move(resp));
     });
 
@@ -573,7 +573,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                                     util::friendly_duration(elapsed));
                             resp.body = json{
                                     {"status", "OK"},
-                                    {"value", oxenmq::to_base64(answer)}};
+                                    {"value", oxenc::to_base64(answer)}};
                             return queue_response(std::move(data), std::move(resp));
                         case MessageTestStatus::WRONG_REQ:
                             resp.body = json{{"status", "wrong request"}};

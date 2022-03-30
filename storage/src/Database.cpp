@@ -5,6 +5,7 @@
 #include "string_utils.hpp"
 #include "time.hpp"
 #include "utils.hpp"
+#include <oxenc/hex.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -281,12 +282,12 @@ CREATE TRIGGER owned_messages_insert
                 int type;
                 std::array<char, 32> pubkey;
                 std::string old_owner = old_owners.getColumn(0);
-                if (old_owner.size() == 66 && util::starts_with(old_owner, "05") && oxenmq::is_hex(old_owner)) {
+                if (old_owner.size() == 66 && util::starts_with(old_owner, "05") && oxenc::is_hex(old_owner)) {
                     type = 5;
-                    oxenmq::from_hex(old_owner.begin() + 2, old_owner.end(), pubkey.begin());
-                } else if (old_owner.size() == 64 && oxenmq::is_hex(old_owner)) {
+                    oxenc::from_hex(old_owner.begin() + 2, old_owner.end(), pubkey.begin());
+                } else if (old_owner.size() == 64 && oxenc::is_hex(old_owner)) {
                     type = 0;
-                    oxenmq::from_hex(old_owner.begin(), old_owner.end(), pubkey.begin());
+                    oxenc::from_hex(old_owner.begin(), old_owner.end(), pubkey.begin());
                 } else {
                     OXEN_LOG(warn, "Found invalid owner pubkey '{}' during migration; ignoring");
                     continue;

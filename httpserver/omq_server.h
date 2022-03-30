@@ -7,9 +7,9 @@
 #include <vector>
 
 #include <oxenmq/oxenmq.h>
+#include <oxenc/bt_serialize.h>
 #include <nlohmann/json_fwd.hpp>
 
-#include "oxenmq/bt_serialize.h"
 #include "sn_record.h"
 
 namespace oxen {
@@ -23,10 +23,10 @@ struct OnionRequestMetadata;
 void omq_logger(oxenmq::LogLevel level, const char* file, int line,
         std::string message);
 
-oxenmq::bt_value json_to_bt(nlohmann::json j);
+oxenc::bt_value json_to_bt(nlohmann::json j);
 
-nlohmann::json bt_to_json(oxenmq::bt_dict_consumer d);
-nlohmann::json bt_to_json(oxenmq::bt_list_consumer l);
+nlohmann::json bt_to_json(oxenc::bt_dict_consumer d);
+nlohmann::json bt_to_json(oxenc::bt_list_consumer l);
 
 class OxenmqServer {
 

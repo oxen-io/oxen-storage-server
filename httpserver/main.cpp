@@ -15,7 +15,6 @@
 
 #include <sodium/core.h>
 #include <oxenmq/oxenmq.h>
-#include <oxenmq/hex.h>
 
 #include <csignal>
 #include <cstdlib>
