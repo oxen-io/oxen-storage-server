@@ -24,11 +24,9 @@ hash hash_data(std::string_view data);
 
 // Generates a not-proper-Ed25519 Monero signature for the given legacy monero pubkey.
 // TODO: start using proper Ed25519 signatures instead.
-signature generate_signature(const hash& prefix_hash,
-        const legacy_keypair& keys);
+signature generate_signature(const hash& prefix_hash, const legacy_keypair& keys);
 
 // Verifies the not-proper-Ed25519 Monero signature against the given public key
-bool check_signature(const signature& sig, const hash& prefix_hash,
-                     const legacy_pubkey& pub);
+bool check_signature(const signature& sig, const hash& prefix_hash, const legacy_pubkey& pub);
 
-} // namespace oxen
+}  // namespace oxen

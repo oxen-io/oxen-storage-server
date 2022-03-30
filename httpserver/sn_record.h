@@ -26,4 +26,4 @@ inline bool operator!=(const sn_record& lhs, const sn_record& rhs) {
     return !(lhs == rhs);
 }
 
-}
+}  // namespace oxen

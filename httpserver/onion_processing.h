@@ -1,16 +1,15 @@
 #pragma once
 
+#include "channel_encryption.hpp"
+#include "oxend_key.h"
 #include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <variant>
-#include "oxend_key.h"
-#include "channel_encryption.hpp"
 
 namespace oxen {
-
-// Maximum onion request hops we'll accept before we return an error; this is deliberately larger
-// than we actually use so that the client can choose to obscure hop positioning by starting at
-// somewhere higher than 0.
+// Maximum onion request hops we'll accept before we return an error; this is deliberately
+// larger than we actually use so that the client can choose to obscure hop positioning by
+// starting at somewhere higher than 0.
 inline constexpr int MAX_ONION_HOPS = 15;
 
 using CiphertextPlusJson = std::pair<std::string, nlohmann::json>;
@@ -55,10 +54,10 @@ struct FinalDestinationInfo {
     // Request body
     std::string body;
 
-    // If true, and the response has a content type indicating json, then embed the "body" value as
-    // a direct json value rather than encapsulating it as a json string.  For example, when false
-    // (the default for backwards compatibility) a json response of {"hi": "123"} would get returned
-    // as:
+    // If true, and the response has a content type indicating json, then embed the "body" value
+    // as a direct json value rather than encapsulating it as a json string.  For example, when
+    // false (the default for backwards compatibility) a json response of {"hi": "123"} would
+    // get returned as:
     //
     //     {"body":"{\"hi\":\"123\"},"status":200}  // json=false
     //     {"body":{"hi":"123"},"status":200}       // json=true
@@ -67,23 +66,22 @@ struct FinalDestinationInfo {
     // supposed-json inner value is not actually json.
     bool json = false;
 
-    // If true (which is the default for backwards compatibility) then encode the encrypted response
-    // as base64; if false return the encrypted response as-is.
+    // If true (which is the default for backwards compatibility) then encode the encrypted
+    // response as base64; if false return the encrypted response as-is.
     bool base64 = true;
 };
 
 std::ostream& operator<<(std::ostream& os, const FinalDestinationInfo& p);
 
-bool operator==(const FinalDestinationInfo& lhs,
-                const FinalDestinationInfo& rhs);
+bool operator==(const FinalDestinationInfo& lhs, const FinalDestinationInfo& rhs);
 
 enum class ProcessCiphertextError {
     INVALID_CIPHERTEXT,
     INVALID_JSON,
 };
 
-using ParsedInfo = std::variant<RelayToNodeInfo, RelayToServerInfo,
-                                FinalDestinationInfo, ProcessCiphertextError>;
+using ParsedInfo = std::
+        variant<RelayToNodeInfo, RelayToServerInfo, FinalDestinationInfo, ProcessCiphertextError>;
 
 ParsedInfo process_ciphertext_v2(
         const ChannelEncryption& decryptor,
@@ -95,9 +93,9 @@ CiphertextPlusJson parse_combined_payload(std::string_view payload);
 
 ParsedInfo process_inner_request(std::string plaintext);
 
-// Returns true if `target` is a permitted target for proxying http/https requests through an onion
-// request.  Requires that the target start with /oxen/, end with /lsrpc, and does not contain a
-// query string.
+// Returns true if `target` is a permitted target for proxying http/https requests through an
+// onion request.  Requires that the target start with /oxen/, end with /lsrpc, and does not
+// contain a query string.
 bool is_onion_url_target_allowed(std::string_view uri);
 
-} // namespace oxen
+}  // namespace oxen

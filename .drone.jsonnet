@@ -130,6 +130,24 @@ local static_check_and_upload = [
 
 
 [
+  {
+    name: 'lint check',
+    kind: 'pipeline',
+    type: 'docker',
+    steps: [{
+      name: 'build',
+      image: docker_base + 'lint',
+      pull: 'always',
+      commands: [
+        'echo "Building on ${DRONE_STAGE_MACHINE}"',
+        apt_get_quiet + ' update',
+        apt_get_quiet + ' install -y eatmydata',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-11 jsonnet',
+        './contrib/drone-format-verify.sh',
+      ],
+    }],
+  },
+
   // Various debian builds
   debian_pipeline('Debian (amd64)', docker_base + 'debian-sid', lto=true),
   debian_pipeline('Debian Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),

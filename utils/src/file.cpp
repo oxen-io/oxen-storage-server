@@ -1,11 +1,9 @@
 #include "file.hpp"
 #include <fstream>
 
-
 namespace oxen {
 
-std::string slurp_file(const std::filesystem::path& filename)
-{
+std::string slurp_file(const std::filesystem::path& filename) {
     std::ifstream in;
     in.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 
@@ -20,12 +18,11 @@ std::string slurp_file(const std::filesystem::path& filename)
     return contents;
 }
 
-void dump_file(const std::filesystem::path& filename, std::string_view contents)
-{
+void dump_file(const std::filesystem::path& filename, std::string_view contents) {
     std::ofstream out;
     out.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     out.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
     out.write(contents.data(), contents.size());
 }
 
-}
+}  // namespace oxen

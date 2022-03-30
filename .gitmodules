@@ -25,3 +25,6 @@
 [submodule "vendors/oxenc"]
 	path = vendors/oxenc
 	url = https://github.com/oxen-io/oxen-encoding.git
+[submodule "vendors/CLI11"]
+	path = vendors/CLI11
+	url = https://github.com/CLIUtils/CLI11

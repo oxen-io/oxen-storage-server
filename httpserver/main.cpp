@@ -13,18 +13,19 @@
 #include "omq_server.h"
 #include "request_handler.h"
 
-#include <sodium/core.h>
 #include <oxenmq/oxenmq.h>
+#include <sodium/core.h>
 
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <variant>
 #include <vector>
 
 extern "C" {
-#include <sys/types.h>
 #include <pwd.h>
+#include <sys/types.h>
 
 #ifdef ENABLE_SYSTEMD
 #include <systemd/sd-daemon.h>
@@ -43,44 +44,14 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    oxen::command_line_parser parser;
+    auto parsed = oxen::parse_cli_args(argc, argv);
+    if (auto* code = std::get_if<int>(&parsed))
+        return *code;
 
-    try {
-        parser.parse_args(argc, argv);
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        parser.print_usage();
-        return EXIT_FAILURE;
-    }
+    auto& options = var::get<oxen::command_line_options>(parsed);
 
-    auto options = parser.get_options();
-
-    if (options.print_help) {
-        parser.print_usage();
-        return EXIT_SUCCESS;
-    }
-
-    if (options.print_version) {
-        std::cout << oxen::STORAGE_SERVER_VERSION_INFO;
-        return EXIT_SUCCESS;
-    }
-
-    std::filesystem::path data_dir;
-    if (options.data_dir.empty()) {
-        if (auto home_dir = util::get_home_dir()) {
-            data_dir = options.testnet
-                ? *home_dir / ".oxen" / "testnet" / "storage"
-                : *home_dir / ".oxen" / "storage";
-        } else {
-            std::cerr << "Could not determine your home directory; please use --data-dir to specify a data directory\n";
-            return EXIT_FAILURE;
-        }
-    } else {
-        data_dir = std::filesystem::u8path(options.data_dir);
-    }
-
-    if (!fs::exists(data_dir))
-        fs::create_directories(data_dir);
+    if (!fs::exists(options.data_dir))
+        fs::create_directories(options.data_dir);
 
     oxen::LogLevel log_level;
     if (!oxen::parse_log_level(options.log_level, log_level)) {
@@ -89,30 +60,26 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    oxen::init_logging(data_dir, log_level);
+    oxen::init_logging(options.data_dir, log_level);
 
     if (options.testnet) {
         oxen::is_mainnet = false;
-        OXEN_LOG(warn,
-                 "Starting in testnet mode, make sure this is intentional!");
+        OXEN_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
     }
 
     // Always print version for the logs
     OXEN_LOG(info, "{}", oxen::STORAGE_SERVER_VERSION_INFO);
 
-#ifdef INTEGRATION_TEST
-    OXEN_LOG(warn, "Compiled for integration tests; this binary will not function as a regular storage server!");
-#endif
-
     if (options.ip == "127.0.0.1") {
-        OXEN_LOG(critical,
-                 "Tried to bind oxen-storage to localhost, please bind "
-                 "to outward facing address");
+        OXEN_LOG(
+                critical,
+                "Tried to bind oxen-storage to localhost, please bind "
+                "to outward facing address");
         return EXIT_FAILURE;
     }
 
     OXEN_LOG(info, "Setting log level to {}", options.log_level);
-    OXEN_LOG(info, "Setting database location to {}", data_dir);
+    OXEN_LOG(info, "Setting database location to {}", options.data_dir);
     OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
 
     if (sodium_init() != 0) {
@@ -138,33 +105,21 @@ int main(int argc, char* argv[]) {
             OXEN_LOG(info, "Stats access key: {}", key);
         }
 
-#ifndef INTEGRATION_TEST
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
-#else
-        // Normally we request the key from daemon, but in integrations/swarm
-        // testing we are not able to do that, so we extract the key as a
-        // command line option:
-        legacy_seckey private_key{};
-        ed25519_seckey private_key_ed25519{};
-        x25519_seckey private_key_x25519{};
-        try {
-            private_key = legacy_seckey::from_hex(options.oxend_key);
-            private_key_ed25519 = ed25519_seckey::from_hex(options.oxend_ed25519_key);
-            private_key_x25519 = x25519_seckey::from_hex(options.oxend_x25519_key);
-        } catch (...) {
-            OXEN_LOG(critical, "This storage server binary is compiled in integration test mode: "
-                "--oxend-key, --oxend-x25519-key, and --oxend-ed25519-key are required");
-            throw;
-        }
-#endif
+                get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
+
         if (signalled) {
             OXEN_LOG(err, "Received signal {}, aborting startup", signalled.load());
             return EXIT_FAILURE;
         }
 
-        sn_record me{"0.0.0.0", options.port, options.omq_port,
-                private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
+        sn_record me{
+                "0.0.0.0",
+                options.https_port,
+                options.omq_port,
+                private_key.pubkey(),
+                private_key_ed25519.pubkey(),
+                private_key_x25519.pubkey()};
 
         OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
         OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
@@ -174,9 +129,9 @@ int main(int argc, char* argv[]) {
 
         ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
-        auto ssl_cert = data_dir / "cert.pem";
-        auto ssl_key = data_dir / "key.pem";
-        auto ssl_dh = data_dir / "dh.pem";
+        auto ssl_cert = options.data_dir / "cert.pem";
+        auto ssl_key = options.data_dir / "key.pem";
+        auto ssl_dh = options.data_dir / "dh.pem";
         if (!exists(ssl_cert) || !exists(ssl_key))
             generate_cert(ssl_cert, ssl_key);
         if (!exists(ssl_dh))
@@ -184,32 +139,42 @@ int main(int argc, char* argv[]) {
 
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).
-        auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
+        auto oxenmq_server_ptr =
+                std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
         auto& oxenmq_server = *oxenmq_server_ptr;
 
         ServiceNode service_node{
-            me, private_key, oxenmq_server, data_dir, options.force_start};
+                me, private_key, oxenmq_server, options.data_dir, options.force_start};
 
         RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
         RateLimiter rate_limiter{*oxenmq_server};
 
-        HTTPSServer https_server{service_node, request_handler, rate_limiter,
-            {{options.ip, options.port, true}},
-            ssl_cert, ssl_key, ssl_dh,
-            {me.pubkey_legacy, private_key}};
+        HTTPSServer https_server{
+                service_node,
+                request_handler,
+                rate_limiter,
+                {{options.ip, options.https_port, true}},
+                ssl_cert,
+                ssl_key,
+                ssl_dh,
+                {me.pubkey_legacy, private_key}};
 
-
-        oxenmq_server.init(&service_node, &request_handler, &rate_limiter,
+        oxenmq_server.init(
+                &service_node,
+                &request_handler,
+                &rate_limiter,
                 oxenmq::address{options.oxend_omq_rpc});
 
         https_server.start();
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
-        oxenmq_server->add_timer([&service_node] {
-            sd_notify(0, ("WATCHDOG=1\nSTATUS=" + service_node.get_status_line()).c_str());
-        }, 10s);
+        oxenmq_server->add_timer(
+                [&service_node] {
+                    sd_notify(0, ("WATCHDOG=1\nSTATUS=" + service_node.get_status_line()).c_str());
+                },
+                10s);
 #endif
 
         // Log general stats at startup and again every hour

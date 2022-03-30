@@ -30,9 +30,9 @@ inline constexpr auto STORAGE_TEST_TIMEOUT = 15s;
 // Timeout for bootstrap node OMQ requests
 inline constexpr auto BOOTSTRAP_TIMEOUT = 10s;
 
-/// We test based on the height a few blocks back to minimise discrepancies between nodes (we could
-/// also use checkpoints, but that is still not bulletproof: swarms are calculated based on the
-/// latest block, so they might be still different and thus derive different pairs)
+/// We test based on the height a few blocks back to minimise discrepancies between nodes (we
+/// could also use checkpoints, but that is still not bulletproof: swarms are calculated based
+/// on the latest block, so they might be still different and thus derive different pairs)
 inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 
 // We use the network hardfork and snode revision from oxend to version-gate upgrade features.
@@ -79,7 +79,8 @@ class ServiceNode {
     // causing a deadlock
     OxenmqServer& omq_server_;
 
-    std::atomic<int> oxend_pings_ = 0; // Consecutive successful pings, used for batching logs about it
+    std::atomic<int> oxend_pings_ =
+            0;  // Consecutive successful pings, used for batching logs about it
 
     // Will be set to true while we have an outstanding update_swarms() call so that we squelch
     // other update_swarms() until it finishes (or fails), to avoid spamming oxend (particularly
@@ -107,19 +108,19 @@ class ServiceNode {
 
     /// Distribute all our data to where it belongs
     /// (called when our old node got dissolved)
-    void salvage_data() const; // mutex not needed
+    void salvage_data() const;  // mutex not needed
 
     /// Reliably push message/batch to a service node
-    void
-    relay_data_reliable(const std::string& blob,
-                        const sn_record& address) const; // mutex not needed
+    void relay_data_reliable(
+            const std::string& blob,
+            const sn_record& address) const;  // mutex not needed
 
     void relay_messages(
-        const std::vector<message>& msgs,
-        const std::vector<sn_record>& snodes) const; // mutex not needed
+            const std::vector<message>& msgs,
+            const std::vector<sn_record>& snodes) const;  // mutex not needed
 
-    // Conducts any ping peer tests that are due; (this is designed to be called frequently and does
-    // nothing if there are no tests currently due).
+    // Conducts any ping peer tests that are due; (this is designed to be called frequently and
+    // does nothing if there are no tests currently due).
     void ping_peers();
 
     /// Pings oxend (as required for uptime proofs)
@@ -129,14 +130,14 @@ class ServiceNode {
     std::optional<std::pair<sn_record, sn_record>> derive_tester_testee(uint64_t block_height);
 
     /// Send a request to a SN under test
-    void send_storage_test_req(const sn_record& testee, uint64_t test_height,
-                               const message& msg);
+    void send_storage_test_req(const sn_record& testee, uint64_t test_height, const message& msg);
 
-    void process_storage_test_response(const sn_record& testee,
-                                       const message& msg,
-                                       uint64_t test_height,
-                                       std::string status,
-                                       std::string answer);
+    void process_storage_test_response(
+            const sn_record& testee,
+            const message& msg,
+            uint64_t test_height,
+            std::string status,
+            std::string answer);
 
     /// Check if it is our turn to test and initiate peer test if so
     void initiate_peer_test();
@@ -144,7 +145,8 @@ class ServiceNode {
     // Initiate node ping tests
     void test_reachability(const sn_record& sn, int previous_failures);
 
-    // Reports node reachability result to oxend and, if a failure, queues the node for retesting.
+    // Reports node reachability result to oxend and, if a failure, queues the node for
+    // retesting.
     void report_reachability(const sn_record& sn, bool reachable, int previous_failures);
 
     /// Deprecated; can be removed after HF19
@@ -152,11 +154,12 @@ class ServiceNode {
     std::vector<std::pair<std::string, std::string>> sign_request(std::string_view body) const;
 
   public:
-    ServiceNode(sn_record address,
-                const legacy_seckey& skey,
-                OxenmqServer& omq_server,
-                const std::filesystem::path& db_location,
-                bool force_start);
+    ServiceNode(
+            sn_record address,
+            const legacy_seckey& skey,
+            OxenmqServer& omq_server,
+            const std::filesystem::path& db_location,
+            bool force_start);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }
@@ -178,36 +181,35 @@ class ServiceNode {
 
     bool hf_at_least(hf_revision version) const { return hardfork_ >= version; }
 
-    // Return true if the service node is ready to handle requests, which means the storage server
-    // is fully initialized (and not trying to shut down), the service node is active and assigned
-    // to a swarm and is not syncing.
+    // Return true if the service node is ready to handle requests, which means the storage
+    // server is fully initialized (and not trying to shut down), the service node is active and
+    // assigned to a swarm and is not syncing.
     //
-    // Teturns false and (if `reason` is non-nullptr) sets a reason string during initialization and
-    // while shutting down.
+    // Teturns false and (if `reason` is non-nullptr) sets a reason string during initialization
+    // and while shutting down.
     //
-    // If this ServiceNode was created with force_start enabled then this function always returns
-    // true (except when shutting down); the reason string is still set (when non-null) when errors
-    // would have occured without force_start.
+    // If this ServiceNode was created with force_start enabled then this function always
+    // returns true (except when shutting down); the reason string is still set (when non-null)
+    // when errors would have occured without force_start.
     bool snode_ready(std::string* reason = nullptr);
 
-    // Puts the storage server into shutdown mode; this operation is irreversible and should only be
-    // used during storage server shutdown.
+    // Puts the storage server into shutdown mode; this operation is irreversible and should
+    // only be used during storage server shutdown.
     void shutdown();
 
     // Returns true if the storage server is currently shutting down.
     bool shutting_down() const { return shutting_down_; }
 
-    /// Process message received from a client, return false if not in a swarm.  If new_msg is not
-    /// nullptr, sets it to true if we stored as a new message, false if we already had it.
+    /// Process message received from a client, return false if not in a swarm.  If new_msg is
+    /// not nullptr, sets it to true if we stored as a new message, false if we already had it.
     bool process_store(message msg, bool* new_msg = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
 
     // Attempt to find an answer (message body) to the storage test
-    std::pair<MessageTestStatus, std::string> process_storage_test_req(uint64_t blk_height,
-                                               const legacy_pubkey& tester_addr,
-                                               const std::string& msg_hash_hex);
+    std::pair<MessageTestStatus, std::string> process_storage_test_req(
+            uint64_t blk_height, const legacy_pubkey& tester_addr, const std::string& msg_hash_hex);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
@@ -221,39 +223,35 @@ class ServiceNode {
     std::vector<message> retrieve(const user_pubkey_t& pubkey, const std::string& last_hash);
 
     /// Deletes all messages belonging to a pubkey; returns the deleted hashes
-    std::optional<std::vector<std::string>> delete_all_messages(
-            const user_pubkey_t& pubkey);
+    std::optional<std::vector<std::string>> delete_all_messages(const user_pubkey_t& pubkey);
 
-    /// Delete messages owned by the given pubkey having the given hashes.  Returns the hashes of
-    /// any delete messages on success (including the case where no messages are deleted), nullopt
-    /// on query failure.
+    /// Delete messages owned by the given pubkey having the given hashes.  Returns the hashes
+    /// of any delete messages on success (including the case where no messages are deleted),
+    /// nullopt on query failure.
     std::optional<std::vector<std::string>> delete_messages(
-            const user_pubkey_t& pubkey,
-            const std::vector<std::string>& msg_hashes);
+            const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
 
-    /// Deletes all messages owned by the given pubkey with a timestamp <= `timestamp`.  Returns the
-    /// hashes of any deleted messages (including the case where no messages are deleted), nullopt
-    /// on query failure.
+    /// Deletes all messages owned by the given pubkey with a timestamp <= `timestamp`.  Returns
+    /// the hashes of any deleted messages (including the case where no messages are deleted),
+    /// nullopt on query failure.
     std::optional<std::vector<std::string>> delete_messages_before(
             const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp);
 
-    /// Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
-    /// be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector
-    /// of [msgid, newexpiry] pairs indicating the new expiry of any messages found (note that the
-    /// new expiry may not have been updated if it was already shorter than the requested time).
-    std::optional<std::vector<std::string>>
-    update_messages_expiry(
+    /// Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can
+    /// only be shortened (i.e. brought closer to now), not extended into the future.  Returns a
+    /// vector of [msgid, newexpiry] pairs indicating the new expiry of any messages found (note
+    /// that the new expiry may not have been updated if it was already shorter than the
+    /// requested time).
+    std::optional<std::vector<std::string>> update_messages_expiry(
             const user_pubkey_t& pubkey,
             const std::vector<std::string>& msg_hashes,
             std::chrono::system_clock::time_point new_exp);
 
-    /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
-    /// shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
-    /// [msg, newexpiry] for all messages, whether the expiry is updated or not.
-    std::optional<std::vector<std::string>>
-    update_all_expiries(
-            const user_pubkey_t& pubkey,
-            std::chrono::system_clock::time_point new_exp);
+    /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only
+    /// be shortened (i.e. brought closer to now), not extended into the future.  Returns a
+    /// vector of [msg, newexpiry] for all messages, whether the expiry is updated or not.
+    std::optional<std::vector<std::string>> update_all_expiries(
+            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp);
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;
@@ -263,17 +261,16 @@ class ServiceNode {
     std::string get_status_line() const;
 
     template <typename PubKey>
-    std::optional<sn_record>
-    find_node(const PubKey& pk) const {
+    std::optional<sn_record> find_node(const PubKey& pk) const {
         std::lock_guard guard{sn_mutex_};
         if (swarm_)
             return swarm_->find_node(pk);
         return std::nullopt;
     }
 
-    // Called once we have established the initial connection to our local oxend to set up initial
-    // data and timers that rely on an oxend connection.  This blocks until we get an initial
-    // service node block update back from oxend.
+    // Called once we have established the initial connection to our local oxend to set up
+    // initial data and timers that rely on an oxend connection.  This blocks until we get an
+    // initial service node block update back from oxend.
     void on_oxend_connected();
 
     // Called when oxend notifies us of a new block to update swarm info
@@ -282,4 +279,4 @@ class ServiceNode {
     OxenmqServer& omq_server() { return omq_server_; }
 };
 
-} // namespace oxen
+}  // namespace oxen

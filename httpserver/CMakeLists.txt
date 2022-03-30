@@ -32,7 +32,7 @@ target_link_libraries(httpserver_lib PUBLIC
     nlohmann_json::nlohmann_json
     oxenc::oxenc
     oxenmq::oxenmq
-    Boost::boost Boost::program_options)
+    CLI11::CLI11)
 
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it
 find_library(RESOLV resolv)

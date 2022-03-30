@@ -21,14 +21,14 @@ TEST_CASE("v1 serialization - basic values", "[serialization]") {
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 1);
     REQUIRE(serialized.size() == 1);
     const auto expected_serialized =
-        "l"
-        "33:\x05\x43\x68\x52\x00\x05\x78\x6b\x24\x9b\xcd\x46\x1d\x28\xf7\x5e\x56" // pubkey
-               "\x0e\xa7\x94\x01\x4e\xeb\x17\xfc\xf6\x00\x3f\x37\xd8\x76\x78\x3e"
-        "8:hash\x00\x01\x02\x03" // hash
-        "i12345678e" // timestamp
-        "i15801678e" // expiry
-        "5:da\x00ta" // data
-        "e"s;
+            "l"
+            "33:\x05\x43\x68\x52\x00\x05\x78\x6b\x24\x9b\xcd\x46\x1d\x28\xf7\x5e\x56"  // pubkey
+            "\x0e\xa7\x94\x01\x4e\xeb\x17\xfc\xf6\x00\x3f\x37\xd8\x76\x78\x3e"
+            "8:hash\x00\x01\x02\x03"  // hash
+            "i12345678e"              // timestamp
+            "i15801678e"              // expiry
+            "5:da\x00ta"              // data
+            "e"s;
     CHECK(serialized.front() == "\x01l"s + expected_serialized + "e");
 
     msgs.push_back(msgs.front());

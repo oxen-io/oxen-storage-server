@@ -7,19 +7,20 @@
 
 #include "oxend_key.h"
 
-namespace oxenmq { class OxenMQ; }
+namespace oxenmq {
+class OxenMQ;
+}
 
 /// https://en.wikipedia.org/wiki/Token_bucket
 
 namespace oxen {
-
 class RateLimiter {
   public:
     // TODO: make those two constants command line parameters?
     inline constexpr static uint32_t BUCKET_SIZE = 600;
 
     // Tokens (requests) per second
-    inline constexpr static uint32_t TOKEN_RATE = 300; // Too much for a client??
+    inline constexpr static uint32_t TOKEN_RATE = 300;  // Too much for a client??
     inline constexpr static uint32_t TOKEN_RATE_SN = 600;
     inline constexpr static uint32_t MAX_CLIENTS = 10000;
 
@@ -33,8 +34,8 @@ class RateLimiter {
             uint32_t ip,
             std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
 
-    // Same as above, but takes a "a.b.c.d" string.  Returns false (i.e. don't rate limit) if the
-    // given address isn't parseable as an IPv4 address at all.
+    // Same as above, but takes a "a.b.c.d" string.  Returns false (i.e. don't rate limit) if
+    // the given address isn't parseable as an IPv4 address at all.
     bool should_rate_limit_client(
             const std::string& ip_dotted_quad,
             std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
@@ -53,4 +54,4 @@ class RateLimiter {
     void clean_buckets(std::chrono::steady_clock::time_point now);
 };
 
-}
+}  // namespace oxen

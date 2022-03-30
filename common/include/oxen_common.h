@@ -9,20 +9,19 @@ namespace oxen {
 
 using namespace std::literals;
 
-// Network byte + Ed25519 pubkey, encoded in bytes or hex.  On testnet we allow the network byte to
-// be missing (and treat it as an implicit 00).
+// Network byte + Ed25519 pubkey, encoded in bytes or hex.  On testnet we allow the network byte
+// to be missing (and treat it as an implicit 00).
 inline constexpr size_t USER_PUBKEY_SIZE_BYTES = 33;
 inline constexpr size_t USER_PUBKEY_SIZE_HEX = USER_PUBKEY_SIZE_BYTES * 2;
 
 inline bool is_mainnet = true;
 
 class user_pubkey_t {
-
     int network_ = -1;
     std::string pubkey_;
 
-    user_pubkey_t(int network, std::string raw_pk)
-        : network_{network}, pubkey_{std::move(raw_pk)} {}
+    user_pubkey_t(int network, std::string raw_pk) :
+            network_{network}, pubkey_{std::move(raw_pk)} {}
 
     friend class DatabaseImpl;
 
@@ -38,14 +37,15 @@ class user_pubkey_t {
     }
 
     // Replaces the stored pubkey with one parsed from the string `pk`.  `pk` can be either raw
-    // bytes (33 bytes of netid + pubkey), or hex (66 hex digits).  If `pk` is not a valid pubkey
-    // then `this` is put into an invalid-pubkey state (i.e. `(bool)pk` will be false).  Returns a
-    // reference to *this (primary that `if (upk.load(pk)) { ... }` can be used to load-and-test).
+    // bytes (33 bytes of netid + pubkey), or hex (66 hex digits).  If `pk` is not a valid
+    // pubkey then `this` is put into an invalid-pubkey state (i.e. `(bool)pk` will be false).
+    // Returns a reference to *this (primary that `if (upk.load(pk)) { ... }` can be used to
+    // load-and-test).
     user_pubkey_t& load(std::string_view pk);
 
     // Returns the network id (0-255) that is typically prefixed on the beginning of the pubkey
-    // string; currently 5 is used for Session Ed25519 pubkey IDs on mainnet, 0 is used for Session
-    // IDs on testnet.  Returns -1 if this object does not contain a valid pubkey.
+    // string; currently 5 is used for Session Ed25519 pubkey IDs on mainnet, 0 is used for
+    // Session IDs on testnet.  Returns -1 if this object does not contain a valid pubkey.
     int type() const { return network_; }
 
     // Returns the user pubkey hex string, not including the network prefix.  Returns an empty
@@ -75,33 +75,31 @@ struct message {
 
     message() = default;
 
-    message(
-            user_pubkey_t pubkey,
+    message(user_pubkey_t pubkey,
             std::string hash,
             std::chrono::system_clock::time_point timestamp,
             std::chrono::system_clock::time_point expiry,
             std::string data) :
-        pubkey{std::move(pubkey)}, hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry},
-        data{std::move(data)}
-    {}
+            pubkey{std::move(pubkey)},
+            hash{std::move(hash)},
+            timestamp{timestamp},
+            expiry{expiry},
+            data{std::move(data)} {}
 
-    message(
-            std::string hash,
+    message(std::string hash,
             std::chrono::system_clock::time_point timestamp,
             std::chrono::system_clock::time_point expiry,
             std::string data) :
-        hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry}, data{std::move(data)}
-    {}
+            hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry}, data{std::move(data)} {}
 };
 
 using swarm_id_t = uint64_t;
 
 constexpr swarm_id_t INVALID_SWARM_ID = UINT64_MAX;
 
-} // namespace oxen
+}  // namespace oxen
 
 namespace std {
-
 template <>
 struct hash<oxen::user_pubkey_t> {
     size_t operator()(const oxen::user_pubkey_t& pk) const {
@@ -109,4 +107,4 @@ struct hash<oxen::user_pubkey_t> {
     }
 };
 
-}
+}  // namespace std

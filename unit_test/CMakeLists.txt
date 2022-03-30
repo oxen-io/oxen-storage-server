@@ -4,7 +4,6 @@ add_subdirectory(Catch2)
 add_executable(Test
     main.cpp
 
-    command_line.cpp
     encrypt.cpp
     onion_requests.cpp
     rate_limiter.cpp

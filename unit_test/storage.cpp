@@ -16,12 +16,8 @@ using namespace oxen;
 using namespace std::literals;
 
 struct StorageDeleter {
-    StorageDeleter() {
-        std::filesystem::remove("storage.db");
-    }
-    ~StorageDeleter() {
-        std::filesystem::remove("storage.db");
-    }
+    StorageDeleter() { std::filesystem::remove("storage.db"); }
+    ~StorageDeleter() { std::filesystem::remove("storage.db"); }
 };
 
 TEST_CASE("storage - database file creation", "[storage]") {
@@ -42,7 +38,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
     const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        CHECK(storage.store({pubkey, hash, now, now+ttl, bytes}));
+        CHECK(storage.store({pubkey, hash, now, now + ttl, bytes}));
 
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
@@ -59,7 +55,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
         auto items = storage.retrieve(pubkey, "");
 
         REQUIRE(items.size() == 1);
-        CHECK_FALSE(items[0].pubkey); // pubkey is left unset when we retrieve for pubkey
+        CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey
         CHECK(items[0].hash == hash);
         CHECK(items[0].expiry - items[0].timestamp == ttl);
         CHECK(items[0].data == bytes);
@@ -146,8 +142,7 @@ TEST_CASE("storage - return entries older than lasthash", "[storage]") {
     }
 
     {
-        const auto lastHash =
-            std::string("hash") + std::to_string(num_entries / 2 - 1);
+        const auto lastHash = std::string("hash") + std::to_string(num_entries / 2 - 1);
         auto items = storage.retrieve(pubkey, lastHash);
         REQUIRE(items.size() == num_entries / 2);
         CHECK(items[0].hash == "hash" + std::to_string(num_entries / 2));
