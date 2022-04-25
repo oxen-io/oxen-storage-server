@@ -1,5 +1,5 @@
-import pyoxenmq
 import ss
+from util import sn_address
 import time
 import base64
 import json
@@ -21,7 +21,7 @@ def test_session_auth(omq, random_sn, sk, exclude):
 
     swarm = ss.get_swarm(omq, random_sn, xsk)
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(sn['ip'], sn['port_omq'], sn['pubkey_x25519']))
+    conn = omq.connect_remote(sn_address(sn))
 
     msgs = ss.store_n(omq, conn, xsk, b"omg123", 5)
 
@@ -36,15 +36,15 @@ def test_session_auth(omq, random_sn, sk, exclude):
             "signature": sig
     }
 
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
     # Expect this to fail because we didn't pass the Ed25519 key
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(omq.request_future(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
-        )[0])
+        ).get()[0])
     assert len(r['messages']) == 5
 
     # Try signing with some *other* ed25519 key, which should be detected as not corresponding to
@@ -53,20 +53,20 @@ def test_session_auth(omq, random_sn, sk, exclude):
     fake_sig = fake_sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     params['pubkey_ed25519'] = fake_sk.verify_key.encode().hex()
     params['signature'] = fake_sig
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(omq.request_future(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
-        )[0])
+        ).get()[0])
     assert len(r['messages']) == 5
 
     # Now send along the correct ed pubkey to make it work
     params['pubkey_ed25519'] = sk.verify_key.encode().hex()
     params['signature'] = sig
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
     assert len(resp) == 1
     r = json.loads(resp[0])
@@ -81,9 +81,9 @@ def test_session_auth(omq, random_sn, sk, exclude):
 
 
     # Verify deletion
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(omq.request_future(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
-        )[0])
+        ).get()[0])
     assert not r['messages']
 
 
@@ -98,7 +98,7 @@ def test_non_session_no_ed25519(omq, random_sn, sk, exclude):
 
     swarm = ss.get_swarm(omq, random_sn, xsk, netid=4)
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(sn['ip'], sn['port_omq'], sn['pubkey_x25519']))
+    conn = omq.connect_remote(sn_address(sn))
 
     msgs = ss.store_n(omq, conn, xsk, b"omg123", 4)
 
@@ -114,6 +114,6 @@ def test_non_session_no_ed25519(omq, random_sn, sk, exclude):
             "signature": sig
     }
 
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
     assert resp == [b'400', b'invalid request: pubkey_ed25519 is only permitted for 05[...] pubkeys']
