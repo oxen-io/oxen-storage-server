@@ -51,8 +51,8 @@ std::pair<std::chrono::steady_clock::duration, period_stats> all_stats_t::get_re
     auto& [window, stats] = result;
 
     std::lock_guard lock{prev_stats_mutex};
-    window = std::chrono::steady_clock::now()
-           - (previous_stats.empty() ? last_rotate : previous_stats.front().first);
+    window = std::chrono::steady_clock::now() -
+             (previous_stats.empty() ? last_rotate : previous_stats.front().first);
 
     stats = {
             current_client_store_requests,

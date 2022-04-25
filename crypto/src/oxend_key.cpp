@@ -18,16 +18,16 @@ namespace detail {
             throw std::runtime_error{"Hex key data is invalid: data is not hex"};
         if (hex.size() != 2 * length)
             throw std::runtime_error{
-                    "Hex key data is invalid: expected " + std::to_string(length)
-                    + " hex digits, received " + std::to_string(hex.size())};
+                    "Hex key data is invalid: expected " + std::to_string(length) +
+                    " hex digits, received " + std::to_string(hex.size())};
         oxenc::from_hex(hex.begin(), hex.end(), reinterpret_cast<unsigned char*>(buffer));
     }
 
     void load_from_bytes(void* buffer, size_t length, std::string_view bytes) {
         if (bytes.size() != length)
             throw std::runtime_error{
-                    "Key data is invalid: expected " + std::to_string(length) + " bytes, received "
-                    + std::to_string(bytes.size())};
+                    "Key data is invalid: expected " + std::to_string(length) +
+                    " bytes, received " + std::to_string(bytes.size())};
         std::memmove(buffer, bytes.data(), length);
     }
 
@@ -68,8 +68,8 @@ static T parse_pubkey(std::string_view pubkey_in) {
     else if (pubkey_in.size() == 64 && oxenc::is_hex(pubkey_in))
         oxenc::from_hex(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else if (
-            (pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '='))
-            && oxenc::is_base64(pubkey_in))
+            (pubkey_in.size() == 43 || (pubkey_in.size() == 44 && pubkey_in.back() == '=')) &&
+            oxenc::is_base64(pubkey_in))
         oxenc::from_base64(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else if (pubkey_in.size() == 52 && oxenc::is_base32z(pubkey_in))
         oxenc::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());

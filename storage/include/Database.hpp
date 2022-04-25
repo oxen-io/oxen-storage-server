@@ -21,9 +21,9 @@ class Database {
 
   public:
     // Recommended period for calling clean_expired()
-    inline static constexpr auto CLEANUP_PERIOD = 10s;
+    static constexpr auto CLEANUP_PERIOD = 10s;
 
-    inline static constexpr int64_t SIZE_LIMIT = int64_t(3584) * 1024 * 1024;  // 3.5 GB
+    static constexpr int64_t SIZE_LIMIT = int64_t(3584) * 1024 * 1024;  // 3.5 GB
 
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
@@ -32,7 +32,7 @@ class Database {
     ~Database();
 
     // if the database is full then print an error only once ever N errors
-    inline static constexpr int DB_FULL_FREQUENCY = 100;
+    static constexpr int DB_FULL_FREQUENCY = 100;
 
     // Attempts to store a message in the database.  Returns true if inserted, false on failure
     // due to the message already existing, and nullopt if the insertion failed because the
@@ -44,14 +44,15 @@ class Database {
 
     void bulk_store(const std::vector<message>& items);
 
-    // Retrieves messages owned by pubkey received since `last_hash` (which must also be owned
-    // by pubkey).  If last_hash is empty or not found then returns all messages (up to the
-    // limit). Optionally takes a maximum number of messages to return.
+    // Retrieves messages owned by pubkey received since `last_hash` stored in namespace `ns`.  If
+    // last_hash is empty or not found then returns all messages (up to the limit). Optionally takes
+    // a maximum number of messages to return.
     //
     // Note that the `pubkey` value of the returned message's will be left default constructed,
     // i.e. *not* filled with the given pubkey.
     std::vector<message> retrieve(
             const user_pubkey_t& pubkey,
+            namespace_id ns,
             const std::string& last_hash,
             std::optional<int> num_results = std::nullopt);
 
@@ -71,44 +72,60 @@ class Database {
     std::optional<message> retrieve_random();
 
     // Get message by `msg_hash`, return true if found.  Note that this does *not* filter by
-    // pubkey!
+    // pubkey or namespace!
     std::optional<message> retrieve_by_hash(const std::string& msg_hash);
 
     // Removes expired messages from the database; the `Database` instance owner should call
     // this periodically.
     void clean_expired();
 
-    // Deletes all messages owned by the given pubkey.  Returns the hashes of any deleted
-    // messages on success (including the case where no messages are deleted), nullopt on query
-    // failure.
-    std::vector<std::string> delete_all(const user_pubkey_t& pubkey);
+    // Deletes all messages owned by the given pubkey.  Returns the [namespace, hash] pairs of any
+    // deleted messages.
+    std::vector<std::pair<namespace_id, std::string>> delete_all(const user_pubkey_t& pubkey);
 
-    // Delete a message owned by the given pubkey having the given hashes.  Returns the hashes
-    // of any delete messages on success (including the case where no messages are deleted),
-    // nullopt on query failure.
+    // Deletes all messages owned by the given pubkey with the given namespace.  Returns the hashes
+    // of any deleted messages.
+    std::vector<std::string> delete_all(const user_pubkey_t& pubkey, namespace_id ns);
+
+    // Delete messages owned by the given pubkey having the given hashes.  Returns the hashes of any
+    // deleted messages.
     std::vector<std::string> delete_by_hash(
             const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
 
-    // Deletes all messages owned by the given pubkey with a timestamp <= timestamp.  Returns
-    // the hashes of any deleted messages (including the case where no messages are deleted),
-    // nullopt on query failure.
-    std::vector<std::string> delete_by_timestamp(
+    // Deletes all messages owned by the given pubkey with a timestamp <= timestamp.  Returns the
+    // [namespace, hash] pairs of any deleted messages.
+    std::vector<std::pair<namespace_id, std::string>> delete_by_timestamp(
             const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp);
 
-    // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can
-    // only be shortened (i.e. brought closer to now), not extended into the future.  Returns a
-    // vector of hashes of messages that had their expiries updates.  (Missing messages and
-    // messages that already had an expiry <= the given expiry value are not returned).
+    // Deletes all messages owned by the given pubkey with a timestamp <= timestamp in the given
+    // namespace.  Returns the hashes of any deleted messages.
+    std::vector<std::string> delete_by_timestamp(
+            const user_pubkey_t& pubkey,
+            namespace_id ns,
+            std::chrono::system_clock::time_point timestamp);
+
+    // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
+    // be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
+    // hashes of messages that had their expiries updates.  (Missing messages and messages that
+    // already had an expiry <= the given expiry value are not returned).
     std::vector<std::string> update_expiry(
             const user_pubkey_t& pubkey,
             const std::vector<std::string>& msg_hashes,
             std::chrono::system_clock::time_point new_exp);
 
     // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
-    // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector
-    // of hashes of messages that had their expiries shorten.
-    std::vector<std::string> update_all_expiries(
+    // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
+    // [namespace, hash] pairs of messages that had their expiries shortened.
+    std::vector<std::pair<namespace_id, std::string>> update_all_expiries(
             const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp);
+
+    // Shortens the expiry time of all messages owned by the given pubkey in the given namespace.
+    // Expiries can only be shortened (i.e. brought closer to now), not extended into the future.
+    // Returns a vector of hashes of messages that had their expiries shortened.
+    std::vector<std::string> update_all_expiries(
+            const user_pubkey_t& pubkey,
+            namespace_id ns,
+            std::chrono::system_clock::time_point new_exp);
 };
 
 }  // namespace oxen

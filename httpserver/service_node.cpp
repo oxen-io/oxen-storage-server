@@ -1,6 +1,5 @@
 #include "service_node.h"
 
-#include "Database.hpp"
 #include "http.h"
 #include "omq_server.h"
 #include "oxen_logger.h"
@@ -182,8 +181,8 @@ static block_update parse_swarm_update(const std::string& response_body) {
             }
         }
 
-        if (missing_aux_pks
-            > MISSING_PUBKEY_THRESHOLD::num * total / MISSING_PUBKEY_THRESHOLD::den) {
+        if (missing_aux_pks >
+            MISSING_PUBKEY_THRESHOLD::num * total / MISSING_PUBKEY_THRESHOLD::den) {
             OXEN_LOG(
                     warn,
                     "Missing ed25519/x25519 pubkeys for {}/{} service nodes; "
@@ -388,6 +387,10 @@ void ServiceNode::record_onion_request() {
     all_stats_.bump_onion_requests();
 }
 
+void ServiceNode::record_retrieve_request() {
+    all_stats_.bump_retrieve_requests();
+}
+
 bool ServiceNode::process_store(message msg, bool* new_msg) {
     std::lock_guard guard{sn_mutex_};
 
@@ -456,8 +459,8 @@ static SnodeStatus derive_snode_status(const block_update& bu, const sn_record& 
         return SnodeStatus::ACTIVE;
     }
 
-    if (std::find(bu.decommissioned_nodes.begin(), bu.decommissioned_nodes.end(), our_address)
-        != bu.decommissioned_nodes.end()) {
+    if (std::find(bu.decommissioned_nodes.begin(), bu.decommissioned_nodes.end(), our_address) !=
+        bu.decommissioned_nodes.end()) {
         return SnodeStatus::DECOMMISSIONED;
     }
 
@@ -539,7 +542,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
     swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, true);
 
     if (!events.new_snodes.empty()) {
-        relay_messages(get_all_messages(), events.new_snodes);
+        relay_messages(db_->retrieve_all(), events.new_snodes);
     }
 
     if (!events.new_swarms.empty()) {
@@ -610,9 +613,9 @@ void ServiceNode::update_swarms() {
                             omq_server_.oxend_request(
                                     "rpc.get_block_hash",
                                     [this, h](bool success, std::vector<std::string> data) {
-                                        if (!(success && data.size() == 2 && data[0] == "200"
-                                              && data[1].size() == 66 && data[1].front() == '"'
-                                              && data[1].back() == '"'))
+                                        if (!(success && data.size() == 2 && data[0] == "200" &&
+                                              data[1].size() == 66 && data[1].front() == '"' &&
+                                              data[1].back() == '"'))
                                             return;
                                         std::string_view hash{
                                                 data[1].data() + 1, data[1].size() - 2};
@@ -640,9 +643,9 @@ void ServiceNode::update_swarms() {
                         // nodes: but currently we still need this to deal with the lag).
 
                         auto [missing, total] = count_missing_data(bu);
-                        if (total >= (oxen::is_mainnet ? 100 : 10)
-                            && missing <= MISSING_PUBKEY_THRESHOLD::num * total
-                                                  / MISSING_PUBKEY_THRESHOLD::den) {
+                        if (total >= (oxen::is_mainnet ? 100 : 10) &&
+                            missing <= MISSING_PUBKEY_THRESHOLD::num * total /
+                                               MISSING_PUBKEY_THRESHOLD::den) {
                             OXEN_LOG(
                                     info,
                                     "Initialized from oxend with {}/{} SN records",
@@ -1154,7 +1157,7 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
     std::unordered_map<user_pubkey_t, swarm_id_t> pk_swarm_cache;
     std::unordered_map<swarm_id_t, std::vector<message>> to_relay;
 
-    std::vector<message> all_entries = get_all_messages();
+    std::vector<message> all_entries = db_->retrieve_all();
     OXEN_LOG(debug, "We have {} messages", all_entries.size());
     for (auto& entry : all_entries) {
         if (!entry.pubkey) {
@@ -1200,39 +1203,6 @@ void ServiceNode::relay_messages(
     for (const sn_record& sn : snodes)
         for (auto& batch : batches)
             relay_data_reliable(batch, sn);
-}
-
-std::vector<message> ServiceNode::retrieve(
-        const user_pubkey_t& pubkey, const std::string& last_hash) {
-    all_stats_.bump_retrieve_requests();
-    return db_->retrieve(pubkey, last_hash, CLIENT_RETRIEVE_MESSAGE_LIMIT);
-}
-
-std::optional<std::vector<std::string>> ServiceNode::delete_all_messages(
-        const user_pubkey_t& pubkey) {
-    return db_->delete_all(pubkey);
-}
-
-std::optional<std::vector<std::string>> ServiceNode::delete_messages(
-        const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes) {
-    return db_->delete_by_hash(pubkey, msg_hashes);
-}
-
-std::optional<std::vector<std::string>> ServiceNode::delete_messages_before(
-        const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp) {
-    return db_->delete_by_timestamp(pubkey, timestamp);
-}
-
-std::optional<std::vector<std::string>> ServiceNode::update_messages_expiry(
-        const user_pubkey_t& pubkey,
-        const std::vector<std::string>& msg_hashes,
-        std::chrono::system_clock::time_point new_exp) {
-    return db_->update_expiry(pubkey, msg_hashes, new_exp);
-}
-
-std::optional<std::vector<std::string>> ServiceNode::update_all_expiries(
-        const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp) {
-    return db_->update_all_expiries(pubkey, new_exp);
 }
 
 void to_json(nlohmann::json& j, const test_result& val) {
@@ -1333,11 +1303,6 @@ std::string ServiceNode::get_status_line() const {
       << '/' << stats.onion_requests << '/' << stats.proxy_requests << " (last "
       << util::short_duration(window) << ")";
     return s.str();
-}
-
-std::vector<message> ServiceNode::get_all_messages() const {
-    OXEN_LOG(trace, "Get all messages");
-    return db_->retrieve_all();
 }
 
 void ServiceNode::process_push_batch(const std::string& blob) {

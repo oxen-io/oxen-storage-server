@@ -16,7 +16,6 @@
 
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
-#include <openssl/sha.h>
 #include <oxenc/base32z.h>
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
@@ -54,8 +53,8 @@ namespace {
         for (const auto& sn : swarm.snodes) {
             snodes_json.push_back(
                     json{{"address",
-                          oxenc::to_base32z(sn.pubkey_legacy.view())
-                                  + ".snode"},  // Deprecated, use pubkey_legacy instead
+                          oxenc::to_base32z(sn.pubkey_legacy.view()) +
+                                  ".snode"},  // Deprecated, use pubkey_legacy instead
                          {"pubkey_legacy", sn.pubkey_legacy.hex()},
                          {"pubkey_x25519", sn.pubkey_x25519.hex()},
                          {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
@@ -78,8 +77,8 @@ namespace {
         const auto& pk_raw = pk.raw();
         if (pk_raw.empty())
             return "(none)";
-        return oxenc::to_hex(pk_raw.begin(), pk_raw.begin() + 2) + u8"…"
-             + oxenc::to_hex(std::prev(pk_raw.end()), pk_raw.end());
+        return oxenc::to_hex(pk_raw.begin(), pk_raw.begin() + 2) + u8"…" +
+               oxenc::to_hex(std::prev(pk_raw.end()), pk_raw.end());
     }
 
     template <typename RPC>
@@ -130,10 +129,8 @@ namespace {
             s += std::string_view{val}.size();
         else {
             static_assert(
-                    std::is_same_v<
-                            T,
-                            std::vector<
-                                    std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
+                    std::is_same_v<T, std::vector<std::string>> ||
+                    std::is_same_v<T, std::vector<std::string_view>>);
             for (auto& v : val)
                 s += v.size();
         }
@@ -155,10 +152,8 @@ namespace {
             result += std::string_view{val};
         else {
             static_assert(
-                    std::is_same_v<
-                            T,
-                            std::vector<
-                                    std::string>> || std::is_same_v<T, std::vector<std::string_view>>);
+                    std::is_same_v<T, std::vector<std::string>> ||
+                    std::is_same_v<T, std::vector<std::string_view>>);
             for (auto& v : val)
                 result += v;
         }
@@ -203,20 +198,19 @@ namespace {
 
             // Verify that the given ed pubkey actually converts to the x25519 pubkey
             std::array<unsigned char, crypto_scalarmult_curve25519_BYTES> xpk;
-            if (crypto_sign_ed25519_pk_to_curve25519(xpk.data(), pk) != 0
-                || std::memcmp(xpk.data(), raw.data(), crypto_scalarmult_curve25519_BYTES) != 0) {
+            if (crypto_sign_ed25519_pk_to_curve25519(xpk.data(), pk) != 0 ||
+                std::memcmp(xpk.data(), raw.data(), crypto_scalarmult_curve25519_BYTES) != 0) {
                 OXEN_LOG(debug, "Signature verification failed: ed -> x conversion did not match");
                 return false;
             }
         } else
             pk = reinterpret_cast<const unsigned char*>(raw.data());
 
-        bool verified = 0
-                     == crypto_sign_verify_detached(
-                                sig.data(),
-                                reinterpret_cast<const unsigned char*>(data.data()),
-                                data.size(),
-                                pk);
+        bool verified = 0 == crypto_sign_verify_detached(
+                                     sig.data(),
+                                     reinterpret_cast<const unsigned char*>(data.data()),
+                                     data.size(),
+                                     pk);
         if (!verified)
             OXEN_LOG(debug, "Signature verification failed");
         return verified;
@@ -261,14 +255,20 @@ std::string computeMessageHash(
         system_clock::time_point timestamp,
         system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
+        namespace_id ns,
         std::string_view data) {
     char netid = static_cast<char>(pubkey.type());
+    std::array<char, 20> ns_buf;
+    char* ns_buf_ptr = ns_buf.data();
+    std::string_view ns_for_hash =
+            ns != namespace_id::Default ? detail::to_hashable(to_int(ns), ns_buf_ptr) : ""sv;
     return compute_hash(
             compute_hash_blake2b_b64,
             timestamp,
             expiry,
             std::string_view{&netid, 1},
             pubkey.raw(),
+            ns_for_hash,
             data);
 }
 
@@ -413,6 +413,35 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
+    if (!is_public_namespace(req.msg_namespace)) {
+        if (!req.signature) {
+            auto err = fmt::format(
+                    "store: signature required to store to namespace {}",
+                    to_int(req.msg_namespace));
+            OXEN_LOG(warn, err);
+            return cb(Response{http::UNAUTHORIZED, err});
+        }
+        if (req.timestamp < now - SIGNATURE_TOLERANCE ||
+            req.timestamp > now + SIGNATURE_TOLERANCE) {
+            OXEN_LOG(
+                    debug,
+                    "store: invalid timestamp ({}s from now)",
+                    duration_cast<seconds>(req.timestamp - now).count());
+            return cb(
+                    Response{http::NOT_ACCEPTABLE, "store timestamp too far from current time"sv});
+        }
+        if (!verify_signature(
+                    req.pubkey,
+                    req.pubkey_ed25519,
+                    *req.signature,
+                    "store",
+                    req.msg_namespace == namespace_id::Default ? "" : to_string(req.msg_namespace),
+                    req.timestamp)) {
+            OXEN_LOG(debug, "store: signature verification failed");
+            return cb(Response{http::UNAUTHORIZED, "store signature verification failed"sv});
+        }
+    }
+
     bool entry_router = req.recurse == true;
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
@@ -420,13 +449,19 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    std::string message_hash = computeMessageHash(req.timestamp, req.expiry, req.pubkey, req.data);
+    std::string message_hash =
+            computeMessageHash(req.timestamp, req.expiry, req.pubkey, req.msg_namespace, req.data);
 
     bool new_msg;
     bool success = false;
     try {
         success = service_node_.process_store(
-                message{req.pubkey, message_hash, req.timestamp, req.expiry, std::move(req.data)},
+                message{req.pubkey,
+                        message_hash,
+                        req.msg_namespace,
+                        req.timestamp,
+                        req.expiry,
+                        std::move(req.data)},
                 &new_msg);
     } catch (const std::exception& e) {
         OXEN_LOG(
@@ -463,8 +498,11 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
 
     OXEN_LOG(
             trace,
-            "Successfully stored message {} for {}",
+            "Successfully stored message {}{} for {}",
             message_hash,
+            req.msg_namespace != namespace_id::Default
+                    ? fmt::format("[{}]", to_int(req.msg_namespace))
+                    : "",
             obfuscate_pubkey(req.pubkey));
 
     if (--res->pending == 0)
@@ -533,8 +571,8 @@ void RequestHandler::process_client_req(
 
     auto now = system_clock::now();
     if (req.check_signature) {
-        if (req.timestamp < now - SIGNATURE_TOLERANCE
-            || req.timestamp > now + SIGNATURE_TOLERANCE) {
+        if (req.timestamp < now - SIGNATURE_TOLERANCE ||
+            req.timestamp > now + SIGNATURE_TOLERANCE) {
             OXEN_LOG(
                     debug,
                     "retrieve: invalid timestamp ({}s from now)",
@@ -543,7 +581,14 @@ void RequestHandler::process_client_req(
                     http::NOT_ACCEPTABLE, "retrieve timestamp too far from current time"sv});
         }
         if (!verify_signature(
-                    req.pubkey, req.pubkey_ed25519, req.signature, "retrieve", req.timestamp)) {
+                    req.pubkey,
+                    req.pubkey_ed25519,
+                    req.signature,
+                    "retrieve",
+                    req.msg_namespace != namespace_id::Default
+                            ? std::to_string(to_int(req.msg_namespace))
+                            : ""s,
+                    req.timestamp)) {
             OXEN_LOG(debug, "retrieve: signature verification failed");
             return cb(Response{http::UNAUTHORIZED, "retrieve signature verification failed"sv});
         }
@@ -551,7 +596,9 @@ void RequestHandler::process_client_req(
 
     std::vector<message> msgs;
     try {
-        msgs = service_node_.retrieve(req.pubkey, req.last_hash.value_or(""));
+        msgs = service_node_.get_db().retrieve(
+                req.pubkey, req.msg_namespace, req.last_hash.value_or(""));
+        service_node_.record_retrieve_request();
     } catch (const std::exception& e) {
         auto msg = fmt::format(
                 "Internal Server Error. Could not retrieve messages for {}",
@@ -587,6 +634,48 @@ void RequestHandler::process_client_req(rpc::info&&, std::function<void(oxen::Re
                  {"timestamp", to_epoch_ms(system_clock::now())}}});
 }
 
+namespace {
+    template <typename... SigArgs>
+    void handle_action_all_ns(
+            nlohmann::json& mine,
+            const std::string& mine_key,
+            std::vector<std::pair<namespace_id, std::string>>&& affected,
+            bool b64,
+            SigArgs&&... signature_args) {
+
+        std::sort(affected.begin(), affected.end(), [](const auto& a, const auto& b) {
+            return a.second < b.second;
+        });
+        std::vector<std::string_view> sorted_hashes;
+        sorted_hashes.reserve(affected.size());
+        for (const auto& [ns, hash] : affected)
+            sorted_hashes.emplace_back(hash);
+
+        auto sig = create_signature(std::forward<SigArgs>(signature_args)..., sorted_hashes);
+        mine["signature"] = b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+
+        // We've totally sorted by hash (for the signature, above), so this loop below will be
+        // appending to the sublists in sorted order:
+        auto& result = (mine[mine_key] = json::object());
+        for (auto& [ns, hash] : affected)
+            result[to_string(ns)].push_back(std::move(hash));
+    }
+
+    template <typename... SigArgs>
+    void handle_action_one_ns(
+            nlohmann::json& mine,
+            const std::string& mine_key,
+            std::vector<std::string>&& affected,
+            bool b64,
+            SigArgs&&... signature_args) {
+
+        std::sort(affected.begin(), affected.end());
+        auto sig = create_signature(std::forward<SigArgs>(signature_args)..., affected);
+        mine["signature"] = b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine[mine_key] = std::move(affected);
+    }
+}  // namespace
+
 void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(oxen::Response)> cb) {
     OXEN_LOG(debug, "processing delete_all {} request", req.recurse ? "direct" : "forwarded");
@@ -606,7 +695,12 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                req.pubkey, req.pubkey_ed25519, req.signature, "delete_all", req.timestamp)) {
+                req.pubkey,
+                req.pubkey_ed25519,
+                req.signature,
+                "delete_all",
+                signature_value(req.msg_namespace),
+                req.timestamp)) {
         OXEN_LOG(debug, "delete_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_all signature verification failed"sv});
     }
@@ -619,17 +713,27 @@ void RequestHandler::process_client_req(
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    if (auto deleted = service_node_.delete_all_messages(req.pubkey)) {
-        std::sort(deleted->begin(), deleted->end());
-        auto sig =
-                create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, *deleted);
-        mine["deleted"] = std::move(*deleted);
-        mine["signature"] =
-                req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    if (is_all(req.msg_namespace)) {
+        handle_action_all_ns(
+                mine,
+                "deleted",
+                service_node_.get_db().delete_all(req.pubkey),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.timestamp);
+
     } else {
-        mine["failed"] = true;
-        mine["query_failure"] = true;
+        handle_action_one_ns(
+                mine,
+                "deleted",
+                service_node_.get_db().delete_all(req.pubkey, ns_or_default(req.msg_namespace)),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.timestamp);
     }
+
     if (req.recurse)
         mine["t"] = to_epoch_ms(now);
 
@@ -656,16 +760,11 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    if (auto deleted = service_node_.delete_messages(req.pubkey, req.messages)) {
-        std::sort(deleted->begin(), deleted->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, *deleted);
-        mine["deleted"] = std::move(*deleted);
-        mine["signature"] =
-                req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
-    } else {
-        mine["failed"] = true;
-        mine["query_failure"] = true;
-    }
+    auto deleted = service_node_.get_db().delete_by_hash(req.pubkey, req.messages);
+    std::sort(deleted.begin(), deleted.end());
+    auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, deleted);
+    mine["deleted"] = std::move(deleted);
+    mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         mine["t"] = to_epoch_ms(std::chrono::system_clock::now());
 
@@ -690,7 +789,12 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                req.pubkey, req.pubkey_ed25519, req.signature, "delete_before", req.before)) {
+                req.pubkey,
+                req.pubkey_ed25519,
+                req.signature,
+                "delete_before",
+                signature_value(req.msg_namespace),
+                req.before)) {
         OXEN_LOG(debug, "delete_before: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_before signature verification failed"sv});
     }
@@ -703,15 +807,26 @@ void RequestHandler::process_client_req(
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    if (auto deleted = service_node_.delete_messages_before(req.pubkey, req.before)) {
-        std::sort(deleted->begin(), deleted->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.before, *deleted);
-        mine["deleted"] = std::move(*deleted);
-        mine["signature"] =
-                req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    if (is_all(req.msg_namespace)) {
+        handle_action_all_ns(
+                mine,
+                "deleted",
+                service_node_.get_db().delete_by_timestamp(req.pubkey, req.before),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.before);
+
     } else {
-        mine["failed"] = true;
-        mine["query_failure"] = true;
+        handle_action_one_ns(
+                mine,
+                "deleted",
+                service_node_.get_db().delete_by_timestamp(
+                        req.pubkey, ns_or_default(req.msg_namespace), req.before),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.before);
     }
     if (req.recurse)
         mine["t"] = to_epoch_ms(now);
@@ -750,15 +865,25 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    if (auto updated = service_node_.update_all_expiries(req.pubkey, req.expiry)) {
-        std::sort(updated->begin(), updated->end());
-        auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, *updated);
-        mine["updated"] = std::move(*updated);
-        mine["signature"] =
-                req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    if (is_all(req.msg_namespace)) {
+        handle_action_all_ns(
+                mine,
+                "updated",
+                service_node_.get_db().update_all_expiries(req.pubkey, req.expiry),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.expiry);
     } else {
-        mine["failed"] = true;
-        mine["query_failure"] = true;
+        handle_action_one_ns(
+                mine,
+                "updated",
+                service_node_.get_db().update_all_expiries(
+                        req.pubkey, ns_or_default(req.msg_namespace), req.expiry),
+                req.b64,
+                ed25519_sk_,
+                req.pubkey.prefixed_hex(),
+                req.expiry);
     }
     if (req.recurse)
         mine["t"] = to_epoch_ms(now);
@@ -800,17 +925,12 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    if (auto updated = service_node_.update_messages_expiry(req.pubkey, req.messages, req.expiry)) {
-        std::sort(updated->begin(), updated->end());
-        auto sig = create_signature(
-                ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, *updated);
-        mine["updated"] = std::move(*updated);
-        mine["signature"] =
-                req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
-    } else {
-        mine["failed"] = true;
-        mine["query_failure"] = true;
-    }
+    auto updated = service_node_.get_db().update_expiry(req.pubkey, req.messages, req.expiry);
+    std::sort(updated.begin(), updated.end());
+    auto sig = create_signature(
+            ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, updated);
+    mine["updated"] = std::move(updated);
+    mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         mine["t"] = to_epoch_ms(now);
 
@@ -875,7 +995,7 @@ void RequestHandler::process_client_req(
 Response RequestHandler::process_retrieve_all() {
     std::vector<message> msgs;
     try {
-        msgs = service_node_.get_all_messages();
+        msgs = service_node_.get_db().retrieve_all();
     } catch (const std::exception& e) {
         return {http::INTERNAL_SERVER_ERROR, "could not retrieve all messages"s};
     }
@@ -924,8 +1044,8 @@ void RequestHandler::process_storage_test_req(
 
                     auto [status, answer] =
                             service_node_.process_storage_test_req(height, tester, hash);
-                    if (status == MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD
-                        && !service_node_.shutting_down())
+                    if (status == MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD &&
+                        !service_node_.shutting_down())
                         return;  // Still retrying so wait for the next call
                     service_node_.omq_server()->cancel_timer(*timer);
                     callback(status, std::move(answer), elapsed);
@@ -1046,8 +1166,8 @@ void RequestHandler::process_onion_req(RelayToServerInfo&& info, OnionRequestMet
     OXEN_LOG(debug, "We are to forward the request to url: {}{}", info.host, info.target);
 
     // Forward the request to url but only if it ends in `/lsrpc`
-    if (!(info.protocol == "http" || info.protocol == "https")
-        || !is_onion_url_target_allowed(info.target))
+    if (!(info.protocol == "http" || info.protocol == "https") ||
+        !is_onion_url_target_allowed(info.target))
         return data.cb(wrap_proxy_response(
                 {http::BAD_REQUEST, "Invalid url"s}, data.ephem_key, data.enc_type));
 

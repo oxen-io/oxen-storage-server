@@ -18,8 +18,8 @@ using namespace std::literals;
 /// Returns true if the first string is equal to the second string, compared case-insensitively.
 inline bool string_iequal(std::string_view s1, std::string_view s2) {
     return std::equal(s1.begin(), s1.end(), s2.begin(), s2.end(), [](char a, char b) {
-        return std::tolower(static_cast<unsigned char>(a))
-            == std::tolower(static_cast<unsigned char>(b));
+        return std::tolower(static_cast<unsigned char>(a)) ==
+               std::tolower(static_cast<unsigned char>(b));
     });
 }
 

@@ -35,10 +35,11 @@ TEST_CASE("storage - data persistence", "[storage]") {
     const auto hash = "myhash";
     const auto bytes = "bytesasstring";
     const auto ttl = 123456ms;
+    const auto ns = namespace_id::Default;
     const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        CHECK(storage.store({pubkey, hash, now, now + ttl, bytes}));
+        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}));
 
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
@@ -57,6 +58,44 @@ TEST_CASE("storage - data persistence", "[storage]") {
         REQUIRE(items.size() == 1);
         CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey
         CHECK(items[0].hash == hash);
+        CHECK(items[0].msg_namespace == namespace_id::Default);
+        CHECK(items[0].expiry - items[0].timestamp == ttl);
+        CHECK(items[0].data == bytes);
+    }
+}
+
+TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
+    StorageDeleter fixture;
+
+    user_pubkey_t pubkey;
+    REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    const auto hash = "myhash";
+    const auto bytes = "bytesasstring";
+    const auto ttl = 123456ms;
+    const namespace_id ns{42};
+    const auto now = std::chrono::system_clock::now();
+    {
+        Database storage{"."};
+        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}));
+
+        CHECK(storage.get_owner_count() == 1);
+        CHECK(storage.get_message_count() == 1);
+
+        // the database is closed when storage goes out of scope
+    }
+    {
+        // re-open the database
+        Database storage{"."};
+
+        CHECK(storage.get_owner_count() == 1);
+        CHECK(storage.get_message_count() == 1);
+
+        auto items = storage.retrieve(pubkey, "");
+
+        REQUIRE(items.size() == 1);
+        CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey
+        CHECK(items[0].hash == hash);
+        CHECK(items[0].msg_namespace == namespace_id{42});
         CHECK(items[0].expiry - items[0].timestamp == ttl);
         CHECK(items[0].data == bytes);
     }

@@ -127,8 +127,8 @@ ParsedInfo process_ciphertext_v2(
 }
 
 bool is_onion_url_target_allowed(std::string_view target) {
-    return (util::starts_with(target, "/loki/") || util::starts_with(target, "/oxen/"))
-        && util::ends_with(target, "/lsrpc") && target.find('?') == std::string::npos;
+    return (util::starts_with(target, "/loki/") || util::starts_with(target, "/oxen/")) &&
+           util::ends_with(target, "/lsrpc") && target.find('?') == std::string::npos;
 }
 
 /// We are expecting a payload of the following shape:
@@ -187,8 +187,8 @@ std::ostream& operator<<(std::ostream& os, const RelayToServerInfo& d) {
 }
 
 bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs) {
-    return (lhs.protocol == rhs.protocol) && (lhs.host == rhs.host) && (lhs.port == rhs.port)
-        && (lhs.target == rhs.target) && (lhs.payload == rhs.payload);
+    return (lhs.protocol == rhs.protocol) && (lhs.host == rhs.host) && (lhs.port == rhs.port) &&
+           (lhs.target == rhs.target) && (lhs.payload == rhs.payload);
 }
 
 std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
@@ -201,8 +201,8 @@ std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
 }
 
 bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
-    return std::tie(a.ciphertext, a.ephemeral_key, a.enc_type, a.next_node)
-        == std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
+    return std::tie(a.ciphertext, a.ephemeral_key, a.enc_type, a.next_node) ==
+           std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
 }
 
 }  // namespace oxen
