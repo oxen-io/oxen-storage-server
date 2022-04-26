@@ -570,6 +570,17 @@ void RequestHandler::process_client_req(
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
+
+    // At HF19 start requiring authentication for all retrievals (except legacy closed groups, which
+    // can't be authenticated for technical reasons).
+    if (service_node_.hf_at_least(HARDFORK_RETRIEVE_AUTH) &&
+        req.msg_namespace != namespace_id::LegacyClosed) {
+        if (!req.check_signature) {
+            OXEN_LOG(debug, "retrieve: request signature required as of HF19");
+            return cb(Response{http::UNAUTHORIZED, "retrieve: request signature required"sv});
+        }
+    }
+
     if (req.check_signature) {
         if (req.timestamp < now - SIGNATURE_TOLERANCE ||
             req.timestamp > now + SIGNATURE_TOLERANCE) {

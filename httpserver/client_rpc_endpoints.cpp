@@ -407,7 +407,7 @@ static void load(retrieve& r, Dict& d) {
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     auto& pk = pubkey ? pubkey : pubKey;
 
-    if (pk_ed25519 || sig || ts || msg_ns) {
+    if (pk_ed25519 || sig || ts || (msg_ns && *msg_ns != namespace_id::LegacyClosed)) {
         load_pk_signature(r, d, pk, pk_ed25519, sig);
         r.timestamp = std::move(*ts);
         r.check_signature = true;
