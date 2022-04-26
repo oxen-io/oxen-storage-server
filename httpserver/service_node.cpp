@@ -554,7 +554,9 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
         bootstrap_swarms();
     }
 
-    initiate_peer_test();
+    // Peer testing has never worked reliably (there are lots of race conditions around when blocks
+    // change) and isn't enforce on the network, so just disable initiating testing for now:
+    //initiate_peer_test();
 }
 
 void ServiceNode::update_swarms() {
