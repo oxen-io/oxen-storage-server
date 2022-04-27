@@ -72,7 +72,7 @@ enum class namespace_id : int16_t {
     Max = 32767,
     SessionSync = 5,     // Session sync data for imports & multidevice syncing
     ClosedV2 = 3,        // Reserved for future Session closed group implementations
-    LegacyClosed = -10,  // For storage of "old" closed group messages; allows unauthenticated retrieval
+    LegacyClosed = -10,  // For "old" closed group messages; allows unauthenticated retrieval
 };
 
 constexpr bool is_public_namespace(namespace_id ns) {
