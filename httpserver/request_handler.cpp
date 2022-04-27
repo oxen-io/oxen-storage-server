@@ -52,15 +52,13 @@ namespace {
         json snodes_json = json::array();
         for (const auto& sn : swarm.snodes) {
             snodes_json.push_back(
-                    json{{"address",
-                          oxenc::to_base32z(sn.pubkey_legacy.view()) +
-                                  ".snode"},  // Deprecated, use pubkey_legacy instead
+                    json{{"address",  // Deprecated, use pubkey_legacy instead
+                          oxenc::to_base32z(sn.pubkey_legacy.view()) + ".snode"},
                          {"pubkey_legacy", sn.pubkey_legacy.hex()},
                          {"pubkey_x25519", sn.pubkey_x25519.hex()},
                          {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
-                         {"port",
-                          std::to_string(sn.port)},  // Deprecated port (as a string) for backwards
-                                                     // compat; use "port_https" instead
+                         {"port",  // Deprecated string port for backwards compat; prefer https_port
+                          std::to_string(sn.port)},
                          {"port_https", sn.port},
                          {"port_omq", sn.omq_port},
                          {"ip", sn.ip}});
