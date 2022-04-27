@@ -136,7 +136,7 @@ struct store final : recursive {
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
     user_pubkey_t pubkey;
-    namespace_id msg_namespace{0};
+    namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;  // computed from timestamp+ttl if ttl was given
     std::string data;                              // always stored here in bytes
