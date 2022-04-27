@@ -42,9 +42,16 @@ def test_session_auth(omq, random_sn, sk, exclude):
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({ "pubkey": my_ss_id }).encode()]
-        ).get()[0])
+    r = omq.request_future(conn, 'storage.retrieve',
+        [json.dumps({
+            "pubkey": my_ss_id,
+            "pubkey_ed25519": sk.verify_key.encode().hex(),
+            "timestamp": ts,
+            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+            }).encode()]
+        ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
     assert len(r['messages']) == 5
 
     # Try signing with some *other* ed25519 key, which should be detected as not corresponding to
@@ -58,9 +65,16 @@ def test_session_auth(omq, random_sn, sk, exclude):
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({ "pubkey": my_ss_id }).encode()]
-        ).get()[0])
+    r = omq.request_future(conn, 'storage.retrieve',
+        [json.dumps({
+            "pubkey": my_ss_id,
+            "pubkey_ed25519": sk.verify_key.encode().hex(),
+            "timestamp": ts,
+            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+            }).encode()]
+        ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
     assert len(r['messages']) == 5
 
     # Now send along the correct ed pubkey to make it work
@@ -81,9 +95,16 @@ def test_session_auth(omq, random_sn, sk, exclude):
 
 
     # Verify deletion
-    r = json.loads(omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({ "pubkey": my_ss_id }).encode()]
-        ).get()[0])
+    r = omq.request_future(conn, 'storage.retrieve',
+        [json.dumps({
+            "pubkey": my_ss_id,
+            "pubkey_ed25519": sk.verify_key.encode().hex(),
+            "timestamp": ts,
+            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+            }).encode()]
+        ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
     assert not r['messages']
 
 

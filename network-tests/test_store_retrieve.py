@@ -17,11 +17,13 @@ def test_store(omq, random_sn, sk, exclude):
     ttl = 86400000
     exp = ts + ttl
     # Store a message for myself
-    s = json.loads(omq.request_future(conn, 'storage.store', [json.dumps({
+    s = omq.request_future(conn, 'storage.store', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
-        "data": base64.b64encode("abc 123".encode()).decode()}).encode()]).get()[0])
+        "data": base64.b64encode("abc 123".encode()).decode()}).encode()]).get()
+    assert len(s) == 1
+    s = json.loads(s[0])
 
     hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
@@ -40,8 +42,7 @@ def test_store(omq, random_sn, sk, exclude):
 
 
 def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
-    """Retrieves messages without authentication.  This test will break in the future when we turn
-    on required retrieval signatures"""
+    """Attempts to retrieve messages without authentication.  This should fail (as of HF19)."""
     sns = ss.random_swarm_members(ss.get_swarm(omq, random_sn, sk), 2, exclude)
     conn1 = omq.connect_remote(sn_address(sns[0]))
 
@@ -49,11 +50,13 @@ def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
     ttl = 86400000
     exp = ts + ttl
     # Store a message for myself
-    s = json.loads(omq.request_future(conn1, 'storage.store', [json.dumps({
+    s = omq.request_future(conn1, 'storage.store', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
-        "data": base64.b64encode(b"abc 123").decode()}).encode()]).get()[0])
+        "data": base64.b64encode(b"abc 123").decode()}).encode()]).get()
+    assert len(s) == 1
+    s = json.loads(s[0])
 
     hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
@@ -61,15 +64,10 @@ def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
     assert all(v['hash'] == hash for v in s['swarm'].values())
 
     conn2 = omq.connect_remote(sn_address(sns[1]))
-    r = json.loads(omq.request_future(conn2, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex() }).encode()]).get()[0])
+    r = omq.request_future(conn2, 'storage.retrieve', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex() }).encode()]).get()
 
-    assert len(r['messages']) == 1
-    msg = r['messages'][0]
-    assert msg['data'] == base64.b64encode(b'abc 123').decode()
-    assert msg['timestamp'] == ts
-    assert msg['expiration'] == exp
-    assert msg['hash'] == hash
+    assert r == [b'401', b'retrieve: request signature required']
 
 
 def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
@@ -85,22 +83,29 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     exp = ts + ttl
     # Store message for myself, using both my ed25519 key and x25519 key to test different auth
     # modes
-    s1 = json.loads(omq.request_future(conn_x, 'storage.store', [json.dumps({
+    s1 = omq.request_future(conn_x, 'storage.store', [json.dumps({
         "pubkey": '05' + xpk.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
-        "data": base64.b64encode(b"abc 123").decode()}).encode()]).get()[0])
+        "data": base64.b64encode(b"abc 123").decode()}).encode()])
+    s2 = omq.request_future(conn_ed, 'storage.store', [json.dumps({
+        "pubkey": '03' + sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "ttl": ttl,
+        "data": base64.b64encode(b"def 456").decode()}).encode()])
+
+    s1 = s1.get()
+    assert len(s1) == 1
+    s1 = json.loads(s1[0])
 
     hash1 = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + xpk.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert all(v['hash'] == hash1 for v in s1['swarm'].values())
 
-    s2 = json.loads(omq.request_future(conn_ed, 'storage.store', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "data": base64.b64encode(b"def 456").decode()}).encode()]).get()[0])
+    s2 = s2.get()
+    assert len(s2) == 1
+    s2 = json.loads(s2[0])
 
     hash2 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'def 456',
             encoder=Base64Encoder).decode().rstrip('=')
@@ -109,39 +114,40 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     badsig = sig[0:4] + ('z' if sig[4] != 'z' else 'a') + sig[5:]
 
-    r_good1 = json.loads(omq.request_future(conn_x, 'storage.retrieve', [
+    r_good1 = omq.request_future(conn_x, 'storage.retrieve', [
         json.dumps({
             "pubkey": '05' + xpk.encode().hex(),
             "timestamp": ts,
             "signature": sig,
             "pubkey_ed25519": sk.verify_key.encode().hex()
-        }).encode()]).get()[0])
-    r_good2 = json.loads(omq.request_future(conn_ed, 'storage.retrieve', [
+        }).encode()])
+    r_good2 = omq.request_future(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
             "signature": sig
-        }).encode()]).get()[0])
+        }).encode()])
     r_bad1 = omq.request_future(conn_x, 'storage.retrieve', [
         json.dumps({
             "pubkey": '05' + xpk.encode().hex(),
             "timestamp": ts,
             "signature": badsig,  # invalid sig
             "pubkey_ed25519": sk.verify_key.encode().hex()
-        }).encode()]).get()
+        }).encode()])
     r_bad2 = omq.request_future(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
             "signature": badsig  # invalid sig
-        }).encode()]).get()
+        }).encode()])
     r_bad3 = omq.request_future(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
             #"signature": badsig  # has timestamp but missing sig
-        }).encode()]).get()
+        }).encode()])
 
+    r_good1 = json.loads(r_good1.get()[0])
     assert len(r_good1['messages']) == 1
     msg = r_good1['messages'][0]
     assert msg['data'] == base64.b64encode(b'abc 123').decode()
@@ -149,6 +155,7 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert msg['expiration'] == exp
     assert msg['hash'] == hash1
 
+    r_good2 = json.loads(r_good2.get()[0])
     assert len(r_good2['messages']) == 1
     msg = r_good2['messages'][0]
     assert msg['data'] == base64.b64encode(b'def 456').decode()
@@ -156,9 +163,9 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert msg['expiration'] == exp
     assert msg['hash'] == hash2
 
-    assert r_bad1 == [b'401', b'retrieve signature verification failed']
-    assert r_bad2 == [b'401', b'retrieve signature verification failed']
-    assert r_bad3 == [b'400', b"invalid request: Required field 'signature' missing"]
+    assert r_bad1.get() == [b'401', b'retrieve signature verification failed']
+    assert r_bad2.get() == [b'401', b'retrieve signature verification failed']
+    assert r_bad3.get() == [b'400', b"invalid request: Required field 'signature' missing"]
 
 
 def exactly_one(iterable):
@@ -179,8 +186,12 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
 
     # Retrieve all messages from the swarm (should give back the 5 we just stored):
     conn2 = omq.connect_remote(sn_address(sns[1]))
+    ts = int(time.time() * 1000)
     resp = omq.request_future(conn2, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex() }).encode()]).get()
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+    }).encode()]).get()
 
     assert len(resp) == 1
     r = json.loads(resp[0])
@@ -200,7 +211,9 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
     # Retrieve using a last_hash so that we should get back only the 6:
     resp = omq.request_future(conn1, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
-        "last_hash": msgs[4]['hash']
+        "last_hash": msgs[4]['hash'],
+        "timestamp": ts,
+        "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
         }).encode()]).get()
 
     assert len(resp) == 1
@@ -215,8 +228,12 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
         assert source['req']['expiry'] == m['expiration']
 
     # Give an unknown hash which should retrieve all:
-    r = json.loads(omq.request_future(conn2, 'storage.retrieve', [json.dumps({
+    r = omq.request_future(conn2, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
-        "last_hash": "abcdef"
-        }).encode()]).get()[0])
-
+        "last_hash": "0123456789012345678901234567890123456789123",
+        "timestamp": ts,
+        "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+        }).encode()]).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r['messages']) == 11
