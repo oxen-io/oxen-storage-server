@@ -1,21 +1,22 @@
 #include <catch2/catch.hpp>
 #include <iostream>
 
-#include "oxend_key.h"
-#include "request_handler.h"
-#include "swarm.h"
-#include "time.hpp"
+#include <oxenss/crypto/keys.h>
+#include <oxenss/rpc/request_handler.h>
+#include <oxenss/snode/swarm.h>
+#include <oxenss/utils/time.hpp>
 
 #include <oxenc/base64.h>
 
 using namespace std::literals;
+using namespace oxen::crypto;
 
-static auto create_dummy_sn_record() -> oxen::sn_record {
-    const auto pk = oxen::legacy_pubkey::from_hex(
+static auto create_dummy_sn_record() -> oxen::snode::sn_record {
+    const auto pk = legacy_pubkey::from_hex(
             "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
-    const auto pk_x25519 = oxen::x25519_pubkey::from_hex(
+    const auto pk_x25519 = x25519_pubkey::from_hex(
             "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414");
-    const auto pk_ed25519 = oxen::ed25519_pubkey::from_hex(
+    const auto pk_ed25519 = ed25519_pubkey::from_hex(
             "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a");
     const std::string ip = "0.0.0.0";
 
@@ -25,19 +26,19 @@ static auto create_dummy_sn_record() -> oxen::sn_record {
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
 static auto test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) -> void {
-    using oxen::sn_record;
+    using oxen::snode::sn_record;
 
     auto sn = create_dummy_sn_record();
 
     std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
 
-    oxen::SwarmInfo si{0, std::vector<sn_record>{sn}};
-    auto current = std::vector<oxen::SwarmInfo>{si};
+    oxen::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
+    auto current = std::vector<oxen::snode::SwarmInfo>{si};
 
     std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
 
-    oxen::SwarmInfo si2{0, std::vector<sn_record>{sn}};
-    auto incoming = std::vector<oxen::SwarmInfo>{si2};
+    oxen::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
+    auto incoming = std::vector<oxen::snode::SwarmInfo>{si2};
 
     auto new_records = apply_ips(current, incoming);
 
@@ -78,8 +79,9 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
             "q/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
 
     auto expected = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";
-    CHECK(computeMessageHash(timestamp, expiry, pk, data) == expected);
-    CHECK(oxen::compute_hash_blake2b_b64(
+    CHECK(oxen::rpc::computeMessageHash(timestamp, expiry, pk, oxen::namespace_id::Default, data) ==
+          expected);
+    CHECK(oxen::rpc::compute_hash_blake2b_b64(
                   {std::to_string(oxen::to_epoch_ms(timestamp)) +
                    std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data}) ==
           expected);
@@ -88,11 +90,11 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
 TEST_CASE("service nodes - pubkey to swarm id") {
     oxen::user_pubkey_t pk;
     REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
-    CHECK(pubkey_to_swarm_space(pk) == 4532060000165252872ULL);
+    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 4532060000165252872ULL);
 
     REQUIRE(pk.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
-    CHECK(pubkey_to_swarm_space(pk) == 0);
+    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 0);
 
     REQUIRE(pk.load("050000000000000000000000000000000000000000000000000123456789abcdef"));
-    CHECK(pubkey_to_swarm_space(pk) == 0x0123456789abcdefULL);
+    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 0x0123456789abcdefULL);
 }

@@ -23,6 +23,8 @@ local submodules = {
 
 local apt_get_quiet = 'apt-get -o=Dpkg::Use-Pty=0 -q';
 
+local cmake_options(opts) = std.join(' ', [' -D' + o + '=' + (if opts[o] then 'ON' else 'OFF') for o in std.objectFields(opts)]) + ' ';
+
 // Regular build on a debian-like system:
 local debian_pipeline(name,
                       image,
@@ -30,6 +32,7 @@ local debian_pipeline(name,
                       deps=default_deps,
                       build_type='Release',
                       lto=false,
+                      werror=true,
                       build_tests=true,
                       run_tests=true,  // Runs full test suite
                       test_oxen_storage=true,  // Makes sure oxen-storage --version runs
@@ -60,13 +63,13 @@ local debian_pipeline(name,
                   + std.join(' ', deps),
                   'mkdir build',
                   'cd build',
-                  'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
-                  '-DLOCAL_MIRROR=https://oxen.rocks/deps -DUSE_LTO=' + (if lto then 'ON ' else 'OFF ') +
-                  (if build_tests || run_tests then '-DBUILD_TESTS=ON ' else '') +
-                  cmake_extra,
+                  'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_BUILD_TYPE=' + build_type
+                  + ' -DLOCAL_MIRROR=https://oxen.rocks/deps -DEXTRA_WARNINGS=ON '
+                  + cmake_options({ USE_LTO: lto, WARNINGS_AS_ERRORS: werror, BUILD_TESTS: build_tests || run_tests })
+                  + cmake_extra,
                   'ninja -j' + jobs + ' -v',
                 ] +
-                (if test_oxen_storage then ['./httpserver/oxen-storage --version'] else []) +
+                (if test_oxen_storage then ['./oxen-storage --version'] else []) +
                 (if run_tests then ['./unit_test/Test'] else []) +
                 extra_cmds,
     },
@@ -85,6 +88,7 @@ local clang(version, lto=false) = debian_pipeline(
 local mac_builder(name,
                   build_type='Release',
                   lto=false,
+                  werror=true,
                   build_tests=true,
                   run_tests=true,
                   test_oxen_storage=true,  // Makes sure oxen-storage --version runs
@@ -108,13 +112,13 @@ local mac_builder(name,
                   'export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"',
                   'mkdir build',
                   'cd build',
-                  'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fcolor-diagnostics -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
-                  '-DLOCAL_MIRROR=https://oxen.rocks/deps -DUSE_LTO=' + (if lto then 'ON ' else 'OFF ') +
-                  (if build_tests || run_tests then '-DBUILD_TESTS=ON ' else '') +
-                  cmake_extra,
+                  'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fcolor-diagnostics -DCMAKE_BUILD_TYPE=' + build_type
+                  + ' -DLOCAL_MIRROR=https://oxen.rocks/deps -DEXTRA_WARNINGS=ON '
+                  + cmake_options({ USE_LTO: lto, WARNINGS_AS_ERRORS: werror, BUILD_TESTS: build_tests || run_tests })
+                  + cmake_extra,
                   'ninja -j' + jobs + ' -v',
                 ] +
-                (if test_oxen_storage then ['./httpserver/oxen-storage --version'] else []) +
+                (if test_oxen_storage then ['./oxen-storage --version'] else []) +
                 (if run_tests then ['./unit_test/Test'] else []) +
                 extra_cmds,
     },

@@ -100,13 +100,10 @@ link_libatomic()
 
 include(cmake/check_for_std_filesystem.cmake)
 
-add_subdirectory(common)
-add_subdirectory(utils)
-add_subdirectory(crypto)
-add_subdirectory(storage)
-add_subdirectory(httpserver)
-
 add_subdirectory(vendors)
+
+add_subdirectory(oxenss)
+
 
 if (BUILD_TESTS)
     add_subdirectory(unit_test)
