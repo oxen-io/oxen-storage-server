@@ -3,7 +3,7 @@
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 
-#include <boost/endian/conversion.hpp>
+#include <oxenc/endian.h>
 #include <nlohmann/json.hpp>
 #include <oxenc/base64.h>
 
@@ -139,7 +139,7 @@ CiphertextPlusJson parse_combined_payload(std::string_view payload) {
     uint32_t n;
     std::memcpy(&n, payload.data(), 4);
     payload.remove_prefix(4);
-    boost::endian::little_to_native_inplace(n);
+    oxenc::little_to_host_inplace(n);
     OXEN_LOG(trace, "Ciphertext length: {}", n);
 
     if (payload.size() < n) {

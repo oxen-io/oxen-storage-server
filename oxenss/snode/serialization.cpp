@@ -5,7 +5,6 @@
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/time.hpp>
 
-#include <boost/endian/conversion.hpp>
 #include <oxenc/base64.h>
 #include <oxenc/bt_serialize.h>
 

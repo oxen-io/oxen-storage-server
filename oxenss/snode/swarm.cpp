@@ -3,10 +3,10 @@
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 
-#include <boost/endian/conversion.hpp>
 #include <cstdlib>
 #include <ostream>
 #include <unordered_map>
+#include <oxenc/endian.h>
 
 namespace oxen::snode {
 
@@ -260,7 +260,7 @@ uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
         std::memcpy(&buf, bytes.data() + i * 8, 8);
         res ^= buf;
     }
-    boost::endian::big_to_native_inplace(res);
+    oxenc::big_to_host_inplace(res);
 
     return res;
 }

@@ -10,13 +10,13 @@
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/random.hpp>
 
-#include <boost/endian/conversion.hpp>
 #include <chrono>
 #include <cpr/cpr.h>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <oxenc/base32z.h>
 #include <oxenc/base64.h>
+#include <oxenc/endian.h>
 #include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
 
@@ -1043,15 +1043,12 @@ std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee
         return std::nullopt;
     }
 
-    uint64_t seed;
-    if (block_hash.size() < sizeof(seed)) {
+    if (block_hash.size() < sizeof(uint64_t)) {
         OXEN_LOG(err, "Could not initiate peer test: invalid block hash");
         return std::nullopt;
     }
 
-    std::memcpy(&seed, block_hash.data(), sizeof(seed));
-    boost::endian::little_to_native_inplace(seed);
-    std::mt19937_64 mt(seed);
+    std::mt19937_64 mt{oxenc::load_little_to_host<uint64_t>(block_hash.data())};
     const auto tester_idx = util::uniform_distribution_portable(mt, members.size());
 
     uint64_t testee_idx;
