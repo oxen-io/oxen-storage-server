@@ -1,27 +1,27 @@
 [submodule "vendors/spdlog"]
-	path = vendors/spdlog
+	path = external/spdlog
 	url = https://github.com/gabime/spdlog.git
 [submodule "vendors/oxen-mq"]
-	path = vendors/oxen-mq
+	path = external/oxen-mq
 	url = https://github.com/oxen-io/oxen-mq.git
 [submodule "vendors/nlohmann_json"]
-	path = vendors/nlohmann_json
+	path = external/nlohmann_json
 	url = https://github.com/nlohmann/json.git
 [submodule "vendors/uWebSockets"]
-	path = vendors/uWebSockets
+	path = external/uWebSockets
 	url = https://github.com/uNetworking/uWebSockets.git
 [submodule "vendors/cpr"]
-	path = vendors/cpr
+	path = external/cpr
 	url = https://github.com/whoshuu/cpr.git
 [submodule "unit_test/Catch2"]
 	path = unit_test/Catch2
 	url = https://github.com/catchorg/Catch2
 [submodule "vendors/SQLiteCpp"]
-	path = vendors/SQLiteCpp
+	path = external/SQLiteCpp
 	url = https://github.com/SRombauts/SQLiteCpp.git
 [submodule "vendors/oxenc"]
-	path = vendors/oxenc
+	path = external/oxenc
 	url = https://github.com/oxen-io/oxen-encoding.git
 [submodule "vendors/CLI11"]
-	path = vendors/CLI11
+	path = external/CLI11
 	url = https://github.com/CLIUtils/CLI11
