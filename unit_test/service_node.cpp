@@ -80,9 +80,9 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
     auto expected = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";
     CHECK(computeMessageHash(timestamp, expiry, pk, data) == expected);
     CHECK(oxen::compute_hash_blake2b_b64(
-                  {std::to_string(oxen::to_epoch_ms(timestamp))
-                   + std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data})
-          == expected);
+                  {std::to_string(oxen::to_epoch_ms(timestamp)) +
+                   std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data}) ==
+          expected);
 }
 
 TEST_CASE("service nodes - pubkey to swarm id") {

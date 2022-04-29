@@ -169,8 +169,8 @@ signature signature::from_base64(std::string_view signature_b64) {
         throw std::runtime_error{"Invalid data: not base64-encoded"};
 
     // 64 bytes bytes -> 86/88 base64 encoded bytes with/without padding
-    if (!(signature_b64.size() == 86
-          || (signature_b64.size() == 88 && signature_b64.substr(86) == "==")))
+    if (!(signature_b64.size() == 86 ||
+          (signature_b64.size() == 88 && signature_b64.substr(86) == "==")))
         throw std::runtime_error{"Invalid data: b64 data size does not match signature size"};
 
     // convert signature

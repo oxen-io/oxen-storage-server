@@ -1,7 +1,17 @@
 #include "oxen_common.h"
 #include <oxenc/hex.h>
+#include <charconv>
+#include <cassert>
 
 namespace oxen {
+
+std::string to_string(namespace_id ns) {
+    char buf[6];
+    static_assert(NAMESPACE_MIN >= -99'999 && NAMESPACE_MAX <= 999'999);
+    auto [ptr, ec] = std::to_chars(std::begin(buf), std::end(buf), to_int(ns));
+    assert(ec == std::errc());
+    return std::string(std::begin(buf), ptr - std::begin(buf));
+}
 
 user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
     if (pk.size() == USER_PUBKEY_SIZE_HEX && oxenc::is_hex(pk)) {

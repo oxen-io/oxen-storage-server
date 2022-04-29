@@ -42,8 +42,8 @@ oxend_seckeys get_sn_privkeys(
                                 try {
                                     if (!success || data.size() < 2) {
                                         throw std::runtime_error{
-                                                "oxend SN keys request failed: "
-                                                + (data.empty() ? "no data received" : data[0])};
+                                                "oxend SN keys request failed: " +
+                                                (data.empty() ? "no data received" : data[0])};
                                     }
                                     auto r = nlohmann::json::parse(data[1]);
 

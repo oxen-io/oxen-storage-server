@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
+#include <variant>
 #include <oxenc/bt_serialize.h>
 
 namespace oxen::rpc {
@@ -73,31 +74,59 @@ namespace {
 
 /// Stores data in this service node and forwards it to the rest of the storage swarm.  Takes
 /// keys of:
-/// - `pubkey` (required) contains the pubkey of the recipient, encoded in hex.  Can also use
-/// the key name `pubKey` for this.
-/// - `timestamp` (required) the timestamp of the message in unix epoch milliseconds, passed as
-/// an integer.  Timestamp may not be in the future (though a few seconds tolerance is
-/// permitted).  For backwards compatibility may be passed as a stringified integer.
+/// - `pubkey` (required) contains the pubkey of the recipient, encoded in hex.  Can also use the
+///   key name `pubKey` for this.
+/// - `timestamp` (required) the timestamp of the message in unix epoch milliseconds, passed as an
+///   integer.  Timestamp may not be in the future (though a few seconds tolerance is permitted).
+///   For backwards compatibility may be passed as a stringified integer.
 /// - `ttl` (required, unless expiry given) the message's lifetime, in milliseconds, passed as a
-/// string or stringified integer, relative to the timestamp.  Timestamp+ttl must not be in the
-/// past.  For backwards compatibility may be passed as a stringified integer.
-/// - `expiry` (required, unless ttl given) the message's expiry time as a unix epoch
-/// milliseconds timestamp.  (Unlike ttl, this cannot be passed as a stringified integer).
-/// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size
-/// is 76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
+///   string or stringified integer, relative to the timestamp.  Timestamp+ttl must not be in the
+///   past.  For backwards compatibility may be passed as a stringified integer.
+/// - `expiry` (required, unless ttl given) the message's expiry time as a unix epoch milliseconds
+///   timestamp.  (Unlike ttl, this cannot be passed as a stringified integer).
+/// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
+///   76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
+/// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
+///   this message.  (Not accepted before the Oxen 10.x hard fork).  Messages in different
+///   namespaces are treated as separate storage boxes from untagged messages.  Different IDs have
+///   different storage properties:
+///   - namespaces divisible by 10 (e.g. 0, 60, -30) allow unauthenticated submission: that is,
+///     anyone may deposit messages into them without authentication.  Authentication is required
+///     for retrieval (and all other operations).
+///   - namespaces -30 through 30 are reserved for current and future Session message storage.
+///   - non-divisible-by-10 namespaces require authentication for all operations, including storage.
+///   Omitting the namespace is equivalent to specifying the 0 namespace.
+///
+/// Authentication parameters: these are required when storing to a namespace not divisible by 10,
+/// and must match the pubkey of the storage address.  If provided then the request will be denied
+/// if the signature does not match.  Should not be provided when depositing a message in a public
+/// receiving (i.e. divisible by 10) namespace.
+///
+/// - signature -- Ed25519 signature of ("store" || namespace || timestamp), where namespace and
+///   timestamp are the base10 expression of the namespace and timestamp values.  Must be base64
+///   encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non session
+///   ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following option.
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from *this* given ed25519 pubkey (which must be
+///   64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
+///   convert to the given `pubkey` value (without the `05` prefix) for the signature to be
+///   accepted.
+/// - sig_timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
+///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+///   timestamp via `info` first, to avoid client time sync issues).  If omitted, `timestamp` is
+///   used instead; it is recommended to include this value separately, particularly if a delay
+///   between message construction and message submission is possible.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash
-///     of
-///       (TIMESTAMP || EXPIRY || PUBKEY || DATA), where PUBKEY is in bytes (not hex!); and DATA
-///       is in bytes (not base64).
-///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).
-///     Returns
-///       in base64 for JSON requests, raw bytes for OMQ requests.
-///     - "already": will be true if a message with this hash was already stored (note that the
-///     hash
+///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
+///       (TIMESTAMP || EXPIRY || PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
+///       DATA is in bytes (not base64); and NAMESPACE is empty for namespace 0, and otherwise is
+///       the decimal representation of the namespace index.
+///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).  Returned
+///       encoded in base64 for JSON requests, raw bytes for OMQ requests.
+///     - "already": will be true if a message with this hash was already stored (note that the hash
 ///       is still included and signed even if this occurs).
 ///
 struct store final : recursive {
@@ -107,9 +136,14 @@ struct store final : recursive {
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
     user_pubkey_t pubkey;
+    namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;  // computed from timestamp+ttl if ttl was given
     std::string data;                              // always stored here in bytes
+
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<std::array<unsigned char, 64>> signature;
+    std::optional<std::chrono::system_clock::time_point> sig_ts;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenc::bt_dict_consumer params) override;
@@ -118,33 +152,38 @@ struct store final : recursive {
 
 /// Retrieves data from this service node. Takes keys of:
 /// - `pubkey` (required) the hex-encoded pubkey who is retrieving messages. For backwards
-/// compatibility, this can also be specified as `pubKey`
-/// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash`
-/// was stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as
-/// an omitted value.
+///   compatibility, this can also be specified as `pubKey`
+/// - `namespace` (optional) the integral message namespace from which to retrieve messages.  Each
+///   namespace forms an independent message storage for the same address.  When specified,
+///   authentication *must* be provided.  Omitting the namespace is equivalent to specifying a
+///   namespace of 0.  (Note, however, that an explicit namespace of 0 requires authentication,
+///   while an implicit namespace of 0 does not during the transition period).
+/// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
+///   stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
+///   omitted value.
 ///
-/// Authentication parameters: these are currently optional during a transition period, and will
-/// eventually become required.  New clients should always pass them.  *If* provided then the
-/// request will be denied if the signature does not match.  If omitted, during the transition
-/// period, then messages will be retrieved without authentication.
+/// Authentication parameters: these are optional during a transition period, up until Oxen
+/// hard-fork 19, and become required starting there.  During the transition period, *if* provided
+/// then the request will be denied if the signature does not match.  If omitted, during the
+/// transition period, then messages will be retrieved without authentication.
 ///
 /// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
-/// epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve
-/// a timestamp via `info` first, to avoid client time sync issues).
-/// - signature -- Ed25519 signature of ("retrieve" || timestamp), where timestamp is the base10
-/// expression of the timestamp value.  Muust be base64 encoded for json requests; binary for
-/// OMQ requests.
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
+/// - signature -- Ed25519 signature of ("retrieve" || namespace || timestamp) (if using a non-0
+///   namespace), or ("retrieve" || timestamp) when fetching from the default namespace.  Both
+///   namespace and timestamp are the base10 expressions of the relevant values.  Must be base64
+///   encoded for json requests; binary for OMQ requests.
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
     user_pubkey_t pubkey;
+    namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
 
-    bool check_signature = false;
+    bool check_signature = false;  // For transition; delete this once we require sigs always
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::chrono::system_clock::time_point timestamp;
     std::array<unsigned char, 64> signature;
@@ -157,8 +196,8 @@ struct retrieve final : endpoint {
 ///
 /// Returns:
 /// - `version` the version of this storage server as a 3-element array, e.g. [2,1,1]
-/// - `timestamp` the current time (in milliseconds since unix epoch); clients are recommended
-/// to use this rather than local time, especially when submitting delete requests.
+/// - `timestamp` the current time (in milliseconds since unix epoch); clients are recommended to
+///   use this rather than local time, especially when submitting delete requests.
 ///
 struct info final : no_args {
     static constexpr auto names() { return NAMES("info"); }
@@ -169,25 +208,25 @@ struct info final : no_args {
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
-/// - messages -- array of message hash strings (as provided by the storage server) to delete
-/// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value
-/// constructed by concatenating "delete" and all `messages` values, using `pubkey` to sign.
-/// Must be base64 encoded for json requests; binary for OMQ requests.
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - messages -- array of message hash strings (as provided by the storage server) to delete.
+///   Message IDs can be from any message namespace(s).
+/// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value constructed
+///   by concatenating "delete" and all `messages` values, using `pubkey` to sign.  Must be base64
+///   encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii
-///     value
+///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii value
 ///     - "signature": signature of:
 ///             ( PUBKEY_HEX || RMSG[0] || ... || RMSG[N] || DMSG[0] || ... || DMSG[M] )
-///       where RMSG are the requested deletion hashes and DMSG are the actual deletion hashes
-///       (note that DMSG... and RMSG... will not necessarily be in the same order or of the
-///       same length). The signature uses the node's ed25519 pubkey.
+///       where RMSG are the requested deletion hashes and DMSG are the actual deletion hashes (note
+///       that DMSG... and RMSG... will not necessarily be in the same order or of the same length).
+///       The signature uses the node's ed25519 pubkey.
 struct delete_msgs final : recursive {
     static constexpr auto names() { return NAMES("delete"); }
 
@@ -201,34 +240,75 @@ struct delete_msgs final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
+struct namespace_all_t {};
+inline constexpr namespace_all_t namespace_all{};
+// Variant for holding unspecified, integer, or "all" namespace input.  Unspecified is generally the
+// same as an integer of 0 in effect, but the distinction *does* matter for the signature (which
+// matches the given arguments, not the implied value).
+using namespace_var = std::variant<std::monostate, namespace_id, namespace_all_t>;
+
+constexpr bool is_all(const namespace_var& ns) {
+    return std::holds_alternative<namespace_all_t>(ns);
+}
+constexpr bool is_omitted(const namespace_var& ns) {
+    return std::holds_alternative<std::monostate>(ns);
+}
+
+// Returns the implied namespace from a namespace_var containing either a monostate (implied
+// namespace 0) or specific namespace.  Should not be called on a variant containing an "all" value.
+constexpr namespace_id ns_or_default(const namespace_var& ns) {
+    if (auto* id = std::get_if<namespace_id>(&ns))
+        return *id;
+    return namespace_id::Default;
+}
+
+// Returns the representation of a provided namespace variant that should have been used in a
+// request signature, which is:
+// - empty string if namespace unspecified
+// - "all" if given as all namespaces
+// - "NN" for some explicitly given numeric namespace NN
+inline std::string signature_value(const namespace_var& ns) {
+    return is_omitted(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
+}
+
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request
 /// to all other swarm members.
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - namespace -- (optional) the message namespace from which to delete messages.  This is either
+///   an integer to delete messages from a specific namespace, or the string "all" to delete all
+///   messages from all namespaces.  If omitted, messages are deleted from the default namespace
+///   only (namespace 0).
 /// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
-///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to
-///   retrieve a timestamp via `info` first, to avoid client time sync issues).
-/// - signature -- an Ed25519 signature of ( "delete_all" || timestamp ), signed by the ed25519
-/// pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json requests;
-/// binary for OMQ requests.
+///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+///   timestamp via `info` first, to avoid client time sync issues).
+/// - signature -- an Ed25519 signature of ( "delete_all" || namespace || timestamp ), where
+///   `namespace` is the stringified version of the given namespace parameter (i.e. "0" or "-42" or
+///   "all"), or the empty string if namespace was not given.  The signature must be signed by the
+///   ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
+///   requests; binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": hashes of deleted messages, sorted by ascii value
-///     - "signature": signature of ( PUBKEY_HEX || TIMESTAMP || DELETEDHASH[0] || ... ||
-///     DELETEDHASH[N] ), signed
-///       by the node's ed25519 pubkey.
+///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
+///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
+///       is a dict of `{ namespace => [sorted list of hashes] }` key-value pairs.
+///     - "signature": signature of:
+///           ( PUBKEY_HEX || TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] )
+///       signed by the node's ed25519 pubkey.  When doing a multi-namespace delete the DELETEDHASH
+///       values are totally ordered (i.e. among all the hashes deleted regardless of namespace)
 struct delete_all final : recursive {
     static constexpr auto names() { return NAMES("delete_all"); }
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    namespace_var msg_namespace;
     std::chrono::system_clock::time_point timestamp;
     std::array<unsigned char, 64> signature;
 
@@ -242,29 +322,38 @@ struct delete_all final : recursive {
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
-/// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stored
-/// messages
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - namespace -- (optional) the message namespace from which to delete messages.  This is either
+///   an integer to delete messages from a specific namespace, or the string "all" to delete
+///   messages from all namespaces.  If omitted, messages are deleted from the default namespace
+///   only (namespace 0).
+/// - before -- the timestamp (in milliseconds since unix epoch) for deletion; all stored messages
 ///   with timestamps <= this value will be deleted.  Should be <= now, but tolerance acceptance
 ///   allows it to be <= 60s from now.
-/// - signature -- Ed25519 signature of ("delete_before" || before), signed by `pubkey`.  Must
-/// be base64 encoded (json) or bytes (OMQ).
+/// - signature -- Ed25519 signature of ("delete_before" || namespace || before), signed by
+///   `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).  `namespace` is the stringified
+///   version of the given namespace parameter (i.e. "0" or "-42" or "all"), or the empty string if
+///   namespace was not given.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "deleted": hashes of deleted messages, sorted by ascii value
-///     - "signature": signature of ( PUBKEY_HEX || BEFORE || DELETEDHASH[0] || ... ||
-///     DELETEDHASH[N] ), signed
-///       by the node's ed25519 pubkey.
+///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
+///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
+///       is a dict of `{ namespace => [sorted list of hashes] }` key-value pairs.
+///     - "signature": signature of
+///           ( PUBKEY_HEX || BEFORE || DELETEDHASH[0] || ... || DELETEDHASH[N] )
+///       signed by the node's ed25519 pubkey.  When doing a multi-namespace delete the DELETEDHASH
+///       values are totally ordered (i.e. among all the hashes deleted regardless of namespace)
 struct delete_before final : recursive {
     static constexpr auto names() { return NAMES("delete_before"); }
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    namespace_var msg_namespace;
     std::chrono::system_clock::time_point before;
     std::array<unsigned char, 64> signature;
 
@@ -278,31 +367,41 @@ struct delete_before final : recursive {
 /// shorten the expiry of any messages that have expiries after the requested value.
 ///
 /// Takes parameters of:
-/// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or
-/// bytes (33)
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
+/// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
+///   (33)
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - namespace -- (optional) the message namespace from which to change message expiries.  This is
+///   either an integer to expire messages from a specific namespace, or the string "all" to update
+///   messages in all namespaces.  If omitted, the update applies only to messages from the default
+///   namespace (namespace 0).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
 ///   tolerance acceptance allows >= 60s ago.
 /// - signature -- signature of ("expire_all" || expiry), signed by `pubkey`.  Must be base64
-/// encoded (json) or bytes (OMQ).
+///   encoded (json) or bytes (OMQ).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": list of (ascii-sorted) hashes that had their expiries updated to `expiry`;
-///       messages that did not exist or that already had an expiry <= the given expiry are not
-///       included.
-///     - "signature": signature of ( PUBKEY_HEX || EXPIRY || UPDATED[0] || ... || UPDATED[N] ),
-///     signed
-///       by the node's ed25519 pubkey.
+///     - "updated":
+///         - if deleting from a single namespace then this is a list of (ascii-sorted) hashes that
+///           had their expiries updated to `expiry`; messages that did not exist or that already
+///           had an expiry <= the given expiry are not included.
+///         - otherwise (i.e. namespace="all") this is a dict of `{ namespace => [sorted hashes] }`
+///           pairs of updated-expiry message hashes.
+///     - "signature": signature of
+///           ( PUBKEY_HEX || EXPIRY || UPDATED[0] || ... || UPDATED[N] )
+///       signed by the node's ed25519 pubkey.  When doing a multi-namespace expiry update the
+///       UPDATED values are totally ordered (i.e. among all the messages updated regardless of
+///       namespace)
 struct expire_all final : recursive {
     static constexpr auto names() { return NAMES("expire_all"); }
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    namespace_var msg_namespace;
     std::chrono::system_clock::time_point expiry;
     std::array<unsigned char, 64> signature;
 
@@ -315,17 +414,19 @@ struct expire_all final : recursive {
 /// request to all other swarm members.
 ///
 /// Takes parameters of:
-/// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or
-/// bytes (33)
-/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
-/// will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
-/// be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
-/// convert to the given `pubkey` value (without the `05` prefix).
-/// - messages -- array of message hash strings (as provided by the storage server) to update
+/// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
+///   (33)
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - messages -- array of message hash strings (as provided by the storage server) to update.
+///   Messages can be from any namespace(s).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
-/// - signature -- Ed25519 signature of ("expire" || expiry || messages[0] || ... ||
-/// messages[N]) (where `expiry` is the expiry timestamp expressed as a string).  Must be base64
-/// encoded (json) or bytes (OMQ).
+/// - signature -- Ed25519 signature of:
+///       ("expire" || expiry || messages[0] || ... || messages[N])
+///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
+///   encoded (json) or bytes (bt).
 ///
 ///
 /// Returns dict of:
@@ -334,10 +435,9 @@ struct expire_all final : recursive {
 ///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated
 ///       (messages that already had an expiry <= the given expiry are not included).
 ///     - "signature": signature of:
-///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M]
-///             )
-///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.
-///       The signature uses the node's ed25519 pubkey.
+///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
+///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.  The
+///       signature uses the node's ed25519 pubkey.
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
 
@@ -372,8 +472,8 @@ struct get_swarm final : endpoint {
 /// - `params` (optional) dict of parameters to forward to oxend.  Can be omitted or null if no
 ///   parameters should be passed.
 ///
-/// See oxend rpc documentation (or the oxen-core/src/rpc/core_rpc_server_command_defs.h file)
-/// for information on using these oxend rpc endpoints.
+/// See oxend rpc documentation (or the oxen-core/src/rpc/core_rpc_server_command_defs.h file) for
+/// information on using these oxend rpc endpoints.
 struct oxend_request final : endpoint {
     static constexpr auto names() { return NAMES("oxend_request"); }
 

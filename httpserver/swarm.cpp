@@ -341,8 +341,8 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     for (auto& swarm : bu.swarms) {
         for (auto& snode : swarm.snodes) {
             total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port
-                || !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
+                !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
                 OXEN_LOG(
                         warn,
                         "well wtf {} {} {} {} {}",

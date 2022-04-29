@@ -685,13 +685,13 @@ void HTTPSServer::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
                                                     debug,
                                                     "Responding to a client request after {}",
                                                     util::friendly_duration(
-                                                            std::chrono::steady_clock::now()
-                                                            - started));
+                                                            std::chrono::steady_clock::now() -
+                                                            started));
                                             queue_response(std::move(data), std::move(response));
                                         });
                             } catch (const std::exception& e) {
-                                auto error = "Exception caught with processing client request: "s
-                                           + e.what();
+                                auto error = "Exception caught with processing client request: "s +
+                                             e.what();
                                 OXEN_LOG(critical, "{}", error);
                                 queue_response(
                                         std::move(data), {http::INTERNAL_SERVER_ERROR, error});
@@ -728,8 +728,8 @@ void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                                                 res.status.first,
                                                 res.status.second,
                                                 util::friendly_duration(
-                                                        std::chrono::steady_clock::now()
-                                                        - started));
+                                                        std::chrono::steady_clock::now() -
+                                                        started));
                                         queue_response(std::move(data), std::move(res));
                                     },
                                     0,  // hopno

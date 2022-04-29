@@ -41,6 +41,10 @@ using hf_revision = std::pair<int, int>;
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 1};
 
+// The hardfork at which we require authentication for (almost) all retrieval.  (Message namespace
+// -10 is temporarily exempt for closed group backwards support).
+inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 0};
+
 class OxenmqServer;
 struct OnionRequestMetadata;
 class Swarm;
@@ -161,16 +165,20 @@ class ServiceNode {
             const std::filesystem::path& db_location,
             bool force_start);
 
+    Database& get_db() { return *db_; }
+    const Database& get_db() const { return *db_; }
+
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }
 
     // Record the time of our last being tested over omq/https
     void update_last_ping(ReachType type);
 
-    // These two are only needed because we store stats in Service Node,
+    // These three are only needed because we store stats in Service Node,
     // might move it out later
     void record_proxy_request();
     void record_onion_request();
+    void record_retrieve_request();
 
     /// Sends an onion request to the next SS
     void send_onion_to_sn(
@@ -216,42 +224,6 @@ class ServiceNode {
     SwarmInfo get_swarm(const user_pubkey_t& pk);
 
     std::vector<sn_record> get_swarm_peers();
-
-    std::vector<message> get_all_messages() const;
-
-    /// return all messages for a particular PK
-    std::vector<message> retrieve(const user_pubkey_t& pubkey, const std::string& last_hash);
-
-    /// Deletes all messages belonging to a pubkey; returns the deleted hashes
-    std::optional<std::vector<std::string>> delete_all_messages(const user_pubkey_t& pubkey);
-
-    /// Delete messages owned by the given pubkey having the given hashes.  Returns the hashes
-    /// of any delete messages on success (including the case where no messages are deleted),
-    /// nullopt on query failure.
-    std::optional<std::vector<std::string>> delete_messages(
-            const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
-
-    /// Deletes all messages owned by the given pubkey with a timestamp <= `timestamp`.  Returns
-    /// the hashes of any deleted messages (including the case where no messages are deleted),
-    /// nullopt on query failure.
-    std::optional<std::vector<std::string>> delete_messages_before(
-            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp);
-
-    /// Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can
-    /// only be shortened (i.e. brought closer to now), not extended into the future.  Returns a
-    /// vector of [msgid, newexpiry] pairs indicating the new expiry of any messages found (note
-    /// that the new expiry may not have been updated if it was already shorter than the
-    /// requested time).
-    std::optional<std::vector<std::string>> update_messages_expiry(
-            const user_pubkey_t& pubkey,
-            const std::vector<std::string>& msg_hashes,
-            std::chrono::system_clock::time_point new_exp);
-
-    /// Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only
-    /// be shortened (i.e. brought closer to now), not extended into the future.  Returns a
-    /// vector of [msg, newexpiry] for all messages, whether the expiry is updated or not.
-    std::optional<std::vector<std::string>> update_all_expiries(
-            const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp);
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;

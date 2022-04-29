@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 namespace oxen {
 
@@ -65,10 +66,33 @@ class user_pubkey_t {
     std::string prefixed_raw() const;
 };
 
+enum class namespace_id : int16_t {
+    Default = 0,  // Ordinary Session messages
+    Min = -32768,
+    Max = 32767,
+    SessionSync = 5,     // Session sync data for imports & multidevice syncing
+    ClosedV2 = 3,        // Reserved for future Session closed group implementations
+    LegacyClosed = -10,  // For "old" closed group messages; allows unauthenticated retrieval
+};
+
+constexpr bool is_public_namespace(namespace_id ns) {
+    return static_cast<std::underlying_type_t<namespace_id>>(ns) % 10 == 0;
+}
+
+constexpr auto to_int(namespace_id ns) {
+    return static_cast<std::underlying_type_t<namespace_id>>(ns);
+}
+
+std::string to_string(namespace_id ns);
+
+constexpr auto NAMESPACE_MIN = to_int(namespace_id::Min);
+constexpr auto NAMESPACE_MAX = to_int(namespace_id::Max);
+
 /// message received from a client
 struct message {
     user_pubkey_t pubkey;
     std::string hash;
+    namespace_id msg_namespace;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;
     std::string data;
@@ -77,20 +101,27 @@ struct message {
 
     message(user_pubkey_t pubkey,
             std::string hash,
+            namespace_id msg_ns,
             std::chrono::system_clock::time_point timestamp,
             std::chrono::system_clock::time_point expiry,
             std::string data) :
             pubkey{std::move(pubkey)},
             hash{std::move(hash)},
+            msg_namespace{msg_ns},
             timestamp{timestamp},
             expiry{expiry},
             data{std::move(data)} {}
 
     message(std::string hash,
+            namespace_id msg_ns,
             std::chrono::system_clock::time_point timestamp,
             std::chrono::system_clock::time_point expiry,
             std::string data) :
-            hash{std::move(hash)}, timestamp{timestamp}, expiry{expiry}, data{std::move(data)} {}
+            hash{std::move(hash)},
+            msg_namespace{msg_ns},
+            timestamp{timestamp},
+            expiry{expiry},
+            data{std::move(data)} {}
 };
 
 using swarm_id_t = uint64_t;

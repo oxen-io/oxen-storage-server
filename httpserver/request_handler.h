@@ -104,10 +104,10 @@ std::string compute_hash(Func hasher, const T&... args) {
     // value can be when stringified).
     std::array<
             char,
-            (0 + ...
-             + (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>
-                        ? 20
-                        : 0))>
+            (0 + ... +
+             (std::is_integral_v<T> || std::is_same_v<T, std::chrono::system_clock::time_point>
+                      ? 20
+                      : 0))>
             buffer;
     auto* b = buffer.data();
     return hasher({detail::to_hashable(args, b)...});
@@ -118,6 +118,7 @@ std::string computeMessageHash(
         std::chrono::system_clock::time_point timestamp,
         std::chrono::system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
+        namespace_id ns,
         std::string_view data);
 
 struct OnionRequestMetadata {

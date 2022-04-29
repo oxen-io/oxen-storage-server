@@ -16,8 +16,8 @@ static void check_incoming_tests_impl(
         detail::incoming_test_state& incoming) {
     const auto elapsed = now - std::max(startup, incoming.last_test);
     bool failing = elapsed > reachability_testing::MAX_TIME_WITHOUT_PING;
-    bool whine = failing != incoming.was_failing
-              || (failing && now - incoming.last_whine > reachability_testing::WHINING_INTERVAL);
+    bool whine = failing != incoming.was_failing ||
+                 (failing && now - incoming.last_whine > reachability_testing::WHINING_INTERVAL);
 
     incoming.was_failing = failing;
 
@@ -58,9 +58,8 @@ std::optional<sn_record> reachability_testing::next_random(
         const Swarm& swarm, const clock::time_point& now, bool requeue) {
     if (next_general_test > now)
         return std::nullopt;
-    next_general_test =
-            now
-            + std::chrono::duration_cast<clock::duration>(fseconds(TESTING_INTERVAL(util::rng())));
+    next_general_test = now + std::chrono::duration_cast<clock::duration>(
+                                      fseconds(TESTING_INTERVAL(util::rng())));
 
     // Pull the next element off the queue, but skip ourself, any that are no longer registered,
     // and any that are currently known to be failing (those are queued for testing separately).
