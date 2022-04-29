@@ -1,5 +1,5 @@
 # Set up a `make strip` target that strips the built binary.
-add_custom_target(strip COMMAND ${CMAKE_STRIP} $<TARGET_FILE:httpserver>)
+add_custom_target(strip COMMAND ${CMAKE_STRIP} $<TARGET_FILE:daemon>)
 
 # Figure out an appropriate tag using git to figure out a good filename
 find_package(Git)
@@ -45,15 +45,15 @@ endif()
 set(tar_dir "oxen-storage-${tar_os}-${PROJECT_VERSION}${git_tag}")
 add_custom_target(create_tarxz
   COMMAND ${CMAKE_COMMAND} -E make_directory "${tar_dir}"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:httpserver> "${tar_dir}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:daemon> "${tar_dir}"
   COMMAND ${CMAKE_COMMAND} -E tar cvJ "${tar_dir}.tar.xz" -- "${tar_dir}"
-  DEPENDS httpserver)
+  DEPENDS daemon)
 
 add_custom_target(create_zip
   COMMAND ${CMAKE_COMMAND} -E make_directory "${tar_dir}"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:httpserver> "${tar_dir}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:daemon> "${tar_dir}"
   COMMAND ${CMAKE_COMMAND} -E tar cv "${tar_dir}.zip" --format=zip -- "${tar_dir}"
-  DEPENDS httpserver)
+  DEPENDS daemon)
 
 add_custom_target(create_archive DEPENDS ${default_archive})
 

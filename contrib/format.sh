@@ -20,7 +20,7 @@ if [ $? -ne 0 ]; then
 fi
 
 cd "$(dirname $0)/../"
-sources=$(find httpserver crypto storage utils unit_test common | grep -E '\.[hc](pp)?$' | grep -v '\#\|Catch2')
+sources=$(find oxenss unit_test | grep -E '\.[hc](pp)?$' | grep -v '\#\|Catch2')
 if [ "$1" = "verify" ] ; then
     if [ $($binary --output-replacements-xml $sources | grep '</replacement>' | wc -l) -ne 0 ] ; then
         exit 2

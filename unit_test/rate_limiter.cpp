@@ -1,18 +1,19 @@
-#include "rate_limiter.h"
-#include "oxend_key.h"
+#include <oxenss/rpc/rate_limiter.h>
+#include <oxenss/crypto/keys.h>
 
 #include <catch2/catch.hpp>
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
 
-using oxen::RateLimiter;
+using oxen::rpc::RateLimiter;
+using namespace oxen::crypto;
 using namespace std::literals;
 
 TEST_CASE("rate limiter - snode - empty bucket", "[ratelim][snode]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    auto identifier = oxen::legacy_pubkey::from_hex(
+    auto identifier = legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
@@ -29,7 +30,7 @@ TEST_CASE("rate limiter - snode - empty bucket", "[ratelim][snode]") {
 TEST_CASE("rate limiter - snode - steady bucket fillup", "[ratelim][snode]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    auto identifier = oxen::legacy_pubkey::from_hex(
+    auto identifier = legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
@@ -42,7 +43,7 @@ TEST_CASE("rate limiter - snode - steady bucket fillup", "[ratelim][snode]") {
 TEST_CASE("rate limiter - snode - multiple identifiers", "[ratelim][snode]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    auto identifier1 = oxen::legacy_pubkey::from_hex(
+    auto identifier1 = legacy_pubkey::from_hex(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
@@ -51,7 +52,7 @@ TEST_CASE("rate limiter - snode - multiple identifiers", "[ratelim][snode]") {
     }
     CHECK(rate_limiter.should_rate_limit(identifier1, now));
 
-    auto identifier2 = oxen::legacy_pubkey::from_hex(
+    auto identifier2 = legacy_pubkey::from_hex(
             "5123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     // other id
     CHECK_FALSE(rate_limiter.should_rate_limit(identifier2, now));

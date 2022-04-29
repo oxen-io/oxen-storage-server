@@ -1,13 +1,14 @@
-#include "signature.h"
+#include <oxenss/crypto/signature.h>
 
 #include <catch2/catch.hpp>
 #include <oxenc/base64.h>
 
 #include <vector>
 
-TEST_CASE("signatures - hash generation", "[signature][hash]") {
-    using namespace oxen;
+using namespace oxen;
+using namespace oxen::crypto;
 
+TEST_CASE("signatures - hash generation", "[signature][hash]") {
     std::vector<hash> hashes;
 
     const std::string inputs[] = {
@@ -19,13 +20,12 @@ TEST_CASE("signatures - hash generation", "[signature][hash]") {
     }
 }
 
-static const auto public_key = oxen::legacy_pubkey::from_hex(
-        "e35b7cf5057845284740af496ec323148db68ac2553a05e4677b96f3afdabcd1");
-static const auto secret_key = oxen::legacy_seckey::from_hex(
-        "97fe49c2d436e5a39f8aa2e3374d19b532eecfb2b0367eaa6f703279e34ec102");
+static const auto public_key =
+        legacy_pubkey::from_hex("e35b7cf5057845284740af496ec323148db68ac2553a05e4677b96f3afdabcd1");
+static const auto secret_key =
+        legacy_seckey::from_hex("97fe49c2d436e5a39f8aa2e3374d19b532eecfb2b0367eaa6f703279e34ec102");
 
 TEST_CASE("signatures - it_signs_and_verifies", "[signature][...]") {
-    using namespace oxen;
     const auto hash = hash_data("This is the payload");
     REQUIRE(secret_key.pubkey() == public_key);
     const auto sig = generate_signature(hash, {public_key, secret_key});
@@ -33,7 +33,6 @@ TEST_CASE("signatures - it_signs_and_verifies", "[signature][...]") {
 }
 
 TEST_CASE("signatures - it_signs_and_verifies_encoded_inputs", "[signature][...]") {
-    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     const auto sig = generate_signature(hash, {public_key, secret_key});
@@ -49,7 +48,6 @@ TEST_CASE("signatures - it_signs_and_verifies_encoded_inputs", "[signature][...]
 }
 
 TEST_CASE("signatures - it_rejects_wrong_signature", "[signature][...]") {
-    using namespace oxen;
 
     const auto hash = hash_data("This is the payload");
     auto sig = generate_signature(hash, {public_key, secret_key});

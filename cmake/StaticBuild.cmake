@@ -223,6 +223,7 @@ build_external(openssl
 )
 add_static_target(OpenSSL::SSL openssl_external libssl.a)
 add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
+target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
 set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
 
 
@@ -369,7 +370,7 @@ build_external(curl
 )
 
 add_static_target(CURL::libcurl curl_external libcurl.a)
-set(libcurl_link_libs zlib)
+set(libcurl_link_libs OpenSSL::SSL zlib)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs crypt32)
 elseif(APPLE)

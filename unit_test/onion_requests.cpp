@@ -2,9 +2,11 @@
 #include <iostream>
 #include <ostream>
 
-#include "onion_processing.h"
+#include <oxenss/rpc/onion_processing.h>
 
-using namespace oxen;
+using namespace oxen::rpc;
+using namespace oxen::crypto;
+using namespace std::literals;
 
 constexpr const char* ciphertext = "ciphertext";
 const auto prefix = "\x0a\0\0\0ciphertext"s;

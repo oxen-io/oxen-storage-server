@@ -15,5 +15,7 @@ add_executable(Test
 
 target_link_libraries(Test
     PRIVATE
-    common storage utils crypto httpserver_lib
+    common storage utils crypto snode rpc
     Catch2::Catch2)
+
+target_include_directories(Test PRIVATE ..)
