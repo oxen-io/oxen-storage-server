@@ -590,7 +590,7 @@ void RequestHandler::process_client_req(
     if (service_node_.hf_at_least(snode::HARDFORK_RETRIEVE_AUTH) &&
         req.msg_namespace != namespace_id::LegacyClosed) {
         if (!req.check_signature) {
-            OXEN_LOG(debug, "retrieve: request signature required as of HF19");
+            OXEN_LOG(debug, "retrieve: request signature required as of HF19.1");
             return cb(Response{http::UNAUTHORIZED, "retrieve: request signature required"sv});
         }
     }

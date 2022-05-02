@@ -55,7 +55,7 @@ inline constexpr hf_revision HARDFORK_NAMESPACES = {19, 0};
 
 // The hardfork at which we require authentication for (almost) all retrieval.  (Message namespace
 // -10 is temporarily exempt for closed group backwards support).
-inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 0};
+inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 1};
 
 class Swarm;
 
