@@ -90,13 +90,18 @@ namespace {
 /// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
 ///   76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
 /// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
-///   this message.  (Not accepted before the Oxen 10.x hard fork).  Messages in different
-///   namespaces are treated as separate storage boxes from untagged messages.  Different IDs have
-///   different storage properties:
+///   this message.  Messages in different namespaces are treated as separate storage boxes from
+///   untagged messages.  (Note that before the Oxen 10 hardfork (HF 19) this field will be ignored
+///   and the message will end up in the default namespace (i.e. namespace 0) regardless of what was
+///   specified here.)
+///
+///   Different IDs have different storage properties:
 ///   - namespaces divisible by 10 (e.g. 0, 60, -30) allow unauthenticated submission: that is,
 ///     anyone may deposit messages into them without authentication.  Authentication is required
 ///     for retrieval (and all other operations).
 ///   - namespaces -30 through 30 are reserved for current and future Session message storage.
+///     Currently in use or planned for use are 0 (DMs), -10 (legacy closed groups), 3 (future v2
+///     closed groups), 5 (Session account private metadata).
 ///   - non-divisible-by-10 namespaces require authentication for all operations, including storage.
 ///   Omitting the namespace is equivalent to specifying the 0 namespace.
 ///

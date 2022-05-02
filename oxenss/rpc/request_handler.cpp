@@ -422,6 +422,11 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
+    // TODO: remove after HF 19
+    if (!service_node_.hf_at_least(snode::HARDFORK_NAMESPACES) &&
+        req.msg_namespace != namespace_id::Default)
+        req.msg_namespace = namespace_id::Default;
+
     if (!is_public_namespace(req.msg_namespace)) {
         if (!req.signature) {
             auto err = fmt::format(

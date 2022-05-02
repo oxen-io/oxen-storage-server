@@ -48,6 +48,11 @@ using hf_revision = std::pair<int, int>;
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 1};
 
+// The hardfork at which msg namespaces become available for storing messages.  (Prior to this we
+// ignore any specified namespace value and just store in namespace 0, even if another namespace was
+// given).
+inline constexpr hf_revision HARDFORK_NAMESPACES = {19, 0};
+
 // The hardfork at which we require authentication for (almost) all retrieval.  (Message namespace
 // -10 is temporarily exempt for closed group backwards support).
 inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 0};
