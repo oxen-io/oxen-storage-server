@@ -10,8 +10,9 @@
 //          -I../../oxen-core/external/cpr/include ../build/crypto/libcrypto.a -loxenmq -lsodium -lcurl -lcrypto
 //
 
-#include "../crypto/include/channel_encryption.hpp"
-#include "cpr/cpr.h"
+#include <oxenss/crypto/channel_encryption.hpp>
+#include <oxenss/crypto/keys.h>
+#include <cpr/cpr.h>
 #include <chrono>
 #include <exception>
 #include <iostream>
@@ -26,7 +27,10 @@ extern "C" {
 #include <sys/param.h>
 }
 
+using namespace std::literals;
+
 using namespace oxen;
+using namespace oxen::crypto;
 
 int usage(std::string_view argv0, std::string_view err = "") {
     if (!err.empty())
@@ -262,7 +266,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     auto it = keys.rbegin();
     {
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a, A, false};
+        ChannelEncryption e{a, A, false};
 
         auto data = encode_size(payload.size());
         data += payload;
@@ -290,7 +294,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
         // Generate eph key for *this* request and encrypt it:
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a, A, false};
+        ChannelEncryption e{a, A, false};
         last_etype = enc_type.value_or(random_etype());
 
 #ifndef NDEBUG
@@ -325,7 +329,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // Nothing in the response tells us how it is encoded so we have to guess; the client normally
     // *does* know because it specifies `"base64": false` if it wants binary, but I don't want to
     // parse and guess what we should do, so we'll just guess.
-    oxen::ChannelEncryption d{final_seckey, final_pubkey, false};
+    ChannelEncryption d{final_seckey, final_pubkey, false};
     bool decrypted = false;
     auto body = std::move(res.text);
     auto orig_size = body.size();
