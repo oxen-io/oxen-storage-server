@@ -272,13 +272,32 @@ namespace {
 
         if constexpr (std::is_same_v<json, Dict>) {
             if (!oxenc::is_base64(*sig) ||
-                !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
+                !(sig->size() == 86 || (sig->size() == 88 && sig->substr(86) == "==")))
                 throw parse_error{"invalid signature: expected base64 encoded Ed25519 signature"};
             oxenc::from_base64(sig->begin(), sig->end(), sig_data_ptr);
         } else {
             if (sig->size() != 64)
                 throw parse_error{"invalid signature: expected 64-byte Ed25519 signature"};
             std::memcpy(sig_data_ptr, sig->data(), 64);
+        }
+    }
+
+    template <typename RPC, typename Dict>
+    void load_subkey(RPC& rpc, const Dict&, const std::optional<std::string_view>& subkey) {
+        if (!subkey || subkey->empty())
+            return;
+        const auto& sk = *subkey;
+        if constexpr (std::is_same_v<json, Dict>) {
+            if (oxenc::is_base64(sk) && (sk.size() == 43 || (sk.size() == 44 && sk.back() == '=')))
+                oxenc::from_base64(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
+            else if (oxenc::is_hex(sk) && sk.size() == 64)
+                oxenc::from_hex(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
+            else
+                throw parse_error{"invalid subkey: expected base64 or hex-encoded 32-byte subkey index"};
+        } else {
+            if (sk.size() != 32)
+                throw parse_error{"invalid subkey: expected 32-byte subkey index"};
+            std::memcpy(rpc.subkey.emplace().data(), sk.data(), 32);
         }
     }
 
@@ -295,7 +314,7 @@ namespace {
 
 template <typename Dict>
 static void load(store& s, Dict& d) {
-    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig] = load_fields<
+    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subkey] = load_fields<
             std::string_view,
             system_clock::time_point,
             namespace_id,
@@ -303,6 +322,7 @@ static void load(store& s, Dict& d) {
             std::string,
             std::string_view,
             system_clock::time_point,
+            std::string_view,
             std::string_view>(
             d,
             "data",
@@ -312,7 +332,8 @@ static void load(store& s, Dict& d) {
             "pubkey",
             "pubkey_ed25519",
             "sig_timestamp",
-            "signature");
+            "signature",
+            "subkey");
 
     // timestamp and ttl are special snowflakes: for backwards compat reasons, they can
     // be passed as strings when loading from json.
@@ -340,6 +361,7 @@ static void load(store& s, Dict& d) {
 
     if (sig) {
         load_pk_signature(s, d, pk, pk_ed25519, sig);
+        load_subkey(s, d, subkey);
         s.sig_ts = sig_ts.value_or(s.timestamp);
     } else
         load_pk(s, pk);
@@ -381,6 +403,8 @@ bt_value store::to_bt() const {
             {"data", std::string_view{data}}};
     if (msg_namespace != namespace_id::Default)
         d["namespace"] = static_cast<std::underlying_type_t<namespace_id>>(msg_namespace);
+    if (subkey)
+        d["subkey"] = util::view_guts(*subkey);
     if (signature)
         d["signature"] = util::view_guts(*signature);
     if (pubkey_ed25519)
@@ -391,12 +415,13 @@ bt_value store::to_bt() const {
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {
-    auto [lastHash, last_hash, msg_ns, pubKey, pubkey, pk_ed25519, sig, ts] = load_fields<
+    auto [lastHash, last_hash, msg_ns, pubKey, pubkey, pk_ed25519, sig, subkey, ts] = load_fields<
             std::string,
             std::string,
             namespace_id,
             std::string,
             std::string,
+            std::string_view,
             std::string_view,
             std::string_view,
             system_clock::time_point>(
@@ -408,6 +433,7 @@ static void load(retrieve& r, Dict& d) {
             "pubkey",
             "pubkey_ed25519",
             "signature",
+            "subkey",
             "timestamp");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
@@ -415,6 +441,7 @@ static void load(retrieve& r, Dict& d) {
 
     if (pk_ed25519 || sig || ts || (msg_ns && *msg_ns != namespace_id::LegacyClosed)) {
         load_pk_signature(r, d, pk, pk_ed25519, sig);
+        load_subkey(r, d, subkey);
         r.timestamp = std::move(*ts);
         r.check_signature = true;
     } else {

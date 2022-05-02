@@ -19,6 +19,8 @@ namespace oxen::rpc {
 
 using namespace std::literals;
 
+constexpr std::string_view SUBKEY_HASH_KEY = "OxenSSSubkey"sv;
+
 // Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ
 // "storage.whatever" endpoints, and as the final target of an onion request.
 
@@ -94,6 +96,15 @@ namespace {
 ///   untagged messages.  (Note that before the Oxen 10 hardfork (HF 19) this field will be ignored
 ///   and the message will end up in the default namespace (i.e. namespace 0) regardless of what was
 ///   specified here.)
+/// - `subkey` (optional) if provided this is a 32-byte subkey value, encoded base64 or hex (for
+///   json requests; bytes, for bt-encoded requests), to use for subkey signature verification
+///   instead of using `pubkey` directly.  Denoting this value as `c` and `pubkey` as `A`, the
+///   signature verification will use public key value `D=(c+H(c‖A))A` to verify the request
+///   signature instead of `A`.  `H(.)` here is 32-byte BLAKE2b with a key of the 12-byte ascii
+///   string `OxenSSSubkey`. The client must therefore sign using `d=a(c+H(c‖A))`, where this `d`
+///   value has been calculated and provided securely to the sub-user by an owner of the account
+///   (i.e. someone with master secret key `a`).  Though `c` can be any cryptographically secure
+///   32-byte value, it is recommended to use `c=H(A‖S)`, where `S` is the user's pubkey.
 ///
 ///   Different IDs have different storage properties:
 ///   - namespaces divisible by 10 (e.g. 0, 60, -30) allow unauthenticated submission: that is,
@@ -144,6 +155,7 @@ struct store final : recursive {
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
     user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;  // computed from timestamp+ttl if ttl was given
@@ -169,6 +181,8 @@ struct store final : recursive {
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
 ///   stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
 ///   omitted value.
+/// - `subkey` (optional) allows retrieval using a derived subkey for authentication.  See `store`
+///   for details on how this works.
 ///
 /// Authentication parameters: these are optional during a transition period, up until Oxen
 /// hard-fork 19, and become required starting there.  During the transition period, *if* provided
@@ -188,6 +202,7 @@ struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
     user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
 

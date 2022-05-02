@@ -20,8 +20,10 @@
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
+#include <sodium/crypto_core_ed25519.h>
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_scalarmult_curve25519.h>
+#include <sodium/crypto_scalarmult_ed25519.h>
 #include <sodium/crypto_sign.h>
 #include <type_traits>
 #include <variant>
@@ -193,6 +195,7 @@ namespace {
     bool verify_signature(
             const user_pubkey_t& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
+            const std::optional<std::array<unsigned char, 32>>& subkey,
             const std::array<unsigned char, 64>& sig,
             const T&... val) {
         std::string data = concatenate_sig_message_parts(val...);
@@ -210,6 +213,32 @@ namespace {
             }
         } else
             pk = reinterpret_cast<const unsigned char*>(raw.data());
+
+        std::array<unsigned char, 32> subkey_pub;
+        if (subkey) {
+            // Need to compute: (c + H(c || A)) A and use that instead of A for verification:
+
+            // H(c || A):
+            crypto_generichash_state h_state;
+            crypto_generichash_init(
+                    &h_state,
+                    reinterpret_cast<const unsigned char*>(SUBKEY_HASH_KEY.data()),
+                    SUBKEY_HASH_KEY.size(),
+                    32);
+            crypto_generichash_update(&h_state, subkey->data(), 32);  // c
+            crypto_generichash_update(&h_state, pk, 32);              // A
+            crypto_generichash_final(&h_state, subkey_pub.data(), 32);
+
+            // c + H(c || A):
+            crypto_core_ed25519_scalar_add(subkey_pub.data(), subkey->data(), subkey_pub.data());
+
+            // (c + H(c || A)) A:
+            if (0 != crypto_scalarmult_ed25519_noclamp(subkey_pub.data(), subkey_pub.data(), pk)) {
+                OXEN_LOG(warn, "Signature verification failed: invalid subkey multiplication");
+                return false;
+            }
+            pk = subkey_pub.data();
+        }
 
         bool verified = 0 == crypto_sign_verify_detached(
                                      sig.data(),
@@ -447,6 +476,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         if (!verify_signature(
                     req.pubkey,
                     req.pubkey_ed25519,
+                    req.subkey,
                     *req.signature,
                     "store",
                     req.msg_namespace == namespace_id::Default ? "" : to_string(req.msg_namespace),
@@ -608,6 +638,7 @@ void RequestHandler::process_client_req(
         if (!verify_signature(
                     req.pubkey,
                     req.pubkey_ed25519,
+                    req.subkey,
                     req.signature,
                     "retrieve",
                     req.msg_namespace != namespace_id::Default
@@ -723,6 +754,7 @@ void RequestHandler::process_client_req(
     if (!verify_signature(
                 req.pubkey,
                 req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
                 req.signature,
                 "delete_all",
                 signature_value(req.msg_namespace),
@@ -773,7 +805,13 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
-    if (!verify_signature(req.pubkey, req.pubkey_ed25519, req.signature, "delete", req.messages)) {
+    if (!verify_signature(
+                req.pubkey,
+                req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
+                req.signature,
+                "delete",
+                req.messages)) {
         OXEN_LOG(debug, "delete_msgs: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
     }
@@ -817,6 +855,7 @@ void RequestHandler::process_client_req(
     if (!verify_signature(
                 req.pubkey,
                 req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
                 req.signature,
                 "delete_before",
                 signature_value(req.msg_namespace),
@@ -878,7 +917,12 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
     }
 
     if (!verify_signature(
-                req.pubkey, req.pubkey_ed25519, req.signature, "expire_all", req.expiry)) {
+                req.pubkey,
+                req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
+                req.signature,
+                "expire_all",
+                req.expiry)) {
         OXEN_LOG(debug, "expire_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_all signature verification failed"sv});
     }
@@ -935,6 +979,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     if (!verify_signature(
                 req.pubkey,
                 req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
                 req.signature,
                 "expire",
                 req.expiry,
