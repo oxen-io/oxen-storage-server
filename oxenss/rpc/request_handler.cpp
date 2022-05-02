@@ -67,8 +67,15 @@ namespace {
         return json{
                 {"snodes", std::move(snodes_json)},
                 {"swarm", util::int_to_string(swarm.swarm_id, 16)},
-                {"t", to_epoch_ms(std::chrono::system_clock::now())},
         };
+    }
+
+    void add_misc_response_fields(
+            json& j,
+            snode::ServiceNode& sn,
+            std::chrono::system_clock::time_point now = std::chrono::system_clock::now()) {
+        j["t"] = to_epoch_ms(now);
+        j["hf"] = sn.hf();
     }
 
     std::string obfuscate_pubkey(const user_pubkey_t& pk) {
@@ -286,7 +293,9 @@ RequestHandler::RequestHandler(
 Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
     OXEN_LOG(trace, "Got client request to a wrong swarm");
 
-    return {http::MISDIRECTED_REQUEST, swarm_to_json(service_node_.get_swarm(pubKey))};
+    json swarm = swarm_to_json(service_node_.get_swarm(pubKey));
+    add_misc_response_fields(swarm, service_node_);
+    return {http::MISDIRECTED_REQUEST, std::move(swarm)};
 }
 
 struct swarm_response {
@@ -490,10 +499,11 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         mine["query_failure"] = true;
     }
     if (entry_router) {
-        // Deprecated: we accidentally set this inside the entry router's "swarm" instead of in
-        // the outer response, so keep it here for now in case something is relying on that.
+        // Deprecated: we accidentally set this one inside the entry router's "swarm" instead of in
+        // the outer response, so keep it here for now in case something is relying on that:
         mine["t"] = to_epoch_ms(now);
-        res->result["t"] = to_epoch_ms(now);
+
+        add_misc_response_fields(res->result, service_node_, now);
     }
 
     OXEN_LOG(
@@ -517,7 +527,7 @@ void RequestHandler::process_client_req(
 
     service_node_.omq_server().oxend_request(
             "rpc." + req.endpoint,
-            [cb = std::move(cb)](bool success, auto&& data) {
+            [cb = std::move(cb), this](bool success, auto&& data) {
                 std::string err;
                 // Currently we only support json endpoints; if we want to support non-json
                 // endpoints (which end in ".bin") at some point in the future then we'll need to
@@ -531,12 +541,10 @@ void RequestHandler::process_client_req(
                                 "json");
                         return cb({http::BAD_GATEWAY, "oxend returned unparseable data"s});
                     }
-                    return cb(
-                            {http::OK,
-                             json{
-                                     {"result", std::move(result)},
-                                     {"t", to_epoch_ms(std::chrono::system_clock::now())},
-                             }});
+                    json res{{"result", std::move(result)}};
+                    add_misc_response_fields(res, service_node_);
+
+                    return cb({http::OK, std::move(res)});
                 }
                 return cb(
                         {http::BAD_REQUEST,
@@ -557,6 +565,7 @@ void RequestHandler::process_client_req(
             swarm.snodes.size());
 
     auto body = swarm_to_json(swarm);
+    add_misc_response_fields(body, service_node_);
 
     if (OXEN_LOG_ENABLED(trace))
         OXEN_LOG(trace, "swarm details for pk {}: {}", obfuscate_pubkey(req.pubkey), body.dump());
@@ -633,12 +642,10 @@ void RequestHandler::process_client_req(
         });
     }
 
-    return cb(Response{
-            http::OK,
-            json{
-                    {"messages", std::move(messages)},
-                    {"t", to_epoch_ms(now)},
-            }});
+    json res{{"messages", std::move(messages)}};
+    add_misc_response_fields(res, service_node_, now);
+
+    return cb(Response{http::OK, std::move(res)});
 }
 
 void RequestHandler::process_client_req(rpc::info&&, std::function<void(rpc::Response)> cb) {
@@ -749,7 +756,7 @@ void RequestHandler::process_client_req(
     }
 
     if (req.recurse)
-        mine["t"] = to_epoch_ms(now);
+        add_misc_response_fields(mine, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -780,7 +787,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
     mine["deleted"] = std::move(deleted);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
-        mine["t"] = to_epoch_ms(std::chrono::system_clock::now());
+        add_misc_response_fields(mine, service_node_);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -843,7 +850,7 @@ void RequestHandler::process_client_req(
                 req.before);
     }
     if (req.recurse)
-        mine["t"] = to_epoch_ms(now);
+        add_misc_response_fields(mine, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -900,7 +907,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 req.expiry);
     }
     if (req.recurse)
-        mine["t"] = to_epoch_ms(now);
+        add_misc_response_fields(mine, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -946,7 +953,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     mine["updated"] = std::move(updated);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
-        mine["t"] = to_epoch_ms(now);
+        add_misc_response_fields(mine, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
