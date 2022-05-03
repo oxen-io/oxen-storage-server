@@ -138,14 +138,6 @@ class OMQ {
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
 
-    using rpc_map = std::unordered_map<
-            std::string_view,
-            std::function<void(
-                    rpc::RequestHandler&,
-                    std::string_view params,
-                    bool recurse,
-                    std::function<void(rpc::Response)>)>>;
-    static const rpc_map client_rpc_endpoints;
 };
 
 }  // namespace oxen::server

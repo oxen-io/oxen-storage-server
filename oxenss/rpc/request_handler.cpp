@@ -90,7 +90,8 @@ namespace {
 
     template <typename RPC>
     void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
-        auto call = [](RequestHandler& h, const json& params, std::function<void(Response)> cb) {
+        RequestHandler::rpc_handler calls;
+        calls.json = [](RequestHandler& h, const json& params, std::function<void(Response)> cb) {
             RPC req;
             req.load_from(params);
             if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
@@ -98,8 +99,32 @@ namespace {
                                      // client requests, so always recurse
             h.process_client_req(std::move(req), std::move(cb));
         };
+        calls.omq = [](rpc::RequestHandler& h,
+                       std::string_view params,
+                       [[maybe_unused]] bool recursive,
+                       std::function<void(rpc::Response)> cb) {
+            RPC req;
+            if (params.empty())
+                params = "{}"sv;
+            if (params.front() == 'd') {
+                req.load_from(oxenc::bt_dict_consumer{params});
+                req.b64 = false;
+            } else {
+                auto body = nlohmann::json::parse(params, nullptr, false);
+                if (body.is_discarded()) {
+                    OXEN_LOG(debug, "Bad OMQ client request: not valid json or bt_dict");
+                    return cb(rpc::Response{
+                            http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
+                }
+                req.load_from(body);
+            }
+            if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
+                req.recurse = recursive;
+            h.process_client_req(std::move(req), std::move(cb));
+        };
+
         for (auto& name : RPC::names()) {
-            [[maybe_unused]] auto [it, ins] = regs.emplace(name, call);
+            [[maybe_unused]] auto [it, ins] = regs.emplace(name, calls);
             assert(ins);
         }
     }
@@ -1046,7 +1071,7 @@ void RequestHandler::process_client_req(
     if (auto it = client_rpc_endpoints.find(method_name); it != client_rpc_endpoints.end()) {
         OXEN_LOG(debug, "Process client request: {}", method_name);
         try {
-            return it->second(*this, std::move(params), cb);
+            return it->second.json(*this, std::move(params), cb);
         } catch (const rpc::parse_error& e) {
             // These exceptions carry a failure message to send back to the client
             OXEN_LOG(debug, "Invalid request: {}", e.what());

@@ -188,10 +188,19 @@ class RequestHandler {
     void process_client_req(rpc::expire_all&&, std::function<void(Response)> cb);
     void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
 
-    using rpc_map = std::unordered_map<
-            std::string_view,
-            std::function<void(
-                    RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>>;
+    struct rpc_handler {
+        std::function<void(RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>
+                json;
+        std::function<void(
+                RequestHandler&,
+                std::string_view params,
+                bool recurse,
+                std::function<void(Response)>)>
+                omq;
+    };
+
+    using rpc_map = std::unordered_map<std::string_view, rpc_handler>;
+
     static const rpc_map client_rpc_endpoints;
 
     // Process a client request taking encoded json to be parsed containing something like
