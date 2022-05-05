@@ -14,6 +14,7 @@
 
 #include <oxenss/common/pubkey.h>
 #include <oxenss/common/namespace.h>
+#include <oxenss/common/type_list.h>
 
 namespace oxen::rpc {
 
@@ -507,12 +508,9 @@ struct oxend_request final : endpoint {
     void load_from(oxenc::bt_dict_consumer params) override;
 };
 
-// Type wrapper than contains an arbitrary list of types.
-template <typename...>
-struct type_list {};
-
-// All of the above RPC types; these are loaded into the supported RPC interfaces at startup.
-using client_rpc_types = type_list<
+// All of the RPC types that can be invoked as a regular request: either directly, or inside a
+// batch.  (This is everything except batch itself, because batch does not permit recursion).
+using client_rpc_subrequests = type_list<
         store,
         retrieve,
         delete_msgs,
@@ -523,5 +521,84 @@ using client_rpc_types = type_list<
         get_swarm,
         oxend_request,
         info>;
+
+using client_subrequest = type_list_variant_t<client_rpc_subrequests>;
+
+/// Batch requests: executes a series of sub-requests, collecting and returning the individual
+/// responses.  Note that authentication signatures are required for *each* subrequest as described
+/// elsewhere in this documentation, not on the outer batch request itself.
+///
+/// Note that requests may be performed in parallel or out of order; if you need sequential requests
+/// use "sequence" instead.
+///
+/// This request takes an object containing a single key "requests" which contains a list of up to 6
+/// elements to invoke up to 6 subrequests.  Each element is a dict containing keys:
+///
+/// - "method" -- the method name, e.g. "retrieve".
+/// - "params" -- the parameters to pass to the subrequest.
+///
+/// "params" must include any required pubkeys/signatures for the individual subrequest.
+///
+/// Returned is a dict with key "results" containing a list of the same length of the request, which
+/// each element contains the subrequest response to the subrequest in the same position, in a dict
+/// containing:
+///
+/// - "code" -- the numeric response code (e.g. 200 for a typical success)
+/// - "body" -- the response value (usually a dict).
+///
+/// For example, to invoke rpc endpoint "foo" with parameters {"z": 3} and endpoint "bar" with
+/// parameters {"z": 2} you would invoke the batch endpoint with parameter:
+///
+///     {"requests": [{"method": "foo", "params": {"z": 3}}, {"method": "bar", "params": {"z": 2}}]}
+///
+/// and would get a reply such as:
+///
+///     {"results": [{"code": 200, "body": {"z_plus_2": 5}}, {"code": 404, "no such z=2 found!"}]}
+///
+/// Note that, when making the request via HTTP JSON RPC, this is encapsulated inside an outer
+/// method/params layer, so the full request would be something like:
+///
+///     {
+///       "method": "batch",
+///       "params": {
+///         "requests": [
+///           { "method": "one", "params": {"z": 1} },
+///           { "method": "two", "params": {"y": 2} }
+///         ]
+///       }
+///     }
+///
+/// The batch request itself returns a 200 status code if the batch was processed, regardless of the
+/// return value of the individual subrequests (i.e. you get a 200 back even if all subrequests
+/// returned error codes).  Error statuses are returned only for bad batch requests (e.g. missing
+/// method/params arguments, invalid/unparseable subrequests, or too many subrequests).
+///
+/// Note that batch requests may not recurse (i.e. you cannot invoke the batch endpoint as a batch
+/// subrequest).
+///
+struct batch : endpoint {
+    static constexpr auto names() { return NAMES("batch"); }
+
+    std::vector<client_subrequest> subreqs;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+};
+
+/// Sequence: this works similarly to batch (and takes the same arguments) but unlike batch it
+/// processes the requests sequentially and aborts processing further requests if an earlier request
+/// fails (i.e. returns a non-2xx status code).
+///
+/// For example, if you execute sequence method1, method2, method3 and method2 returns status code
+/// 456 then method3 is not executed at all, and the result will contain 2 responses: the successful
+/// method1 response, and the method2 failure, but no responses after the failure.
+///
+struct sequence : batch {
+    static constexpr auto names() { return NAMES("sequence"); }
+};
+
+// All of the RPC types that can be invoked as top-level requests, i.e. all of the subrequest types
+// plus batch and sequence.  These are loaded into the supported RPC interfaces at startup.
+using client_rpc_types = type_list_append_t<client_rpc_subrequests, batch, sequence>;
 
 }  // namespace oxen::rpc

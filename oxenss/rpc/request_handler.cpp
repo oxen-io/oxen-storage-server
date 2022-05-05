@@ -88,20 +88,35 @@ namespace {
                oxenc::to_hex(std::prev(pk_raw.end()), pk_raw.end());
     }
 
+    template <typename RPC, typename Params>
+    RPC load_request(Params&& params) {
+        RPC req;
+        req.load_from(std::forward<Params>(params));
+        if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
+            // This func is only called for loading subrequests and http_json requests, both of
+            // which are only initiated by a top-level client so we are always going to recurse:
+            req.recurse = true;
+        return req;
+    }
+
     template <typename RPC>
     void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
         RequestHandler::rpc_handler calls;
-        calls.json = [](RequestHandler& h, const json& params, std::function<void(Response)> cb) {
-            RPC req;
-            req.load_from(params);
-            if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
-                req.recurse = true;  // Requests through HTTP or onion reqs are *always*
-                                     // client requests, so always recurse
+        if constexpr (!std::is_base_of_v<batch, RPC>) {
+            calls.load_subreq_json = [](json params) -> client_subrequest {
+                return load_request<RPC>(std::move(params));
+            };
+            calls.load_subreq_bt = [](oxenc::bt_dict_consumer params) -> client_subrequest {
+                return load_request<RPC>(std::move(params));
+            };
+        }
+        calls.http_json = [](RequestHandler& h, json params, std::function<void(Response)> cb) {
+            auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
         };
         calls.omq = [](rpc::RequestHandler& h,
                        std::string_view params,
-                       [[maybe_unused]] bool recursive,
+                       [[maybe_unused]] bool forwarded,
                        std::function<void(rpc::Response)> cb) {
             RPC req;
             if (params.empty())
@@ -116,10 +131,16 @@ namespace {
                     return cb(rpc::Response{
                             http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
                 }
-                req.load_from(body);
+                req.load_from(std::move(body));
             }
-            if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
-                req.recurse = recursive;
+            if constexpr (std::is_base_of_v<rpc::recursive, RPC>) {
+                req.recurse = !forwarded;
+            } else if (forwarded) {
+                return cb(rpc::Response{
+                        http::BAD_REQUEST,
+                        "invalid request: received invalid forwarded non-forwardable request"sv});
+            }
+
             h.process_client_req(std::move(req), std::move(cb));
         };
 
@@ -130,7 +151,7 @@ namespace {
     }
 
     template <typename... RPC>
-    RequestHandler::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
+    RequestHandler::rpc_map register_client_rpc_endpoints(type_list<RPC...>) {
         RequestHandler::rpc_map regs;
         (register_client_rpc_endpoint<RPC>(regs), ...);
         return regs;
@@ -1034,6 +1055,84 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         reply_or_fail(std::move(res));
 }
 
+void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc::Response)> cb) {
+
+    auto subresults = std::make_shared<json>(json::array());
+    for (size_t i = 0; i < req.subreqs.size(); i++)
+        subresults->emplace_back();
+
+    for (size_t i = 0; i < req.subreqs.size(); i++) {
+        auto handler = [subresults, i, cb](Response r) {
+            json& subres = (*subresults)[i];
+            subres["code"] = r.status.first;
+            if (auto* j = std::get_if<json>(&r.body))
+                subres["body"] = std::move(*j);
+            else
+                subres["body"] = std::string{view_body(r)};
+            bool done = true;
+            for (auto& sr : *subresults)
+                if (sr.is_null()) {
+                    done = false;
+                    break;
+                }
+            if (done)
+                cb(Response{http::OK, json({{"results", std::move(*subresults)}})});
+        };
+        std::visit(
+                [this, handler = std::move(handler)](auto&& s) {
+                    process_client_req(std::move(s), std::move(handler));
+                },
+                req.subreqs[i]);
+    }
+}
+
+namespace {
+    struct sequence_manager {
+        std::vector<client_subrequest> subreqs;
+        json subresults = json::array();
+        std::function<void(Response r)> subresult_callback;
+    };
+}  // namespace
+
+void RequestHandler::process_client_req(
+        rpc::sequence&& req, std::function<void(rpc::Response)> cb) {
+
+    if (req.subreqs.empty()) {
+        cb(Response{http::OK, json({{"results", json::array()}})});
+        return;
+    }
+
+    auto manager = std::make_shared<sequence_manager>();
+    manager->subreqs = std::move(req.subreqs);
+    manager->subresult_callback = [this, manager, cb = std::move(cb)](Response r) {
+        json& subres = manager->subresults.emplace_back();
+        auto status = r.status.first;
+        subres["code"] = status;
+        if (auto* j = std::get_if<json>(&r.body))
+            subres["body"] = std::move(*j);
+        else
+            subres["body"] = std::string{view_body(r)};
+
+        if (status < 200 || status > 299 || manager->subresults.size() >= manager->subreqs.size()) {
+            manager->subresult_callback = nullptr;
+            cb(Response{http::OK, json({{"results", std::move(manager->subresults)}})});
+        } else {
+            // subrequest was successful and we're not done, so fire off the next one
+            std::visit(
+                    [&](auto&& subreq) {
+                        process_client_req(std::move(subreq), manager->subresult_callback);
+                    },
+                    manager->subreqs[manager->subresults.size()]);
+        }
+    };
+
+    std::visit(
+            [&](auto&& subreq) {
+                process_client_req(std::move(subreq), manager->subresult_callback);
+            },
+            manager->subreqs[0]);
+}
+
 void RequestHandler::process_client_req(
         std::string_view req_json, std::function<void(Response)> cb) {
     OXEN_LOG(trace, "process_client_req str <{}>", req_json);
@@ -1071,7 +1170,7 @@ void RequestHandler::process_client_req(
     if (auto it = client_rpc_endpoints.find(method_name); it != client_rpc_endpoints.end()) {
         OXEN_LOG(debug, "Process client request: {}", method_name);
         try {
-            return it->second.json(*this, std::move(params), cb);
+            return it->second.http_json(*this, std::move(params), cb);
         } catch (const rpc::parse_error& e) {
             // These exceptions carry a failure message to send back to the client
             OXEN_LOG(debug, "Invalid request: {}", e.what());

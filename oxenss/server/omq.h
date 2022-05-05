@@ -137,7 +137,6 @@ class OMQ {
     // Decodes onion request data; throws if invalid formatted or missing required fields.
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
-
 };
 
 }  // namespace oxen::server

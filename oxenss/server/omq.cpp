@@ -324,7 +324,7 @@ void OMQ::handle_client_request(std::string_view method, oxenmq::Message& messag
         it->second.omq(
                 *request_handler_,
                 params,
-                !forwarded,
+                forwarded,
                 [send = message.send_later(),
                  bt_encoded = !params.empty() && params.front() == 'd'](rpc::Response res) {
                     std::string dump;

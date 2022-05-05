@@ -1,4 +1,5 @@
 #include "client_rpc_endpoints.h"
+#include "request_handler.h"
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/time.hpp>
@@ -18,6 +19,7 @@ using nlohmann::json;
 using oxenc::bt_dict;
 using oxenc::bt_dict_consumer;
 using oxenc::bt_list;
+using oxenc::bt_list_consumer;
 using oxenc::bt_value;
 using std::chrono::system_clock;
 
@@ -293,7 +295,8 @@ namespace {
             else if (oxenc::is_hex(sk) && sk.size() == 64)
                 oxenc::from_hex(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
             else
-                throw parse_error{"invalid subkey: expected base64 or hex-encoded 32-byte subkey index"};
+                throw parse_error{
+                        "invalid subkey: expected base64 or hex-encoded 32-byte subkey index"};
         } else {
             if (sk.size() != 32)
                 throw parse_error{"invalid subkey: expected 32-byte subkey index"};
@@ -698,6 +701,54 @@ void oxend_request::load_from(json params) {
 }
 void oxend_request::load_from(bt_dict_consumer params) {
     load(*this, params);
+}
+
+void batch::load_from(json params) {
+    auto reqs_it = params.find("requests");
+    if (reqs_it == params.end() || !reqs_it->is_array())
+        throw parse_error{"Invalid batch request: no valid \"requests\" field"};
+    if (reqs_it->size() > BATCH_REQUEST_MAX)
+        throw parse_error{"Invalid batch request: subrequest limit exceeded"};
+
+    for (auto& j : *reqs_it) {
+        if (!j.is_object())
+            throw parse_error{"Invalid batch request: requests must be objects"};
+        auto meth_it = j.find("method");
+        auto params_it = j.find("params");
+        if (meth_it == j.end() || params_it == j.end() || !meth_it->is_string() ||
+            !params_it->is_object())
+            throw parse_error{"Invalid batch request: subrequests must have method/params keys"};
+        auto method = meth_it->get<std::string_view>();
+        auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+        if (rpc_it == RequestHandler::client_rpc_endpoints.end() ||
+            !rpc_it->second.load_subreq_json)
+            throw parse_error{
+                    "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
+        subreqs.push_back(rpc_it->second.load_subreq_json(std::move(*params_it)));
+    }
+}
+void batch::load_from(bt_dict_consumer params) {
+    if (!params.skip_until("requests") || !params.is_list())
+        throw parse_error{"Invalid batch request: no valid \"requests\" field"};
+
+    auto requests = params.consume_list_consumer();
+    while (!requests.is_finished()) {
+        if (!requests.is_dict())
+            throw parse_error{"Invalid batch request: requests must be dicts"};
+        if (subreqs.size() >= BATCH_REQUEST_MAX)
+            throw parse_error{"Invalid batch request: subrequest limit exceeded"};
+        auto sr = requests.consume_dict_consumer();
+        if (!sr.skip_until("method") || !sr.is_string())
+            throw parse_error{"Invalid batch request: subrequests must have a method"};
+        auto method = sr.consume_string_view();
+        auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+        if (rpc_it == RequestHandler::client_rpc_endpoints.end() || !rpc_it->second.load_subreq_bt)
+            throw parse_error{
+                    "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
+        if (!sr.skip_until("params") || !sr.is_dict())
+            throw parse_error{"Invalid batch request: subrequests must have a params dict"};
+        subreqs.push_back(rpc_it->second.load_subreq_bt(sr.consume_dict_consumer()));
+    }
 }
 
 }  // namespace oxen::rpc
