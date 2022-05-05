@@ -405,8 +405,10 @@ struct delete_before final : recursive {
 ///   namespace (namespace 0).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
 ///   tolerance acceptance allows >= 60s ago.
-/// - signature -- signature of ("expire_all" || expiry), signed by `pubkey`.  Must be base64
-///   encoded (json) or bytes (OMQ).
+/// - signature -- signature of ("expire_all" || namespace || expiry), signed by `pubkey`.  Must be
+///   base64 encoded (json) or bytes (OMQ).  namespace should be the stringified namespace for
+///   non-default namespace expiries (i.e. "42", "-99", "all"), or an empty string for the default
+///   namespace (whether or not explicitly provided).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:

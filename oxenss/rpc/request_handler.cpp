@@ -968,6 +968,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 std::nullopt,  // no subkey allowed
                 req.signature,
                 "expire_all",
+                signature_value(req.msg_namespace),
                 req.expiry)) {
         OXEN_LOG(debug, "expire_all: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire_all signature verification failed"sv});
