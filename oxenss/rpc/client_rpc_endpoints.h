@@ -199,6 +199,17 @@ struct store final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+///
+/// On success, returns a dict containing key "messages" with value of a list of message details;
+/// each message is a dict containing keys:
+///
+/// - "hash" -- the message hash
+/// - "timestamp" -- the timestamp when the message was deposited
+/// - "expiry" -- the timestamp when the message is currently scheduled to expire
+/// - "data" -- the message data; b64-encoded for json, bytes for bt-encoded requests.
+///
+/// Messages order is such that the hash of the last message is the appropriate value to provide as
+/// a future "last_hash" value, but otherwise no particular ordering is guaranteed.
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
