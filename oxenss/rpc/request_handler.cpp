@@ -839,7 +839,7 @@ void RequestHandler::process_client_req(
     }
 
     if (req.recurse)
-        add_misc_response_fields(mine, service_node_, now);
+        add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -876,7 +876,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
     mine["deleted"] = std::move(deleted);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
-        add_misc_response_fields(mine, service_node_);
+        add_misc_response_fields(res->result, service_node_);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -940,7 +940,7 @@ void RequestHandler::process_client_req(
                 req.before);
     }
     if (req.recurse)
-        add_misc_response_fields(mine, service_node_, now);
+        add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -1002,7 +1002,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 req.expiry);
     }
     if (req.recurse)
-        add_misc_response_fields(mine, service_node_, now);
+        add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
@@ -1049,7 +1049,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     mine["updated"] = std::move(updated);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
-        add_misc_response_fields(mine, service_node_, now);
+        add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
