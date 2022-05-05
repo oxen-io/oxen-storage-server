@@ -122,20 +122,22 @@ namespace {
 /// if the signature does not match.  Should not be provided when depositing a message in a public
 /// receiving (i.e. divisible by 10) namespace.
 ///
-/// - signature -- Ed25519 signature of ("store" || namespace || timestamp), where namespace and
-///   timestamp are the base10 expression of the namespace and timestamp values.  Must be base64
-///   encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non session
-///   ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following option.
+/// - signature -- Ed25519 signature of ("store" || namespace || sig_timestamp), where namespace and
+///   sig_timestamp are the base10 expression of the namespace and sig_timestamp values.  Must be
+///   base64 encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non
+///   session ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following
+///   option.
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 ///   be interpreted as an `x25519` pubkey derived from *this* given ed25519 pubkey (which must be
 ///   64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
 ///   convert to the given `pubkey` value (without the `05` prefix) for the signature to be
 ///   accepted.
 /// - sig_timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
-///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
-///   timestamp via `info` first, to avoid client time sync issues).  If omitted, `timestamp` is
-///   used instead; it is recommended to include this value separately, particularly if a delay
-///   between message construction and message submission is possible.
+///   epoch, used in the authentication signature.  Must be within ±60s of the current time.  (For
+///   clients it is recommended to retrieve a timestamp via `info` first, to avoid client time sync
+///   issues).  If omitted, `timestamp` is used instead; it is recommended to include this value
+///   separately, particularly if a delay between message construction and message submission is
+///   possible.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
