@@ -1060,6 +1060,12 @@ void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc
 
     assert(!req.subreqs.empty());
 
+    // `cb` expects to be invoked once with the full response, but we have a vector of requests to
+    // initiate and many possible subrequests (like `store`) are asynchronous because they recurse
+    // through the swarm.  Responses thus may arrive at random times, so we need to fully populate
+    // our subresults initially (with nulls) them fill in the values as they arrive.  Once we get a
+    // full set of non-null values, we can then pass the final response back to `cb`.
+
     auto subresults = std::make_shared<json>(json::array());
     for (size_t i = 0; i < req.subreqs.size(); i++)
         subresults->emplace_back();
@@ -1102,6 +1108,25 @@ void RequestHandler::process_client_req(
 
     assert(!req.subreqs.empty());
 
+    // This gets a bit hairy because of how the asynchronous requests can work when we have a
+    // swarm-recursive request (like a store), and so we define a recursive lambda here that owns
+    // itself (via the captured `sequence_manager` shared pointer) and clears that ownership only
+    // once the response is fully constructed.
+    //
+    // It goes like this:
+    // - we initiate the first request, and once it is done (i.e. locally *and* all remote responses
+    //   are collected or timed out) then the lambda below gets called.
+    // - we append the result to our collected results, then:
+    //   - if that result was a failure, we return what we have but stop processing more
+    //   - if we have a full set of results we fire it back to the requestor via `cb`
+    //   - otherwise (i.e. the result is good and we have fewer results than requests), we fire the
+    //     next subrequest (which will call back into the same lambda when it finishes, repeating
+    //     everything)
+    //
+    // The `manager` object here is a bit of an Ouroborus: it contains a lambda that captures a
+    // shared pointer to itself.  We break the link (by clearing the lambda) as soon as we have the
+    // full response.
+    //
     auto manager = std::make_shared<sequence_manager>();
     manager->subreqs = std::move(req.subreqs);
     manager->subresult_callback = [this, manager, cb = std::move(cb)](Response r) {
