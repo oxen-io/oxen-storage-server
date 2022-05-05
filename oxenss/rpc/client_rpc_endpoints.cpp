@@ -691,7 +691,7 @@ void oxend_request::load_from(bt_dict_consumer params) {
 
 void batch::load_from(json params) {
     auto reqs_it = params.find("requests");
-    if (reqs_it == params.end() || !reqs_it->is_array())
+    if (reqs_it == params.end() || !reqs_it->is_array() || reqs_it->empty())
         throw parse_error{"Invalid batch request: no valid \"requests\" field"};
     if (reqs_it->size() > BATCH_REQUEST_MAX)
         throw parse_error{"Invalid batch request: subrequest limit exceeded"};
@@ -735,6 +735,8 @@ void batch::load_from(bt_dict_consumer params) {
             throw parse_error{"Invalid batch request: subrequests must have a params dict"};
         subreqs.push_back(rpc_it->second.load_subreq_bt(sr.consume_dict_consumer()));
     }
+    if (subreqs.empty())
+        throw parse_error{"Invalid batch request: empty \"requests\" list"};
 }
 
 }  // namespace oxen::rpc

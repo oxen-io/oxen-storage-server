@@ -537,8 +537,8 @@ using client_subrequest = type_list_variant_t<client_rpc_subrequests>;
 /// Note that requests may be performed in parallel or out of order; if you need sequential requests
 /// use "sequence" instead.
 ///
-/// This request takes an object containing a single key "requests" which contains a list of up to 6
-/// elements to invoke up to 6 subrequests.  Each element is a dict containing keys:
+/// This request takes an object containing a single key "requests" which contains a list of 1 to 5
+/// elements to invoke up to 5 subrequests.  Each element is a dict containing keys:
 ///
 /// - "method" -- the method name, e.g. "retrieve".
 /// - "params" -- the parameters to pass to the subrequest.

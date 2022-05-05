@@ -1058,6 +1058,8 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
 
 void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc::Response)> cb) {
 
+    assert(!req.subreqs.empty());
+
     auto subresults = std::make_shared<json>(json::array());
     for (size_t i = 0; i < req.subreqs.size(); i++)
         subresults->emplace_back();
@@ -1098,10 +1100,7 @@ namespace {
 void RequestHandler::process_client_req(
         rpc::sequence&& req, std::function<void(rpc::Response)> cb) {
 
-    if (req.subreqs.empty()) {
-        cb(Response{http::OK, json({{"results", json::array()}})});
-        return;
-    }
+    assert(!req.subreqs.empty());
 
     auto manager = std::make_shared<sequence_manager>();
     manager->subreqs = std::move(req.subreqs);
