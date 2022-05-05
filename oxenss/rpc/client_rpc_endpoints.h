@@ -177,8 +177,7 @@ struct store final : recursive {
 /// - `namespace` (optional) the integral message namespace from which to retrieve messages.  Each
 ///   namespace forms an independent message storage for the same address.  When specified,
 ///   authentication *must* be provided.  Omitting the namespace is equivalent to specifying a
-///   namespace of 0.  (Note, however, that an explicit namespace of 0 requires authentication,
-///   while an implicit namespace of 0 does not during the transition period).
+///   namespace of 0.
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
 ///   stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
 ///   omitted value.
@@ -277,33 +276,25 @@ struct delete_msgs final : recursive {
 
 struct namespace_all_t {};
 inline constexpr namespace_all_t namespace_all{};
-// Variant for holding unspecified, integer, or "all" namespace input.  Unspecified is generally the
-// same as an integer of 0 in effect, but the distinction *does* matter for the signature (which
-// matches the given arguments, not the implied value).
-using namespace_var = std::variant<std::monostate, namespace_id, namespace_all_t>;
+
+// Variant for holding an integer namespace or "all" namespace input.
+using namespace_var = std::variant<namespace_id, namespace_all_t>;
 
 constexpr bool is_all(const namespace_var& ns) {
     return std::holds_alternative<namespace_all_t>(ns);
 }
-constexpr bool is_omitted(const namespace_var& ns) {
-    return std::holds_alternative<std::monostate>(ns);
-}
-
-// Returns the implied namespace from a namespace_var containing either a monostate (implied
-// namespace 0) or specific namespace.  Should not be called on a variant containing an "all" value.
-constexpr namespace_id ns_or_default(const namespace_var& ns) {
-    if (auto* id = std::get_if<namespace_id>(&ns))
-        return *id;
-    return namespace_id::Default;
+constexpr bool is_default(const namespace_var& ns) {
+    auto* n = std::get_if<namespace_id>(&ns);
+    return n && *n == namespace_id::Default;
 }
 
 // Returns the representation of a provided namespace variant that should have been used in a
 // request signature, which is:
-// - empty string if namespace unspecified
+// - empty string if default namespace (either unspecified, or explicitly given as 0)
 // - "all" if given as all namespaces
-// - "NN" for some explicitly given numeric namespace NN
+// - "NN" for some explicitly given non-default numeric namespace NN
 inline std::string signature_value(const namespace_var& ns) {
-    return is_omitted(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
+    return is_default(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
 }
 
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request
@@ -323,10 +314,10 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
 ///   timestamp via `info` first, to avoid client time sync issues).
 /// - signature -- an Ed25519 signature of ( "delete_all" || namespace || timestamp ), where
-///   `namespace` is the stringified version of the given namespace parameter (i.e. "0" or "-42" or
-///   "all"), or the empty string if namespace was not given.  The signature must be signed by the
-///   ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
-///   requests; binary for OMQ requests.
+///   `namespace` is the empty string for the default namespace (whether explicitly specified or
+///   not), and otherwise the stringified version of the namespace parameter (i.e. "99" or "-42" or
+///   "all").  The signature must be signed by the ed25519 pubkey in `pubkey` (omitting the leading
+///   prefix).  Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -370,8 +361,8 @@ struct delete_all final : recursive {
 ///   allows it to be <= 60s from now.
 /// - signature -- Ed25519 signature of ("delete_before" || namespace || before), signed by
 ///   `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).  `namespace` is the stringified
-///   version of the given namespace parameter (i.e. "0" or "-42" or "all"), or the empty string if
-///   namespace was not given.
+///   version of the given non-default namespace parameter (i.e. "-42" or "all"), or the empty
+///   string for the default namespace (whether explicitly given or not).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:

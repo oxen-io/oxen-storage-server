@@ -19,7 +19,6 @@ using nlohmann::json;
 using oxenc::bt_dict;
 using oxenc::bt_dict_consumer;
 using oxenc::bt_list;
-using oxenc::bt_list_consumer;
 using oxenc::bt_value;
 using std::chrono::system_clock;
 
@@ -41,19 +40,6 @@ namespace {
                                          : is_str_array<T> ? "string array"sv
                                                            : "string"sv;
 
-    template <typename... T>
-    constexpr bool is_monostate_var = false;
-    template <typename... T>
-    constexpr bool is_monostate_var<std::variant<std::monostate, T...>> = true;
-
-    template <typename T>
-    using maybe_type = std::conditional_t<is_monostate_var<T>, T, std::optional<T>>;
-
-    template <typename T, typename SFINAE = void>
-    constexpr std::nullopt_t maybe_not = std::nullopt;
-    template <typename T>
-    constexpr std::monostate maybe_not<T, std::enable_if_t<is_monostate_var<T>>>{};
-
     template <typename T>
     constexpr bool is_parseable_v =
             std::is_unsigned_v<T> || std::is_integral_v<T> || is_timestamp<T> || is_str_array<T> ||
@@ -65,11 +51,11 @@ namespace {
     // number but given a bool).  Returns nullopt if the field isn't present or is present and
     // set to null.
     template <typename T>
-    maybe_type<T> parse_field(const json& params, const char* name) {
+    std::optional<T> parse_field(const json& params, const char* name) {
         static_assert(is_parseable_v<T>);
         auto it = params.find(name);
         if (it == params.end() || it->is_null())
-            return maybe_not<T>;
+            return std::nullopt;
 
         bool right_type = std::is_same_v<T, bool>                  ? it->is_boolean()
                         : std::is_unsigned_v<T> || is_timestamp<T> ? it->is_number_unsigned()
@@ -117,10 +103,10 @@ namespace {
     // current state of the bt_dict_consumer to just after the given field and so this
     // *must* be called in sorted key order.
     template <typename T>
-    maybe_type<T> parse_field(bt_dict_consumer& params, const char* name) {
+    std::optional<T> parse_field(bt_dict_consumer& params, const char* name) {
         static_assert(is_parseable_v<T>);
         if (!params.skip_until(name))
-            return maybe_not<T>;
+            return std::nullopt;
 
         try {
             if constexpr (std::is_same_v<T, std::string_view>)
@@ -153,7 +139,7 @@ namespace {
     // Backwards compat code for fields like ttl and timestamp that are accepted either
     // as integer *or* stringified integer.
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-    maybe_type<T> parse_stringified(const json& params, const char* name) {
+    std::optional<T> parse_stringified(const json& params, const char* name) {
         if (auto it = params.find(name); it != params.end() && it->is_string()) {
             if (T value; util::parse_int(it->get_ref<const std::string&>(), value))
                 return value;
@@ -182,7 +168,7 @@ namespace {
             typename = std::enable_if_t<
                     sizeof...(T) == sizeof...(Names) &&
                     (std::is_convertible_v<Names, std::string_view> && ...)>>
-    std::tuple<maybe_type<T>...> load_fields(Dict& params, const Names&... names) {
+    std::tuple<std::optional<T>...> load_fields(Dict& params, const Names&... names) {
         assert(check_ascending(names...));
         return {parse_field<T>(params, names)...};
     }
@@ -307,10 +293,10 @@ namespace {
     void set_variant(bt_dict& dict, const std::string& key, const namespace_var& ns) {
         if (auto* id = std::get_if<namespace_id>(&ns))
             dict[key] = static_cast<std::underlying_type_t<namespace_id>>(*id);
-        else if (std::holds_alternative<namespace_all_t>(ns))
+        else {
+            assert(std::holds_alternative<namespace_all_t>(ns));
             dict[key] = "all";
-        else
-            assert(std::holds_alternative<std::monostate>(ns));
+        }
     }
 
 }  // namespace
@@ -527,7 +513,7 @@ static void load(delete_all& da, Dict& d) {
 
     load_pk_signature(da, d, pubkey, pubkey_ed25519, signature);
     require("timestamp", timestamp);
-    da.msg_namespace = std::move(msgs_ns);
+    da.msg_namespace = msgs_ns.value_or(namespace_id::Default);
     da.timestamp = std::move(*timestamp);
 }
 void delete_all::load_from(json params) {
@@ -560,7 +546,7 @@ static void load(delete_before& db, Dict& d) {
     load_pk_signature(db, d, pubkey, pubkey_ed25519, signature);
     require("before", before);
     db.before = std::move(*before);
-    db.msg_namespace = std::move(msgs_ns);
+    db.msg_namespace = msgs_ns.value_or(namespace_id::Default);
 }
 void delete_before::load_from(json params) {
     load(*this, params);
@@ -592,7 +578,7 @@ static void load(expire_all& e, Dict& d) {
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
-    e.msg_namespace = std::move(msgs_ns);
+    e.msg_namespace = msgs_ns.value_or(namespace_id::Default);
 }
 void expire_all::load_from(json params) {
     load(*this, params);

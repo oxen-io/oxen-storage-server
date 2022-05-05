@@ -831,7 +831,7 @@ void RequestHandler::process_client_req(
         handle_action_one_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_all(req.pubkey, ns_or_default(req.msg_namespace)),
+                service_node_.get_db().delete_all(req.pubkey, var::get<namespace_id>(req.msg_namespace)),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -933,7 +933,7 @@ void RequestHandler::process_client_req(
                 mine,
                 "deleted",
                 service_node_.get_db().delete_by_timestamp(
-                        req.pubkey, ns_or_default(req.msg_namespace), req.before),
+                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.before),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -995,7 +995,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 mine,
                 "updated",
                 service_node_.get_db().update_all_expiries(
-                        req.pubkey, ns_or_default(req.msg_namespace), req.expiry),
+                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.expiry),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
