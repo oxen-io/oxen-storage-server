@@ -38,14 +38,14 @@ def test_store_ns(omq, random_sn, sk, exclude):
     
     spub = json.loads(spub.get()[0])
 
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123',
+    hpub = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(spub["swarm"]) == len(swarm['snodes'])
     edkeys = {x['pubkey_ed25519'] for x in swarm['snodes']}
     for k, v in spub['swarm'].items():
         assert k in edkeys
-        assert hash == v['hash']
+        assert hpub == v['hash']
 
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
@@ -55,20 +55,50 @@ def test_store_ns(omq, random_sn, sk, exclude):
 
 
     spriv = json.loads(spriv.get()[0])
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123',
+    hpriv = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(spriv["swarm"]) == len(swarm['snodes'])
     edkeys = {x['pubkey_ed25519'] for x in swarm['snodes']}
     for k, v in spriv['swarm'].items():
         assert k in edkeys
-        assert hash == v['hash']
+        assert hpriv == v['hash']
 
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
     # NB: assumes the test machine is reasonably time synced
     assert(ts - 30000 <= spriv['t'] <= ts + 30000)
+
+    rpub = omq.request_future(conn, 'storage.retrieve', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "namespace": 40,
+        "signature": sk.sign(f"retrieve40{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()])
+    rpriv = omq.request_future(conn, 'storage.retrieve', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "namespace": -42,
+        "signature": sk.sign(f"retrieve-42{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()])
+    rdenied = omq.request_future(conn, 'storage.retrieve', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "namespace": 40 }).encode()])
+
+    rpub = rpub.get()
+    assert len(rpub) == 1
+    rpub = json.loads(rpub[0])
+    assert len(rpub["messages"]) == 1
+    assert rpub["messages"][0]["hash"] == hpub
+
+    rpriv = rpriv.get()
+    assert len(rpriv) == 1
+    rpriv = json.loads(rpriv[0])
+    assert len(rpriv["messages"]) == 1
+    assert rpriv["messages"][0]["hash"] == hpriv
+
+    assert rdenied.get() == [b'400', b"invalid request: Required field 'signature' missing"]
+
 
 
 def test_legacy_closed_ns(omq, random_sn, sk, exclude):

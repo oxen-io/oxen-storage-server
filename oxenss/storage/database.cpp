@@ -643,13 +643,15 @@ std::vector<message> Database::retrieve(
 
     auto st = impl->prepared_st(
             last_id ? "SELECT hash, namespace, timestamp, expiry, data FROM messages "
-                      "WHERE owner = ? AND id > ? ORDER BY id LIMIT ?"
+                      "WHERE owner = ? AND namespace = ? AND id > ? ORDER BY id LIMIT ?"
                     : "SELECT hash, namespace, timestamp, expiry, data FROM messages "
-                      "WHERE owner = ? ORDER BY id LIMIT ?");
-    st->bind(1, *ownerid);
+                      "WHERE owner = ? AND namespace = ? ORDER BY id LIMIT ?");
+    int pos = 1;
+    st->bind(pos++, *ownerid);
+    st->bind(pos++, to_int(ns));
     if (last_id)
-        st->bind(2, *last_id);
-    st->bind(last_id ? 3 : 2, num_results.value_or(-1));
+        st->bind(pos++, *last_id);
+    st->bind(pos++, num_results.value_or(-1));
 
     while (st->executeStep()) {
         auto [hash, ns, ts, exp, data] =
