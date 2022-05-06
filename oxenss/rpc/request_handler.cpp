@@ -831,7 +831,8 @@ void RequestHandler::process_client_req(
         handle_action_one_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_all(req.pubkey, var::get<namespace_id>(req.msg_namespace)),
+                service_node_.get_db().delete_all(
+                        req.pubkey, var::get<namespace_id>(req.msg_namespace)),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
