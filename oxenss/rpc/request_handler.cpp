@@ -102,14 +102,11 @@ namespace {
     template <typename RPC>
     void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
         RequestHandler::rpc_handler calls;
-        if constexpr (!std::is_base_of_v<batch, RPC>) {
-            calls.load_subreq_json = [](json params) -> client_subrequest {
-                return load_request<RPC>(std::move(params));
-            };
-            calls.load_subreq_bt = [](oxenc::bt_dict_consumer params) -> client_subrequest {
-                return load_request<RPC>(std::move(params));
-            };
-        }
+        calls.load_req = [](std::variant<json, oxenc::bt_dict_consumer> params) -> client_request {
+            return std::visit(
+                    [](auto&& params) { return load_request<RPC>(std::move(params)); },
+                    std::move(params));
+        };
         calls.http_json = [](RequestHandler& h, json params, std::function<void(Response)> cb) {
             auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
@@ -1088,7 +1085,7 @@ void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc
             if (done)
                 cb(Response{http::OK, json({{"results", std::move(*subresults)}})});
         };
-        std::visit(
+        var::visit(
                 [this, handler = std::move(handler)](auto&& s) {
                     process_client_req(std::move(s), std::move(handler));
                 },
@@ -1144,7 +1141,7 @@ void RequestHandler::process_client_req(
             cb(Response{http::OK, json({{"results", std::move(manager->subresults)}})});
         } else {
             // subrequest was successful and we're not done, so fire off the next one
-            std::visit(
+            var::visit(
                     [&](auto&& subreq) {
                         process_client_req(std::move(subreq), manager->subresult_callback);
                     },
@@ -1152,11 +1149,39 @@ void RequestHandler::process_client_req(
         }
     };
 
-    std::visit(
+    var::visit(
             [&](auto&& subreq) {
                 process_client_req(std::move(subreq), manager->subresult_callback);
             },
             manager->subreqs[0]);
+}
+
+void RequestHandler::process_client_req(rpc::ifelse&& req, std::function<void(rpc::Response)> cb) {
+
+    bool cond = req.condition(service_node_);
+    json response{
+            {"hf", service_node_.hf()},
+            {"v", STORAGE_SERVER_VERSION},
+            {"height", service_node_.blockheight()},
+            {"condition", cond}};
+
+    auto& subreq = cond ? req.action_true : req.action_false;
+    if (!subreq)  // No subrequest action for this branch
+        return cb(Response{http::OK, std::move(response)});
+
+    auto wrap_response = [response = std::move(response),
+                          cb = std::move(cb)](rpc::Response r) mutable {
+        response["result"] = json{{"code", r.status.first}};
+        if (auto* j = std::get_if<json>(&r.body))
+            response["result"]["body"] = std::move(*j);
+        else
+            response["result"]["body"] = std::string{view_body(r)};
+        cb(Response{http::OK, std::move(response)});
+    };
+
+    var::visit(
+            [&](auto&& subreq) { process_client_req(std::move(subreq), std::move(wrap_response)); },
+            std::move(*subreq));
 }
 
 void RequestHandler::process_client_req(

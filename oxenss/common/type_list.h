@@ -20,6 +20,12 @@ struct type_list_append<type_list<T...>, S...> {
 template <typename... T>
 using type_list_append_t = typename type_list_append<T...>::type;
 
+template <typename...>
+constexpr bool type_list_contains = false;
+
+template <typename... S, typename T>
+inline constexpr bool type_list_contains<T, type_list<S...>> = (std::is_same_v<T, S> || ...);
+
 /// Helper for converting a type_list<T...> into a std::variant<T...>.  (Note that std::variant
 /// requires at least one T).
 template <typename... T>

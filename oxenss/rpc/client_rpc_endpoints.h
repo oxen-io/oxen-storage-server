@@ -16,6 +16,10 @@
 #include <oxenss/common/namespace.h>
 #include <oxenss/common/type_list.h>
 
+namespace oxen::snode {
+class ServiceNode;
+}
+
 namespace oxen::rpc {
 
 using namespace std::literals;
@@ -515,7 +519,8 @@ struct oxend_request final : endpoint {
 };
 
 // All of the RPC types that can be invoked as a regular request: either directly, or inside a
-// batch.  (This is everything except batch itself, because batch does not permit recursion).
+// batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
+// requests within them).
 using client_rpc_subrequests = type_list<
         store,
         retrieve,
@@ -603,8 +608,117 @@ struct sequence : batch {
     static constexpr auto names() { return NAMES("sequence"); }
 };
 
+struct ifelse;
+
 // All of the RPC types that can be invoked as top-level requests, i.e. all of the subrequest types
-// plus batch and sequence.  These are loaded into the supported RPC interfaces at startup.
-using client_rpc_types = type_list_append_t<client_rpc_subrequests, batch, sequence>;
+// (which are invokable via batch/sequence), plus batch, sequence, and ifelse (which are not
+// batch-invokable).  These are loaded into the supported RPC interfaces at startup.
+using client_rpc_types = type_list_append_t<client_rpc_subrequests, batch, sequence, ifelse>;
+
+using client_request = type_list_variant_t<client_rpc_types>;
+
+/// Conditional request: this endpoints allows you to invoke a request dependent on the storage
+/// server and/or current hardfork version.
+///
+/// This endpoint takes a dict parameter containing three keys:
+///
+/// - An `"if"` key contains a dict of conditions to check; this dict has keys:
+///   - `"hf_at_least"` -- contains a two-element list of hardfork/softfork revisions, e.g. [19,1].
+///     The "yes" endpoint will be invoked if this is true.
+///   - `"v_at_least"` -- contains a three-element list of the storage server major/minor/patch
+///     versions, e.g. [2,3,0].  The "yes" endpoint will be invoked if this is true.
+///   - `"height_at_least"` -- contains a blockchain height (integer); the "yes" branch will be
+///     executed if the current blockchain height is at least the given value.
+///   - `"hf_before"`, `"hf_before"`, `"height_before"` -- negations of the above "..._at_least"
+///     conditions.  e.g. `"hf_at_least": [19,1]` and `"hf_before": [19,1]` follow the opposite
+///     branches.
+///
+///   If more than one key is specified then all given keys must be satisfied to pass the condition.
+///   (That is: conditions are "and"ed together).
+///
+/// - A `"then"` key contains a single request to invoke if the condition is satisfied.  The request
+///   itself is specified as a dict containing "method" and "params" keys containing the endpoint to
+///   invoke and the parameters to pass to the request.  The given request is permitted to be
+///   a nested "ifelse" or a "batch"/"sequence".  Note, however, that batch/sequence requests may
+///   not contain "ifelse" requests.
+///
+/// - An `"else"` key contains a single request to invoke if the condition is *not* satisfied.
+///   Parameters are the same as `"then"`.
+///
+/// `"if"` is always required, and at least one of "then" and "else" is required: if one or the
+/// other is omitted then no action is performed if that branch would be followed.
+///
+/// This endpoint returns a dict containing keys:
+/// - "hf" -- the current hardfork version (e.g. [19,1])
+/// - "v" -- the running storage server version (e.g. [2,3,0])
+/// - "height" -- the current blockchain height (e.g. 1234567)
+/// - "condition" -- true or false indicating the logical result of the `"if"` condition.
+/// - "result" -- a dict containing the result of the logical branch ("then" or "else") that was
+///   followed.  This dict has two keys:
+///   - "code" -- the numeric response code (e.g. 200 for a typical success)
+///   - "body" -- the response value (usually a dict).
+///   If the branch followed was omitted from the request (e.g. the condition failed and only a
+///   "then" branch was given) then this "result" key is omitted entirely.
+///
+/// Example:
+///
+/// Suppose HF 19.2 introduces some fancy new command "abcd" but earlier versions require executing
+/// a pair of commands "ab" and "cd" to get the same effect:
+///
+/// Request:
+///
+///     {
+///       "if": { "hf_at_least": [19,2] },
+///       "then": { "method": "abcd", "params": { "z": 1 } },
+///       "else": {
+///         "method": "batch",
+///         "params": {
+///           "requests": [
+///             {"method": "ab", "params": {"z": 1}},
+///             {"method": "cd", "params": {"z": 3}}
+///           ]
+///         }
+///       }
+///     }
+///
+/// If the 19.2 hf is active then the response would be:
+///
+///     {
+///       "hf": [19,2],
+///       "v": [2,3,1],
+///       "height": 1234567,
+///       "condition": true,
+///       "result": { "code": 200, "body": {"z_plus_4": 5}}
+///     }
+///
+/// Response from some blockchain height before hf 19.2:
+///
+///     {
+///       "hf": [19,1],
+///       "v": [2,3,1],
+///       "height": 1230000,
+///       "condition": false,
+///       "result": {
+///         "code": 200,
+///         "body": [
+///           {"code": 200, "body": {"z_plus_2": 3}},
+///           {"code": 200, "body": {"z_plus_2": 5}}
+///         ]
+///       }
+///     }
+///
+struct ifelse : endpoint {
+    static constexpr auto names() { return NAMES("ifelse"); }
+
+    std::function<bool(const snode::ServiceNode& snode)> condition;
+    // We're effectively using these like an std::optional, but we need pointer indirection because
+    // we can potentially self-reference (and can't do that with an optional because we haven't
+    // fully defined our own type yet).
+    std::unique_ptr<client_request> action_true;
+    std::unique_ptr<client_request> action_false;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+};
 
 }  // namespace oxen::rpc

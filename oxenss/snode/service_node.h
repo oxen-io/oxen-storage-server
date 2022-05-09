@@ -199,6 +199,8 @@ class ServiceNode {
 
     const hf_revision& hf() const { return hardfork_; }
 
+    const uint64_t& blockheight() const { return block_height_; }
+
     bool hf_at_least(hf_revision version) const { return hardfork_ >= version; }
 
     // Return true if the service node is ready to handle requests, which means the storage

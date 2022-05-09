@@ -193,10 +193,11 @@ class RequestHandler {
     void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
     void process_client_req(rpc::batch&&, std::function<void(Response)> cb);
     void process_client_req(rpc::sequence&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::ifelse&&, std::function<void(Response)> cb);
 
     struct rpc_handler {
-        std::function<client_subrequest(nlohmann::json params)> load_subreq_json;
-        std::function<client_subrequest(oxenc::bt_dict_consumer params)> load_subreq_bt;
+        std::function<client_request(std::variant<nlohmann::json, oxenc::bt_dict_consumer> params)>
+                load_req;
         std::function<void(RequestHandler&, nlohmann::json, std::function<void(Response)>)>
                 http_json;
         std::function<void(
