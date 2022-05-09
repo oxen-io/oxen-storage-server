@@ -1041,10 +1041,12 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    auto updated = service_node_.get_db().update_expiry(req.pubkey, req.messages, req.expiry);
+    auto expiry = std::min(std::chrono::system_clock::now() + TTL_MAXIMUM, req.expiry);
+    auto updated = service_node_.get_db().update_expiry(req.pubkey, req.messages, expiry);
     std::sort(updated.begin(), updated.end());
-    auto sig = create_signature(
-            ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, updated);
+    auto sig =
+            create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), expiry, req.messages, updated);
+    mine["expiry"] = to_epoch_ms(expiry);
     mine["updated"] = std::move(updated);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)

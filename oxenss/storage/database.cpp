@@ -776,27 +776,24 @@ std::vector<std::string> Database::update_expiry(
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
         auto st = impl->prepared_st(
-                "UPDATE messages SET expiry = ? "
-                "WHERE expiry > ? AND hash = ?"
+                "UPDATE messages SET expiry = ? WHERE hash = ?"
                 " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
                 " RETURNING hash");
-        return get_all<std::string>(st, new_exp_ms, new_exp_ms, msg_hashes[0], pubkey);
+        return get_all<std::string>(st, new_exp_ms, msg_hashes[0], pubkey);
     }
 
     SQLite::Statement st{
             impl->db,
             multi_in_query(
                     "UPDATE messages SET expiry = ?"
-                    " WHERE expiry > ? "
-                    " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
                     " AND hash IN ("sv,  // ?,?,?,...,?
                     msg_hashes.size(),
                     ") RETURNING hash"sv)};
     st.bind(1, new_exp_ms);
-    st.bind(2, new_exp_ms);
-    bind_pubkey(st, 3, 4, pubkey);
+    bind_pubkey(st, 2, 3, pubkey);
     for (size_t i = 0; i < msg_hashes.size(); i++)
-        st.bindNoCopy(5 + i, msg_hashes[i]);
+        st.bindNoCopy(4 + i, msg_hashes[i]);
 
     return get_all<std::string>(st);
 }

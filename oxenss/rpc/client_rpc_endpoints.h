@@ -394,9 +394,10 @@ struct delete_before final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
-/// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to
-/// all other swarm members.  Note that this will not extend existing expiries, it will only
-/// shorten the expiry of any messages that have expiries after the requested value.
+/// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
+/// other swarm members.  Note that this will not extend existing expiries, it will only shorten the
+/// expiry of any messages that have expiries after the requested value.  (To extend expiries of one
+/// or more individual messages use the `expire` endpoint).
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
@@ -444,8 +445,8 @@ struct expire_all final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
-/// Updates (shortens) the expiry of one or more stored messages and broadcasts the update
-/// request to all other swarm members.
+/// Updates (shortens or extends) the expiry of one or more stored messages and broadcasts the
+/// update request to all other swarm members.
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
@@ -456,7 +457,10 @@ struct expire_all final : recursive {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  As
+///   of HF19 this can be used to extend expiries instead of just shortening them.  The expiry can
+///   be extended to at most the maximum TTL (14 days) from now; specifying a later timestamp will
+///   be truncated to the maximum.
 /// - signature -- Ed25519 signature of:
 ///       ("expire" || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
@@ -466,8 +470,11 @@ struct expire_all final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated
-///       (messages that already had an expiry <= the given expiry are not included).
+///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.  As of
+///       HF19, this includes messages that have had their expiries extended (before HF19 expiries
+///       could only be shortened but not extended).
+///     - "expiry": the expiry timestamp that was applied (which might be different from the request
+///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
 ///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
 ///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.  The
