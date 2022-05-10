@@ -3,6 +3,7 @@
 #include <oxenss/crypto/channel_encryption.hpp>
 #include "client_rpc_endpoints.h"
 #include "onion_processing.h"
+#include <oxenc/bt_serialize.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/snode/service_node.h>
 #include <oxenss/utils/string_utils.hpp>
@@ -44,6 +45,9 @@ inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 
 // The maximum messages that may be retrieved in a single request by a client:
 constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
+
+// Maximum subrequests that can be stuffed into a single batch request
+constexpr size_t BATCH_REQUEST_MAX = 5;
 
 // Simpler wrapper that works for most of our responses
 struct Response {
@@ -187,11 +191,25 @@ class RequestHandler {
     void process_client_req(rpc::delete_before&&, std::function<void(Response)> cb);
     void process_client_req(rpc::expire_all&&, std::function<void(Response)> cb);
     void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::batch&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::sequence&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::ifelse&&, std::function<void(Response)> cb);
 
-    using rpc_map = std::unordered_map<
-            std::string_view,
-            std::function<void(
-                    RequestHandler&, const nlohmann::json&, std::function<void(Response)>)>>;
+    struct rpc_handler {
+        std::function<client_request(std::variant<nlohmann::json, oxenc::bt_dict_consumer> params)>
+                load_req;
+        std::function<void(RequestHandler&, nlohmann::json, std::function<void(Response)>)>
+                http_json;
+        std::function<void(
+                RequestHandler&,
+                std::string_view params,
+                bool recurse,
+                std::function<void(Response)>)>
+                omq;
+    };
+
+    using rpc_map = std::unordered_map<std::string_view, rpc_handler>;
+
     static const rpc_map client_rpc_endpoints;
 
     // Process a client request taking encoded json to be parsed containing something like

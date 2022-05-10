@@ -14,10 +14,17 @@
 
 #include <oxenss/common/pubkey.h>
 #include <oxenss/common/namespace.h>
+#include <oxenss/common/type_list.h>
+
+namespace oxen::snode {
+class ServiceNode;
+}
 
 namespace oxen::rpc {
 
 using namespace std::literals;
+
+constexpr std::string_view SUBKEY_HASH_KEY = "OxenSSSubkey"sv;
 
 // Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ
 // "storage.whatever" endpoints, and as the final target of an onion request.
@@ -90,13 +97,27 @@ namespace {
 /// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
 ///   76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
 /// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
-///   this message.  (Not accepted before the Oxen 10.x hard fork).  Messages in different
-///   namespaces are treated as separate storage boxes from untagged messages.  Different IDs have
-///   different storage properties:
+///   this message.  Messages in different namespaces are treated as separate storage boxes from
+///   untagged messages.  (Note that before the Oxen 10 hardfork (HF 19) this field will be ignored
+///   and the message will end up in the default namespace (i.e. namespace 0) regardless of what was
+///   specified here.)
+/// - `subkey` (optional) if provided this is a 32-byte subkey value, encoded base64 or hex (for
+///   json requests; bytes, for bt-encoded requests), to use for subkey signature verification
+///   instead of using `pubkey` directly.  Denoting this value as `c` and `pubkey` as `A`, the
+///   signature verification will use public key value `D=(c+H(c‖A))A` to verify the request
+///   signature instead of `A`.  `H(.)` here is 32-byte BLAKE2b with a key of the 12-byte ascii
+///   string `OxenSSSubkey`. The client must therefore sign using `d=a(c+H(c‖A))`, where this `d`
+///   value has been calculated and provided securely to the sub-user by an owner of the account
+///   (i.e. someone with master secret key `a`).  Though `c` can be any cryptographically secure
+///   32-byte value, it is recommended to use `c=H(A‖S)`, where `S` is the user's pubkey.
+///
+///   Different IDs have different storage properties:
 ///   - namespaces divisible by 10 (e.g. 0, 60, -30) allow unauthenticated submission: that is,
 ///     anyone may deposit messages into them without authentication.  Authentication is required
 ///     for retrieval (and all other operations).
 ///   - namespaces -30 through 30 are reserved for current and future Session message storage.
+///     Currently in use or planned for use are 0 (DMs), -10 (legacy closed groups), 3 (future v2
+///     closed groups), 5 (Session account private metadata).
 ///   - non-divisible-by-10 namespaces require authentication for all operations, including storage.
 ///   Omitting the namespace is equivalent to specifying the 0 namespace.
 ///
@@ -105,20 +126,22 @@ namespace {
 /// if the signature does not match.  Should not be provided when depositing a message in a public
 /// receiving (i.e. divisible by 10) namespace.
 ///
-/// - signature -- Ed25519 signature of ("store" || namespace || timestamp), where namespace and
-///   timestamp are the base10 expression of the namespace and timestamp values.  Must be base64
-///   encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non session
-///   ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following option.
+/// - signature -- Ed25519 signature of ("store" || namespace || sig_timestamp), where namespace and
+///   sig_timestamp are the base10 expression of the namespace and sig_timestamp values.  Must be
+///   base64 encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non
+///   session ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following
+///   option.
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 ///   be interpreted as an `x25519` pubkey derived from *this* given ed25519 pubkey (which must be
 ///   64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
 ///   convert to the given `pubkey` value (without the `05` prefix) for the signature to be
 ///   accepted.
 /// - sig_timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
-///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
-///   timestamp via `info` first, to avoid client time sync issues).  If omitted, `timestamp` is
-///   used instead; it is recommended to include this value separately, particularly if a delay
-///   between message construction and message submission is possible.
+///   epoch, used in the authentication signature.  Must be within ±60s of the current time.  (For
+///   clients it is recommended to retrieve a timestamp via `info` first, to avoid client time sync
+///   issues).  If omitted, `timestamp` is used instead; it is recommended to include this value
+///   separately, particularly if a delay between message construction and message submission is
+///   possible.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -139,6 +162,7 @@ struct store final : recursive {
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
     user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;  // computed from timestamp+ttl if ttl was given
@@ -159,11 +183,12 @@ struct store final : recursive {
 /// - `namespace` (optional) the integral message namespace from which to retrieve messages.  Each
 ///   namespace forms an independent message storage for the same address.  When specified,
 ///   authentication *must* be provided.  Omitting the namespace is equivalent to specifying a
-///   namespace of 0.  (Note, however, that an explicit namespace of 0 requires authentication,
-///   while an implicit namespace of 0 does not during the transition period).
+///   namespace of 0.
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
 ///   stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
 ///   omitted value.
+/// - `subkey` (optional) allows retrieval using a derived subkey for authentication.  See `store`
+///   for details on how this works.
 ///
 /// Authentication parameters: these are optional during a transition period, up until Oxen
 /// hard-fork 19, and become required starting there.  During the transition period, *if* provided
@@ -179,10 +204,22 @@ struct store final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+///
+/// On success, returns a dict containing key "messages" with value of a list of message details;
+/// each message is a dict containing keys:
+///
+/// - "hash" -- the message hash
+/// - "timestamp" -- the timestamp when the message was deposited
+/// - "expiry" -- the timestamp when the message is currently scheduled to expire
+/// - "data" -- the message data; b64-encoded for json, bytes for bt-encoded requests.
+///
+/// Messages order is such that the hash of the last message is the appropriate value to provide as
+/// a future "last_hash" value, but otherwise no particular ordering is guaranteed.
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
     user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
 
@@ -245,33 +282,25 @@ struct delete_msgs final : recursive {
 
 struct namespace_all_t {};
 inline constexpr namespace_all_t namespace_all{};
-// Variant for holding unspecified, integer, or "all" namespace input.  Unspecified is generally the
-// same as an integer of 0 in effect, but the distinction *does* matter for the signature (which
-// matches the given arguments, not the implied value).
-using namespace_var = std::variant<std::monostate, namespace_id, namespace_all_t>;
+
+// Variant for holding an integer namespace or "all" namespace input.
+using namespace_var = std::variant<namespace_id, namespace_all_t>;
 
 constexpr bool is_all(const namespace_var& ns) {
     return std::holds_alternative<namespace_all_t>(ns);
 }
-constexpr bool is_omitted(const namespace_var& ns) {
-    return std::holds_alternative<std::monostate>(ns);
-}
-
-// Returns the implied namespace from a namespace_var containing either a monostate (implied
-// namespace 0) or specific namespace.  Should not be called on a variant containing an "all" value.
-constexpr namespace_id ns_or_default(const namespace_var& ns) {
-    if (auto* id = std::get_if<namespace_id>(&ns))
-        return *id;
-    return namespace_id::Default;
+constexpr bool is_default(const namespace_var& ns) {
+    auto* n = std::get_if<namespace_id>(&ns);
+    return n && *n == namespace_id::Default;
 }
 
 // Returns the representation of a provided namespace variant that should have been used in a
 // request signature, which is:
-// - empty string if namespace unspecified
+// - empty string if default namespace (either unspecified, or explicitly given as 0)
 // - "all" if given as all namespaces
-// - "NN" for some explicitly given numeric namespace NN
+// - "NN" for some explicitly given non-default numeric namespace NN
 inline std::string signature_value(const namespace_var& ns) {
-    return is_omitted(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
+    return is_default(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
 }
 
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request
@@ -291,10 +320,10 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
 ///   timestamp via `info` first, to avoid client time sync issues).
 /// - signature -- an Ed25519 signature of ( "delete_all" || namespace || timestamp ), where
-///   `namespace` is the stringified version of the given namespace parameter (i.e. "0" or "-42" or
-///   "all"), or the empty string if namespace was not given.  The signature must be signed by the
-///   ed25519 pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json
-///   requests; binary for OMQ requests.
+///   `namespace` is the empty string for the default namespace (whether explicitly specified or
+///   not), and otherwise the stringified version of the namespace parameter (i.e. "99" or "-42" or
+///   "all").  The signature must be signed by the ed25519 pubkey in `pubkey` (omitting the leading
+///   prefix).  Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -338,8 +367,8 @@ struct delete_all final : recursive {
 ///   allows it to be <= 60s from now.
 /// - signature -- Ed25519 signature of ("delete_before" || namespace || before), signed by
 ///   `pubkey`.  Must be base64 encoded (json) or bytes (OMQ).  `namespace` is the stringified
-///   version of the given namespace parameter (i.e. "0" or "-42" or "all"), or the empty string if
-///   namespace was not given.
+///   version of the given non-default namespace parameter (i.e. "-42" or "all"), or the empty
+///   string for the default namespace (whether explicitly given or not).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -365,9 +394,10 @@ struct delete_before final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
-/// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to
-/// all other swarm members.  Note that this will not extend existing expiries, it will only
-/// shorten the expiry of any messages that have expiries after the requested value.
+/// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
+/// other swarm members.  Note that this will not extend existing expiries, it will only shorten the
+/// expiry of any messages that have expiries after the requested value.  (To extend expiries of one
+/// or more individual messages use the `expire` endpoint).
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
@@ -382,8 +412,10 @@ struct delete_before final : recursive {
 ///   namespace (namespace 0).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
 ///   tolerance acceptance allows >= 60s ago.
-/// - signature -- signature of ("expire_all" || expiry), signed by `pubkey`.  Must be base64
-///   encoded (json) or bytes (OMQ).
+/// - signature -- signature of ("expire_all" || namespace || expiry), signed by `pubkey`.  Must be
+///   base64 encoded (json) or bytes (OMQ).  namespace should be the stringified namespace for
+///   non-default namespace expiries (i.e. "42", "-99", "all"), or an empty string for the default
+///   namespace (whether or not explicitly provided).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -413,8 +445,8 @@ struct expire_all final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
-/// Updates (shortens) the expiry of one or more stored messages and broadcasts the update
-/// request to all other swarm members.
+/// Updates (shortens or extends) the expiry of one or more stored messages and broadcasts the
+/// update request to all other swarm members.
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
@@ -425,7 +457,10 @@ struct expire_all final : recursive {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  As
+///   of HF19 this can be used to extend expiries instead of just shortening them.  The expiry can
+///   be extended to at most the maximum TTL (14 days) from now; specifying a later timestamp will
+///   be truncated to the maximum.
 /// - signature -- Ed25519 signature of:
 ///       ("expire" || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
@@ -435,8 +470,11 @@ struct expire_all final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated
-///       (messages that already had an expiry <= the given expiry are not included).
+///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.  As of
+///       HF19, this includes messages that have had their expiries extended (before HF19 expiries
+///       could only be shortened but not extended).
+///     - "expiry": the expiry timestamp that was applied (which might be different from the request
+///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
 ///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
 ///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.  The
@@ -487,12 +525,10 @@ struct oxend_request final : endpoint {
     void load_from(oxenc::bt_dict_consumer params) override;
 };
 
-// Type wrapper than contains an arbitrary list of types.
-template <typename...>
-struct type_list {};
-
-// All of the above RPC types; these are loaded into the supported RPC interfaces at startup.
-using client_rpc_types = type_list<
+// All of the RPC types that can be invoked as a regular request: either directly, or inside a
+// batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
+// requests within them).
+using client_rpc_subrequests = type_list<
         store,
         retrieve,
         delete_msgs,
@@ -503,5 +539,193 @@ using client_rpc_types = type_list<
         get_swarm,
         oxend_request,
         info>;
+
+using client_subrequest = type_list_variant_t<client_rpc_subrequests>;
+
+/// Batch requests: executes a series of sub-requests, collecting and returning the individual
+/// responses.  Note that authentication signatures are required for *each* subrequest as described
+/// elsewhere in this documentation, not on the outer batch request itself.
+///
+/// Note that requests may be performed in parallel or out of order; if you need sequential requests
+/// use "sequence" instead.
+///
+/// This request takes an object containing a single key "requests" which contains a list of 1 to 5
+/// elements to invoke up to 5 subrequests.  Each element is a dict containing keys:
+///
+/// - "method" -- the method name, e.g. "retrieve".
+/// - "params" -- the parameters to pass to the subrequest.
+///
+/// "params" must include any required pubkeys/signatures for the individual subrequest.
+///
+/// Returned is a dict with key "results" containing a list of the same length of the request, which
+/// each element contains the subrequest response to the subrequest in the same position, in a dict
+/// containing:
+///
+/// - "code" -- the numeric response code (e.g. 200 for a typical success)
+/// - "body" -- the response value (usually a dict).
+///
+/// For example, to invoke rpc endpoint "foo" with parameters {"z": 3} and endpoint "bar" with
+/// parameters {"z": 2} you would invoke the batch endpoint with parameter:
+///
+///     {"requests": [{"method": "foo", "params": {"z": 3}}, {"method": "bar", "params": {"z": 2}}]}
+///
+/// and would get a reply such as:
+///
+///     {"results": [{"code": 200, "body": {"z_plus_2": 5}}, {"code": 404, "no such z=2 found!"}]}
+///
+/// Note that, when making the request via HTTP JSON RPC, this is encapsulated inside an outer
+/// method/params layer, so the full request would be something like:
+///
+///     {
+///       "method": "batch",
+///       "params": {
+///         "requests": [
+///           { "method": "one", "params": {"z": 1} },
+///           { "method": "two", "params": {"y": 2} }
+///         ]
+///       }
+///     }
+///
+/// The batch request itself returns a 200 status code if the batch was processed, regardless of the
+/// return value of the individual subrequests (i.e. you get a 200 back even if all subrequests
+/// returned error codes).  Error statuses are returned only for bad batch requests (e.g. missing
+/// method/params arguments, invalid/unparseable subrequests, or too many subrequests).
+///
+/// Note that batch requests may not recurse (i.e. you cannot invoke the batch endpoint as a batch
+/// subrequest).
+///
+struct batch : endpoint {
+    static constexpr auto names() { return NAMES("batch"); }
+
+    std::vector<client_subrequest> subreqs;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+};
+
+/// Sequence: this works similarly to batch (and takes the same arguments) but unlike batch it
+/// processes the requests sequentially and aborts processing further requests if an earlier request
+/// fails (i.e. returns a non-2xx status code).
+///
+/// For example, if you execute sequence method1, method2, method3 and method2 returns status code
+/// 456 then method3 is not executed at all, and the result will contain 2 responses: the successful
+/// method1 response, and the method2 failure, but no responses after the failure.
+///
+struct sequence : batch {
+    static constexpr auto names() { return NAMES("sequence"); }
+};
+
+struct ifelse;
+
+// All of the RPC types that can be invoked as top-level requests, i.e. all of the subrequest types
+// (which are invokable via batch/sequence), plus batch, sequence, and ifelse (which are not
+// batch-invokable).  These are loaded into the supported RPC interfaces at startup.
+using client_rpc_types = type_list_append_t<client_rpc_subrequests, batch, sequence, ifelse>;
+
+using client_request = type_list_variant_t<client_rpc_types>;
+
+/// Conditional request: this endpoints allows you to invoke a request dependent on the storage
+/// server and/or current hardfork version.
+///
+/// This endpoint takes a dict parameter containing three keys:
+///
+/// - An `"if"` key contains a dict of conditions to check; this dict has keys:
+///   - `"hf_at_least"` -- contains a two-element list of hardfork/softfork revisions, e.g. [19,1].
+///     The "yes" endpoint will be invoked if this is true.
+///   - `"v_at_least"` -- contains a three-element list of the storage server major/minor/patch
+///     versions, e.g. [2,3,0].  The "yes" endpoint will be invoked if this is true.
+///   - `"height_at_least"` -- contains a blockchain height (integer); the "yes" branch will be
+///     executed if the current blockchain height is at least the given value.
+///   - `"hf_before"`, `"hf_before"`, `"height_before"` -- negations of the above "..._at_least"
+///     conditions.  e.g. `"hf_at_least": [19,1]` and `"hf_before": [19,1]` follow the opposite
+///     branches.
+///
+///   If more than one key is specified then all given keys must be satisfied to pass the condition.
+///   (That is: conditions are "and"ed together).
+///
+/// - A `"then"` key contains a single request to invoke if the condition is satisfied.  The request
+///   itself is specified as a dict containing "method" and "params" keys containing the endpoint to
+///   invoke and the parameters to pass to the request.  The given request is permitted to be
+///   a nested "ifelse" or a "batch"/"sequence".  Note, however, that batch/sequence requests may
+///   not contain "ifelse" requests.
+///
+/// - An `"else"` key contains a single request to invoke if the condition is *not* satisfied.
+///   Parameters are the same as `"then"`.
+///
+/// `"if"` is always required, and at least one of "then" and "else" is required: if one or the
+/// other is omitted then no action is performed if that branch would be followed.
+///
+/// This endpoint returns a dict containing keys:
+/// - "hf" -- the current hardfork version (e.g. [19,1])
+/// - "v" -- the running storage server version (e.g. [2,3,0])
+/// - "height" -- the current blockchain height (e.g. 1234567)
+/// - "condition" -- true or false indicating the logical result of the `"if"` condition.
+/// - "result" -- a dict containing the result of the logical branch ("then" or "else") that was
+///   followed.  This dict has two keys:
+///   - "code" -- the numeric response code (e.g. 200 for a typical success)
+///   - "body" -- the response value (usually a dict).
+///   If the branch followed was omitted from the request (e.g. the condition failed and only a
+///   "then" branch was given) then this "result" key is omitted entirely.
+///
+/// Example:
+///
+/// Suppose HF 19.2 introduces some fancy new command "abcd" but earlier versions require executing
+/// a pair of commands "ab" and "cd" to get the same effect:
+///
+/// Request:
+///
+///     {
+///       "if": { "hf_at_least": [19,2] },
+///       "then": { "method": "abcd", "params": { "z": 1 } },
+///       "else": {
+///         "method": "batch",
+///         "params": {
+///           "requests": [
+///             {"method": "ab", "params": {"z": 1}},
+///             {"method": "cd", "params": {"z": 3}}
+///           ]
+///         }
+///       }
+///     }
+///
+/// If the 19.2 hf is active then the response would be:
+///
+///     {
+///       "hf": [19,2],
+///       "v": [2,3,1],
+///       "height": 1234567,
+///       "condition": true,
+///       "result": { "code": 200, "body": {"z_plus_4": 5}}
+///     }
+///
+/// Response from some blockchain height before hf 19.2:
+///
+///     {
+///       "hf": [19,1],
+///       "v": [2,3,1],
+///       "height": 1230000,
+///       "condition": false,
+///       "result": {
+///         "code": 200,
+///         "body": [
+///           {"code": 200, "body": {"z_plus_2": 3}},
+///           {"code": 200, "body": {"z_plus_2": 5}}
+///         ]
+///       }
+///     }
+///
+struct ifelse : endpoint {
+    static constexpr auto names() { return NAMES("ifelse"); }
+
+    std::function<bool(const snode::ServiceNode& snode)> condition;
+    // We're effectively using these like an std::optional, but we need pointer indirection because
+    // we can potentially self-reference (and can't do that with an optional because we haven't
+    // fully defined our own type yet).
+    std::unique_ptr<client_request> action_true;
+    std::unique_ptr<client_request> action_false;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+};
 
 }  // namespace oxen::rpc

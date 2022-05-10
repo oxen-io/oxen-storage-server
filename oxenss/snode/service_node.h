@@ -48,9 +48,14 @@ using hf_revision = std::pair<int, int>;
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {18, 1};
 
+// The hardfork at which msg namespaces become available for storing messages.  (Prior to this we
+// ignore any specified namespace value and just store in namespace 0, even if another namespace was
+// given).
+inline constexpr hf_revision HARDFORK_NAMESPACES = {19, 0};
+
 // The hardfork at which we require authentication for (almost) all retrieval.  (Message namespace
 // -10 is temporarily exempt for closed group backwards support).
-inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 0};
+inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 1};
 
 class Swarm;
 
@@ -192,6 +197,10 @@ class ServiceNode {
             rpc::OnionRequestMetadata&& data,
             std::function<void(bool success, std::vector<std::string> data)> cb) const;
 
+    const hf_revision& hf() const { return hardfork_; }
+
+    const uint64_t& blockheight() const { return block_height_; }
+
     bool hf_at_least(hf_revision version) const { return hardfork_ >= version; }
 
     // Return true if the service node is ready to handle requests, which means the storage
@@ -228,9 +237,9 @@ class ServiceNode {
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    SwarmInfo get_swarm(const user_pubkey_t& pk);
+    SwarmInfo get_swarm(const user_pubkey_t& pk) const;
 
-    std::vector<sn_record> get_swarm_peers();
+    std::vector<sn_record> get_swarm_peers() const;
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;

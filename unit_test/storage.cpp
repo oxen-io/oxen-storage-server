@@ -89,7 +89,7 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
 
-        auto items = storage.retrieve(pubkey, namespace_id::Default, "");
+        auto items = storage.retrieve(pubkey, ns, "");
 
         REQUIRE(items.size() == 1);
         CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey

@@ -219,44 +219,6 @@ void OMQ::handle_get_stats(oxenmq::Message& message) {
 
 namespace {
 
-    template <typename RPC>
-    void register_client_rpc_endpoint(OMQ::rpc_map& regs) {
-        auto call = [](rpc::RequestHandler& h,
-                       std::string_view params,
-                       [[maybe_unused]] bool recursive,
-                       std::function<void(rpc::Response)> cb) {
-            RPC req;
-            if (params.empty())
-                params = "{}"sv;
-            if (params.front() == 'd') {
-                req.load_from(oxenc::bt_dict_consumer{params});
-                req.b64 = false;
-            } else {
-                auto body = nlohmann::json::parse(params, nullptr, false);
-                if (body.is_discarded()) {
-                    OXEN_LOG(debug, "Bad OMQ client request: not valid json or bt_dict");
-                    return cb(rpc::Response{
-                            http::BAD_REQUEST, "invalid body: expected json or bt_dict"sv});
-                }
-                req.load_from(body);
-            }
-            if constexpr (std::is_base_of_v<rpc::recursive, RPC>)
-                req.recurse = recursive;
-            h.process_client_req(std::move(req), std::move(cb));
-        };
-        for (auto& name : RPC::names()) {
-            [[maybe_unused]] auto [it, ins] = regs.emplace(name, call);
-            assert(ins);
-        }
-    }
-
-    template <typename... RPC>
-    OMQ::rpc_map register_client_rpc_endpoints(rpc::type_list<RPC...>) {
-        OMQ::rpc_map regs;
-        (register_client_rpc_endpoint<RPC>(regs), ...);
-        return regs;
-    }
-
 }  // namespace
 
 oxenc::bt_value json_to_bt(nlohmann::json j) {
@@ -325,14 +287,12 @@ nlohmann::json bt_to_json(oxenc::bt_list_consumer l) {
     return j;
 }
 
-const OMQ::rpc_map OMQ::client_rpc_endpoints =
-        register_client_rpc_endpoints(rpc::client_rpc_types{});
-
 void OMQ::handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded) {
     OXEN_LOG(debug, "Handling OMQ RPC request for {}", method);
-    auto it = client_rpc_endpoints.find(method);
-    assert(it != client_rpc_endpoints.end());  // This endpoint shouldn't have been registered
-                                               // if it isn't in here
+    auto it = rpc::RequestHandler::client_rpc_endpoints.find(method);
+
+    // This endpoint shouldn't have been registered if it isn't in here:
+    assert(it != rpc::RequestHandler::client_rpc_endpoints.end());
 
     const size_t full_size = forwarded ? 2 : 1;
     const size_t empty_body = full_size - 1;
@@ -361,10 +321,10 @@ void OMQ::handle_client_request(std::string_view method, oxenmq::Message& messag
 
     try {
         std::string_view params = message.data.size() == full_size ? message.data.back() : ""sv;
-        it->second(
+        it->second.omq(
                 *request_handler_,
                 params,
-                !forwarded,
+                forwarded,
                 [send = message.send_later(),
                  bt_encoded = !params.empty() && params.front() == 'd'](rpc::Response res) {
                     std::string dump;

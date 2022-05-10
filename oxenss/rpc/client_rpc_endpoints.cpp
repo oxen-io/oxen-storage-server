@@ -1,7 +1,9 @@
 #include "client_rpc_endpoints.h"
+#include "request_handler.h"
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/time.hpp>
+#include <oxenss/version.h>
 
 #include <chrono>
 #include <limits>
@@ -27,6 +29,8 @@ namespace {
     template <typename T>
     constexpr bool is_str_array = std::is_same_v<T, std::vector<std::string>>;
     template <typename T>
+    constexpr bool is_int_array = std::is_same_v<T, std::vector<int>>;
+    template <typename T>
     constexpr bool is_namespace_var = std::is_same_v<T, namespace_var>;
 
     template <typename T>
@@ -37,25 +41,13 @@ namespace {
                                          : std::is_same_v<T, namespace_id> ? "16-bit integer"sv
                                          : is_timestamp<T> ? "integer timestamp (in milliseconds)"sv
                                          : is_str_array<T> ? "string array"sv
+                                         : is_int_array<T> ? "integer array"sv
                                                            : "string"sv;
-
-    template <typename... T>
-    constexpr bool is_monostate_var = false;
-    template <typename... T>
-    constexpr bool is_monostate_var<std::variant<std::monostate, T...>> = true;
-
-    template <typename T>
-    using maybe_type = std::conditional_t<is_monostate_var<T>, T, std::optional<T>>;
-
-    template <typename T, typename SFINAE = void>
-    constexpr std::nullopt_t maybe_not = std::nullopt;
-    template <typename T>
-    constexpr std::monostate maybe_not<T, std::enable_if_t<is_monostate_var<T>>>{};
 
     template <typename T>
     constexpr bool is_parseable_v =
             std::is_unsigned_v<T> || std::is_integral_v<T> || is_timestamp<T> || is_str_array<T> ||
-            is_namespace_var<T> || std::is_same_v<T, std::string_view> ||
+            is_int_array<T> || is_namespace_var<T> || std::is_same_v<T, std::string_view> ||
             std::is_same_v<T, std::string> || std::is_same_v<T, namespace_id>;
 
     // Extracts a field suitable for a `T` value from the given json with name `name`.  Takes
@@ -63,23 +55,29 @@ namespace {
     // number but given a bool).  Returns nullopt if the field isn't present or is present and
     // set to null.
     template <typename T>
-    maybe_type<T> parse_field(const json& params, const char* name) {
+    std::optional<T> parse_field(const json& params, const char* name) {
         static_assert(is_parseable_v<T>);
         auto it = params.find(name);
         if (it == params.end() || it->is_null())
-            return maybe_not<T>;
+            return std::nullopt;
 
         bool right_type = std::is_same_v<T, bool>                  ? it->is_boolean()
                         : std::is_unsigned_v<T> || is_timestamp<T> ? it->is_number_unsigned()
                         : std::is_integral_v<T> || std::is_same_v<T, namespace_id>
                                 ? it->is_number_integer()
                         : is_namespace_var<T> ? it->is_number_integer() || it->is_string()
-                        : is_str_array<T>     ? it->is_array()
-                                              : it->is_string();
-        if (is_str_array<T> && right_type)
+                        : is_str_array<T> || is_int_array<T> ? it->is_array()
+                                                             : it->is_string();
+        if (is_str_array<T> && right_type) {
             for (auto& x : *it)
                 if (!x.is_string())
                     right_type = false;
+        } else if (is_int_array<T> && right_type) {
+            for (auto& x : *it)
+                if (!x.is_number_integer())
+                    right_type = false;
+        }
+
         if (!right_type)
             throw parse_error{
                     fmt::format("Invalid value given for '{}': expected {}", name, type_desc<T>)};
@@ -115,10 +113,10 @@ namespace {
     // current state of the bt_dict_consumer to just after the given field and so this
     // *must* be called in sorted key order.
     template <typename T>
-    maybe_type<T> parse_field(bt_dict_consumer& params, const char* name) {
+    std::optional<T> parse_field(bt_dict_consumer& params, const char* name) {
         static_assert(is_parseable_v<T>);
         if (!params.skip_until(name))
-            return maybe_not<T>;
+            return std::nullopt;
 
         try {
             if constexpr (std::is_same_v<T, std::string_view>)
@@ -129,11 +127,14 @@ namespace {
                 return params.consume_integer<T>();
             else if constexpr (is_timestamp<T>)
                 return from_epoch_ms(params.consume_integer<int64_t>());
-            else if constexpr (is_str_array<T>) {
-                auto strs = std::make_optional<T>();
+            else if constexpr (is_str_array<T> || is_int_array<T>) {
+                auto elems = std::make_optional<T>();
                 for (auto l = params.consume_list_consumer(); !l.is_finished();)
-                    strs->push_back(l.consume_string());
-                return strs;
+                    if constexpr (is_str_array<T>)
+                        elems->push_back(l.consume_string());
+                    else
+                        elems->push_back(l.consume_integer<int>());
+                return elems;
             } else if constexpr (is_namespace_var<T> || std::is_same_v<T, namespace_id>) {
                 if (params.is_integer())
                     return namespace_id{
@@ -151,7 +152,7 @@ namespace {
     // Backwards compat code for fields like ttl and timestamp that are accepted either
     // as integer *or* stringified integer.
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-    maybe_type<T> parse_stringified(const json& params, const char* name) {
+    std::optional<T> parse_stringified(const json& params, const char* name) {
         if (auto it = params.find(name); it != params.end() && it->is_string()) {
             if (T value; util::parse_int(it->get_ref<const std::string&>(), value))
                 return value;
@@ -180,7 +181,7 @@ namespace {
             typename = std::enable_if_t<
                     sizeof...(T) == sizeof...(Names) &&
                     (std::is_convertible_v<Names, std::string_view> && ...)>>
-    std::tuple<maybe_type<T>...> load_fields(Dict& params, const Names&... names) {
+    std::tuple<std::optional<T>...> load_fields(Dict& params, const Names&... names) {
         assert(check_ascending(names...));
         return {parse_field<T>(params, names)...};
     }
@@ -272,7 +273,7 @@ namespace {
 
         if constexpr (std::is_same_v<json, Dict>) {
             if (!oxenc::is_base64(*sig) ||
-                !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
+                !(sig->size() == 86 || (sig->size() == 88 && sig->substr(86) == "==")))
                 throw parse_error{"invalid signature: expected base64 encoded Ed25519 signature"};
             oxenc::from_base64(sig->begin(), sig->end(), sig_data_ptr);
         } else {
@@ -282,20 +283,40 @@ namespace {
         }
     }
 
+    template <typename RPC, typename Dict>
+    void load_subkey(RPC& rpc, const Dict&, const std::optional<std::string_view>& subkey) {
+        if (!subkey || subkey->empty())
+            return;
+        const auto& sk = *subkey;
+        if constexpr (std::is_same_v<json, Dict>) {
+            if (oxenc::is_base64(sk) && (sk.size() == 43 || (sk.size() == 44 && sk.back() == '=')))
+                oxenc::from_base64(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
+            else if (oxenc::is_hex(sk) && sk.size() == 64)
+                oxenc::from_hex(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
+            else
+                throw parse_error{
+                        "invalid subkey: expected base64 or hex-encoded 32-byte subkey index"};
+        } else {
+            if (sk.size() != 32)
+                throw parse_error{"invalid subkey: expected 32-byte subkey index"};
+            std::memcpy(rpc.subkey.emplace().data(), sk.data(), 32);
+        }
+    }
+
     void set_variant(bt_dict& dict, const std::string& key, const namespace_var& ns) {
         if (auto* id = std::get_if<namespace_id>(&ns))
             dict[key] = static_cast<std::underlying_type_t<namespace_id>>(*id);
-        else if (std::holds_alternative<namespace_all_t>(ns))
+        else {
+            assert(std::holds_alternative<namespace_all_t>(ns));
             dict[key] = "all";
-        else
-            assert(std::holds_alternative<std::monostate>(ns));
+        }
     }
 
 }  // namespace
 
 template <typename Dict>
 static void load(store& s, Dict& d) {
-    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig] = load_fields<
+    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subkey] = load_fields<
             std::string_view,
             system_clock::time_point,
             namespace_id,
@@ -303,6 +324,7 @@ static void load(store& s, Dict& d) {
             std::string,
             std::string_view,
             system_clock::time_point,
+            std::string_view,
             std::string_view>(
             d,
             "data",
@@ -312,7 +334,8 @@ static void load(store& s, Dict& d) {
             "pubkey",
             "pubkey_ed25519",
             "sig_timestamp",
-            "signature");
+            "signature",
+            "subkey");
 
     // timestamp and ttl are special snowflakes: for backwards compat reasons, they can
     // be passed as strings when loading from json.
@@ -340,6 +363,7 @@ static void load(store& s, Dict& d) {
 
     if (sig) {
         load_pk_signature(s, d, pk, pk_ed25519, sig);
+        load_subkey(s, d, subkey);
         s.sig_ts = sig_ts.value_or(s.timestamp);
     } else
         load_pk(s, pk);
@@ -381,6 +405,8 @@ bt_value store::to_bt() const {
             {"data", std::string_view{data}}};
     if (msg_namespace != namespace_id::Default)
         d["namespace"] = static_cast<std::underlying_type_t<namespace_id>>(msg_namespace);
+    if (subkey)
+        d["subkey"] = util::view_guts(*subkey);
     if (signature)
         d["signature"] = util::view_guts(*signature);
     if (pubkey_ed25519)
@@ -391,12 +417,13 @@ bt_value store::to_bt() const {
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {
-    auto [lastHash, last_hash, msg_ns, pubKey, pubkey, pk_ed25519, sig, ts] = load_fields<
+    auto [lastHash, last_hash, msg_ns, pubKey, pubkey, pk_ed25519, sig, subkey, ts] = load_fields<
             std::string,
             std::string,
             namespace_id,
             std::string,
             std::string,
+            std::string_view,
             std::string_view,
             std::string_view,
             system_clock::time_point>(
@@ -408,6 +435,7 @@ static void load(retrieve& r, Dict& d) {
             "pubkey",
             "pubkey_ed25519",
             "signature",
+            "subkey",
             "timestamp");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
@@ -415,6 +443,7 @@ static void load(retrieve& r, Dict& d) {
 
     if (pk_ed25519 || sig || ts || (msg_ns && *msg_ns != namespace_id::LegacyClosed)) {
         load_pk_signature(r, d, pk, pk_ed25519, sig);
+        load_subkey(r, d, subkey);
         r.timestamp = std::move(*ts);
         r.check_signature = true;
     } else {
@@ -497,7 +526,7 @@ static void load(delete_all& da, Dict& d) {
 
     load_pk_signature(da, d, pubkey, pubkey_ed25519, signature);
     require("timestamp", timestamp);
-    da.msg_namespace = std::move(msgs_ns);
+    da.msg_namespace = msgs_ns.value_or(namespace_id::Default);
     da.timestamp = std::move(*timestamp);
 }
 void delete_all::load_from(json params) {
@@ -530,7 +559,7 @@ static void load(delete_before& db, Dict& d) {
     load_pk_signature(db, d, pubkey, pubkey_ed25519, signature);
     require("before", before);
     db.before = std::move(*before);
-    db.msg_namespace = std::move(msgs_ns);
+    db.msg_namespace = msgs_ns.value_or(namespace_id::Default);
 }
 void delete_before::load_from(json params) {
     load(*this, params);
@@ -562,7 +591,7 @@ static void load(expire_all& e, Dict& d) {
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
-    e.msg_namespace = std::move(msgs_ns);
+    e.msg_namespace = msgs_ns.value_or(namespace_id::Default);
 }
 void expire_all::load_from(json params) {
     load(*this, params);
@@ -671,6 +700,200 @@ void oxend_request::load_from(json params) {
 }
 void oxend_request::load_from(bt_dict_consumer params) {
     load(*this, params);
+}
+
+static client_subrequest as_subrequest(client_request&& req) {
+    return var::visit(
+            [](auto&& r) -> client_subrequest {
+                using T = std::decay_t<decltype(r)>;
+                if constexpr (type_list_contains<T, client_rpc_subrequests>)
+                    return std::move(r);
+                else
+                    throw parse_error{
+                            "Invalid batch subrequest: subrequests may not contain meta-requests"};
+            },
+            std::move(req));
+}
+
+void batch::load_from(json params) {
+    auto reqs_it = params.find("requests");
+    if (reqs_it == params.end() || !reqs_it->is_array() || reqs_it->empty())
+        throw parse_error{"Invalid batch request: no valid \"requests\" field"};
+    if (reqs_it->size() > BATCH_REQUEST_MAX)
+        throw parse_error{"Invalid batch request: subrequest limit exceeded"};
+
+    for (auto& j : *reqs_it) {
+        if (!j.is_object())
+            throw parse_error{"Invalid batch request: requests must be objects"};
+        auto meth_it = j.find("method");
+        auto params_it = j.find("params");
+        if (meth_it == j.end() || params_it == j.end() || !meth_it->is_string() ||
+            !params_it->is_object())
+            throw parse_error{"Invalid batch request: subrequests must have method/params keys"};
+        auto method = meth_it->get<std::string_view>();
+        auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+        if (rpc_it == RequestHandler::client_rpc_endpoints.end())
+            throw parse_error{
+                    "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
+        subreqs.push_back(as_subrequest(rpc_it->second.load_req(std::move(*params_it))));
+    }
+}
+void batch::load_from(bt_dict_consumer params) {
+    if (!params.skip_until("requests") || !params.is_list())
+        throw parse_error{"Invalid batch request: no valid \"requests\" field"};
+
+    auto requests = params.consume_list_consumer();
+    while (!requests.is_finished()) {
+        if (!requests.is_dict())
+            throw parse_error{"Invalid batch request: requests must be dicts"};
+        if (subreqs.size() >= BATCH_REQUEST_MAX)
+            throw parse_error{"Invalid batch request: subrequest limit exceeded"};
+        auto sr = requests.consume_dict_consumer();
+        if (!sr.skip_until("method") || !sr.is_string())
+            throw parse_error{"Invalid batch request: subrequests must have a method"};
+        auto method = sr.consume_string_view();
+        auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+        if (rpc_it == RequestHandler::client_rpc_endpoints.end())
+            throw parse_error{
+                    "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
+        if (!sr.skip_until("params") || !sr.is_dict())
+            throw parse_error{"Invalid batch request: subrequests must have a params dict"};
+        subreqs.push_back(as_subrequest(rpc_it->second.load_req(sr.consume_dict_consumer())));
+    }
+    if (subreqs.empty())
+        throw parse_error{"Invalid batch request: empty \"requests\" list"};
+}
+
+// Copies an optional vector into a fixed-size array, substituting 0's for omitted vector elements,
+// and ignoring anything in the vector longer than the given size.  Gives nullopt if the input
+// vector is itself nullopt or empty.
+template <size_t N, typename T>
+static std::optional<std::array<T, N>> to_fixed_array(const std::optional<std::vector<T>>& in) {
+    if (!in || in->empty())
+        return std::nullopt;
+    std::array<T, N> out;
+    for (size_t i = 0; i < N; i++)
+        out[i] = i < in->size() ? (*in)[i] : T{0};
+    return out;
+}
+
+template <typename Dict>
+static void load_condition(ifelse& i, Dict if_) {
+    auto [height_ge_, height_lt_, hf_ge_, hf_lt_, v_ge_, v_lt_] = load_fields<
+            int,
+            int,
+            std::vector<int>,
+            std::vector<int>,
+            std::vector<int>,
+            std::vector<int>>(
+            if_,
+            "height_at_least",
+            "height_before",
+            "hf_at_least",
+            "hf_before",
+            "v_at_least",
+            "v_before");
+
+    auto hf_ge = to_fixed_array<2>(hf_ge_);
+    auto hf_lt = to_fixed_array<2>(hf_lt_);
+    auto v_ge = to_fixed_array<3>(v_ge_);
+    auto v_lt = to_fixed_array<3>(v_lt_);
+    auto height_ge = height_ge_;
+    auto height_lt = height_lt_;
+
+    if (!(height_ge_ || height_lt_ || hf_ge || hf_lt || v_ge || v_lt))
+        throw parse_error{"Invalid ifelse request: must specify at least one \"if\" condition"};
+
+    i.condition = [=](const snode::ServiceNode& snode) {
+        bool result = true;
+        if (hf_ge || hf_lt) {
+            std::array<int, 2> hf = {snode.hf().first, snode.hf().second};
+            if (hf_ge)
+                result &= hf >= *hf_ge;
+            if (hf_lt)
+                result &= hf < *hf_lt;
+        }
+        if (v_ge || v_lt) {
+            std::array<int, 3> v = {
+                    STORAGE_SERVER_VERSION[0],
+                    STORAGE_SERVER_VERSION[1],
+                    STORAGE_SERVER_VERSION[2]};
+            if (v_ge)
+                result &= v >= *v_ge;
+            if (v_lt)
+                result &= v < *v_lt;
+        }
+        if (height_ge || height_lt) {
+            auto height = static_cast<int>(snode.blockheight());
+            if (height_ge)
+                result &= height >= *height_ge;
+            if (height_lt)
+                result &= height < *height_lt;
+        }
+        return result;
+    };
+}
+
+static std::unique_ptr<client_request> load_ifelse_request(json& params, const std::string& key) {
+    auto it = params.find(key);
+    if (it == params.end())
+        return nullptr;
+    if (!it->is_object())
+        throw parse_error{"Invalid ifelse request: " + key + " must be an object"};
+    auto mit = it->find("method");
+    auto pit = it->find("params");
+    if (mit == it->end() || !mit->is_string() || pit == it->end())
+        throw parse_error{"Invalid ifelse request: " + key + " must have method/params keys"};
+    auto method = mit->get<std::string_view>();
+    auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+    if (rpc_it == RequestHandler::client_rpc_endpoints.end())
+        throw parse_error{"Invalid ifelse request method \"" + key + "\""};
+
+    return var::visit(
+            [](auto&& r) { return std::make_unique<client_request>(std::move(r)); },
+            rpc_it->second.load_req(std::move(*pit)));
+}
+
+static std::unique_ptr<client_request> load_ifelse_request(
+        bt_dict_consumer& params, const std::string& key) {
+    if (!params.skip_until(key))
+        return nullptr;
+    if (!params.is_dict())
+        throw parse_error{"Invalid ifelse request: " + key + " must be a dict"};
+    auto req = params.consume_dict_consumer();
+    if (!req.skip_until("method") || !req.is_string())
+        throw parse_error{"Invalid ifelse request: " + key + " missing method"};
+    auto method = req.consume_string_view();
+    auto rpc_it = RequestHandler::client_rpc_endpoints.find(method);
+    if (rpc_it == RequestHandler::client_rpc_endpoints.end())
+        throw parse_error{"Invalid ifelse request method \"" + key + "\""};
+
+    if (!req.skip_until("params") || !req.is_dict())
+        throw parse_error{"Invalid ifelse request: " + key + " missing params"};
+    return var::visit(
+            [](auto&& r) { return std::make_unique<client_request>(std::move(r)); },
+            rpc_it->second.load_req(req.consume_dict_consumer()));
+}
+
+void ifelse::load_from(json params) {
+    auto cond_it = params.find("if");
+    if (cond_it == params.end() || !cond_it->is_object())
+        throw parse_error{"Invalid ifelse request: no valid \"if\" field"};
+    load_condition(*this, std::move(*cond_it));
+
+    action_true = load_ifelse_request(params, "then");
+    action_false = load_ifelse_request(params, "else");
+    if (!action_true && !action_false)
+        throw parse_error{"Invalid ifelse request: at least one of \"then\"/\"else\" required"};
+}
+void ifelse::load_from(bt_dict_consumer params) {
+    action_false = load_ifelse_request(params, "else");
+    if (!params.skip_until("if") || !params.is_dict())
+        throw parse_error{"Invalid ifelse request: no valid \"if\" field"};
+    load_condition(*this, params.consume_dict_consumer());
+    action_true = load_ifelse_request(params, "then");
+    if (!action_true && !action_false)
+        throw parse_error{"Invalid ifelse request: at least one of \"then\"/\"else\" required"};
 }
 
 }  // namespace oxen::rpc
