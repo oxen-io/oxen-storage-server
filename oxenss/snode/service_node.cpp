@@ -836,6 +836,8 @@ void ServiceNode::oxend_ping() {
 
     json oxend_params{
             {"version", STORAGE_SERVER_VERSION},
+            {"pubkey_ed25519",
+             oxenc::to_hex(our_address_.pubkey_ed25519.begin(), our_address_.pubkey_ed25519.end())},
             {"https_port", our_address_.port},
             {"omq_port", our_address_.omq_port}};
 
