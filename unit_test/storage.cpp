@@ -52,7 +52,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
 
-        auto items = storage.retrieve(pubkey, namespace_id::Default, "");
+        auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, "");
 
         REQUIRE(items.size() == 1);
         CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey
@@ -89,7 +89,7 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
 
-        auto items = storage.retrieve(pubkey, ns, "");
+        auto [items, more] = storage.retrieve(pubkey, ns, "");
 
         REQUIRE(items.size() == 1);
         CHECK_FALSE(items[0].pubkey);  // pubkey is left unset when we retrieve for pubkey
@@ -145,13 +145,13 @@ TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
 
     const auto lastHash = "";
     {
-        auto items = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
         REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash0");
     }
 
     {
-        auto items = storage.retrieve(pubkey2, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey2, namespace_id::Default, lastHash);
         REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash1");
     }
@@ -177,14 +177,14 @@ TEST_CASE("storage - return entries older than lasthash", "[storage]") {
 
     {
         const auto lastHash = "hash0";
-        auto items = storage.retrieve(pubkey, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, lastHash);
         REQUIRE(items.size() == num_entries - 1);
         CHECK(items[0].hash == "hash1");
     }
 
     {
         const auto lastHash = std::string("hash") + std::to_string(num_entries / 2 - 1);
-        auto items = storage.retrieve(pubkey, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, lastHash);
         REQUIRE(items.size() == num_entries / 2);
         CHECK(items[0].hash == "hash" + std::to_string(num_entries / 2));
     }
@@ -215,14 +215,14 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
 
     {
         const auto lastHash = "";
-        auto items = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
         REQUIRE(items.size() == 2);
     }
     std::this_thread::sleep_for(5ms);
     storage.clean_expired();
     {
         const auto lastHash = "";
-        auto items = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
+        auto [items, more] = storage.retrieve(pubkey1, namespace_id::Default, lastHash);
         REQUIRE(items.size() == 1);
         CHECK(items[0].hash == "hash0");
     }
@@ -262,7 +262,7 @@ TEST_CASE("storage - bulk data storage", "[storage]") {
 
     // retrieve
     {
-        auto items = storage.retrieve(pubkey, namespace_id::Default, "");
+        auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, "");
         CHECK(items.size() == num_items);
     }
 
@@ -311,7 +311,7 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
 
     // retrieve
     {
-        auto items = storage.retrieve(pubkey, namespace_id::Default, "");
+        auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, "");
         CHECK(items.size() == num_items);
     }
 }
@@ -342,11 +342,11 @@ TEST_CASE("storage - retrieve limit", "[storage]") {
     CHECK(storage.get_owner_count() == 2);
     CHECK(storage.get_message_count() == num_entries + 5);
 
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "").size() == num_entries);
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 10).size() == 10);
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 88).size() == 88);
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 99).size() == 99);
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 100).size() == 100);
-    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 101).size() == 100);
-    CHECK(storage.retrieve(pubkey2, namespace_id::Default, "", 10).size() == 5);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "").first.size() == num_entries);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 10).first.size() == 10);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 88).first.size() == 88);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 99).first.size() == 99);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 100).first.size() == 100);
+    CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 101).first.size() == 100);
+    CHECK(storage.retrieve(pubkey2, namespace_id::Default, "", 10).first.size() == 5);
 }

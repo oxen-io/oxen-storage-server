@@ -712,8 +712,9 @@ void RequestHandler::process_client_req(
         req.max_size = RETRIEVE_MAX_SIZE;
 
     std::vector<message> msgs;
+    bool more = false;
     try {
-        msgs = service_node_.get_db().retrieve(
+        std::tie(msgs, more) = service_node_.get_db().retrieve(
                 req.pubkey,
                 req.msg_namespace,
                 req.last_hash.value_or(""),
@@ -740,7 +741,10 @@ void RequestHandler::process_client_req(
         });
     }
 
-    json res{{"messages", std::move(messages)}};
+    json res{
+        {"messages", std::move(messages)},
+        {"more", more}
+    };
     add_misc_response_fields(res, service_node_, now);
 
     return cb(Response{http::OK, std::move(res)});

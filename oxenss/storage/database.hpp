@@ -53,11 +53,14 @@ class Database {
 
     // Retrieves messages owned by pubkey received since `last_hash` stored in namespace `ns`.  If
     // last_hash is empty or not found then returns all messages (up to the limit). Optionally takes
-    // a maximum number of messages to return.
+    // a maximum number of messages to return or a maximum aggregate size of messages to return.
     //
     // Note that the `pubkey` value of the returned message's will be left default constructed,
     // i.e. *not* filled with the given pubkey.
-    std::vector<message> retrieve(
+    //
+    // Returns a vector of messages, and a bool indicating whether there are more results to
+    // retrieve.
+    std::pair<std::vector<message>, bool> retrieve(
             const user_pubkey_t& pubkey,
             namespace_id ns,
             const std::string& last_hash,

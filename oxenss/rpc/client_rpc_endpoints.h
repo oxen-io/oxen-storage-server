@@ -227,8 +227,10 @@ struct store final : recursive {
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
 ///
-/// On success, returns a dict containing key "messages" with value of a list of message details;
-/// each message is a dict containing keys:
+/// On success, returns a dict containing key "messages" with value of a list of message details,
+/// and key "more" with a boolean value indicating whether there were more messages (i.e. results
+/// were truncated because of the requested or default limits).  Each message details value is a
+/// dict containing keys:
 ///
 /// - "hash" -- the message hash
 /// - "timestamp" -- the timestamp when the message was deposited
