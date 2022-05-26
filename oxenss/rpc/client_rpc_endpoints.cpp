@@ -417,9 +417,11 @@ bt_value store::to_bt() const {
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {
-    auto [lastHash, last_hash, msg_ns, pubKey, pubkey, pk_ed25519, sig, subkey, ts] = load_fields<
+    auto [lastHash, last_hash, max_count, max_size, msg_ns, pubKey, pubkey, pk_ed25519, sig, subkey, ts] = load_fields<
             std::string,
             std::string,
+            int,
+            int,
             namespace_id,
             std::string,
             std::string,
@@ -430,6 +432,8 @@ static void load(retrieve& r, Dict& d) {
             d,
             "lastHash",
             "last_hash",
+            "max_count",
+            "max_size",
             "namespace",
             "pubKey",
             "pubkey",
@@ -466,6 +470,9 @@ static void load(retrieve& r, Dict& d) {
             throw parse_error{"Invalid last_hash: expected base64 (43 chars)"};
     }
     r.last_hash = std::move(last_hash);
+
+    r.max_count = max_count;
+    r.max_size = max_size;
 }
 void retrieve::load_from(json params) {
     load(*this, params);

@@ -43,11 +43,18 @@ inline constexpr auto STORE_TOLERANCE = 10s;
 inline constexpr auto SIGNATURE_TOLERANCE = 60s;
 inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 
-// The maximum messages that may be retrieved in a single request by a client:
-constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
+// Maximum retrieve size (in bytes).  We have to be quite conversative here because there are
+// several ways with multiple layers of base64 encoding that can occur: first, for json, the body
+// gets base64 encoded, but then onion requests (by default) also b64 encode the encrypted payload,
+// so we might have double base64 encoding.  We include the first b64 encoding overhead in our size
+// calculation, but not the second, and so this value is reduced to accomodate it.
+//
+// The maximum network message size is 10MiB, which means the max before b64 encoding is 7.5MiB
+// (7864320).  We allow for some respoinse overhead, which lands us on this effective maximum:
+inline constexpr int RETRIEVE_MAX_SIZE = 7'800'000;
 
 // Maximum subrequests that can be stuffed into a single batch request
-constexpr size_t BATCH_REQUEST_MAX = 5;
+inline constexpr size_t BATCH_REQUEST_MAX = 5;
 
 // Simpler wrapper that works for most of our responses
 struct Response {

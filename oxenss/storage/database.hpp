@@ -46,6 +46,11 @@ class Database {
 
     void bulk_store(const std::vector<message>& items);
 
+    // Default value for message overhead calculations in `retrieve`.  In practice, overhead for the
+    // message itself (i.e. the json keys, etc.) seems to be in the 75-80 character range (depending
+    // on whether json or bt-encoded), not including the hash + the data.
+    constexpr static size_t DEFAULT_MSG_OVERHEAD = 100;
+
     // Retrieves messages owned by pubkey received since `last_hash` stored in namespace `ns`.  If
     // last_hash is empty or not found then returns all messages (up to the limit). Optionally takes
     // a maximum number of messages to return.
@@ -56,7 +61,11 @@ class Database {
             const user_pubkey_t& pubkey,
             namespace_id ns,
             const std::string& last_hash,
-            std::optional<int> num_results = std::nullopt);
+            std::optional<size_t> num_results = std::nullopt,
+            std::optional<size_t> max_size = std::nullopt,
+            bool size_b64 = true, // True if the data will get b64-encoded (and thus is 4/3 as large)
+            size_t per_message_overhead = DEFAULT_MSG_OVERHEAD // how much overhead per message to allow for
+            );
 
     // Retrieves all messages.
     std::vector<message> retrieve_all();

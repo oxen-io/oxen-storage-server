@@ -189,6 +189,28 @@ struct store final : recursive {
 ///   omitted value.
 /// - `subkey` (optional) allows retrieval using a derived subkey for authentication.  See `store`
 ///   for details on how this works.
+/// - `max_count`/`max_size` (optional) these two integer values control how many messages to
+///   retrieve.  `max_count` takes an absolute count; at most the given value will be returned, when
+///   specified.  `max_size` specifies a maximum aggregate size of messages to return (in bytes, if
+///   positive).  `max_size` may be specified as `-1` to indicate the maximum size supported in a
+///   single network request (minus some overhead allowance); -2 indicates half the maximum size, -3
+///   indicates 1/3 the maximum, etc.  Currently the maximum retrieval size is 7.8MB, but this could
+///   change in the future.
+///
+///   When batching multiple retrieve requests together it is highly recommended to use a negative
+///   value to avoid exceeding the network size limit: e.g. if retrieving from 5 different
+///   namespaces then specify `"max_size": -5` on each of them to ensure that, if all are full, you
+///   will not exceed network limits.
+///
+///   When both `max_count` and `max_size` are specified then the returned message count will not
+///   exceed either limit.
+///
+///   When neither `max_count` nor `max_size` are specified then the request is equivalent to
+///   omitting `max_count` and specifying `max_size` as -5 (i.e. return up to 1/5 of the network max
+///   transmission size at a time).
+///
+///   Note that regardless of the two values the response will always include at least one message,
+///   even if it would exceed the given maximum size.
 ///
 /// Authentication parameters: these are optional during a transition period, up until Oxen
 /// hard-fork 19, and become required starting there.  During the transition period, *if* provided
@@ -222,6 +244,8 @@ struct retrieve final : endpoint {
     std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
+    std::optional<int> max_count;
+    std::optional<int> max_size;
 
     bool check_signature = false;  // For transition; delete this once we require sigs always
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;

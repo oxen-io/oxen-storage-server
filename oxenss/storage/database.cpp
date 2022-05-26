@@ -626,13 +626,19 @@ std::vector<message> Database::retrieve(
         const user_pubkey_t& pubkey,
         namespace_id ns,
         const std::string& last_hash,
-        std::optional<int> num_results) {
+        std::optional<size_t> max_results,
+        std::optional<size_t> max_size,
+        const bool size_b64,
+        const size_t per_message_overhead) {
     std::vector<message> results;
 
     auto owner_st = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto ownerid = exec_and_maybe_get<int64_t>(owner_st, pubkey);
     if (!ownerid)
         return results;
+
+    if (max_results && *max_results < 1)
+        max_results = 1;
 
     std::optional<int64_t> last_id;
     if (!last_hash.empty()) {
@@ -651,11 +657,19 @@ std::vector<message> Database::retrieve(
     st->bind(pos++, to_int(ns));
     if (last_id)
         st->bind(pos++, *last_id);
-    st->bind(pos++, num_results.value_or(-1));
+    st->bind(pos++, max_results ? static_cast<int>(*max_results) : -1);
 
+    size_t agg_size = 0;
     while (st->executeStep()) {
         auto [hash, ns, ts, exp, data] =
                 get<std::string, namespace_id, int64_t, int64_t, std::string>(st);
+        if (max_size) {
+            agg_size += per_message_overhead;
+            agg_size += hash.size();
+            agg_size += size_b64 ? data.size() * 4 / 3 : data.size();
+            if (!results.empty() && agg_size > *max_size)
+                break;
+        }
         results.emplace_back(
                 std::move(hash), ns, from_epoch_ms(ts), from_epoch_ms(exp), std::move(data));
     }
