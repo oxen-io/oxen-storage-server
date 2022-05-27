@@ -11,6 +11,7 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="module")
 def omq():
     omq = OxenMQ()
+    omq.max_message_size = 10*1024*1024
     omq.start()
     return omq
 
@@ -37,7 +38,7 @@ def sk():
     return SigningKey.generate()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def exclude(pytestconfig):
     s = pytestconfig.getoption("exclude")
     return {s} if s and len(s) else {}
