@@ -417,30 +417,41 @@ bt_value store::to_bt() const {
 
 template <typename Dict>
 static void load(retrieve& r, Dict& d) {
-    auto [lastHash, last_hash, max_count, max_size, msg_ns, pubKey, pubkey, pk_ed25519, sig, subkey, ts] = load_fields<
-            std::string,
-            std::string,
-            int,
-            int,
-            namespace_id,
-            std::string,
-            std::string,
-            std::string_view,
-            std::string_view,
-            std::string_view,
-            system_clock::time_point>(
-            d,
-            "lastHash",
-            "last_hash",
-            "max_count",
-            "max_size",
-            "namespace",
-            "pubKey",
-            "pubkey",
-            "pubkey_ed25519",
-            "signature",
-            "subkey",
-            "timestamp");
+    auto [lastHash,
+          last_hash,
+          max_count,
+          max_size,
+          msg_ns,
+          pubKey,
+          pubkey,
+          pk_ed25519,
+          sig,
+          subkey,
+          ts] =
+            load_fields<
+                    std::string,
+                    std::string,
+                    int,
+                    int,
+                    namespace_id,
+                    std::string,
+                    std::string,
+                    std::string_view,
+                    std::string_view,
+                    std::string_view,
+                    system_clock::time_point>(
+                    d,
+                    "lastHash",
+                    "last_hash",
+                    "max_count",
+                    "max_size",
+                    "namespace",
+                    "pubKey",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "signature",
+                    "subkey",
+                    "timestamp");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     auto& pk = pubkey ? pubkey : pubKey;

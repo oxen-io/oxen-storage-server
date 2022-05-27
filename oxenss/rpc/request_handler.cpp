@@ -707,8 +707,7 @@ void RequestHandler::process_client_req(
     // means 1/5 of the max:
     if (req.max_size && *req.max_size < 0) {
         req.max_size = RETRIEVE_MAX_SIZE / -*req.max_size;
-    }
-    else if (!req.max_size || *req.max_size > RETRIEVE_MAX_SIZE)
+    } else if (!req.max_size || *req.max_size > RETRIEVE_MAX_SIZE)
         req.max_size = RETRIEVE_MAX_SIZE;
 
     std::vector<message> msgs;
@@ -741,10 +740,7 @@ void RequestHandler::process_client_req(
         });
     }
 
-    json res{
-        {"messages", std::move(messages)},
-        {"more", more}
-    };
+    json res{{"messages", std::move(messages)}, {"more", more}};
     add_misc_response_fields(res, service_node_, now);
 
     return cb(Response{http::OK, std::move(res)});

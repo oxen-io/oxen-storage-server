@@ -66,9 +66,11 @@ class Database {
             const std::string& last_hash,
             std::optional<size_t> num_results = std::nullopt,
             std::optional<size_t> max_size = std::nullopt,
-            bool size_b64 = true, // True if the data will get b64-encoded (and thus is 4/3 as large)
-            size_t per_message_overhead = DEFAULT_MSG_OVERHEAD // how much overhead per message to allow for
-            );
+            bool size_b64 =
+                    true,  // True if the data will get b64-encoded (and thus is 4/3 as large)
+            size_t per_message_overhead =
+                    DEFAULT_MSG_OVERHEAD  // how much overhead per message to allow for
+    );
 
     // Retrieves all messages.
     std::vector<message> retrieve_all();
