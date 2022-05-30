@@ -15,6 +15,7 @@ target_link_libraries(snode
     server
     logging
     rpc
+    oxenc::oxenc
 
     cpr::cpr
     sodium)

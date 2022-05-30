@@ -10,9 +10,9 @@ if(CCACHE_PROGRAM)
   endforeach()
 endif()
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13)
 
-project(storage_server
+project(oxenss
     VERSION 2.3.0
     LANGUAGES CXX C)
 

@@ -19,5 +19,6 @@ target_link_libraries(rpc
 
     cpr::cpr
     oxenmq::oxenmq
+    oxenc::oxenc
     sodium)
 
