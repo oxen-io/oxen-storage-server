@@ -1,11 +1,47 @@
 
-# We'll use defaults from the LLVM style, but with 4 columns indentation.
-BasedOnStyle: LLVM
+BasedOnStyle: Google
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveAssignments: 'false'
+AlignConsecutiveDeclarations: 'false'
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments: 'true'
+AllowAllArgumentsOnNextLine: 'true'
+AllowShortBlocksOnASingleLine: 'false'
+AllowShortCaseLabelsOnASingleLine: 'true'
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: 'false'
+AllowShortLoopsOnASingleLine: 'false'
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Attach
+BreakBeforeTernaryOperators: 'true'
+BreakConstructorInitializers: AfterColon
+Cpp11BracedListStyle: 'true'
+KeepEmptyLinesAtTheStartOfBlocks: 'true'
+NamespaceIndentation: Inner
+CompactNamespaces: 'true'
+PenaltyBreakString: '3'
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: 'false'
+SpacesInContainerLiterals: 'false'
+SpacesInParentheses: 'false'
+SpacesInSquareBrackets: 'false'
+Standard: c++17
+UseTab: Never
+SortIncludes: false
+ColumnLimit: 100
 IndentWidth: 4
-Language: Cpp
-# Force pointers to the type for C++.
+AccessModifierOffset: -2
+ConstructorInitializerIndentWidth: 8
+ContinuationIndentWidth: 8
+
+
+# treat pointers and reference declarations as if part of the type
 DerivePointerAlignment: false
 PointerAlignment: Left
-AlwaysBreakAfterReturnType: None
-AlwaysBreakAfterDefinitionReturnType: None
-AlwaysBreakTemplateDeclarations: true
+
+# when wrapping function calls/declarations, force each parameter to have its own line
+BinPackParameters: 'false'
+BinPackArguments: 'false'

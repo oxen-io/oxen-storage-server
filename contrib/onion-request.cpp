@@ -10,15 +10,16 @@
 //          -I../../oxen-core/external/cpr/include ../build/crypto/libcrypto.a -loxenmq -lsodium -lcurl -lcrypto
 //
 
-#include "../crypto/include/channel_encryption.hpp"
-#include "cpr/cpr.h"
+#include <oxenss/crypto/channel_encryption.hpp>
+#include <oxenss/crypto/keys.h>
+#include <cpr/cpr.h>
 #include <chrono>
 #include <exception>
 #include <iostream>
 #include <random>
 #include <sodium.h>
-#include <oxenmq/hex.h>
-#include <oxenmq/base64.h>
+#include <oxenc/hex.h>
+#include <oxenc/base64.h>
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 
@@ -26,7 +27,10 @@ extern "C" {
 #include <sys/param.h>
 }
 
+using namespace std::literals;
+
 using namespace oxen;
+using namespace oxen::crypto;
 
 int usage(std::string_view argv0, std::string_view err = "") {
     if (!err.empty())
@@ -88,7 +92,7 @@ int main(int argc, char** argv) {
         if (arg == "--aes-cbc"sv) { enc_type = EncryptType::aes_cbc; continue; }
         if (arg == "--random"sv) { enc_type = std::nullopt; continue; }
 
-        bool hex = arg.size() > 0 && oxenmq::is_hex(arg);
+        bool hex = arg.size() > 0 && oxenc::is_hex(arg);
         if (i >= argc - 2) {
             if (hex)
                 return usage(argv[0], "Missing PAYLOAD and CONTROL values");
@@ -137,7 +141,7 @@ int main(int argc, char** argv) {
                 auto& pk = sn.at("service_node_pubkey").get_ref<const std::string&>();
                 auto& e = sn.at("pubkey_ed25519").get_ref<const std::string&>();
                 auto& x = sn.at("pubkey_x25519").get_ref<const std::string&>();
-                if (e.size() != 64 || x.size() != 64 || !oxenmq::is_hex(x) || !oxenmq::is_hex(e))
+                if (e.size() != 64 || x.size() != 64 || !oxenc::is_hex(x) || !oxenc::is_hex(e))
                     throw std::runtime_error{sn.at("service_node_pubkey").get<std::string>() + " is missing ed/x25519 pubkeys"};
                 aux_keys.emplace(legacy_pubkey::from_hex(pk),
                         std::make_pair(ed25519_pubkey::from_hex(e), x25519_pubkey::from_hex(x)));
@@ -262,7 +266,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     auto it = keys.rbegin();
     {
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a, A, false};
+        ChannelEncryption e{a, A, false};
 
         auto data = encode_size(payload.size());
         data += payload;
@@ -290,7 +294,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
         // Generate eph key for *this* request and encrypt it:
         crypto_box_keypair(A.data(), a.data());
-        oxen::ChannelEncryption e{a, A, false};
+        ChannelEncryption e{a, A, false};
         last_etype = enc_type.value_or(random_etype());
 
 #ifndef NDEBUG
@@ -325,7 +329,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // Nothing in the response tells us how it is encoded so we have to guess; the client normally
     // *does* know because it specifies `"base64": false` if it wants binary, but I don't want to
     // parse and guess what we should do, so we'll just guess.
-    oxen::ChannelEncryption d{final_seckey, final_pubkey, false};
+    ChannelEncryption d{final_seckey, final_pubkey, false};
     bool decrypted = false;
     auto body = std::move(res.text);
     auto orig_size = body.size();
@@ -334,8 +338,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
     if (decrypted) {
         std::cerr << "Body is " << orig_size << " encrypted bytes, decrypted to " << body.size() << " bytes:\n";
-    } else if (oxenmq::is_base64(body)) {
-        body = oxenmq::from_base64(body);
+    } else if (oxenc::is_base64(body)) {
+        body = oxenc::from_base64(body);
         std::cerr << "Body was " << orig_size << " base64 bytes; decoded to " << body.size() << " bytes";
         try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
         catch (...) {}
