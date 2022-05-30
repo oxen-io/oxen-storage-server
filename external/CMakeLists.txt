@@ -11,19 +11,6 @@ if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
 endif()
 
-option(FORCE_SPDLOG_SUBMODULE "force using spdlog submodule" OFF)
-if(NOT STATIC AND NOT FORCE_SPDLOG_SUBMODULE)
-  pkg_check_modules(SPDLOG spdlog>=1.8 IMPORTED_TARGET)
-endif()
-if(SPDLOG_FOUND)
-  add_library(spdlog INTERFACE)
-  target_link_libraries(spdlog INTERFACE PkgConfig::SPDLOG)
-  add_library(spdlog::spdlog ALIAS spdlog)
-else()
-  add_subdirectory(spdlog)
-endif()
-
-
 if(NOT TARGET sodium)
   # Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
   option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
@@ -48,51 +35,41 @@ if(NOT TARGET sodium)
   export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
 endif()
 
-option(FORCE_OXENC_SUBMODULE "force using oxenc submodule" OFF)
-if(NOT STATIC AND NOT FORCE_OXENC_SUBMODULE)
-  pkg_check_modules(OXENC liboxenc>=1.0.1 IMPORTED_TARGET)
-endif()
-if(OXENC_FOUND)
-  add_library(oxenc INTERFACE)
-  if(NOT TARGET PkgConfig::OXENC AND CMAKE_VERSION VERSION_LESS "3.21")
-    # Work around cmake bug 22180 (PkgConfig::OXENC not set if no flags needed)
-  else()
-    target_link_libraries(oxenc INTERFACE PkgConfig::OXENC)
+
+macro(system_or_submodule BIGNAME smallname pkgconf subdir)
+  option(FORCE_${BIGNAME}_SUBMODULE "force using ${smallname} submodule" OFF)
+  if(NOT STATIC AND NOT FORCE_${BIGNAME}_SUBMODULE)
+    pkg_check_modules(${BIGNAME} ${pkgconf} IMPORTED_TARGET)
   endif()
-  message(STATUS "Found system liboxenc ${OXENC_VERSION}")
-else()
-  set(WITH_TESTS OFF CACHE BOOL "disable oxenc tests")
-  message(STATUS "using oxenc submodule")
-  add_subdirectory(oxenc)
-endif()
-add_library(oxenc::oxenc ALIAS oxenc)
+  if(${BIGNAME}_FOUND)
+    add_library(${smallname} INTERFACE)
+    if(NOT TARGET PkgConfig::${BIGNAME} AND CMAKE_VERSION VERSION_LESS "3.21")
+      # Work around cmake bug 22180 (PkgConfig::THING not set if no flags needed)
+    else()
+      target_link_libraries(${smallname} INTERFACE PkgConfig::${BIGNAME})
+    endif()
+    message(STATUS "Found system ${smallname} ${${BIGNAME}_VERSION}")
+  else()
+    message(STATUS "using ${smallname} submodule")
+    add_subdirectory(${subdir})
+  endif()
+  if(NOT TARGET ${smallname}::${smallname})
+    add_library(${smallname}::${smallname} ALIAS ${smallname})
+  endif()
+endmacro()
 
-option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
-if(NOT STATIC AND NOT FORCE_OXENMQ_SUBMODULE)
-  pkg_check_modules(OXENMQ liboxenmq>=1.2.6 IMPORTED_TARGET)
-endif()
-if(OXENMQ_FOUND)
-  add_library(oxenmq INTERFACE)
-  target_link_libraries(oxenmq INTERFACE PkgConfig::OXENMQ)
-  add_library(oxenmq::oxenmq ALIAS oxenmq)
-  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
-else()
-  message(STATUS "using oxenmq submodule")
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
-  add_subdirectory(oxen-mq)
-endif()
-
+system_or_submodule(OXENC oxenc liboxenc>=1.0.3 oxenc)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.12 oxen-mq)
+system_or_submodule(SPDLOG spdlog spdlog>=1.8 spdlog)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-add_subdirectory(nlohmann_json)
+system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
+system_or_submodule(CLI11 CLI11 CLI11>=2.2.0 CLI11)
 
 
 add_library(oxen-crypto-ops STATIC
   oxen/crypto-ops/keccak.c
   oxen/crypto-ops/hash-ops.c)
 target_include_directories(oxen-crypto-ops PUBLIC .)
-
-
-add_subdirectory(CLI11)
 
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
