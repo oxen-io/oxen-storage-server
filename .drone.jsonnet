@@ -40,6 +40,7 @@ local debian_pipeline(name,
                       extra_cmds=[],
                       extra_steps=[],
                       jobs=6,
+                      oxen_repo=false,
                       allow_fail=false) = {
   kind: 'pipeline',
   type: 'docker',
@@ -58,6 +59,14 @@ local debian_pipeline(name,
                   'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
                   apt_get_quiet + ' update',
                   apt_get_quiet + ' install -y eatmydata',
+                ] + (
+                  if oxen_repo then [
+                    'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y lsb-release',
+                    'cp contrib/deb.oxen.io.gpg /etc/apt/trusted.gpg.d',
+                    'echo deb http://deb.oxen.io $$(lsb_release -sc) main >/etc/apt/sources.list.d/oxen.list',
+                    'eatmydata ' + apt_get_quiet + ' update',
+                  ] else []
+                ) + [
                   'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
                   'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends cmake git ca-certificates ninja-build ccache '
                   + std.join(' ', deps),
@@ -174,6 +183,7 @@ local static_check_and_upload = [
                   deps=['autoconf', 'automake', 'file', 'g++-8', 'libtool', 'make', 'openssh-client', 'patch', 'pkg-config'],
                   cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8',
                   lto=true,
+                  oxen_repo=true,  // for updated cmake
                   extra_cmds=static_check_and_upload),
 
   // Macos builds:
