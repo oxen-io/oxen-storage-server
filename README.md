@@ -1,56 +1,54 @@
-# Oxen-storage-server
+# Oxen Storage Server
+
 Storage server for Oxen Service Nodes
 
+## Binary releases
+
+Pre-built releases (with system service files) are available for Ubuntu/Debian on
+https://deb.oxen.io and are recommended for simple deployment and updates on those distributions.
+
+## Building from source
+
+The default build compiles for the current system and requires the following be installed (including
+headers/dev packages for the libraries):
+
 Requirements:
-* Boost >= 1.66 (for boost.program_options)
-* OpenSSL >= 1.1.1a (for X25519 curves)
-* sodium >= 1.0.17 (for ed25119 to curve25519 conversion)
+* cmake >= 3.10
+* OpenSSL >= 1.1.1
+* libsodium >= 1.0.17
+* pkg-config (any version)
+* libcurl
+* jemalloc (not strictly required but recommended for reduced long-term memory use)
 * autoconf (for building jemalloc)
 
-You can, however, download and build static versions these dependencies (other than autoconf) as
-part of the build by adding the `-DBUILD_STATIC_DEPS=ON` option to cmake.
+Other dependencies will be used from the system if found, but if not found will be compiled and
+built statically from bundled versions:
+* spdlog >= 1.8
+* libzmq >= 4.3
+* oxen-mq >= 1.2.6
+* oxen-encoding >= 1.0.1
+* sqlite >= 3.35.5
 
-Can use `RelWithDebInfo` instead of `Release` if you want to include debug symbols to provide developers with valueable core dumps from crashes.
-Also make sure you don't have an older (than 4.3.0) libzmq header in /usr/local/include, if so please install a new version.
+You can, however, instruct the build to download and build static versions of all of these
+dependencies (other than autoconf) as part of the build by adding the `-DBUILD_STATIC_DEPS=ON`
+option to the `cmake` command below.  (This will, however, result in a slower build and larger,
+slower binary, as is typical for static builds).
+
 ```
 git submodule update --init --recursive
 mkdir build && cd build
-cmake -DDISABLE_SNODE_SIGNATURE=OFF -DCMAKE_BUILD_TYPE=Release ..
-cmake --build .
-./oxen-storage 0.0.0.0 8080
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j4
 ```
 
-The paths for Boost and OpenSSL can be specified by exporting the variables in the terminal before running `make`:
-```
-export OPENSSL_ROOT_DIR = ...
-export BOOST_ROOT= ...
-```
+The build will produce a `./build/httpserver/oxen-storage` binary.  You can run it with `--help` to
+see supported run-time options.
 
-Then using something like Postman (https://www.getpostman.com/) you can hit the API:
+# Running
 
-# post data
-```
-HTTP POST http://127.0.0.1/store
-body: "hello world"
-headers:
-- X-Loki-recipient: "mypubkey"
-- X-Loki-ttl: "86400"
-- X-Loki-timestamp: "1540860811000"
-- X-Loki-pow-nonce: "xxxx..."
-```
-# get data
-```
-HTTP GET http://127.0.0.1/retrieve
-headers:
-- X-Loki-recipient: "mypubkey"
-- X-Loki-last-hash: "" (optional)
-```
+Oxen Storage Server is a required component of an Oxen Service Node and needs to talk to a running
+`oxend` in order to join the network.  The program defaults are designed to work with a default
+oxend, but for advanced configurations (e.g. to run on different ports) you may need to use other
+options.  Run the program with `--help` to see all available options.
 
-# unit tests
-```
-mkdir build_test
-cd build_test
-cmake ../unit_test -DBOOST_ROOT="path to boost" -DOPENSSL_ROOT_DIR="path to openssl"
-cmake --build .
-./Test --log_level=all
-```
+See https://docs.oxen.io/ for additional details on setting up and running an Oxen Service Node.
