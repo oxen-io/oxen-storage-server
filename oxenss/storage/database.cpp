@@ -622,17 +622,22 @@ void Database::bulk_store(const std::vector<message>& items) {
     t.commit();
 }
 
-std::vector<message> Database::retrieve(
+std::pair<std::vector<message>, bool> Database::retrieve(
         const user_pubkey_t& pubkey,
         namespace_id ns,
         const std::string& last_hash,
-        std::optional<int> num_results) {
-    std::vector<message> results;
+        std::optional<size_t> max_results,
+        std::optional<size_t> max_size,
+        const bool size_b64,
+        const size_t per_message_overhead) {
 
     auto owner_st = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto ownerid = exec_and_maybe_get<int64_t>(owner_st, pubkey);
     if (!ownerid)
-        return results;
+        return {};
+
+    if (max_results && *max_results < 1)
+        max_results = 1;
 
     std::optional<int64_t> last_id;
     if (!last_hash.empty()) {
@@ -651,16 +656,34 @@ std::vector<message> Database::retrieve(
     st->bind(pos++, to_int(ns));
     if (last_id)
         st->bind(pos++, *last_id);
-    st->bind(pos++, num_results.value_or(-1));
+    st->bind(pos++, max_results ? static_cast<int>(*max_results) + 1 : -1);
 
+    std::pair<std::vector<message>, bool> result{};
+    auto& [results, more] = result;
+
+    size_t agg_size = 0;
     while (st->executeStep()) {
         auto [hash, ns, ts, exp, data] =
                 get<std::string, namespace_id, int64_t, int64_t, std::string>(st);
+        if (max_results && results.size() >= *max_results) {
+            more = true;
+            break;
+        }
+        if (max_size) {
+            agg_size += per_message_overhead;
+            agg_size += hash.size();
+            agg_size += size_b64 ? data.size() * 4 / 3 : data.size();
+            if (!results.empty() && agg_size > *max_size) {
+                more = true;
+                break;
+            }
+        }
+
         results.emplace_back(
                 std::move(hash), ns, from_epoch_ms(ts), from_epoch_ms(exp), std::move(data));
     }
 
-    return results;
+    return result;
 }
 
 std::vector<message> Database::retrieve_all() {

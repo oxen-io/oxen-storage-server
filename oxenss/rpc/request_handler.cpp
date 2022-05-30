@@ -693,13 +693,32 @@ void RequestHandler::process_client_req(
         }
     }
 
+    // Treat 0 count/size as unspecified:
+    if (req.max_count && *req.max_count == 0)
+        req.max_count.reset();
+    if (req.max_size && *req.max_size == 0)
+        req.max_size.reset();
+
+    // If neither are specified we default to 1/5 of max size:
+    if (!req.max_count && !req.max_size)
+        req.max_size = -5;
+
+    // For negative max sizes, we treat it as a fraction of the max size, e.g. -1 means max; -5
+    // means 1/5 of the max:
+    if (req.max_size && *req.max_size < 0) {
+        req.max_size = RETRIEVE_MAX_SIZE / -*req.max_size;
+    } else if (!req.max_size || *req.max_size > RETRIEVE_MAX_SIZE)
+        req.max_size = RETRIEVE_MAX_SIZE;
+
     std::vector<message> msgs;
+    bool more = false;
     try {
-        msgs = service_node_.get_db().retrieve(
+        std::tie(msgs, more) = service_node_.get_db().retrieve(
                 req.pubkey,
                 req.msg_namespace,
                 req.last_hash.value_or(""),
-                CLIENT_RETRIEVE_MESSAGE_LIMIT);
+                req.max_count,
+                req.max_size);
         service_node_.record_retrieve_request();
     } catch (const std::exception& e) {
         auto msg = fmt::format(
@@ -721,7 +740,7 @@ void RequestHandler::process_client_req(
         });
     }
 
-    json res{{"messages", std::move(messages)}};
+    json res{{"messages", std::move(messages)}, {"more", more}};
     add_misc_response_fields(res, service_node_, now);
 
     return cb(Response{http::OK, std::move(res)});
