@@ -1,3 +1,81 @@
+oxen-storage-server (2.3.0-1~ubuntu1804) bionic; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Add comment about relay-to-server payload structure
+  * libfmt-8 compatibility fixes
+  * Remove inactive (pre-2.2.0) code paths
+  * oxenmq/oxenc updates
+  * Update static build deps to latest versions
+  * Update submodules to latest versions
+  * Add missing <cassert> headers
+  * Remove obsolete serialization tests
+  * openssl 3.0 compat fixes
+  * Yay apple
+  * Update zlib to 1.2.12
+  * Delete bitrotten dockerfile
+  * Convert boost::program_options to CLI11
+  * Remove deprecit option
+  * Kill -DINTEGRATION_TEST mode
+  * Rewite the README
+  * clang-format
+  * Remove obsolete Makefile
+  * Properly add CLI11 submodule
+  * Add ci lint job
+  * Add oxenc linking cmake workaround
+  * Bump to latest sqlite
+  * Fix old pre-release pyoxenmq usage
+  * Implement message namespaces
+  * network-tests: don't try inactive SNs
+  * Enforce retrieval authentication at HF19 (except for namespace -10)
+  * Disable buggy peer storage testing
+  * Network test authentication & misc improvements
+  * Add message namespace network tests
+  * s/0/Default/
+  * Improve formatting
+  * Formatting
+  * Refactor code
+  * Replace boost/endian with oxenc/endian
+  * Rename vendors -> external
+  * RPC: Add "hf" everywhere we current return "t"
+  * Fix onion-request test script for refactored code
+  * Don't allow storing to namespaces before HF19
+  * Schedule delayed HF revision for requiring retrieve auth
+  * Add draft subkey authentication for store/retrieve
+  * Refactor: move omq rpc code into rpc/request_handler
+  * Add batch/sequence requests
+  * Document RPC retrieve return value
+  * Fix ts/hf being added nested rather than top-level
+  * Use "" instead of "0" for all default namespace signatures
+  * Add namespace to expire_all auth signature
+  * Clarify timestamp/sig_timestamp use in store
+  * Disallow empty batch/sequence; fix docs
+  * Comment hairiness in batch/sequence handling
+  * Fix bug in namespace retrieval
+  * Fix drone format script
+  * Add `ifelse` branching metarequest
+  * Allow extending expiry (up to TTL from now)
+
+  [ Sean Darcy ]
+  * Adds ed25519 pubkey to oxend pings
+
+  [ Jason Rhinelander ]
+  * Update static dep versions
+  * Bump version to 2.3.0
+  * Update static dep versions
+  * Add size limits to retrieve messages
+  * Add "more" to retrieve response
+  * formatting
+  * Add network test for large retrieve requests
+  * Dep updates
+  * Prefer sys libs for nlohmann/cli11/spdlog; clean up sys/submodule handling
+  * Rework build version handling
+  * Fix VERSIONTAG generation
+  * Add oxen repo for updated cmake for bionic build
+  * new gbp compat
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 30 May 2022 17:03:17 -0300
+
 oxen-storage-server (2.2.1-1~ubuntu1804) bionic; urgency=medium
 
   [ Jason Rhinelander ]
