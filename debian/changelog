@@ -1,3 +1,9 @@
+oxen-storage-server (2.3.0-1~ubuntu2204) jammy; urgency=medium
+
+  * Add jammy deb.
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 30 May 2022 18:22:26 -0300
+
 oxen-storage-server (2.3.0-1~ubuntu2110) impish; urgency=medium
 
   [ Jason Rhinelander ]
