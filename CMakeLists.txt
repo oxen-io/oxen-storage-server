@@ -13,12 +13,8 @@ endif()
 cmake_minimum_required(VERSION 3.10)
 
 project(storage_server
-    VERSION 2.2.1
+    VERSION 2.3.0
     LANGUAGES CXX C)
-
-option(INTEGRATION_TEST "build for integration test" OFF)
-option(DISABLE_SNODE_SIGNATURE "Generate and verify signatures for inter-snode communication"
-    OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -39,15 +35,6 @@ if(USE_LTO AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
 else()
   message(STATUS "LTO disabled")
   set(IPO_ENABLED OFF)
-endif()
-
-if (INTEGRATION_TEST)
-    add_definitions(-DINTEGRATION_TEST)
-endif()
-
-
-if (DISABLE_SNODE_SIGNATURE)
-    add_definitions(-DDISABLE_SNODE_SIGNATURE)
 endif()
 
 option(BUILD_TESTS "build storage server unit tests" OFF)
@@ -85,11 +72,13 @@ else()
   endfunction ()
 
   message(STATUS "Checking submodules")
-  check_submodule(vendors/spdlog)
-  check_submodule(vendors/oxen-mq cppzmq)
-  check_submodule(vendors/nlohmann_json)
-  check_submodule(vendors/uWebSockets uSockets)
-  check_submodule(vendors/cpr)
+  check_submodule(external/spdlog)
+  check_submodule(external/oxenc)
+  check_submodule(external/oxen-mq cppzmq)
+  check_submodule(external/nlohmann_json)
+  check_submodule(external/uWebSockets uSockets)
+  check_submodule(external/cpr)
+  check_submodule(external/CLI11)
   if(BUILD_TESTS)
     check_submodule(unit_test/Catch2)
   endif()
@@ -103,7 +92,6 @@ if(BUILD_STATIC_DEPS)
   include(StaticBuild)
 else()
   find_package(PkgConfig REQUIRED)
-  find_package(Boost REQUIRED program_options)
   find_package(OpenSSL REQUIRED)
 endif()
 
@@ -112,16 +100,18 @@ link_libatomic()
 
 include(cmake/check_for_std_filesystem.cmake)
 
-add_subdirectory(common)
-add_subdirectory(utils)
-add_subdirectory(crypto)
-add_subdirectory(storage)
-add_subdirectory(httpserver)
+add_subdirectory(external)
 
-add_subdirectory(vendors)
+add_subdirectory(oxenss)
+
 
 if (BUILD_TESTS)
     add_subdirectory(unit_test)
 endif ()
+
+add_executable(onion-request EXCLUDE_FROM_ALL contrib/onion-request.cpp)
+set_target_properties(onion-request PROPERTIES RUNTIME_OUTPUT_DIRECTORY contrib)
+target_link_libraries(onion-request common crypto cpr::cpr oxenmq::oxenmq)
+target_include_directories(onion-request PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 include(cmake/archive.cmake)
