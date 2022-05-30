@@ -24,19 +24,21 @@ add_subdirectory(utils)
 
 
 # Build Info
-find_package(Git)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND
-            git rev-parse --short HEAD
-        OUTPUT_VARIABLE
-            SHORT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(OXENSS_SHORT_HASH)
+    set(SHORT_HASH "${OXENSS_SHORT_HASH}")
 else()
-    set(SHORT_HASH "unknown")
+    find_package(Git)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND
+                git rev-parse --short HEAD
+            OUTPUT_VARIABLE
+                SHORT_HASH
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+    else()
+        set(SHORT_HASH "unknown")
+    endif()
 endif()
-string(TIMESTAMP BUILD_TIME UTC)
 message(STATUS "using git commit hash ${SHORT_HASH}")
-message(STATUS "using UTC build time ${BUILD_TIME}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/version.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
 add_library(version STATIC "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
