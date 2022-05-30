@@ -2,9 +2,11 @@
 #include <iostream>
 #include <ostream>
 
-#include "onion_processing.h"
+#include <oxenss/rpc/onion_processing.h>
 
-using namespace oxen;
+using namespace oxen::rpc;
+using namespace oxen::crypto;
+using namespace std::literals;
 
 constexpr const char* ciphertext = "ciphertext";
 const auto prefix = "\x0a\0\0\0ciphertext"s;
@@ -18,13 +20,10 @@ TEST_CASE("onion request - final destination", "[onion][final]") {
 
     auto res = process_inner_request(data);
 
-    auto expected = FinalDestinationInfo {
-        ciphertext
-    };
+    auto expected = FinalDestinationInfo{ciphertext};
 
     REQUIRE(std::holds_alternative<FinalDestinationInfo>(res));
     CHECK(*std::get_if<FinalDestinationInfo>(&res) == expected);
-
 }
 
 // Provided "host", so the request should go
@@ -41,17 +40,10 @@ TEST_CASE("onion request - relay to server (legacy)", "[onion][relay]") {
     uint16_t port = 443;
     std::string protocol = "https";
 
-    auto expected = RelayToServerInfo {
-        data,
-        "host",
-        port,
-        protocol,
-        "target"
-    };
+    auto expected = RelayToServerInfo{data, "host", port, protocol, "target"};
 
     REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
     CHECK(*std::get_if<RelayToServerInfo>(&res) == expected);
-
 }
 
 // Provided "host", so the request should go
@@ -69,23 +61,15 @@ TEST_CASE("onion request - relay to server", "[onion][relay]") {
     uint16_t port = 80;
     std::string protocol = "http";
 
-    auto expected = RelayToServerInfo {
-        data,
-        "host",
-        port,
-        protocol,
-        "target"
-    };
+    auto expected = RelayToServerInfo{data, "host", port, protocol, "target"};
 
     REQUIRE(std::holds_alternative<RelayToServerInfo>(res));
     CHECK(*std::get_if<RelayToServerInfo>(&res) == expected);
-
 }
 
 /// No "host" or "headers", so we forward
 /// the request to another node
 TEST_CASE("onion request - relay to snode", "[onion][snode]") {
-
     auto data = prefix + R"#({
         "destination": "ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000",
         "ephemeral_key": "0000111122223333444455556666777788889999000011112222333344445555"
@@ -93,20 +77,19 @@ TEST_CASE("onion request - relay to snode", "[onion][snode]") {
 
     auto res = process_inner_request(data);
 
-    auto expected = RelayToNodeInfo {
-        ciphertext,
-        x25519_pubkey::from_hex("0000111122223333444455556666777788889999000011112222333344445555"),
-        EncryptType::aes_gcm,
-        ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110000")
-    };
+    auto expected = RelayToNodeInfo{
+            ciphertext,
+            x25519_pubkey::from_hex("00001111222233334444555566667777888899990000111122223333444455"
+                                    "55"),
+            EncryptType::aes_gcm,
+            ed25519_pubkey::from_hex("ffffeeeeddddccccbbbbaaaa9999888877776666555544443333222211110"
+                                     "000")};
 
     REQUIRE(std::holds_alternative<RelayToNodeInfo>(res));
     CHECK(*std::get_if<RelayToNodeInfo>(&res) == expected);
-
 }
 
 TEST_CASE("onion request - url target filtering", "[onion][relay]") {
-
     CHECK(is_onion_url_target_allowed("/loki/v3/lsrpc"));
     CHECK(is_onion_url_target_allowed("/loki/oxen/v4/lsrpc"));
     CHECK(is_onion_url_target_allowed("/oxen/v3/lsrpc"));
@@ -114,5 +97,4 @@ TEST_CASE("onion request - url target filtering", "[onion][relay]") {
     CHECK_FALSE(is_onion_url_target_allowed("/not_loki/v3/lsrpc"));
     CHECK_FALSE(is_onion_url_target_allowed("/loki/v3"));
     CHECK_FALSE(is_onion_url_target_allowed("/loki/v3/lsrpc?foo=bar"));
-
 }

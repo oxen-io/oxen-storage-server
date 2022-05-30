@@ -9,7 +9,7 @@ anybad=
 for bin in httpserver/oxen-storage; do
     bad=
     if [ "$DRONE_STAGE_OS" == "darwin" ]; then
-        if otool -L $bin | grep -Ev '^'$bin':|^\t(/usr/lib/libSystem\.|/usr/lib/libc\+\+\.|/usr/lib/libresolv\.|/System/Library/Frameworks/(CoreFoundation|IOKit|Security))'; then
+        if otool -L $bin | grep -Ev '^'$bin':|^\t(/usr/lib/libSystem\.|/usr/lib/libc\+\+\.|/usr/lib/libresolv\.|/System/Library/Frameworks/(CoreFoundation|IOKit|Security|SystemConfiguration))'; then
             bad=1
         fi
     elif [ "$DRONE_STAGE_OS" == "linux" ]; then

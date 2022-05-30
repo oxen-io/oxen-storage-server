@@ -4,7 +4,6 @@ add_subdirectory(Catch2)
 add_executable(Test
     main.cpp
 
-    command_line.cpp
     encrypt.cpp
     onion_requests.cpp
     rate_limiter.cpp
@@ -16,5 +15,7 @@ add_executable(Test
 
 target_link_libraries(Test
     PRIVATE
-    common storage utils crypto httpserver_lib
+    common storage utils crypto snode rpc
     Catch2::Catch2)
+
+target_include_directories(Test PRIVATE ..)

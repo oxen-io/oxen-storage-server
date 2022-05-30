@@ -5,19 +5,11 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 1.1.1k CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.3 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df33fbaee5
+set(OPENSSL_HASH SHA256=ee0078adcef1de5f003c62c80cc96527721609c6f3bb42b7795df31f8b558c0b
     CACHE STRING "openssl source hash")
-
-set(BOOST_VERSION 1.76.0 CACHE STRING "boost version")
-set(BOOST_MIRROR ${LOCAL_MIRROR} https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source
-    CACHE STRING "boost download mirror(s)")
-string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
-set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
-    CACHE STRING "boost source hash")
 
 set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
 set(SODIUM_MIRROR ${LOCAL_MIRROR}
@@ -37,25 +29,25 @@ set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
     CACHE STRING "libzmq source hash")
 
-set(LIBUV_VERSION 1.41.0 CACHE STRING "libuv version")
+set(LIBUV_VERSION 1.44.1 CACHE STRING "libuv version")
 set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
     CACHE STRING "libuv mirror(s)")
 set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
-set(LIBUV_HASH SHA512=33613fa28e8136507300eba374351774849b6b39aab4e53c997a918d3bc1d1094c6123e0e509535095b14dc5daa885eadb1a67bed46622ad3cc79d62dc817e84
+set(LIBUV_HASH SHA512=b4f8944e2c79e3a6a31ded6cccbe4c0eeada50db6bc8a448d7015642795012a4b80ffeef7ca455bb093c59a8950d0e1430566c3c2fa87b73f82699098162d834
     CACHE STRING "libuv source hash")
 
-set(ZLIB_VERSION 1.2.11 CACHE STRING "zlib version")
+set(ZLIB_VERSION 1.2.12 CACHE STRING "zlib version")
 set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
-set(ZLIB_HASH SHA512=73fd3fff4adeccd4894084c15ddac89890cd10ef105dd5e1835e1e9bbb6a49ff229713bd197d203edfa17c2727700fce65a2a235f07568212d820dca88b528ae
+set(ZLIB_HASH SHA512=cc2366fa45d5dfee1f983c8c51515e0cff959b61471e2e8d24350dea22d3f6fcc50723615a911b046ffc95f51ba337d39ae402131a55e6d1541d3b095d6c0a14
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.76.1 CACHE STRING "curl version")
-set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.haxx.se/download https://curl.askapache.com
+set(CURL_VERSION 7.83.1 CACHE STRING "curl version")
+set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA256=64bb5288c39f0840c07d077e30d9052e1cbb9fa6c2dc52523824cc859e679145
+set(CURL_HASH SHA512=2f63327d6d3687ba36fb7b8d5d3d15599eca33ebfb08681613612ea9c4b629d3b6ce4d2742fa1ebd7a997ed332001d3a4c798985f9277c83b9e7a9aecdb1b1ee
     CACHE STRING "curl source hash")
 
 
@@ -212,7 +204,8 @@ if(CMAKE_CROSSCOMPILING)
 endif()
 build_external(openssl
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
-    --prefix=${DEPS_DESTDIR} ${openssl_extra_opts} no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
+    --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
+    no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
     no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
     no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
   INSTALL_COMMAND make install_sw
@@ -222,80 +215,8 @@ build_external(openssl
 )
 add_static_target(OpenSSL::SSL openssl_external libssl.a)
 add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
+target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
 set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
-set(OPENSSL_VERSION 1.1.1)
-
-
-
-set(boost_threadapi "pthread")
-set(boost_bootstrap_cxx "--cxx=${deps_cxx}")
-set(boost_toolset "")
-set(boost_extra "")
-if(USE_LTO)
-  list(APPEND boost_extra "lto=on")
-endif()
-if(CMAKE_CROSSCOMPILING)
-  set(boost_bootstrap_cxx "") # need to use our native compiler to bootstrap
-  if(ARCH_TRIPLET MATCHES mingw)
-    set(boost_threadapi win32)
-    list(APPEND boost_extra "target-os=windows")
-    if(ARCH_TRIPLET MATCHES x86_64)
-      list(APPEND boost_extra "address-model=64")
-    else()
-      list(APPEND boost_extra "address-model=32")
-    endif()
-  endif()
-endif()
-if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
-  set(boost_toolset gcc)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-  set(boost_toolset clang)
-else()
-  message(FATAL_ERROR "don't know how to build boost with ${CMAKE_CXX_COMPILER_ID}")
-endif()
-
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam "using ${boost_toolset} : : ${deps_cxx} ;")
-
-set(boost_buildflags "cxxflags=-fPIC")
-if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
-  string(APPEND boost_buildflags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-endif()
-
-set(boost_libs program_options)
-set(boost_with_libs_extra)
-string(REPLACE ";" "," boost_with_libraries "${boost_libs}")
-set(boost_static_libraries)
-foreach(lib ${boost_libs})
-    list(APPEND boost_static_libraries "${DEPS_DESTDIR}/lib/libboost_${lib}.a")
-endforeach()
-
-build_external(boost
-  #  PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam tools/build/src/user-config.jam
-  CONFIGURE_COMMAND
-    ./tools/build/src/engine/build.sh ${boost_toolset} ${boost_bootstrap_cxx}
-  BUILD_COMMAND
-    cp tools/build/src/engine/b2 .
-  INSTALL_COMMAND
-    ./b2 -d0 variant=release link=static runtime-link=static optimization=speed ${boost_extra}
-      threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
-      --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam
-      --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
-      --with-program_options --with-system ${boost_with_libs_extra}
-      install
-  BUILD_BYPRODUCTS
-    ${boost_static_libraries}
-    ${DEPS_DESTDIR}/include/boost/version.hpp
-)
-add_library(boost_core INTERFACE)
-add_dependencies(boost_core INTERFACE boost_external)
-target_include_directories(boost_core SYSTEM INTERFACE ${DEPS_DESTDIR}/include)
-add_library(Boost::boost ALIAS boost_core)
-foreach(boostlib ${boost_libs})
-  add_static_target(Boost::${boostlib} boost_external libboost_${boostlib}.a)
-  target_link_libraries(Boost::${boostlib} INTERFACE boost_core)
-endforeach()
-set(Boost_FOUND ON)
-set(Boost_VERSION ${BOOST_VERSION})
 
 
 
@@ -358,7 +279,7 @@ build_external(curl
   --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
   --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
   --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
-  --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
+  --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
   --without-zsh-functions-dir --without-fish-functions-dir
   "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
   BUILD_COMMAND true
@@ -369,11 +290,11 @@ build_external(curl
 )
 
 add_static_target(CURL::libcurl curl_external libcurl.a)
-set(libcurl_link_libs zlib)
+set(libcurl_link_libs OpenSSL::SSL zlib)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs crypt32)
 elseif(APPLE)
-  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation")
+  list(APPEND libcurl_link_libs "-framework Security -framework CoreFoundation -framework SystemConfiguration")
 endif()
 set_target_properties(CURL::libcurl PROPERTIES
   INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"

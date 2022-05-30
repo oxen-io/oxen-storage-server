@@ -49,7 +49,7 @@ def delete_before(sk, *, ago=120, timestamp=None):
 
 def get_swarm(omq, conn, sk, netid=5):
     pubkey = "{:02x}".format(netid) + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode().hex()
-    r = omq.request(conn, "storage.get_swarm", [json.dumps({"pubkey": pubkey}).encode()])
+    r = omq.request_future(conn, "storage.get_swarm", [json.dumps({"pubkey": pubkey}).encode()]).get()
     assert(len(r) == 1)
     return json.loads(r[0])
 
@@ -62,7 +62,7 @@ def store_n(omq, conn, sk, basemsg, n, offset=0, netid=5):
     msgs = []
     pubkey = chr(netid).encode() + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode()
     for i in range(n):
-        data = basemsg + "{}".format(i).encode()
+        data = basemsg + f"{i}".encode()
         ts = int((time.time() - i) * 1000)
         exp = int((time.time() - i + 30) * 1000)
         msgs.append({
