@@ -1,14 +1,12 @@
 Source: oxen-storage-server
 Section: net
 Priority: optional
-Maintainer: Jason Rhinelander <jason@loki.network>
+Maintainer: Jason Rhinelander <jason@oxen.io>
 Build-Depends: debhelper (>= 11),
     cmake,
     g++,
-    liboxenmq-dev (>= 1.2.6~),
-    libboost-dev (>= 1.66),
-    libboost-system-dev,
-    libboost-program-options-dev,
+    liboxenmq-dev (>= 1.2.12),
+    liboxenc-dev (>= 1.0.3),
     libcurl4-openssl-dev,
     libjemalloc-dev,
     libsodium-dev (>= 1.0.17),
