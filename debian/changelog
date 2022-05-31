@@ -1,4 +1,4 @@
-oxen-storage-server (2.3.0-1) unstable; urgency=medium
+oxen-storage-server (2.3.0-1~deb12) bookworm; urgency=medium
 
   [ Jason Rhinelander ]
   * Add comment about relay-to-server payload structure
