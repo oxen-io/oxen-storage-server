@@ -9,6 +9,8 @@ option(STATIC "Try to link external dependencies statically, where possible" ${D
 
 if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
+else()
+  set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "" FORCE)
 endif()
 
 if(NOT TARGET sodium)
