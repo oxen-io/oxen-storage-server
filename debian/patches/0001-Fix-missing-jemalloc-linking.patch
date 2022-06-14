@@ -1,0 +1,24 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 14 Jun 2022 12:48:34 -0300
+Subject: Fix missing jemalloc linking
+
+The 2.3.0 code refactor accidentally dropped linking against jemalloc,
+and as a result memory usage is much higher.
+
+This restores it.
+---
+ oxenss/daemon/CMakeLists.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/oxenss/daemon/CMakeLists.txt b/oxenss/daemon/CMakeLists.txt
+index adb3347..cac34c8 100644
+--- a/oxenss/daemon/CMakeLists.txt
++++ b/oxenss/daemon/CMakeLists.txt
+@@ -6,6 +6,7 @@ add_executable(daemon
+ target_link_libraries(daemon
+     PRIVATE
+     common crypto logging rpc server snode storage utils version
++    jemalloc::jemalloc
+     CLI11::CLI11)
+ 
+ if(NOT BUILD_STATIC_DEPS)
