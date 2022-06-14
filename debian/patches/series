@@ -1,1 +1,2 @@
 0003-Old-cmake-sqlite-include-dir-workaround.patch
+0002-Fix-missing-jemalloc-linking.patch
