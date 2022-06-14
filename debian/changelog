@@ -1,3 +1,11 @@
+oxen-storage-server (2.3.0-2~deb11) bullseye; urgency=medium
+
+  * Dep updates
+  * Fix VERSIONTAG; keep - from deb version in tag
+  * Fix missing jemalloc linking
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Jun 2022 12:54:47 -0300
+
 oxen-storage-server (2.3.0-1~deb11) bullseye; urgency=medium
 
   [ Jason Rhinelander ]
