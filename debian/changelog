@@ -1,3 +1,11 @@
+oxen-storage-server (2.3.0-2) unstable; urgency=medium
+
+  * Dep updates
+  * Keep the "-" in the version string
+  * Fix missing jemalloc linking
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 14 Jun 2022 12:54:16 -0300
+
 oxen-storage-server (2.3.0-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
