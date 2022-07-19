@@ -22,6 +22,8 @@
 
 namespace oxen::server {
 
+static auto logcat = log::Cat("server");
+
 using nlohmann::json;
 
 // Sends an error response and finalizes the response.
@@ -65,9 +67,7 @@ HTTPS::HTTPS(
         omq_{*service_node_.omq_server()},
         request_handler_{rh},
         rate_limiter_{rl},
-        legacy_keys_{std::move(legacy_keys)},
-        cert_signature_{oxenc::to_base64(util::view_guts(
-                generate_signature(crypto::hash_data(util::slurp_file(ssl_cert)), legacy_keys_)))} {
+        legacy_keys_{std::move(legacy_keys)} {
     // Add a category for handling incoming https requests
     omq_.add_category(
             "https",
@@ -144,18 +144,18 @@ HTTPS::HTTPS(
                                  addr = fmt::format("{}:{}", addr, port)](
                                         us_listen_socket_t* sock) {
                                     if (sock) {
-                                        OXEN_LOG(info, "HTTPS server listening at {}", addr);
+                                        log::info(logcat, "HTTPS server listening at {}", addr);
                                         listening.push_back(sock);
                                     } else if (req) {
                                         required_bind_failed = true;
-                                        OXEN_LOG(
-                                                critical,
+                                        log::critical(
+                                                logcat,
                                                 "HTTPS server failed to bind to required address "
                                                 "{}",
                                                 addr);
                                     } else {
-                                        OXEN_LOG(
-                                                warn,
+                                        log::warning(
+                                                logcat,
                                                 "HTTPS server failed to bind to (non-required) "
                                                 "address {}",
                                                 addr);
@@ -189,7 +189,7 @@ HTTPS::HTTPS(
 
 bool HTTPS::check_ready(HttpResponse& res) {
     if (std::string reason; !service_node_.snode_ready(&reason)) {
-        OXEN_LOG(debug, "Storage server not ready ({}), replying with 503", reason);
+        log::debug(logcat, "Storage server not ready ({}), replying with 503", reason);
         error_response(
                 res, http::SERVICE_UNAVAILABLE, "Service node is not ready: " + reason + "\n");
         return false;
@@ -343,7 +343,7 @@ namespace {
         try {
             return crypto::x25519_pubkey::from_hex(hex);
         } catch (const std::exception& e) {
-            OXEN_LOG(warn, "Failed to decode ephemeral key in onion request: {}", e.what());
+            log::warning(logcat, "Failed to decode ephemeral key in onion request: {}", e.what());
             throw;
         }
     }
@@ -365,8 +365,8 @@ namespace {
             std::function<void(call_data& c)> prevalidate = nullptr) {
         if (auto len = req.getHeader("content-length"); !len.empty()) {
             if (uint64_t length; !util::parse_int(len, length)) {
-                OXEN_LOG(
-                        warn,
+                log::warning(
+                        logcat,
                         "Received HTTPS request from {} with invalid Content-Length, dropping",
                         get_remote_address(res));
                 queue_response_internal(
@@ -375,8 +375,8 @@ namespace {
                         rpc::Response{http::BAD_REQUEST, "invalid Content-Length"sv},
                         true);
             } else if (length > MAX_REQUEST_BODY_SIZE) {
-                OXEN_LOG(
-                        warn,
+                log::warning(
+                        logcat,
                         "Received HTTPS request from {} with too-large body ({} > {}), dropping",
                         get_remote_address(res),
                         length,
@@ -397,8 +397,8 @@ namespace {
             request.headers[std::string{header}] = value;
 
         https.handle_cors(req, request.headers);
-        OXEN_LOG(
-                debug,
+        log::debug(
+                logcat,
                 "Received {} {} request from {}",
                 req.getMethod(),
                 request.uri,
@@ -421,7 +421,7 @@ namespace {
 void HTTPS::create_endpoints(uWS::SSLApp& https) {
     // Legacy target, can be removed post-HF18.1:
     https.post("/swarms/ping_test/v1", [this](HttpResponse* res, HttpRequest* /*req*/) {
-        OXEN_LOG(trace, "Received (old) https ping_test");
+        log::trace(logcat, "Received (old) https ping_test");
         service_node_.update_last_ping(snode::ReachType::HTTPS);
         rpc::Response resp{http::OK};
         resp.headers.emplace_back(http::SNODE_SIGNATURE_HEADER, cert_signature_);
@@ -429,7 +429,7 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
     });
 
     https.post("/ping_test/v1", [this](HttpResponse* res, HttpRequest* /*req*/) {
-        OXEN_LOG(trace, "Received https ping_test");
+        log::trace(logcat, "Received https ping_test");
         service_node_.update_last_ping(snode::ReachType::HTTPS);
         rpc::Response resp{http::OK};
         resp.headers.emplace_back(
@@ -446,13 +446,13 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
     https.post("/storage_rpc/v1", [this](HttpResponse* res, HttpRequest* req) {
         if (!check_ready(*res))
             return;
-        OXEN_LOG(trace, "POST /storage_rpc/v1");
+        log::trace(logcat, "POST /storage_rpc/v1");
         process_storage_rpc_req(*req, *res);
     });
     https.post("/onion_req/v2", [this](HttpResponse* res, HttpRequest* req) {
         if (!check_ready(*res))
             return;
-        OXEN_LOG(trace, "POST /onion_req/v2");
+        log::trace(logcat, "POST /onion_req/v2");
         process_onion_req_v2(*req, *res);
     });
     // Deprecated; use /storage_rpc/v1 with method=info instead
@@ -465,8 +465,8 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
 
     // Fallback to send a 404 for anything else:
     https.any("/*", [this](HttpResponse* res, HttpRequest* req) {
-        OXEN_LOG(
-                info,
+        log::info(
+                logcat,
                 "Invalid HTTP request for {} {} from {}",
                 req->getMethod(),
                 req->getUrl(),
@@ -493,7 +493,7 @@ static std::variant<crypto::legacy_pubkey, rpc::Response> validate_snode_signatu
     if (auto it = r.headers.find(http::SNODE_SENDER_HEADER); it != r.headers.end())
         pubkey = crypto::parse_legacy_pubkey(it->second);
     if (!pubkey) {
-        OXEN_LOG(debug, "Missing or invalid pubkey header for request");
+        log::debug(logcat, "Missing or invalid pubkey header for request");
         return rpc::Response{http::BAD_REQUEST, "missing/invalid pubkey header"sv};
     }
     crypto::signature sig;
@@ -501,22 +501,22 @@ static std::variant<crypto::legacy_pubkey, rpc::Response> validate_snode_signatu
         try {
             sig = crypto::signature::from_base64(it->second);
         } catch (...) {
-            OXEN_LOG(warn, "invalid signature (not b64) found in header from {}", pubkey);
+            log::warning(logcat, "invalid signature (not b64) found in header from {}", pubkey);
             return rpc::Response{http::BAD_REQUEST, "Invalid signature"sv};
         }
     } else {
-        OXEN_LOG(debug, "Missing required signature header for request");
+        log::debug(logcat, "Missing required signature header for request");
         return rpc::Response{http::BAD_REQUEST, "missing signature header"sv};
     }
 
     if (!sn.find_node(pubkey)) {
-        OXEN_LOG(debug, "Rejecting signature from unknown service node: {}", pubkey);
+        log::debug(logcat, "Rejecting signature from unknown service node: {}", pubkey);
         return rpc::Response{http::UNAUTHORIZED, "Unknown service node"sv};
     }
 
     if (!prevalidate) {
         if (!check_signature(sig, crypto::hash_data(r.body), pubkey)) {
-            OXEN_LOG(debug, "snode signature verification failed for pubkey {}", pubkey);
+            log::debug(logcat, "snode signature verification failed for pubkey {}", pubkey);
             return rpc::Response{http::UNAUTHORIZED, "snode signature verification failed"sv};
         }
     }
@@ -577,19 +577,19 @@ void HTTPS::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
                                 it != req.headers.end()) {
                                 if (tester_pk = crypto::parse_legacy_pubkey(it->second);
                                     !tester_pk) {
-                                    OXEN_LOG(debug, "Invalid test request: invalid pubkey");
+                                    log::debug(logcat, "Invalid test request: invalid pubkey");
                                     resp.body = "invalid tester pubkey header"sv;
                                     return queue_response(std::move(data), std::move(resp));
                                 }
                             } else {
-                                OXEN_LOG(debug, "Invalid test request: missing pubkey");
+                                log::debug(logcat, "Invalid test request: missing pubkey");
                                 resp.body = "missing tester pubkey header"sv;
                                 return queue_response(std::move(data), std::move(resp));
                             }
 
                             auto body = json::parse(data->request.body, nullptr, false);
                             if (body.is_discarded()) {
-                                OXEN_LOG(debug, "Bad snode test request: invalid json");
+                                log::debug(logcat, "Bad snode test request: invalid json");
                                 resp.body = "invalid json"sv;
                                 return queue_response(std::move(data), std::move(resp));
                             }
@@ -601,7 +601,7 @@ void HTTPS::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
                                 msg_hash = body.at("hash").get<std::string>();
                             } catch (...) {
                                 resp.body = "Bad snode test request: missing fields in json"sv;
-                                OXEN_LOG(debug, std::get<std::string_view>(resp.body));
+                                log::debug(logcat, std::get<std::string_view>(resp.body));
                                 return queue_response(std::move(data), std::move(resp));
                             }
 
@@ -616,8 +616,8 @@ void HTTPS::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
                                         resp.status = http::OK;
                                         switch (status) {
                                             case snode::MessageTestStatus::SUCCESS:
-                                                OXEN_LOG(
-                                                        debug,
+                                                log::debug(
+                                                        logcat,
                                                         "Storage test success after {}",
                                                         util::friendly_duration(elapsed));
                                                 resp.body =
@@ -635,8 +635,8 @@ void HTTPS::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
                                             case snode::MessageTestStatus::ERROR:
                                                 // Promote this to `error` once we enforce storage
                                                 // testing
-                                                OXEN_LOG(
-                                                        debug,
+                                                log::debug(
+                                                        logcat,
                                                         "Failed storage test, tried for {}",
                                                         util::friendly_duration(elapsed));
                                                 resp.body = json{{"status", "other"}};
@@ -663,11 +663,11 @@ void HTTPS::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
     if (addr.size() != 4) {
         // We don't (currently?) support IPv6 at all (SS published IPs are only IPv4) so if we
         // somehow get an IPv6 address then it isn't a proper SS request so just drop it.
-        OXEN_LOG(warn, "incoming client request is not IPv4; dropping it");
+        log::warning(logcat, "incoming client request is not IPv4; dropping it");
         return error_response(res, http::BAD_REQUEST);
     }
     if (should_rate_limit_client(addr)) {
-        OXEN_LOG(debug, "Rate limiting client request from {}", get_remote_address(res));
+        log::debug(logcat, "Rate limiting client request from {}", get_remote_address(res));
         return error_response(res, http::TOO_MANY_REQUESTS);
     }
     if (!req.getHeader("x-loki-long-poll").empty()) {
@@ -697,8 +697,8 @@ void HTTPS::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
                                 request_handler_.process_client_req(
                                         data->request.body,
                                         [data, started](rpc::Response response) mutable {
-                                            OXEN_LOG(
-                                                    debug,
+                                            log::debug(
+                                                    logcat,
                                                     "Responding to a client request after {}",
                                                     util::friendly_duration(
                                                             std::chrono::steady_clock::now() -
@@ -708,7 +708,7 @@ void HTTPS::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
                             } catch (const std::exception& e) {
                                 auto error = "Exception caught with processing client request: "s +
                                              e.what();
-                                OXEN_LOG(critical, "{}", error);
+                                log::critical(logcat, "{}", error);
                                 queue_response(
                                         std::move(data), {http::INTERNAL_SERVER_ERROR, error});
                             }
@@ -737,8 +737,8 @@ void HTTPS::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                             rpc::OnionRequestMetadata onion{
                                     crypto::x25519_pubkey{},
                                     [data, started](rpc::Response res) {
-                                        OXEN_LOG(
-                                                debug,
+                                        log::debug(
+                                                logcat,
                                                 "Got an onion response ({} {}) as edge node "
                                                 "(after {})",
                                                 res.status.first,
@@ -773,7 +773,7 @@ void HTTPS::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                                 request_handler_.process_onion_req(ciphertext, std::move(onion));
                             } catch (const std::exception& e) {
                                 auto msg = fmt::format("Error parsing onion request: {}", e.what());
-                                OXEN_LOG(err, "{}", msg);
+                                log::error(logcat, "{}", msg);
                                 queue_response(std::move(data), {http::BAD_REQUEST, msg});
                             }
                         });
@@ -794,13 +794,13 @@ void HTTPS::shutdown(bool join) {
         return;
 
     if (!sent_shutdown_) {
-        OXEN_LOG(trace, "initiating shutdown");
+        log::trace(logcat, "initiating shutdown");
         if (!sent_startup_) {
             startup_promise_.set_value(false);
             sent_startup_ = true;
         } else if (!listen_socks_.empty()) {
             loop_defer([this] {
-                OXEN_LOG(trace, "closing {} listening sockets", listen_socks_.size());
+                log::trace(logcat, "closing {} listening sockets", listen_socks_.size());
                 for (auto* s : listen_socks_)
                     us_listen_socket_close(/*ssl=*/true, s);
                 listen_socks_.clear();
@@ -811,10 +811,10 @@ void HTTPS::shutdown(bool join) {
         sent_shutdown_ = true;
     }
 
-    OXEN_LOG(trace, "joining https server thread");
+    log::trace(logcat, "joining https server thread");
     if (join)
         server_thread_.join();
-    OXEN_LOG(trace, "done shutdown");
+    log::trace(logcat, "done shutdown");
 }
 
 HTTPS::~HTTPS() {
