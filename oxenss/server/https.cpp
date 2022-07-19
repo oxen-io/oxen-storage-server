@@ -6,7 +6,6 @@
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/snode/service_node.h>
-#include <oxenss/crypto/signature.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/file.hpp>
 
@@ -419,15 +418,6 @@ namespace {
 }  // anonymous namespace
 
 void HTTPS::create_endpoints(uWS::SSLApp& https) {
-    // Legacy target, can be removed post-HF18.1:
-    https.post("/swarms/ping_test/v1", [this](HttpResponse* res, HttpRequest* /*req*/) {
-        log::trace(logcat, "Received (old) https ping_test");
-        service_node_.update_last_ping(snode::ReachType::HTTPS);
-        rpc::Response resp{http::OK};
-        resp.headers.emplace_back(http::SNODE_SIGNATURE_HEADER, cert_signature_);
-        queue_response_internal(*this, *res, std::move(resp));
-    });
-
     https.post("/ping_test/v1", [this](HttpResponse* res, HttpRequest* /*req*/) {
         log::trace(logcat, "Received https ping_test");
         service_node_.update_last_ping(snode::ReachType::HTTPS);
@@ -437,12 +427,6 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
         queue_response_internal(*this, *res, std::move(resp));
     });
 
-    // Legacy storage testing over HTTPS; can be removed after HF18.1
-    https.post("/swarms/storage_test/v1", [this](HttpResponse* res, HttpRequest* req) {
-        if (!check_ready(*res))
-            return;
-        process_storage_test_req(*req, *res);
-    });
     https.post("/storage_rpc/v1", [this](HttpResponse* res, HttpRequest* req) {
         if (!check_ready(*res))
             return;
@@ -476,177 +460,6 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
                 http::NOT_FOUND,
                 fmt::format("{} {} Not Found", req->getMethod(), req->getUrl()));
     });
-}
-
-/// Verifies snode pubkey and signature values in a request; returns the sender pubkey on
-/// success or a filled-out error Response if verification fails.
-///
-/// `prevalidate` - if true, do a "pre-validation": check that the required header values
-/// (pubkey, signature) are present and valid (including verifying that the pubkey is a valid
-/// snode) but don't actually verify the signature against the body (note that this is *not*
-/// signature verification but is used as a pre-check before reading a body to ensure the
-///
-/// Deprecated; can be removed after HF19
-static std::variant<crypto::legacy_pubkey, rpc::Response> validate_snode_signature(
-        snode::ServiceNode& sn, const Request& r, bool prevalidate = false) {
-    crypto::legacy_pubkey pubkey;
-    if (auto it = r.headers.find(http::SNODE_SENDER_HEADER); it != r.headers.end())
-        pubkey = crypto::parse_legacy_pubkey(it->second);
-    if (!pubkey) {
-        log::debug(logcat, "Missing or invalid pubkey header for request");
-        return rpc::Response{http::BAD_REQUEST, "missing/invalid pubkey header"sv};
-    }
-    crypto::signature sig;
-    if (auto it = r.headers.find(http::SNODE_SIGNATURE_HEADER); it != r.headers.end()) {
-        try {
-            sig = crypto::signature::from_base64(it->second);
-        } catch (...) {
-            log::warning(logcat, "invalid signature (not b64) found in header from {}", pubkey);
-            return rpc::Response{http::BAD_REQUEST, "Invalid signature"sv};
-        }
-    } else {
-        log::debug(logcat, "Missing required signature header for request");
-        return rpc::Response{http::BAD_REQUEST, "missing signature header"sv};
-    }
-
-    if (!sn.find_node(pubkey)) {
-        log::debug(logcat, "Rejecting signature from unknown service node: {}", pubkey);
-        return rpc::Response{http::UNAUTHORIZED, "Unknown service node"sv};
-    }
-
-    if (!prevalidate) {
-        if (!check_signature(sig, crypto::hash_data(r.body), pubkey)) {
-            log::debug(logcat, "snode signature verification failed for pubkey {}", pubkey);
-            return rpc::Response{http::UNAUTHORIZED, "snode signature verification failed"sv};
-        }
-    }
-    return pubkey;
-}
-
-void HTTPS::process_storage_test_req(HttpRequest& req, HttpResponse& res) {
-    auto check_snode_headers = [this, &res](call_data& data) {
-        // Before we read the body make sure we have the required headers (so that we can reject
-        // bad requests earlier).
-        if (auto prevalidate = validate_snode_signature(service_node_, data.request, true);
-            std::holds_alternative<rpc::Response>(prevalidate)) {
-            queue_response_internal(*this, res, std::move(std::get<rpc::Response>(prevalidate)));
-            data.replied = true;
-        } else {
-            assert(std::holds_alternative<crypto::legacy_pubkey>(prevalidate));
-            if (rate_limiter_.should_rate_limit(std::get<crypto::legacy_pubkey>(prevalidate))) {
-                queue_response_internal(
-                        *this,
-                        res,
-                        rpc::Response{
-                                http::TOO_MANY_REQUESTS, "too many requests from this snode"sv});
-                data.replied = true;
-            }
-        }
-    };
-
-    handle_request(
-            *this,
-            omq_,
-            req,
-            res,
-            [this](std::shared_ptr<call_data> data) mutable {
-                // Now that we have the body, fully validate the snode signature:
-                if (auto validate = validate_snode_signature(service_node_, data->request);
-                    std::holds_alternative<rpc::Response>(validate))
-                    return queue_response(
-                            std::move(data), std::move(std::get<rpc::Response>(validate)));
-
-                auto& omq = data->omq;
-                auto& request = data->request;
-                omq.inject_task(
-                        "https",
-                        "https:" + request.uri,
-                        request.remote_addr,
-                        [this, data = std::move(data)]() mutable {
-                            if (data->replied || data->aborted)
-                                return;
-
-                            auto& req = data->request;
-
-                            rpc::Response resp{http::BAD_REQUEST};
-                            resp.headers.emplace_back(
-                                    http::SNODE_SIGNATURE_HEADER, cert_signature_);
-
-                            crypto::legacy_pubkey tester_pk;
-                            if (auto it = req.headers.find(http::SNODE_SENDER_HEADER);
-                                it != req.headers.end()) {
-                                if (tester_pk = crypto::parse_legacy_pubkey(it->second);
-                                    !tester_pk) {
-                                    log::debug(logcat, "Invalid test request: invalid pubkey");
-                                    resp.body = "invalid tester pubkey header"sv;
-                                    return queue_response(std::move(data), std::move(resp));
-                                }
-                            } else {
-                                log::debug(logcat, "Invalid test request: missing pubkey");
-                                resp.body = "missing tester pubkey header"sv;
-                                return queue_response(std::move(data), std::move(resp));
-                            }
-
-                            auto body = json::parse(data->request.body, nullptr, false);
-                            if (body.is_discarded()) {
-                                log::debug(logcat, "Bad snode test request: invalid json");
-                                resp.body = "invalid json"sv;
-                                return queue_response(std::move(data), std::move(resp));
-                            }
-
-                            uint64_t height;
-                            std::string msg_hash;
-                            try {
-                                height = body.at("height").get<uint64_t>();
-                                msg_hash = body.at("hash").get<std::string>();
-                            } catch (...) {
-                                resp.body = "Bad snode test request: missing fields in json"sv;
-                                log::debug(logcat, std::get<std::string_view>(resp.body));
-                                return queue_response(std::move(data), std::move(resp));
-                            }
-
-                            request_handler_.process_storage_test_req(
-                                    height,
-                                    tester_pk,
-                                    msg_hash,
-                                    [data = std::move(data), resp = std::move(resp)](
-                                            snode::MessageTestStatus status,
-                                            std::string answer,
-                                            std::chrono::steady_clock::duration elapsed) mutable {
-                                        resp.status = http::OK;
-                                        switch (status) {
-                                            case snode::MessageTestStatus::SUCCESS:
-                                                log::debug(
-                                                        logcat,
-                                                        "Storage test success after {}",
-                                                        util::friendly_duration(elapsed));
-                                                resp.body =
-                                                        json{{"status", "OK"},
-                                                             {"value", oxenc::to_base64(answer)}};
-                                                return queue_response(
-                                                        std::move(data), std::move(resp));
-                                            case snode::MessageTestStatus::WRONG_REQ:
-                                                resp.body = json{{"status", "wrong request"}};
-                                                return queue_response(
-                                                        std::move(data), std::move(resp));
-                                            case snode::MessageTestStatus::RETRY:
-                                                [[fallthrough]];  // If we're getting called then a
-                                                                  // retry ran out of time
-                                            case snode::MessageTestStatus::ERROR:
-                                                // Promote this to `error` once we enforce storage
-                                                // testing
-                                                log::debug(
-                                                        logcat,
-                                                        "Failed storage test, tried for {}",
-                                                        util::friendly_duration(elapsed));
-                                                resp.body = json{{"status", "other"}};
-                                                return queue_response(
-                                                        std::move(data), std::move(resp));
-                                        }
-                                    });
-                        });
-            },
-            std::move(check_snode_headers));
 }
 
 bool HTTPS::should_rate_limit_client(std::string_view addr) {

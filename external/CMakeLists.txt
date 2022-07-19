@@ -74,12 +74,6 @@ set(OXEN_LOGGING_SOURCE_ROOT "${PROJECT_SOURCE_DIR}/oxenss" CACHE INTERNAL "")
 add_subdirectory(oxen-logging)
 
 
-add_library(oxen-crypto-ops STATIC
-  oxen/crypto-ops/keccak.c
-  oxen/crypto-ops/hash-ops.c)
-target_include_directories(oxen-crypto-ops PUBLIC .)
-
-
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
 if (NOT CMAKE_VERSION VERSION_LESS 3.12)

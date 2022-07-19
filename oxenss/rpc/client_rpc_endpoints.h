@@ -98,9 +98,7 @@ namespace {
 ///   76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
 /// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
 ///   this message.  Messages in different namespaces are treated as separate storage boxes from
-///   untagged messages.  (Note that before the Oxen 10 hardfork (HF 19) this field will be ignored
-///   and the message will end up in the default namespace (i.e. namespace 0) regardless of what was
-///   specified here.)
+///   untagged messages.
 /// - `subkey` (optional) if provided this is a 32-byte subkey value, encoded base64 or hex (for
 ///   json requests; bytes, for bt-encoded requests), to use for subkey signature verification
 ///   instead of using `pubkey` directly.  Denoting this value as `c` and `pubkey` as `A`, the
@@ -447,7 +445,7 @@ struct delete_before final : recursive {
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "updated":
-///         - if deleting from a single namespace then this is a list of (ascii-sorted) hashes that
+///         - if expiring from a single namespace then this is a list of (ascii-sorted) hashes that
 ///           had their expiries updated to `expiry`; messages that did not exist or that already
 ///           had an expiry <= the given expiry are not included.
 ///         - otherwise (i.e. namespace="all") this is a dict of `{ namespace => [sorted hashes] }`
@@ -483,10 +481,10 @@ struct expire_all final : recursive {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  As
-///   of HF19 this can be used to extend expiries instead of just shortening them.  The expiry can
-///   be extended to at most the maximum TTL (14 days) from now; specifying a later timestamp will
-///   be truncated to the maximum.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
+///   can be used to extend expiries instead of just shortening them.  The expiry can be extended to
+///   at most the maximum TTL (14 days) from now; specifying a later timestamp will be truncated to
+///   the maximum.
 /// - signature -- Ed25519 signature of:
 ///       ("expire" || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
@@ -496,9 +494,7 @@ struct expire_all final : recursive {
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.  As of
-///       HF19, this includes messages that have had their expiries extended (before HF19 expiries
-///       could only be shortened but not extended).
+///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
 ///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
