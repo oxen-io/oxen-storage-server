@@ -10,6 +10,8 @@
 
 namespace oxen::snode {
 
+static auto logcat = log::Cat("snode");
+
 static bool swarm_exists(const std::vector<SwarmInfo>& all_swarms, const swarm_id_t& swarm) {
     const auto it =
             std::find_if(all_swarms.begin(), all_swarms.end(), [&swarm](const SwarmInfo& si) {
@@ -107,12 +109,15 @@ SwarmEvents Swarm::derive_swarm_events(const std::vector<SwarmInfo>& swarms) con
 
 void Swarm::set_swarm_id(swarm_id_t sid) {
     if (sid == INVALID_SWARM_ID) {
-        OXEN_LOG(warn, "We are not currently an active Service Node");
+        log::warning(logcat, "We are not currently an active Service Node");
     } else {
         if (cur_swarm_id_ == INVALID_SWARM_ID) {
-            OXEN_LOG(info, "EVENT: started SN in swarm: 0x{}", util::int_to_string(sid, 16));
+            log::info(logcat, "EVENT: started SN in swarm: 0x{}", util::int_to_string(sid, 16));
         } else if (cur_swarm_id_ != sid) {
-            OXEN_LOG(info, "EVENT: got moved into a new swarm: 0x{}", util::int_to_string(sid, 16));
+            log::info(
+                    logcat,
+                    "EVENT: got moved into a new swarm: 0x{}",
+                    util::int_to_string(sid, 16));
         }
     }
 
@@ -163,12 +168,12 @@ std::vector<SwarmInfo> apply_ips(
         }
     }
 
-    OXEN_LOG(debug, "Updated {} entries from oxend", updates_count);
+    log::debug(logcat, "Updated {} entries from oxend", updates_count);
     return result_swarms;
 }
 
 void Swarm::apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms) {
-    OXEN_LOG(trace, "Applying swarm changes");
+    log::trace(logcat, "Applying swarm changes");
 
     all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
 }
@@ -182,15 +187,15 @@ void Swarm::update_state(
         // The following only makes sense for active nodes in a swarm
 
         if (events.dissolved) {
-            OXEN_LOG(info, "EVENT: our old swarm got DISSOLVED!");
+            log::info(logcat, "EVENT: our old swarm got DISSOLVED!");
         }
 
         for (const sn_record& sn : events.new_snodes) {
-            OXEN_LOG(info, "EVENT: detected new SN: {}", sn.pubkey_legacy);
+            log::info(logcat, "EVENT: detected new SN: {}", sn.pubkey_legacy);
         }
 
         for (swarm_id_t swarm : events.new_swarms) {
-            OXEN_LOG(info, "EVENT: detected a new swarm: {}", swarm);
+            log::info(logcat, "EVENT: detected a new swarm: {}", swarm);
         }
 
         apply_swarm_changes(swarms);
@@ -341,8 +346,8 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
             total++;
             if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
                 !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
-                OXEN_LOG(
-                        warn,
+                log::warning(
+                        logcat,
                         "well wtf {} {} {} {} {}",
                         snode.ip,
                         snode.port,

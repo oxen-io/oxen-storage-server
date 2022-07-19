@@ -25,3 +25,6 @@
 [submodule "vendors/CLI11"]
 	path = external/CLI11
 	url = https://github.com/CLIUtils/CLI11
+[submodule "external/oxen-logging"]
+	path = external/oxen-logging
+	url = https://github.com/oxen-io/oxen-logging.git

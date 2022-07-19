@@ -64,6 +64,16 @@ enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
 enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
+constexpr std::string_view to_string(SnodeStatus status) {
+    switch (status) {
+        case SnodeStatus::UNSTAKED: return "Unstaked"sv;
+        case SnodeStatus::DECOMMISSIONED: return "Decommissioned"sv;
+        case SnodeStatus::ACTIVE: return "Active"sv;
+        case SnodeStatus::UNKNOWN: return "Unknown"sv;
+    }
+    return "Unknown"sv;
+}
+
 /// All service node logic that is not network-specific
 class ServiceNode {
     bool syncing_ = true;
@@ -268,3 +278,6 @@ class ServiceNode {
 };
 
 }  // namespace oxen::snode
+
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::snode::SnodeStatus> = true;

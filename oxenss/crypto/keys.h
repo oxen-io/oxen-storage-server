@@ -8,6 +8,8 @@
 #include <string_view>
 #include <utility>
 
+#include <oxenss/common/formattable.h>
+
 namespace oxen::crypto {
 
 using namespace std::literals;
@@ -55,6 +57,7 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
 template <typename Derived, size_t KeyLength>
 struct pubkey_base : key_base<Derived, KeyLength> {
     using PubKeyBase = pubkey_base<Derived, KeyLength>;
+    std::string to_string() const { return PubKeyBase::hex(); }
 };
 
 struct legacy_pubkey : pubkey_base<legacy_pubkey, 32> {};
@@ -63,17 +66,6 @@ struct ed25519_pubkey : pubkey_base<ed25519_pubkey, 32> {
     // Returns the {base32z}.snode representation of this pubkey
     std::string snode_address() const;
 };
-
-// Converts pubkey to a hex string when outputting.
-inline std::ostream& operator<<(std::ostream& o, const legacy_pubkey& pk) {
-    return o << pk.hex();
-}
-inline std::ostream& operator<<(std::ostream& o, const x25519_pubkey& pk) {
-    return o << pk.hex();
-}
-inline std::ostream& operator<<(std::ostream& o, const ed25519_pubkey& pk) {
-    return o << pk.hex();
-}
 
 template <typename Derived, size_t KeyLength>
 struct seckey_base : key_base<Derived, KeyLength> {};
@@ -100,6 +92,13 @@ ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
 
 }  // namespace oxen::crypto
+
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::legacy_pubkey> = true;
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::ed25519_pubkey> = true;
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::x25519_pubkey> = true;
 
 namespace std {
 

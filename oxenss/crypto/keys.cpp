@@ -12,6 +12,8 @@
 
 namespace oxen::crypto {
 
+static auto logcat = oxen::log::Cat("crypto");
+
 namespace detail {
     void load_from_hex(void* buffer, size_t length, std::string_view hex) {
         if (!oxenc::is_hex(hex))
@@ -74,9 +76,9 @@ static T parse_pubkey(std::string_view pubkey_in) {
     else if (pubkey_in.size() == 52 && oxenc::is_base32z(pubkey_in))
         oxenc::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else {
-        OXEN_LOG(warn, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
-        OXEN_LOG(
-                debug,
+        log::warning(logcat, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
+        log::debug(
+                logcat,
                 "Received public key encoded value of size {}: {}",
                 pubkey_in.size(),
                 pubkey_in);

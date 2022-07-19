@@ -26,6 +26,8 @@ using json = nlohmann::json;
 
 namespace oxen::snode {
 
+static auto logcat = log::Cat("snode");
+
 // Threshold of missing data records at which we start warning and consult bootstrap nodes
 // (mainly so that we don't bother producing warning spam or going to the bootstrap just for a
 // few new nodes that will often have missing info for a few minutes).
@@ -48,7 +50,7 @@ ServiceNode::ServiceNode(
         all_stats_{*omq_server} {
     swarm_ = std::make_unique<Swarm>(our_address_);
 
-    OXEN_LOG(info, "Requesting initial swarm state");
+    log::info(logcat, "Requesting initial swarm state");
 
     omq_server->add_timer(
             [this] {
@@ -76,7 +78,7 @@ ServiceNode::ServiceNode(
                 std::lock_guard lock{sn_mutex_};
                 if (!syncing_)
                     return;
-                OXEN_LOG(warn, "Block syncing is taking too long, activating SS regardless");
+                log::warning(logcat, "Block syncing is taking too long, activating SS regardless");
                 syncing_ = false;
             },
             1h);
@@ -92,13 +94,13 @@ void ServiceNode::on_oxend_connected() {
     std::unique_lock lock{first_response_mutex_};
     while (true) {
         if (first_response_cv_.wait_for(lock, 5s, [this] { return got_first_response_; })) {
-            OXEN_LOG(
-                    info,
+            log::info(
+                    logcat,
                     "Got initial block update from oxend in {}",
                     util::short_duration(std::chrono::steady_clock::now() - started));
             break;
         }
-        OXEN_LOG(warn, "Still waiting for initial block update from oxend...");
+        log::warning(logcat, "Still waiting for initial block update from oxend...");
     }
 }
 
@@ -111,14 +113,14 @@ static T get_or(const json& j, std::string_view key, std::common_type_t<T> defau
 
 static block_update parse_swarm_update(const std::string& response_body) {
     if (response_body.empty()) {
-        OXEN_LOG(critical, "Bad oxend rpc response: no response body");
+        log::critical(logcat, "Bad oxend rpc response: no response body");
         throw std::runtime_error("Failed to parse swarm update");
     }
 
     std::map<swarm_id_t, std::vector<sn_record>> swarm_map;
     block_update bu;
 
-    OXEN_LOG(trace, "swarm repsonse: <{}>", response_body);
+    log::trace(logcat, "swarm repsonse: <{}>", response_body);
 
     try {
         json result = json::parse(response_body, nullptr, true);
@@ -152,8 +154,8 @@ static block_update parse_swarm_update(const std::string& response_body) {
                 // missing there isn't much we can do: it means the remote hasn't transmitted
                 // them yet (or our local oxend hasn't received them yet).
                 missing_aux_pks++;
-                OXEN_LOG(
-                        debug,
+                log::debug(
+                        logcat,
                         "ed25519/x25519 pubkeys are missing from service node info {}",
                         pk_hex);
                 continue;
@@ -182,15 +184,15 @@ static block_update parse_swarm_update(const std::string& response_body) {
 
         if (missing_aux_pks >
             MISSING_PUBKEY_THRESHOLD::num * total / MISSING_PUBKEY_THRESHOLD::den) {
-            OXEN_LOG(
-                    warn,
+            log::warning(
+                    logcat,
                     "Missing ed25519/x25519 pubkeys for {}/{} service nodes; "
                     "oxend may be out of sync with the network",
                     missing_aux_pks,
                     total);
         }
     } catch (const std::exception& e) {
-        OXEN_LOG(critical, "Bad oxend rpc response: invalid json ({})", e.what());
+        log::critical(logcat, "Bad oxend rpc response: invalid json ({})", e.what());
         throw std::runtime_error("Failed to parse swarm update");
     }
 
@@ -204,7 +206,7 @@ static block_update parse_swarm_update(const std::string& response_body) {
 void ServiceNode::bootstrap_data() {
     std::lock_guard guard(sn_mutex_);
 
-    OXEN_LOG(trace, "Bootstrapping peer data");
+    log::trace(logcat, "Bootstrapping peer data");
 
     std::string params = json{{"fields",
                                {{"service_node_pubkey", true},
@@ -247,10 +249,14 @@ void ServiceNode::bootstrap_data() {
         auto connid = omq_server_->connect_remote(
                 addr,
                 [addr](oxenmq::ConnectionID) {
-                    OXEN_LOG(debug, "Connected to bootstrap node {}", addr);
+                    log::debug(logcat, "Connected to bootstrap node {}", addr.full_address());
                 },
                 [addr](oxenmq::ConnectionID, auto reason) {
-                    OXEN_LOG(debug, "Failed to connect to bootstrap node {}: {}", addr, reason);
+                    log::debug(
+                            logcat,
+                            "Failed to connect to bootstrap node {}: {}",
+                            addr.full_address(),
+                            reason);
                 },
                 oxenmq::connect_option::ephemeral_routing_id{true},
                 oxenmq::connect_option::timeout{BOOTSTRAP_TIMEOUT});
@@ -260,35 +266,38 @@ void ServiceNode::bootstrap_data() {
                 [this, connid, addr, req_counter, node_count = (int)seed_nodes.size()](
                         bool success, auto data) {
                     if (!success)
-                        OXEN_LOG(
-                                err,
+                        log::error(
+                                logcat,
                                 "Failed to contact bootstrap node {}: request timed out",
-                                addr);
+                                addr.full_address());
                     else if (data.empty())
-                        OXEN_LOG(
-                                err,
+                        log::error(
+                                logcat,
                                 "Failed to request bootstrap node data from {}: request returned "
                                 "no "
                                 "data",
-                                addr);
+                                addr.full_address());
                     else if (data[0] != "200")
-                        OXEN_LOG(
-                                err,
+                        log::error(
+                                logcat,
                                 "Failed to request bootstrap node data from {}: request returned "
                                 "failure status {}",
                                 data[0]);
                     else {
-                        OXEN_LOG(info, "Parsing response from bootstrap node {}", addr);
+                        log::info(
+                                logcat,
+                                "Parsing response from bootstrap node {}",
+                                addr.full_address());
                         try {
                             auto update = parse_swarm_update(data[1]);
                             if (!update.unchanged)
                                 on_bootstrap_update(std::move(update));
-                            OXEN_LOG(info, "Bootstrapped from {}", addr);
+                            log::info(logcat, "Bootstrapped from {}", addr.full_address());
                         } catch (const std::exception& e) {
-                            OXEN_LOG(
-                                    err,
+                            log::error(
+                                    logcat,
                                     "Exception caught while bootstrapping from {}: {}",
-                                    addr,
+                                    addr.full_address(),
                                     e.what());
                         }
                     }
@@ -296,7 +305,7 @@ void ServiceNode::bootstrap_data() {
                     omq_server_->disconnect(connid);
 
                     if (++(*req_counter) == node_count) {
-                        OXEN_LOG(info, "Bootstrapping done");
+                        log::info(logcat, "Bootstrapping done");
                         if (target_height_ > 0)
                             update_swarms();
                         else {
@@ -304,8 +313,8 @@ void ServiceNode::bootstrap_data() {
                             // (successfully or not) all seed nodes, just assume we have
                             // finished syncing. (Otherwise we will never get a chance
                             // to update syncing status.)
-                            OXEN_LOG(
-                                    warn,
+                            log::warning(
+                                    logcat,
                                     "Could not contact any bootstrap nodes to get target "
                                     "height. Assuming our local height is correct.");
                             syncing_ = false;
@@ -366,14 +375,15 @@ void ServiceNode::send_onion_to_sn(
 }
 
 void ServiceNode::relay_data_reliable(const std::string& blob, const sn_record& sn) const {
-    OXEN_LOG(debug, "Relaying data to: {} (x25519 pubkey {})", sn.pubkey_legacy, sn.pubkey_x25519);
+    log::debug(
+            logcat, "Relaying data to: {} (x25519 pubkey {})", sn.pubkey_legacy, sn.pubkey_x25519);
 
     omq_server_->request(
             sn.pubkey_x25519.view(),
             "sn.data",
             [](bool success, auto&& /*data*/) {
                 if (!success)
-                    OXEN_LOG(err, "Failed to relay batch data: timeout");
+                    log::error(logcat, "Failed to relay batch data: timeout");
             },
             blob);
 }
@@ -396,7 +406,7 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     /// only accept a message if we are in a swarm
     if (!swarm_) {
         // This should never be printed now that we have "snode_ready"
-        OXEN_LOG(err, "error: my swarm in not initialized");
+        log::error(logcat, "error: my swarm in not initialized");
         return false;
     }
 
@@ -405,7 +415,7 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     /// store in the database (if not already present)
     auto stored = db_->store(msg);
     if (stored)
-        OXEN_LOG(trace, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
+        log::trace(logcat, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
     if (new_msg)
         *new_msg = stored.value_or(false);
 
@@ -418,11 +428,11 @@ void ServiceNode::save_bulk(const std::vector<message>& msgs) {
     try {
         db_->bulk_store(msgs);
     } catch (const std::exception& e) {
-        OXEN_LOG(err, "failed to save batch to the database: {}", e.what());
+        log::error(logcat, "failed to save batch to the database: {}", e.what());
         return;
     }
 
-    OXEN_LOG(trace, "saved messages count: {}", msgs.size());
+    log::trace(logcat, "saved messages count: {}", msgs.size());
 }
 
 void ServiceNode::on_bootstrap_update(block_update&& bu) {
@@ -434,16 +444,6 @@ void ServiceNode::on_bootstrap_update(block_update&& bu) {
 
     if (syncing_)
         omq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
-}
-
-template <typename OStream>
-OStream& operator<<(OStream& os, const SnodeStatus& status) {
-    switch (status) {
-        case SnodeStatus::UNSTAKED: return os << "Unstaked";
-        case SnodeStatus::DECOMMISSIONED: return os << "Decommissioned";
-        case SnodeStatus::ACTIVE: return os << "Active";
-        default: return os << "Unknown";
-    }
 }
 
 static SnodeStatus derive_snode_status(const block_update& bu, const sn_record& our_address) {
@@ -469,7 +469,7 @@ static SnodeStatus derive_snode_status(const block_update& bu, const sn_record& 
 void ServiceNode::on_swarm_update(block_update&& bu) {
     hf_revision net_ver{bu.hardfork, bu.snode_revision};
     if (hardfork_ != net_ver) {
-        OXEN_LOG(info, "New hardfork: {}.{}", net_ver.first, net_ver.second);
+        log::info(logcat, "New hardfork: {}.{}", net_ver.first, net_ver.second);
         hardfork_ = net_ver;
     }
 
@@ -479,21 +479,22 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
 
     /// We don't have anything to do until we have synced
     if (syncing_) {
-        OXEN_LOG(debug, "Still syncing: {}/{}", bu.height, target_height_);
+        log::debug(logcat, "Still syncing: {}/{}", bu.height, target_height_);
         // Note that because we are still syncing, we won't update our swarm id
         return;
     }
 
     if (bu.block_hash != block_hash_) {
-        OXEN_LOG(debug, "new block, height: {}, hash: {}", bu.height, bu.block_hash);
+        log::debug(logcat, "new block, height: {}, hash: {}", bu.height, bu.block_hash);
 
         if (bu.height > block_height_ + 1 && block_height_ != 0) {
-            OXEN_LOG(warn, "Skipped some block(s), old: {} new: {}", block_height_, bu.height);
+            log::warning(
+                    logcat, "Skipped some block(s), old: {} new: {}", block_height_, bu.height);
             /// TODO: if we skipped a block, should we try to run peer tests for
             /// them as well?
         } else if (bu.height <= block_height_) {
             // TODO: investigate how testing will be affected under reorg
-            OXEN_LOG(warn, "new block height is not higher than the current height");
+            log::warning(logcat, "new block height is not higher than the current height");
         }
 
         block_height_ = bu.height;
@@ -505,7 +506,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
         block_hashes_cache_.insert_or_assign(
                 block_hashes_cache_.end(), bu.height, std::move(bu.block_hash));
     } else {
-        OXEN_LOG(trace, "already seen this block");
+        log::trace(logcat, "already seen this block");
         return;
     }
 
@@ -518,14 +519,14 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
     const auto status = derive_snode_status(bu, our_address_);
 
     if (status_ != status) {
-        OXEN_LOG(info, "Node status updated: {}", status);
+        log::info(logcat, "Node status updated: {}", status);
         status_ = status;
     }
 
     swarm_->set_swarm_id(events.our_swarm_id);
 
     if (std::string reason; !snode_ready(&reason)) {
-        OXEN_LOG(warn, "Storage server is still not ready: {}", reason);
+        log::warning(logcat, "Storage server is still not ready: {}", reason);
         swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
         return;
     } else {
@@ -533,7 +534,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
             // NOTE: because we never reset `active_` after we get
             // decommissioned, this code won't run when the node comes back
             // again
-            OXEN_LOG(info, "Storage server is now active!");
+            log::info(logcat, "Storage server is now active!");
             active_ = true;
         }
     }
@@ -560,13 +561,13 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
 
 void ServiceNode::update_swarms() {
     if (updating_swarms_.exchange(true)) {
-        OXEN_LOG(debug, "Swarm update already in progress, not sending another update request");
+        log::debug(logcat, "Swarm update already in progress, not sending another update request");
         return;
     }
 
     std::lock_guard lock{sn_mutex_};
 
-    OXEN_LOG(debug, "Swarm update triggered");
+    log::debug(logcat, "Swarm update triggered");
 
     json params{
             {"fields",
@@ -591,14 +592,14 @@ void ServiceNode::update_swarms() {
             [this](bool success, std::vector<std::string> data) {
                 updating_swarms_ = false;
                 if (!success || data.size() < 2) {
-                    OXEN_LOG(critical, "Failed to contact local oxend for service node list");
+                    log::critical(logcat, "Failed to contact local oxend for service node list");
                     return;
                 }
                 try {
                     std::lock_guard lock{sn_mutex_};
                     block_update bu = parse_swarm_update(data[1]);
                     if (!got_first_response_) {
-                        OXEN_LOG(info, "Got initial swarm information from local Oxend");
+                        log::info(logcat, "Got initial swarm information from local Oxend");
 
                         {
                             std::lock_guard l{first_response_mutex_};
@@ -621,8 +622,8 @@ void ServiceNode::update_swarms() {
                                         std::string_view hash{
                                                 data[1].data() + 1, data[1].size() - 2};
                                         if (oxenc::is_hex(hash)) {
-                                            OXEN_LOG(
-                                                    debug,
+                                            log::debug(
+                                                    logcat,
                                                     "Pre-loaded hash {} for height {}",
                                                     hash,
                                                     h);
@@ -647,15 +648,15 @@ void ServiceNode::update_swarms() {
                         if (total >= (oxen::is_mainnet ? 100 : 10) &&
                             missing <= MISSING_PUBKEY_THRESHOLD::num * total /
                                                MISSING_PUBKEY_THRESHOLD::den) {
-                            OXEN_LOG(
-                                    info,
+                            log::info(
+                                    logcat,
                                     "Initialized from oxend with {}/{} SN records",
                                     total - missing,
                                     total);
                             syncing_ = false;
                         } else {
-                            OXEN_LOG(
-                                    info,
+                            log::info(
+                                    logcat,
                                     "Detected some missing SN data ({}/{}); "
                                     "querying bootstrap nodes for help",
                                     missing,
@@ -665,11 +666,11 @@ void ServiceNode::update_swarms() {
                     }
 
                     if (!bu.unchanged) {
-                        OXEN_LOG(debug, "Blockchain updated, rebuilding swarm list");
+                        log::debug(logcat, "Blockchain updated, rebuilding swarm list");
                         on_swarm_update(std::move(bu));
                     }
                 } catch (const std::exception& e) {
-                    OXEN_LOG(err, "Exception caught on swarm update: {}", e.what());
+                    log::error(logcat, "Exception caught on swarm update: {}", e.what());
                 }
             },
             params.dump());
@@ -685,7 +686,7 @@ void ServiceNode::ping_peers() {
     // TODO: Don't do anything until we are fully funded
 
     if (status_ == SnodeStatus::UNSTAKED || status_ == SnodeStatus::UNKNOWN) {
-        OXEN_LOG(trace, "Skipping peer testing (unstaked)");
+        log::trace(logcat, "Skipping peer testing (unstaked)");
         return;
     }
 
@@ -695,7 +696,7 @@ void ServiceNode::ping_peers() {
     reach_records_.check_incoming_tests(now);
 
     if (status_ == SnodeStatus::DECOMMISSIONED) {
-        OXEN_LOG(trace, "Skipping peer testing (decommissioned)");
+        log::trace(logcat, "Skipping peer testing (decommissioned)");
         return;
     }
 
@@ -706,9 +707,9 @@ void ServiceNode::ping_peers() {
         to_test.emplace_back(std::move(*rando), 0);
 
     if (to_test.empty())
-        OXEN_LOG(trace, "no nodes to test this tick");
+        log::trace(logcat, "no nodes to test this tick");
     else
-        OXEN_LOG(debug, "{} nodes to test", to_test.size());
+        log::debug(logcat, "{} nodes to test", to_test.size());
     for (const auto& [sn, prev_fails] : to_test)
         test_reachability(sn, prev_fails);
 }
@@ -726,8 +727,8 @@ std::vector<std::pair<std::string, std::string>> ServiceNode::sign_request(
 }
 
 void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) {
-    OXEN_LOG(
-            debug,
+    log::debug(
+            logcat,
             "Testing {} SN {} for reachability",
             previous_failures > 0 ? "previously failing" : "random",
             sn.pubkey_legacy);
@@ -737,7 +738,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
         // hasn't sent an uptime proof; we could treat it as a failure, but that seems
         // unnecessary since oxend will already fail the service node for not sending uptime
         // proofs.
-        OXEN_LOG(debug, "Skipping HTTPS test of {}: no public IP received yet");
+        log::debug(logcat, "Skipping HTTPS test of {}: no public IP received yet");
         return;
     }
 
@@ -758,32 +759,32 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
             {"User-Agent", "Oxen Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
     };
 
-    OXEN_LOG(debug, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url);
+    log::debug(logcat, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url.str());
     outstanding_https_reqs_.emplace_front(cpr::PostCallback(
             [this, &omq = *omq_server(), test_results, previous_failures](cpr::Response r) {
                 auto& [sn, result] = *test_results;
                 auto& pk = sn.pubkey_legacy;
                 bool success = false;
                 if (r.error.code != cpr::ErrorCode::OK) {
-                    OXEN_LOG(debug, "FAILED HTTPS ping test of {}: {}", pk, r.error.message);
+                    log::debug(logcat, "FAILED HTTPS ping test of {}: {}", pk, r.error.message);
                 } else if (r.status_code != 200) {
-                    OXEN_LOG(
-                            debug,
+                    log::debug(
+                            logcat,
                             "FAILED HTTPS ping test of {}: received non-200 status {} {}",
                             pk,
                             r.status_code,
                             r.status_line);
                 } else {
                     if (auto it = r.header.find(http::SNODE_PUBKEY_HEADER); it == r.header.end())
-                        OXEN_LOG(
-                                debug,
+                        log::debug(
+                                logcat,
                                 "FAILED HTTPS ping test of {}: {} response header missing",
                                 pk,
                                 http::SNODE_PUBKEY_HEADER);
                     else if (auto remote_pk = crypto::parse_legacy_pubkey(it->second);
                              remote_pk != pk)
-                        OXEN_LOG(
-                                debug,
+                        log::debug(
+                                logcat,
                                 "FAILED HTTPS ping test of {}: reply has wrong pubkey {}",
                                 pk,
                                 remote_pk);
@@ -791,7 +792,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                         success = true;
                 }
                 if (success)
-                    OXEN_LOG(debug, "Successful HTTPS ping test of {}", pk);
+                    log::debug(logcat, "Successful HTTPS ping test of {}", pk);
 
                 if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
                     r != TEST_WAITING)
@@ -816,8 +817,8 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                     bool success, const auto&) {
                 auto& [sn, result] = *test_results;
 
-                OXEN_LOG(
-                        debug,
+                log::debug(
+                        logcat,
                         "{} response for OxenMQ ping test of {}",
                         success ? "Successful" : "FAILED",
                         sn.pubkey_legacy);
@@ -845,9 +846,10 @@ void ServiceNode::oxend_ping() {
             "admin.storage_server_ping",
             [this](bool success, std::vector<std::string> data) {
                 if (!success)
-                    OXEN_LOG(critical, "Could not ping oxend: Request failed ({})", data.front());
+                    log::critical(
+                            logcat, "Could not ping oxend: Request failed ({})", data.front());
                 else if (data.size() < 2 || data[1].empty())
-                    OXEN_LOG(critical, "Could not ping oxend: Empty body on reply");
+                    log::critical(logcat, "Could not ping oxend: Empty body on reply");
                 else
                     try {
                         if (const auto status =
@@ -855,20 +857,20 @@ void ServiceNode::oxend_ping() {
                             status == "OK") {
                             auto good_pings = ++oxend_pings_;
                             if (good_pings == 1)  // First ping after startup or after ping failure
-                                OXEN_LOG(info, "Successfully pinged oxend");
+                                log::info(logcat, "Successfully pinged oxend");
                             else if (good_pings % (1h / OXEND_PING_INTERVAL) == 0)  // Once an hour
-                                OXEN_LOG(info, "{} successful oxend pings", good_pings);
+                                log::info(logcat, "{} successful oxend pings", good_pings);
                             else
-                                OXEN_LOG(
-                                        debug,
+                                log::debug(
+                                        logcat,
                                         "Successfully pinged Oxend ({} consecutive times)",
                                         good_pings);
                         } else {
-                            OXEN_LOG(critical, "Could not ping oxend: {}", status);
+                            log::critical(logcat, "Could not ping oxend: {}", status);
                             oxend_pings_ = 0;
                         }
                     } catch (...) {
-                        OXEN_LOG(critical, "Could not ping oxend: bad json in response");
+                        log::critical(logcat, "Could not ping oxend: bad json in response");
                     }
             },
             oxend_params.dump());
@@ -879,14 +881,14 @@ void ServiceNode::oxend_ping() {
     // hurt anything for it to be much faster than 30min).
     omq_server_.oxend_request("sub.block", [](bool success, auto&& result) {
         if (!success || result.empty())
-            OXEN_LOG(
-                    critical,
+            log::critical(
+                    logcat,
                     "Failed to subscribe to oxend block notifications: {}",
                     result.empty() ? "response is empty" : result.front());
         else if (result.front() == "OK")
-            OXEN_LOG(info, "Subscribed to oxend new block notifications");
+            log::info(logcat, "Subscribed to oxend new block notifications");
         else if (result.front() == "ALREADY")
-            OXEN_LOG(debug, "Renewed oxend new block notification subscription");
+            log::debug(logcat, "Renewed oxend new block notification subscription");
     });
 }
 
@@ -901,28 +903,29 @@ void ServiceNode::process_storage_test_response(
     if (status.empty()) {
         // TODO: retry here, otherwise tests sometimes fail (when SN not
         // running yet)
-        OXEN_LOG(debug, "Failed to send a storage test request to snode: {}", testee.pubkey_legacy);
+        log::debug(
+                logcat, "Failed to send a storage test request to snode: {}", testee.pubkey_legacy);
     } else if (status == "OK") {
         if (answer == msg.data) {
-            OXEN_LOG(
-                    debug,
+            log::debug(
+                    logcat,
                     "Storage test is successful for: {} at height: {}",
                     testee.pubkey_legacy,
                     test_height);
             result = ResultType::OK;
         } else {
-            OXEN_LOG(
-                    debug,
+            log::debug(
+                    logcat,
                     "Test answer doesn't match for: {} at height {}",
                     testee.pubkey_legacy,
                     test_height);
             result = ResultType::MISMATCH;
         }
     } else if (status == "wrong request") {
-        OXEN_LOG(debug, "Storage test rejected by testee");
+        log::debug(logcat, "Storage test rejected by testee");
         result = ResultType::REJECTED;
     } else {
-        OXEN_LOG(debug, "Storage test failed for some other reason: {}", status);
+        log::debug(logcat, "Storage test failed for some other reason: {}", status);
     }
 
     all_stats_.record_storage_test_result(testee.pubkey_legacy, result);
@@ -932,8 +935,8 @@ void ServiceNode::send_storage_test_req(
         const sn_record& testee, uint64_t test_height, const message& msg) {
     bool is_b64 = oxenc::is_base64(msg.hash);
     if (!is_b64) {
-        OXEN_LOG(
-                err,
+        log::error(
+                logcat,
                 "Unable to initiate storage test: retrieved msg hash is not expected "
                 "BLAKE2b+base64");
         return;
@@ -944,8 +947,8 @@ void ServiceNode::send_storage_test_req(
             "sn.storage_test",
             [this, testee, msg, height = test_height](bool success, auto data) {
                 if (!success || data.size() != 2) {
-                    OXEN_LOG(
-                            debug,
+                    log::debug(
+                            logcat,
                             "Storage test request failed: {}",
                             !success ? "request timed out"
                                      : "wrong number of elements in response");
@@ -964,15 +967,15 @@ void ServiceNode::send_storage_test_req(
 void ServiceNode::report_reachability(const sn_record& sn, bool reachable, int previous_failures) {
     auto cb = [sn_pk = sn.pubkey_legacy, reachable](bool success, std::vector<std::string> data) {
         if (!success) {
-            OXEN_LOG(
-                    warn,
+            log::warning(
+                    logcat,
                     "Could not report node status: {}",
                     data.empty() ? "unknown reason" : data[0]);
             return;
         }
 
         if (data.size() < 2 || data[1].empty()) {
-            OXEN_LOG(warn, "Empty body on Oxend report node status");
+            log::warning(logcat, "Empty body on Oxend report node status");
             return;
         }
 
@@ -980,16 +983,16 @@ void ServiceNode::report_reachability(const sn_record& sn, bool reachable, int p
             const auto status = json::parse(data[1]).at("status").get<std::string>();
 
             if (status == "OK") {
-                OXEN_LOG(
-                        debug,
+                log::debug(
+                        logcat,
                         "Successfully reported {} node: {}",
                         reachable ? "reachable" : "UNREACHABLE",
                         sn_pk);
             } else {
-                OXEN_LOG(warn, "Could not report node: {}", status);
+                log::warning(logcat, "Could not report node: {}", status);
             }
         } catch (...) {
-            OXEN_LOG(err, "Could not report node status: bad json in response");
+            log::error(logcat, "Could not report node status: bad json in response");
         }
     };
 
@@ -1016,7 +1019,7 @@ std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee
     members.push_back(our_address_);
 
     if (members.size() < 2) {
-        OXEN_LOG(trace, "Could not initiate peer test: swarm too small");
+        log::trace(logcat, "Could not initiate peer test: swarm too small");
         return std::nullopt;
     }
 
@@ -1028,8 +1031,8 @@ std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee
     if (blk_height == block_height_) {
         block_hash = block_hash_;
     } else if (blk_height < block_height_) {
-        OXEN_LOG(
-                trace,
+        log::trace(
+                logcat,
                 "got storage test request for an older block: {}/{}",
                 blk_height,
                 block_height_);
@@ -1037,16 +1040,16 @@ std::optional<std::pair<sn_record, sn_record>> ServiceNode::derive_tester_testee
         if (auto it = block_hashes_cache_.find(blk_height); it != block_hashes_cache_.end()) {
             block_hash = it->second;
         } else {
-            OXEN_LOG(debug, "Could not find hash for a given block height");
+            log::debug(logcat, "Could not find hash for a given block height");
             return std::nullopt;
         }
     } else {
-        OXEN_LOG(debug, "Could not find hash: block height is in the future");
+        log::debug(logcat, "Could not find hash: block height is in the future");
         return std::nullopt;
     }
 
     if (block_hash.size() < sizeof(uint64_t)) {
-        OXEN_LOG(err, "Could not initiate peer test: invalid block hash");
+        log::error(logcat, "Could not initiate peer test: invalid block hash");
         return std::nullopt;
     }
 
@@ -1071,8 +1074,8 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
     std::string block_hash;
 
     if (blk_height > block_height_) {
-        OXEN_LOG(
-                debug,
+        log::debug(
+                logcat,
                 "Our blockchain is behind, height: {}, requested: {}",
                 block_height_,
                 blk_height);
@@ -1083,21 +1086,21 @@ std::pair<MessageTestStatus, std::string> ServiceNode::process_storage_test_req(
     {
         auto tester_testee = derive_tester_testee(blk_height);
         if (!tester_testee) {
-            OXEN_LOG(err, "We have no snodes to derive tester/testee from");
+            log::error(logcat, "We have no snodes to derive tester/testee from");
             return {MessageTestStatus::WRONG_REQ, ""};
         }
         auto [tester, testee] = *std::move(tester_testee);
 
         if (testee != our_address_) {
-            OXEN_LOG(err, "We are NOT the testee for height: {}", blk_height);
+            log::error(logcat, "We are NOT the testee for height: {}", blk_height);
             return {MessageTestStatus::WRONG_REQ, ""};
         }
 
         if (tester.pubkey_legacy != tester_pk) {
-            OXEN_LOG(debug, "Wrong tester: {}, expected: {}", tester_pk, tester.pubkey_legacy);
+            log::debug(logcat, "Wrong tester: {}, expected: {}", tester_pk, tester.pubkey_legacy);
             return {MessageTestStatus::WRONG_REQ, ""};
         } else {
-            OXEN_LOG(trace, "Tester is valid: {}", tester_pk);
+            log::trace(logcat, "Tester is valid: {}", tester_pk);
         }
     }
 
@@ -1115,7 +1118,7 @@ void ServiceNode::initiate_peer_test() {
     // 1. Select the tester/testee pair
 
     if (block_height_ < TEST_BLOCKS_BUFFER) {
-        OXEN_LOG(debug, "Height {} is too small, skipping all tests", block_height_);
+        log::debug(logcat, "Height {} is too small, skipping all tests", block_height_);
         return;
     }
 
@@ -1126,8 +1129,8 @@ void ServiceNode::initiate_peer_test() {
         return;
     auto [tester, testee] = *std::move(tester_testee);
 
-    OXEN_LOG(
-            trace,
+    log::trace(
+            logcat,
             "For height {}; tester: {} testee: {}",
             test_height,
             tester.pubkey_legacy,
@@ -1140,10 +1143,10 @@ void ServiceNode::initiate_peer_test() {
 
     /// 2. Storage Testing: initiate a testing request with a randomly selected message
     if (auto msg = db_->retrieve_random()) {
-        OXEN_LOG(trace, "Selected random message: {}, {}", msg->hash, msg->data);
+        log::trace(logcat, "Selected random message: {}, {}", msg->hash, msg->data);
         send_storage_test_req(testee, test_height, *msg);
     } else {
-        OXEN_LOG(debug, "Could not select a message for testing");
+        log::debug(logcat, "Could not select a message for testing");
     }
 }
 
@@ -1151,9 +1154,9 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
     std::lock_guard guard(sn_mutex_);
 
     if (swarms.empty())
-        OXEN_LOG(info, "Bootstrapping all swarms");
-    else if (OXEN_LOG_ENABLED(info))
-        OXEN_LOG(info, "Bootstrapping swarms: [{}]", util::join(", ", swarms));
+        log::info(logcat, "Bootstrapping all swarms");
+    else if (logcat->level() <= log::Level::info)
+        log::info(logcat, "Bootstrapping swarms: [{}]", util::join(", ", swarms));
 
     const auto& all_swarms = swarm_->all_valid_swarms();
 
@@ -1161,10 +1164,10 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
     std::unordered_map<swarm_id_t, std::vector<message>> to_relay;
 
     std::vector<message> all_entries = db_->retrieve_all();
-    OXEN_LOG(debug, "We have {} messages", all_entries.size());
+    log::debug(logcat, "We have {} messages", all_entries.size());
     for (auto& entry : all_entries) {
         if (!entry.pubkey) {
-            OXEN_LOG(err, "Invalid pubkey in a message while bootstrapping other nodes");
+            log::error(logcat, "Invalid pubkey in a message while bootstrapping other nodes");
             continue;
         }
 
@@ -1177,7 +1180,7 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
             to_relay[swarm_id].push_back(std::move(entry));
     }
 
-    OXEN_LOG(trace, "Bootstrapping {} swarms", to_relay.size());
+    log::trace(logcat, "Bootstrapping {} swarms", to_relay.size());
 
     std::unordered_map<swarm_id_t, size_t> swarm_id_to_idx;
     for (size_t i = 0; i < all_swarms.size(); ++i)
@@ -1192,15 +1195,15 @@ void ServiceNode::relay_messages(
     std::vector<std::string> batches =
             serialize_messages(messages.begin(), messages.end(), SERIALIZATION_VERSION_BT);
 
-    if (OXEN_LOG_ENABLED(debug)) {
-        OXEN_LOG(debug, "Relayed messages:");
+    if (logcat->level() <= log::Level::debug) {
+        log::debug(logcat, "Relayed messages:");
         for (auto msg : batches)
-            OXEN_LOG(debug, "    {}", msg);
-        OXEN_LOG(debug, "To Snodes:");
+            log::debug(logcat, "    {}", msg);
+        log::debug(logcat, "To Snodes:");
         for (auto sn : snodes)
-            OXEN_LOG(debug, "    {}", sn.pubkey_legacy);
+            log::debug(logcat, "    {}", sn.pubkey_legacy);
 
-        OXEN_LOG(debug, "Serialised batches: {}", batches.size());
+        log::debug(logcat, "Serialised batches: {}", batches.size());
     }
 
     for (const sn_record& sn : snodes)
@@ -1316,20 +1319,20 @@ void ServiceNode::process_push_batch(const std::string& blob) {
 
     std::vector<message> items = deserialize_messages(blob);
 
-    OXEN_LOG(trace, "Saving all: begin");
+    log::trace(logcat, "Saving all: begin");
 
-    OXEN_LOG(debug, "Got {} messages from peers, size: {}", items.size(), blob.size());
+    log::debug(logcat, "Got {} messages from peers, size: {}", items.size(), blob.size());
 
     save_bulk(items);
 
-    OXEN_LOG(trace, "Saving all: end");
+    log::trace(logcat, "Saving all: end");
 }
 
 bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        OXEN_LOG(err, "Swarm data missing");
+        log::error(logcat, "Swarm data missing");
         return false;
     }
     return swarm_->is_pubkey_for_us(pk);
@@ -1339,7 +1342,7 @@ SwarmInfo ServiceNode::get_swarm(const user_pubkey_t& pk) const {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
-        OXEN_LOG(err, "Swarm data missing");
+        log::error(logcat, "Swarm data missing");
         return {};
     }
 

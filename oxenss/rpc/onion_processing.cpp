@@ -11,6 +11,8 @@ using nlohmann::json;
 
 namespace oxen::rpc {
 
+static auto logcat = log::Cat("rpc");
+
 ParsedInfo process_inner_request(std::string plaintext) {
 
     ParsedInfo ret;
@@ -21,7 +23,7 @@ ParsedInfo process_inner_request(std::string plaintext) {
         /// Kind of unfortunate that we use "headers" (which is empty)
         /// to identify we are the final destination...
         if (inner_json.count("headers")) {
-            OXEN_LOG(trace, "Found body: <{}>", ciphertext);
+            log::trace(logcat, "Found body: <{}>", ciphertext);
             auto& [body, json, b64] = ret.emplace<FinalDestinationInfo>();
             body = std::move(ciphertext);
             if (auto it = inner_json.find("json"); it != inner_json.end())
@@ -87,7 +89,7 @@ ParsedInfo process_inner_request(std::string plaintext) {
                 enc_type = crypto::EncryptType::aes_gcm;
         }
     } catch (const std::exception& e) {
-        OXEN_LOG(debug, "Error parsing inner JSON in onion request: {}", e.what());
+        log::debug(logcat, "Error parsing inner JSON in onion request: {}", e.what());
         ret = ProcessCiphertextError::INVALID_JSON;
     }
 
@@ -104,8 +106,8 @@ ParsedInfo process_ciphertext_v2(
     try {
         plaintext = decryptor.decrypt(enc_type, ciphertext, ephem_key);
     } catch (const std::exception& e) {
-        OXEN_LOG(
-                err,
+        log::error(
+                logcat,
                 "Error decrypting {} bytes onion request using {}: {}",
                 ciphertext.size(),
                 enc_type,
@@ -114,7 +116,7 @@ ParsedInfo process_ciphertext_v2(
     if (!plaintext)
         return ProcessCiphertextError::INVALID_CIPHERTEXT;
 
-    OXEN_LOG(debug, "onion request decrypted: (len: {})", plaintext->size());
+    log::debug(logcat, "onion request decrypted: (len: {})", plaintext->size());
 
     return process_inner_request(std::move(*plaintext));
 }
@@ -128,11 +130,11 @@ bool is_onion_url_target_allowed(std::string_view target) {
 /// | <4 bytes>: N | <N bytes>: ciphertext | <rest>: json as utf8 |
 CiphertextPlusJson parse_combined_payload(std::string_view payload) {
 
-    OXEN_LOG(trace, "Parsing payload of length: {}", payload.size());
+    log::trace(logcat, "Parsing payload of length: {}", payload.size());
 
     /// First 4 bytes as number
     if (payload.size() < 4) {
-        OXEN_LOG(warn, "Unexpected payload size; expected ciphertext size");
+        log::warning(logcat, "Unexpected payload size; expected ciphertext size");
         throw std::runtime_error{"Unexpected payload size; expected ciphertext size"};
     }
 
@@ -140,11 +142,11 @@ CiphertextPlusJson parse_combined_payload(std::string_view payload) {
     std::memcpy(&n, payload.data(), 4);
     payload.remove_prefix(4);
     oxenc::little_to_host_inplace(n);
-    OXEN_LOG(trace, "Ciphertext length: {}", n);
+    log::trace(logcat, "Ciphertext length: {}", n);
 
     if (payload.size() < n) {
         auto msg = fmt::format("Unexpected payload size {}, expected >= {}", payload.size(), n);
-        OXEN_LOG(warn, "{}", msg);
+        log::warning(logcat, "{}", msg);
         throw std::runtime_error{msg};
     }
 
@@ -152,7 +154,7 @@ CiphertextPlusJson parse_combined_payload(std::string_view payload) {
     auto& [ciphertext, json] = result;
 
     ciphertext = payload.substr(0, n);
-    OXEN_LOG(debug, "ciphertext length: {}", ciphertext.size());
+    log::debug(logcat, "ciphertext length: {}", ciphertext.size());
     payload.remove_prefix(ciphertext.size());
 
     json = json::parse(payload);

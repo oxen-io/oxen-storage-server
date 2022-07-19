@@ -62,10 +62,16 @@ endmacro()
 
 system_or_submodule(OXENC oxenc liboxenc>=1.0.3 oxenc)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.12 oxen-mq)
-system_or_submodule(SPDLOG spdlog spdlog>=1.8 spdlog)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
 system_or_submodule(CLI11 CLI11 CLI11>=2.2.0 CLI11)
+
+
+if (STATIC OR FORCE_SPDLOG_SUBMODULE OR FORCE_FMT_SUBMODULE)
+    set(OXEN_LOGGING_FORCE_SUBMODULES ON CACHE INTERNAL "")
+endif()
+set(OXEN_LOGGING_SOURCE_ROOT "${PROJECT_SOURCE_DIR}/oxenss" CACHE INTERNAL "")
+add_subdirectory(oxen-logging)
 
 
 add_library(oxen-crypto-ops STATIC
