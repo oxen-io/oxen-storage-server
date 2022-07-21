@@ -173,10 +173,6 @@ class ServiceNode {
     // retesting.
     void report_reachability(const sn_record& sn, bool reachable, int previous_failures);
 
-    /// Deprecated; can be removed after HF19
-    /// Returns headers to add to the request containing signature info for the given body
-    std::vector<std::pair<std::string, std::string>> sign_request(std::string_view body) const;
-
   public:
     ServiceNode(
             sn_record address,

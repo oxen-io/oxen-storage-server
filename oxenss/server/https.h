@@ -92,8 +92,6 @@ class HTTPS {
 
     bool should_rate_limit_client(std::string_view addr);
 
-    // Deprecated storage test over HTTPS; can be removed after HF19
-    void process_storage_test_req(HttpRequest& req, HttpResponse& res);
     void process_storage_rpc_req(HttpRequest& req, HttpResponse& res);
     void process_onion_req_v2(HttpRequest& req, HttpResponse& res);
 
@@ -136,12 +134,6 @@ class HTTPS {
     rpc::RateLimiter& rate_limiter_;
     // Keys for signing responses
     crypto::legacy_keypair legacy_keys_;
-    // Certificate signature of the cert.pem so that the client can verify who they are
-    // receiving a reply from (deprecated, to be removed after HF19).  This was a mistake: it
-    // doesn't provide any assurance *before* sending data, and is almost impossible to verify
-    // without rolling your own low-level SSL sockets.  Everything that needs encrypted data is
-    // now done over encrypted, authenticated zmq or onion requests.
-    std::string cert_signature_;
 
     friend void queue_response_internal(
             HTTPS& https, HttpResponse& r, rpc::Response res, bool force_close);

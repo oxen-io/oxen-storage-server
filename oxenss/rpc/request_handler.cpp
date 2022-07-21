@@ -6,7 +6,6 @@
 #include <oxenss/server/omq.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/snode/service_node.h>
-#include <oxenss/crypto/signature.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/time.hpp>
 #include <oxenss/version.h>
@@ -500,11 +499,6 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
         return cb(Response{http::NOT_ACCEPTABLE, "Timestamp error: check your clock"sv});
     }
 
-    // TODO: remove after HF 19
-    if (!service_node_.hf_at_least(snode::HARDFORK_NAMESPACES) &&
-        req.msg_namespace != namespace_id::Default)
-        req.msg_namespace = namespace_id::Default;
-
     if (!is_public_namespace(req.msg_namespace)) {
         if (!req.signature) {
             auto err = fmt::format(
@@ -667,10 +661,9 @@ void RequestHandler::process_client_req(
 
     // At HF19 start requiring authentication for all retrievals (except legacy closed groups, which
     // can't be authenticated for technical reasons).
-    if (service_node_.hf_at_least(snode::HARDFORK_RETRIEVE_AUTH) &&
-        req.msg_namespace != namespace_id::LegacyClosed) {
+    if (req.msg_namespace != namespace_id::LegacyClosed) {
         if (!req.check_signature) {
-            log::debug(logcat, "retrieve: request signature required as of HF19.1");
+            log::debug(logcat, "retrieve: request signature required");
             return cb(Response{http::UNAUTHORIZED, "retrieve: request signature required"sv});
         }
     }

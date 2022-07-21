@@ -3,7 +3,6 @@
 #include "serialization.h"
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
-#include <oxenss/crypto/signature.h>
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/server/omq.h>
 #include <oxenss/logging/oxen_logger.h>
@@ -712,18 +711,6 @@ void ServiceNode::ping_peers() {
         log::debug(logcat, "{} nodes to test", to_test.size());
     for (const auto& [sn, prev_fails] : to_test)
         test_reachability(sn, prev_fails);
-}
-
-std::vector<std::pair<std::string, std::string>> ServiceNode::sign_request(
-        std::string_view body) const {
-    std::vector<std::pair<std::string, std::string>> headers;
-    const auto signature = crypto::generate_signature(
-            crypto::hash_data(body), {our_address_.pubkey_legacy, our_seckey_});
-    headers.emplace_back(
-            http::SNODE_SIGNATURE_HEADER, oxenc::to_base64(util::view_guts(signature)));
-    headers.emplace_back(
-            http::SNODE_SENDER_HEADER, oxenc::to_base32z(our_address_.pubkey_legacy.view()));
-    return headers;
 }
 
 void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) {
