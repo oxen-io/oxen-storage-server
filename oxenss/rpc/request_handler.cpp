@@ -879,6 +879,28 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
         return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
     }
 
+    if (req.required) {
+        // If required is true then we need to intercept the response and change it to a 404 if none
+        // of the swarm members deleted anything.
+        cb = [cb = std::move(cb)](Response r) {
+            if (r.status.first == 200) {
+                if (auto* jsonptr = std::get_if<nlohmann::json>(&r.body)) {
+                    auto& result = *jsonptr;
+                    bool deleted_some = false;
+                    for (const auto& [pubkey, val] : result["swarm"].items()) {
+                        if (!val["deleted"].empty()) {
+                            deleted_some = true;
+                            break;
+                        }
+                    }
+                    if (!deleted_some)
+                        r.status = http::NOT_FOUND;
+                }
+            }
+            cb(std::move(r));
+        };
+    }
+
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
 
     // If we're recursive then put our stuff inside "swarm" alongside all the other results,

@@ -278,6 +278,10 @@ struct info final : no_args {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to delete.
 ///   Message IDs can be from any message namespace(s).
+/// - required -- if provided and set to true then require that at least one given message is
+///   deleted from at least one swarm member for a 200 response; otherwise return a 404.  When this
+///   field is omitted (or false) the response will be a 200 OK even if none of the messages
+///   existed.
 /// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value constructed
 ///   by concatenating "delete" and all `messages` values, using `pubkey` to sign.  Must be base64
 ///   encoded for json requests; binary for OMQ requests.
@@ -298,6 +302,7 @@ struct delete_msgs final : recursive {
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::vector<std::string> messages;
     std::array<unsigned char, 64> signature;
+    bool required = false;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenc::bt_dict_consumer params) override;

@@ -498,15 +498,16 @@ static bool is_valid_message_hash(std::string_view hash) {
 
 template <typename Dict>
 static void load(delete_msgs& dm, Dict& d) {
-    auto [messages, pubkey, pubkey_ed25519, signature] =
-            load_fields<std::vector<std::string>, std::string, std::string_view, std::string_view>(
-                    d, "messages", "pubkey", "pubkey_ed25519", "signature");
+    auto [messages, pubkey, pubkey_ed25519, required, signature] =
+            load_fields<std::vector<std::string>, std::string, std::string_view, bool, std::string_view>(
+                    d, "messages", "pubkey", "pubkey_ed25519", "required", "signature");
 
     load_pk_signature(dm, d, pubkey, pubkey_ed25519, signature);
     require("messages", messages);
     dm.messages = std::move(*messages);
     if (dm.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
+    dm.required = required.value_or(false);
     for (const auto& m : dm.messages)
         if (!is_valid_message_hash(m))
             throw parse_error{"invalid message hash: " + m};
