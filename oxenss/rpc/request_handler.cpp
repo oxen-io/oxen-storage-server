@@ -879,6 +879,28 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
         return cb(Response{http::UNAUTHORIZED, "delete_msgs signature verification failed"sv});
     }
 
+    if (req.required) {
+        // If required is true then we need to intercept the response and change it to a 404 if none
+        // of the swarm members deleted anything.
+        cb = [cb = std::move(cb)](Response r) {
+            if (r.status.first == 200) {
+                if (auto* jsonptr = std::get_if<nlohmann::json>(&r.body)) {
+                    auto& result = *jsonptr;
+                    bool deleted_some = false;
+                    for (const auto& [pubkey, val] : result["swarm"].items()) {
+                        if (!val["deleted"].empty()) {
+                            deleted_some = true;
+                            break;
+                        }
+                    }
+                    if (!deleted_some)
+                        r.status = http::NOT_FOUND;
+                }
+            }
+            cb(std::move(r));
+        };
+    }
+
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
 
     // If we're recursive then put our stuff inside "swarm" alongside all the other results,
@@ -1037,13 +1059,14 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 logcat,
                 "expire_all: invalid timestamp ({}s ago)",
                 duration_cast<seconds>(now - req.expiry).count());
-        return cb(Response{http::UNAUTHORIZED, "expire_all timestamp should be >= current time"sv});
+        return cb(
+                Response{http::UNAUTHORIZED, "expire_msgs timestamp should be >= current time"sv});
     }
 
     if (!verify_signature(
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                req.subkey,
                 req.signature,
                 "expire",
                 req.expiry,
@@ -1061,7 +1084,12 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        : res->result;
 
     auto expiry = std::min(std::chrono::system_clock::now() + TTL_MAXIMUM, req.expiry);
-    auto updated = service_node_.get_db().update_expiry(req.pubkey, req.messages, expiry);
+    auto updated = service_node_.get_db().update_expiry(
+            req.pubkey,
+            req.messages,
+            expiry,
+            /*extend_only=*/req.subkey.has_value()  // can only extend when using a subkey
+    );
     std::sort(updated.begin(), updated.end());
     auto sig =
             create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), expiry, req.messages, updated);

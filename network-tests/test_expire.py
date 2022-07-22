@@ -95,7 +95,11 @@ def test_expire(omq, random_sn, sk, exclude):
 
     ts = msgs[6]['req']['expiry']
     hashes = [msgs[i]['hash'] for i in (0, 1, 5, 6, 7, 9)] + ['bepQtTaYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I']
-    actual_update_msgs = sorted(msgs[i]['hash'] for i in (0, 1, 5))
+    # Make sure `hashes` input isn't provided in sorted order:
+    if hashes[0] < hashes[1]:
+        hashes[0], hashes[1] = hashes[1], hashes[0]
+    actual_update_msgs = sorted(msgs[i]['hash'] for i in (0, 1, 5, 6, 7, 9))
+    assert hashes[0:2] != actual_update_msgs[0:2]
 
     hashes = sorted(hashes, reverse=True)
     to_sign = ("expire" + str(ts) + "".join(hashes)).encode()

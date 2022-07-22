@@ -120,14 +120,16 @@ class Database {
             namespace_id ns,
             std::chrono::system_clock::time_point timestamp);
 
-    // Shortens the expiry time of the given messages owned by the given pubkey.  Expiries can only
-    // be shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
-    // hashes of messages that had their expiries updates.  (Missing messages and messages that
-    // already had an expiry <= the given expiry value are not returned).
+    // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
+    // hashes of found messages (i.e. hashes that don't exist are not returned).
+    //
+    // If extend_only is given as true, then only messages that have a current expiry less than the
+    // new expiry are updated (i.e. it will only extend expiries).
     std::vector<std::string> update_expiry(
             const user_pubkey_t& pubkey,
             const std::vector<std::string>& msg_hashes,
-            std::chrono::system_clock::time_point new_exp);
+            std::chrono::system_clock::time_point new_exp,
+            bool extend_only = false);
 
     // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
     // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of

@@ -142,3 +142,59 @@ def test_store_subkey(omq, random_sn, sk, exclude):
     assert s["hf"] >= [19, 0]
     assert len(s["messages"]) == 1
     assert s["messages"][0]["hash"] == hash
+
+def test_expire_subkey(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk)
+
+    sn = ss.random_swarm_members(swarm, 1, exclude)[0]
+    conn = omq.connect_remote(sn_address(sn))
+
+    # Store using the master key
+    msgs = ss.store_n(omq, conn, sk, b"omg123", 3, netid=3)
+
+    now = int(time.time() * 1000)
+    for m in msgs:
+        assert m["req"]["expiry"] < now + 60_000
+
+    dude_sk = SigningKey.generate()
+    c, d, D = make_subkey(sk, dude_sk.verify_key)
+
+    new_exp = now + 24*60*60*1000
+
+    # Update one of the expiries from ~1min from now -> 1day from now
+    sig = blinded_ed25519_signature(f"expire{new_exp}{msgs[0]['hash']}".encode(), dude_sk, d, D)
+    r = omq.request_future(conn, 'storage.expire', [json.dumps({
+        "pubkey": '03' + sk.verify_key.encode().hex(),
+        'subkey': c.hex(),
+        'messages': [msgs[0]['hash']],
+        'expiry': new_exp,
+        'signature': base64.b64encode(sig).decode(),
+    }).encode()]).get()
+
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r['swarm']) > 0
+    for pk, exp in r['swarm'].items():
+        assert exp["expiry"] == new_exp
+        assert exp["updated"] == [msgs[0]['hash']]
+
+    # Attempt to update all three, using the subkey, to half a day from now.  msg[0] shouldn't get
+    # updated, because subkeys are only allowed to extend.
+
+    new_exp = now + 12*60*60*1000
+    sig = blinded_ed25519_signature(
+            f"expire{new_exp}{''.join(m['hash'] for m in msgs)}".encode(), dude_sk, d, D)
+    r = omq.request_future(conn, 'storage.expire', [json.dumps({
+        "pubkey": '03' + sk.verify_key.encode().hex(),
+        'subkey': c.hex(),
+        'messages': [m['hash'] for m in msgs],
+        'expiry': new_exp,
+        'signature': base64.b64encode(sig).decode(),
+    }).encode()]).get()
+
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r['swarm']) > 0
+    for pk, exp in r['swarm'].items():
+        assert exp["expiry"] == new_exp
+        assert set(exp["updated"]) == set([m['hash'] for m in msgs[1:]])

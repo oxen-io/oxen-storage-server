@@ -142,7 +142,7 @@ namespace {
 ///   possible.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
 ///       (TIMESTAMP || EXPIRY || PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
@@ -278,12 +278,16 @@ struct info final : no_args {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to delete.
 ///   Message IDs can be from any message namespace(s).
+/// - required -- if provided and set to true then require that at least one given message is
+///   deleted from at least one swarm member for a 200 response; otherwise return a 404.  When this
+///   field is omitted (or false) the response will be a 200 OK even if none of the messages
+///   existed.
 /// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value constructed
 ///   by concatenating "delete" and all `messages` values, using `pubkey` to sign.  Must be base64
 ///   encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii value
 ///     - "signature": signature of:
@@ -298,6 +302,7 @@ struct delete_msgs final : recursive {
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::vector<std::string> messages;
     std::array<unsigned char, 64> signature;
+    bool required = false;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenc::bt_dict_consumer params) override;
@@ -350,7 +355,7 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   prefix).  Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -395,7 +400,7 @@ struct delete_all final : recursive {
 ///   string for the default namespace (whether explicitly given or not).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -442,7 +447,7 @@ struct delete_before final : recursive {
 ///   namespace (whether or not explicitly provided).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "updated":
 ///         - if expiring from a single namespace then this is a list of (ascii-sorted) hashes that
@@ -479,6 +484,9 @@ struct expire_all final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subkey` (optional) allows authentication using a derived subkey.  This endpoint only applies
+///   TTL extension (but not reduction) when authenticating with a subkey.  See `store` for details
+///   on how subkey authentication works.
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
@@ -492,9 +500,12 @@ struct expire_all final : recursive {
 ///
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.
+///     - "updated": ascii-sorted list of hashes of matched messages (messages that were not found
+///       are not included).  When using subkey authentication, only messages that had their
+///       expiries extended are included (that is: matched messages that already had a longer expiry
+///       are omitted).
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
 ///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
@@ -506,6 +517,7 @@ struct expire_msgs final : recursive {
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
     std::array<unsigned char, 64> signature;

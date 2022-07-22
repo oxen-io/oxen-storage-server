@@ -314,28 +314,27 @@ namespace {
 
 }  // namespace
 
+// Aliases used in `load_fields<...>` to make formatting less obtuse
+using Str = std::string;
+using SV = std::string_view;
+using TP = system_clock::time_point;
+template <typename T>
+using Vec = std::vector<T>;
+
 template <typename Dict>
 static void load(store& s, Dict& d) {
-    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subkey] = load_fields<
-            std::string_view,
-            system_clock::time_point,
-            namespace_id,
-            std::string,
-            std::string,
-            std::string_view,
-            system_clock::time_point,
-            std::string_view,
-            std::string_view>(
-            d,
-            "data",
-            "expiry",
-            "namespace",
-            "pubKey",
-            "pubkey",
-            "pubkey_ed25519",
-            "sig_timestamp",
-            "signature",
-            "subkey");
+    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subkey] =
+            load_fields<SV, TP, namespace_id, Str, Str, SV, TP, SV, SV>(
+                    d,
+                    "data",
+                    "expiry",
+                    "namespace",
+                    "pubKey",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "sig_timestamp",
+                    "signature",
+                    "subkey");
 
     // timestamp and ttl are special snowflakes: for backwards compat reasons, they can
     // be passed as strings when loading from json.
@@ -428,18 +427,7 @@ static void load(retrieve& r, Dict& d) {
           sig,
           subkey,
           ts] =
-            load_fields<
-                    std::string,
-                    std::string,
-                    int,
-                    int,
-                    namespace_id,
-                    std::string,
-                    std::string,
-                    std::string_view,
-                    std::string_view,
-                    std::string_view,
-                    system_clock::time_point>(
+            load_fields<Str, Str, int, int, namespace_id, Str, Str, SV, SV, SV, TP>(
                     d,
                     "lastHash",
                     "last_hash",
@@ -498,15 +486,16 @@ static bool is_valid_message_hash(std::string_view hash) {
 
 template <typename Dict>
 static void load(delete_msgs& dm, Dict& d) {
-    auto [messages, pubkey, pubkey_ed25519, signature] =
-            load_fields<std::vector<std::string>, std::string, std::string_view, std::string_view>(
-                    d, "messages", "pubkey", "pubkey_ed25519", "signature");
+    auto [messages, pubkey, pubkey_ed25519, required, signature] =
+            load_fields<Vec<Str>, Str, SV, bool, SV>(
+                    d, "messages", "pubkey", "pubkey_ed25519", "required", "signature");
 
     load_pk_signature(dm, d, pubkey, pubkey_ed25519, signature);
     require("messages", messages);
     dm.messages = std::move(*messages);
     if (dm.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
+    dm.required = required.value_or(false);
     for (const auto& m : dm.messages)
         if (!is_valid_message_hash(m))
             throw parse_error{"invalid message hash: " + m};
@@ -534,13 +523,9 @@ bt_value delete_msgs::to_bt() const {
 
 template <typename Dict>
 static void load(delete_all& da, Dict& d) {
-    auto [msgs_ns, pubkey, pubkey_ed25519, signature, timestamp] = load_fields<
-            namespace_var,
-            std::string,
-            std::string_view,
-            std::string_view,
-            system_clock::time_point>(
-            d, "namespace", "pubkey", "pubkey_ed25519", "signature", "timestamp");
+    auto [msgs_ns, pubkey, pubkey_ed25519, signature, timestamp] =
+            load_fields<namespace_var, Str, SV, SV, TP>(
+                    d, "namespace", "pubkey", "pubkey_ed25519", "signature", "timestamp");
 
     load_pk_signature(da, d, pubkey, pubkey_ed25519, signature);
     require("timestamp", timestamp);
@@ -567,12 +552,9 @@ bt_value delete_all::to_bt() const {
 
 template <typename Dict>
 static void load(delete_before& db, Dict& d) {
-    auto [before, msgs_ns, pubkey, pubkey_ed25519, signature] = load_fields<
-            system_clock::time_point,
-            namespace_var,
-            std::string,
-            std::string_view,
-            std::string_view>(d, "before", "namespace", "pubkey", "pubkey_ed25519", "signature");
+    auto [before, msgs_ns, pubkey, pubkey_ed25519, signature] =
+            load_fields<TP, namespace_var, Str, SV, SV>(
+                    d, "before", "namespace", "pubkey", "pubkey_ed25519", "signature");
 
     load_pk_signature(db, d, pubkey, pubkey_ed25519, signature);
     require("before", before);
@@ -599,12 +581,9 @@ bt_value delete_before::to_bt() const {
 
 template <typename Dict>
 static void load(expire_all& e, Dict& d) {
-    auto [expiry, msgs_ns, pubkey, pubkey_ed25519, signature] = load_fields<
-            system_clock::time_point,
-            namespace_var,
-            std::string,
-            std::string_view,
-            std::string_view>(d, "expiry", "namespace", "pubkey", "pubkey_ed25519", "signature");
+    auto [expiry, msgs_ns, pubkey, pubkey_ed25519, signature] =
+            load_fields<TP, namespace_var, Str, SV, SV>(
+                    d, "expiry", "namespace", "pubkey", "pubkey_ed25519", "signature");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     require("expiry", expiry);
@@ -631,14 +610,12 @@ bt_value expire_all::to_bt() const {
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
-    auto [expiry, messages, pubkey, pubkey_ed25519, signature] = load_fields<
-            system_clock::time_point,
-            std::vector<std::string>,
-            std::string,
-            std::string_view,
-            std::string_view>(d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature");
+    auto [expiry, messages, pubkey, pubkey_ed25519, signature, subkey] =
+            load_fields<TP, Vec<Str>, Str, SV, SV, SV>(
+                    d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature", "subkey");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
+    load_subkey(e, d, subkey);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     require("messages", messages);
@@ -668,12 +645,15 @@ bt_value expire_msgs::to_bt() const {
     if (pubkey_ed25519)
         ret["pubkey_ed25519"] = std::string_view{
                 reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    if (subkey)
+        ret["subkey"] =
+                std::string_view{reinterpret_cast<const char*>(subkey->data()), subkey->size()};
     return ret;
 }
 
 template <typename Dict>
 static void load(get_swarm& g, Dict& d) {
-    auto [pubKey, pubkey] = load_fields<std::string, std::string>(d, "pubKey", "pubkey");
+    auto [pubKey, pubkey] = load_fields<Str, Str>(d, "pubKey", "pubkey");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     if (!g.pubkey.load(std::move(pubkey ? *pubkey : *pubKey)))
@@ -797,20 +777,15 @@ static std::optional<std::array<T, N>> to_fixed_array(const std::optional<std::v
 
 template <typename Dict>
 static void load_condition(ifelse& i, Dict if_) {
-    auto [height_ge_, height_lt_, hf_ge_, hf_lt_, v_ge_, v_lt_] = load_fields<
-            int,
-            int,
-            std::vector<int>,
-            std::vector<int>,
-            std::vector<int>,
-            std::vector<int>>(
-            if_,
-            "height_at_least",
-            "height_before",
-            "hf_at_least",
-            "hf_before",
-            "v_at_least",
-            "v_before");
+    auto [height_ge_, height_lt_, hf_ge_, hf_lt_, v_ge_, v_lt_] =
+            load_fields<int, int, Vec<int>, Vec<int>, Vec<int>, Vec<int>>(
+                    if_,
+                    "height_at_least",
+                    "height_before",
+                    "hf_at_least",
+                    "hf_before",
+                    "v_at_least",
+                    "v_before");
 
     auto hf_ge = to_fixed_array<2>(hf_ge_);
     auto hf_lt = to_fixed_array<2>(hf_lt_);
