@@ -72,7 +72,6 @@ else()
   endfunction ()
 
   message(STATUS "Checking submodules")
-  check_submodule(external/spdlog)
   check_submodule(external/oxenc)
   check_submodule(external/oxen-mq cppzmq)
   check_submodule(external/oxen-logging fmt spdlog)
