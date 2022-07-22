@@ -142,7 +142,7 @@ namespace {
 ///   possible.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
 ///       (TIMESTAMP || EXPIRY || PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
@@ -287,7 +287,7 @@ struct info final : no_args {
 ///   encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii value
 ///     - "signature": signature of:
@@ -355,7 +355,7 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   prefix).  Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -400,7 +400,7 @@ struct delete_all final : recursive {
 ///   string for the default namespace (whether explicitly given or not).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -447,7 +447,7 @@ struct delete_before final : recursive {
 ///   namespace (whether or not explicitly provided).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "updated":
 ///         - if expiring from a single namespace then this is a list of (ascii-sorted) hashes that
@@ -497,7 +497,7 @@ struct expire_all final : recursive {
 ///
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
