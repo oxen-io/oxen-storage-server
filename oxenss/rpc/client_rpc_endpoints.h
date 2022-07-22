@@ -484,6 +484,9 @@ struct expire_all final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subkey` (optional) allows authentication using a derived subkey.  This endpoint only applies
+///   TTL extension (but not reduction) when authenticating with a subkey.  See `store` for details
+///   on how subkey authentication works.
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
@@ -499,7 +502,10 @@ struct expire_all final : recursive {
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.
+///     - "updated": ascii-sorted list of hashes of matched messages (messages that were not found
+///       are not included).  When using subkey authentication, only messages that had their
+///       expiries extended are included (that is: matched messages that already had a longer expiry
+///       are omitted).
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
 ///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
@@ -511,6 +517,7 @@ struct expire_msgs final : recursive {
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
     std::array<unsigned char, 64> signature;

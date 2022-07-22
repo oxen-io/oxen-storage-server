@@ -610,11 +610,12 @@ bt_value expire_all::to_bt() const {
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
-    auto [expiry, messages, pubkey, pubkey_ed25519, signature] =
-            load_fields<TP, Vec<Str>, Str, SV, SV>(
-                    d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature");
+    auto [expiry, messages, pubkey, pubkey_ed25519, signature, subkey] =
+            load_fields<TP, Vec<Str>, Str, SV, SV, SV>(
+                    d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature", "subkey");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
+    load_subkey(e, d, subkey);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     require("messages", messages);
@@ -644,6 +645,9 @@ bt_value expire_msgs::to_bt() const {
     if (pubkey_ed25519)
         ret["pubkey_ed25519"] = std::string_view{
                 reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    if (subkey)
+        ret["subkey"] =
+                std::string_view{reinterpret_cast<const char*>(subkey->data()), subkey->size()};
     return ret;
 }
 

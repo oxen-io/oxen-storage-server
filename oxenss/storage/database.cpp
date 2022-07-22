@@ -801,13 +801,15 @@ std::vector<std::string> Database::delete_by_timestamp(
 std::vector<std::string> Database::update_expiry(
         const user_pubkey_t& pubkey,
         const std::vector<std::string>& msg_hashes,
-        std::chrono::system_clock::time_point new_exp) {
+        std::chrono::system_clock::time_point new_exp,
+        bool extend_only) {
     auto new_exp_ms = to_epoch_ms(new_exp);
 
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
         auto st = impl->prepared_st(
-                "UPDATE messages SET expiry = ? WHERE hash = ?"
+                "UPDATE messages SET expiry = ? WHERE hash = ?"s +
+                (extend_only ? " AND expiry < ?1" : "") +
                 " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
                 " RETURNING hash");
         return get_all<std::string>(st, new_exp_ms, msg_hashes[0], pubkey);
@@ -817,8 +819,9 @@ std::vector<std::string> Database::update_expiry(
             impl->db,
             multi_in_query(
                     "UPDATE messages SET expiry = ?"
-                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
-                    " AND hash IN ("sv,  // ?,?,?,...,?
+                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"s +
+                            (extend_only ? " AND expiry < ?1" : "") +
+                            " AND hash IN (",  // ?,?,?,...,?
                     msg_hashes.size(),
                     ") RETURNING hash"sv)};
     st.bind(1, new_exp_ms);
