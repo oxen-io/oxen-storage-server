@@ -13,7 +13,7 @@ endif()
 cmake_minimum_required(VERSION 3.13)
 
 project(oxenss
-    VERSION 2.3.0
+    VERSION 2.4.0
     LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
