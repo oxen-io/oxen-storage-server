@@ -60,7 +60,7 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.0.3 oxenc)
+system_or_submodule(OXENC oxenc liboxenc>=1.0.4 oxenc)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.12 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
