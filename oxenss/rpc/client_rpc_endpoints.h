@@ -24,8 +24,6 @@ namespace oxen::rpc {
 
 using namespace std::literals;
 
-constexpr std::string_view SUBKEY_HASH_KEY = "OxenSSSubkey"sv;
-
 // Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ
 // "storage.whatever" endpoints, and as the final target of an onion request.
 

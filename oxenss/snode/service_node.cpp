@@ -414,8 +414,11 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
 
     /// store in the database (if not already present)
     auto stored = db_->store(msg);
-    if (stored)
+    if (stored) {
         log::trace(logcat, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
+        if (*stored)
+            omq_server_.send_notifies(std::move(msg));
+    }
     if (new_msg)
         *new_msg = stored.value_or(false);
 
