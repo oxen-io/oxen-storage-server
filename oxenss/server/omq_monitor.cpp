@@ -289,6 +289,7 @@ void OMQ::send_notifies(message msg) {
     if (!relay_to.empty()) {
         oxenc::bt_dict_producer d{data.data(), data.size()};
         write_metadata(d, pubkey, msg);
+        data.resize(d.view().size());
 
         for (const auto& conn : relay_to)
             omq_.send(conn, "notify.message", data);
@@ -298,6 +299,7 @@ void OMQ::send_notifies(message msg) {
         oxenc::bt_dict_producer d{data.data(), data.size()};
         write_metadata(d, pubkey, msg);
         d.append("~", msg.data);
+        data.resize(d.view().size());
 
         for (const auto& conn : relay_to_with_data)
             omq_.send(conn, "notify.message", data);

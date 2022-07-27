@@ -1,53 +1,13 @@
 from util import sn_address
 import ss
+import subkey
 import time
 import base64
 import json
-from nacl.encoding import HexEncoder, Base64Encoder, RawEncoder
+from nacl.encoding import Base64Encoder
 from nacl.hash import blake2b
-from hashlib import sha512
-from nacl.signing import SigningKey, VerifyKey
-import nacl.bindings as sodium
+from nacl.signing import SigningKey
 import nacl.exceptions
-
-def make_subkey(sk, subuser_pk: VerifyKey):
-    # Typically we'll do this, though in theory we can generate any old 32-byte value for c:
-    a = sodium.crypto_sign_ed25519_sk_to_curve25519(sk.encode() + sk.verify_key.encode())
-    c = blake2b(sk.verify_key.encode() + subuser_pk.encode(), digest_size=32, encoder=RawEncoder)
-    d = sodium.crypto_core_ed25519_scalar_mul(
-            a,
-            sodium.crypto_core_ed25519_scalar_add(
-                c, blake2b(c + sk.verify_key.encode(), key=b'OxenSSSubkey', digest_size=32, encoder=RawEncoder))
-            )
-    D = sodium.crypto_scalarmult_ed25519_base_noclamp(d)
-    return c, d, D
-
-
-def sha512_multipart(*message_parts):
-    """Given any number of arguments, returns the SHA512 hash of them concatenated together.  This
-    also does one level of flatting if any of the given parts are a list or tuple."""
-    hasher = sha512()
-    for m in message_parts:
-        if isinstance(m, list) or isinstance(m, tuple):
-            for mi in m:
-                hasher.update(mi)
-        else:
-            hasher.update(m)
-    return hasher.digest()
-
-
-# Mostly copied from SOGS auth example; the signature math here is identical (just using d/D instead
-# of ka/kA):
-def blinded_ed25519_signature(message_parts, s: SigningKey, d: bytes, D: bytes):
-    H_rh = sha512(s.encode()).digest()[32:]
-    r = sodium.crypto_core_ed25519_scalar_reduce(sha512_multipart(H_rh, D, message_parts))
-    sig_R = sodium.crypto_scalarmult_ed25519_base_noclamp(r)
-    HRAM = sodium.crypto_core_ed25519_scalar_reduce(sha512_multipart(sig_R, D, message_parts))
-    sig_s = sodium.crypto_core_ed25519_scalar_add(
-        r, sodium.crypto_core_ed25519_scalar_mul(HRAM, d)
-    )
-    return sig_R + sig_s
-
 
 def test_retrieve_subkey(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk, 3)
@@ -77,9 +37,9 @@ def test_retrieve_subkey(omq, random_sn, sk, exclude):
 
     # Retrieve it using a subkey
     dude_sk = SigningKey.generate()
-    c, d, D = make_subkey(sk, dude_sk.verify_key)
+    c, d, D = subkey.make_subkey(sk, dude_sk.verify_key)
     to_sign = f"retrieve42{ts}".encode()
-    sig = blinded_ed25519_signature(to_sign, dude_sk, d, D)
+    sig = subkey.sign(to_sign, dude_sk, d, D)
 
     r = omq.request_future(conn, 'storage.retrieve', [
         json.dumps({
@@ -107,9 +67,9 @@ def test_store_subkey(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     dude_sk = SigningKey.generate()
-    c, d, D = make_subkey(sk, dude_sk.verify_key)
+    c, d, D = subkey.make_subkey(sk, dude_sk.verify_key)
 
-    sig = blinded_ed25519_signature(f"store42{ts}".encode(), dude_sk, d, D)
+    sig = subkey.sign(f"store42{ts}".encode(), dude_sk, d, D)
 
     # Store a message using the subkey
     s = omq.request_future(conn, 'storage.store', [json.dumps({
@@ -158,12 +118,12 @@ def test_expire_subkey(omq, random_sn, sk, exclude):
         assert m["req"]["expiry"] < now + 60_000
 
     dude_sk = SigningKey.generate()
-    c, d, D = make_subkey(sk, dude_sk.verify_key)
+    c, d, D = subkey.make_subkey(sk, dude_sk.verify_key)
 
     new_exp = now + 24*60*60*1000
 
     # Update one of the expiries from ~1min from now -> 1day from now
-    sig = blinded_ed25519_signature(f"expire{new_exp}{msgs[0]['hash']}".encode(), dude_sk, d, D)
+    sig = subkey.sign(f"expire{new_exp}{msgs[0]['hash']}".encode(), dude_sk, d, D)
     r = omq.request_future(conn, 'storage.expire', [json.dumps({
         "pubkey": '03' + sk.verify_key.encode().hex(),
         'subkey': c.hex(),
@@ -183,7 +143,7 @@ def test_expire_subkey(omq, random_sn, sk, exclude):
     # updated, because subkeys are only allowed to extend.
 
     new_exp = now + 12*60*60*1000
-    sig = blinded_ed25519_signature(
+    sig = subkey.sign(
             f"expire{new_exp}{''.join(m['hash'] for m in msgs)}".encode(), dude_sk, d, D)
     r = omq.request_future(conn, 'storage.expire', [json.dumps({
         "pubkey": '03' + sk.verify_key.encode().hex(),
