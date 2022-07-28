@@ -21,23 +21,6 @@ static bool swarm_exists(const std::vector<SwarmInfo>& all_swarms, const swarm_i
     return it != all_swarms.end();
 }
 
-void debug_print(std::ostream& os, const block_update& bu) {
-    os << "Block update: {\n";
-    os << "     height: " << bu.height << '\n';
-    os << "     block hash: " << bu.block_hash << '\n';
-    os << "     hardfork: " << bu.hardfork << '.' << bu.snode_revision << '\n';
-    os << "     swarms: [\n";
-
-    for (const SwarmInfo& swarm : bu.swarms) {
-        os << "         {\n";
-        os << "             id: " << swarm.swarm_id << '\n';
-        os << "         }\n";
-    }
-
-    os << "     ]\n";
-    os << "}\n";
-}
-
 Swarm::~Swarm() = default;
 
 bool Swarm::is_existing_swarm(swarm_id_t sid) const {

@@ -36,8 +36,6 @@ struct block_update {
     bool unchanged = false;
 };
 
-void debug_print(std::ostream& os, const block_update& bu);
-
 // Returns a pointer to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
 // nullptr on error (which will only happen if there are no swarms at all).  `all_swarms` must be
 // sorted by swarm id.
