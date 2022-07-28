@@ -124,62 +124,44 @@ void Swarm::set_swarm_id(swarm_id_t sid) {
     cur_swarm_id_ = sid;
 }
 
-static auto get_snode_map_from_swarms(const std::vector<SwarmInfo>& swarms) {
-    std::unordered_map<crypto::legacy_pubkey, sn_record> snode_map;
-    for (const auto& swarm : swarms) {
-        for (const auto& snode : swarm.snodes) {
-            snode_map.emplace(snode.pubkey_legacy, snode);
-        }
-    }
-    return snode_map;
-}
+void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInfo>& old_swarms) {
 
-template <typename T>
-bool update_if_changed(T& val, const T& new_val, const std::common_type_t<T>& ignore_val) {
-    if (new_val != ignore_val && new_val != val) {
-        val = new_val;
-        return true;
-    }
-    return false;
-}
+    std::unordered_map<crypto::legacy_pubkey, sn_record*> missing;
 
-std::vector<SwarmInfo> apply_ips(
-        const std::vector<SwarmInfo>& swarms_to_keep, const std::vector<SwarmInfo>& other_swarms) {
-    std::vector<SwarmInfo> result_swarms = swarms_to_keep;
-    const auto other_snode_map = get_snode_map_from_swarms(other_swarms);
+    for (auto& [swarm_id, snodes] : new_swarms)
+        for (auto& snode : snodes)
+            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_port == 0)
+                missing.emplace(snode.pubkey_legacy, &snode);
 
-    int updates_count = 0;
-    for (auto& [swarm_id, snodes] : result_swarms) {
+    if (missing.empty())
+        return;
+
+    for (auto& [swarm_id, snodes] : old_swarms) {
         for (auto& snode : snodes) {
-            const auto other_snode_it = other_snode_map.find(snode.pubkey_legacy);
-            if (other_snode_it != other_snode_map.end()) {
-                auto& sn = other_snode_it->second;
-                // Keep swarms_to_keep but don't overwrite with default IPs/ports
-                bool updated = false;
-                if (update_if_changed(snode.ip, sn.ip, "0.0.0.0"))
-                    updated = true;
-                if (update_if_changed(snode.port, sn.port, 0))
-                    updated = true;
-                if (update_if_changed(snode.omq_port, sn.omq_port, 0))
-                    updated = true;
-                if (updated)
-                    updates_count++;
+            auto it = missing.find(snode.pubkey_legacy);
+            if (it == missing.end())
+                continue;
+            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_port != 0) {
+                it->second->ip = snode.ip;
+                it->second->port = snode.port;
+                it->second->omq_port = snode.omq_port;
             }
+            missing.erase(it);
+            if (missing.empty())
+                return;
         }
     }
-
-    log::debug(logcat, "Updated {} entries from oxend", updates_count);
-    return result_swarms;
 }
 
-void Swarm::apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms) {
+void Swarm::apply_swarm_changes(std::vector<SwarmInfo>&& new_swarms) {
     log::trace(logcat, "Applying swarm changes");
 
-    all_valid_swarms_ = apply_ips(new_swarms, all_valid_swarms_);
+    preserve_ips(new_swarms, all_valid_swarms_);
+    all_valid_swarms_ = std::move(new_swarms);
 }
 
 void Swarm::update_state(
-        const std::vector<SwarmInfo>& swarms,
+        std::vector<SwarmInfo>&& swarms,
         const std::vector<sn_record>& decommissioned,
         const SwarmEvents& events,
         bool active) {
@@ -198,7 +180,7 @@ void Swarm::update_state(
             log::info(logcat, "EVENT: detected a new swarm: {}", swarm);
         }
 
-        apply_swarm_changes(swarms);
+        apply_swarm_changes(std::move(swarms));
 
         const auto& members = events.our_swarm_members;
 
@@ -221,7 +203,7 @@ void Swarm::update_state(
     all_funded_ed25519_.clear();
     all_funded_x25519_.clear();
 
-    for (const auto& si : swarms) {
+    for (const auto& si : all_valid_swarms_) {
         for (const auto& sn : si.snodes) {
             all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
         }
@@ -272,24 +254,31 @@ uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
 
 bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
     /// TODO: Make sure no exceptions bubble up from here!
-    return cur_swarm_id_ == get_swarm_by_pk(all_valid_swarms_, pk).swarm_id;
+    auto* swarm = get_swarm_by_pk(all_valid_swarms_, pk);
+    return swarm && cur_swarm_id_ == swarm->swarm_id;
 }
 
-static const SwarmInfo null_swarm{INVALID_SWARM_ID, {}};
 
-const SwarmInfo& get_swarm_by_pk(
+const SwarmInfo* get_swarm_by_pk(
         const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk) {
+
+    if (all_swarms.empty())
+        return nullptr;
+
+    if (all_swarms.size() == 1)
+        return &all_swarms.front();
+
     const uint64_t res = pubkey_to_swarm_space(pk);
 
     /// We reserve UINT64_MAX as a sentinel swarm id for unassigned snodes
     constexpr swarm_id_t MAX_ID = INVALID_SWARM_ID - 1;
 
-    const SwarmInfo* cur_best = &null_swarm;
+    const SwarmInfo* cur_best = nullptr;
     uint64_t cur_min = INVALID_SWARM_ID;
 
     /// We don't require that all_swarms is sorted, so we find
     /// the smallest/largest elements in the same loop
-    const SwarmInfo* leftmost = &null_swarm;
+    const SwarmInfo* leftmost = nullptr;
     const SwarmInfo* rightmost = nullptr;
 
     for (const auto& si : all_swarms) {
@@ -305,8 +294,8 @@ const SwarmInfo& get_swarm_by_pk(
             cur_min = dist;
         }
 
-        /// Find the letfmost
-        if (si.swarm_id < leftmost->swarm_id) {
+        /// Find the leftmost
+        if (!leftmost || si.swarm_id < leftmost->swarm_id) {
             leftmost = &si;
         }
 
@@ -316,7 +305,7 @@ const SwarmInfo& get_swarm_by_pk(
     }
 
     if (!rightmost)  // Found no swarms at all
-        return null_swarm;
+        return nullptr;
 
     // handle special case
     if (res > rightmost->swarm_id) {
@@ -334,7 +323,7 @@ const SwarmInfo& get_swarm_by_pk(
         }
     }
 
-    return *cur_best;
+    return cur_best;
 }
 
 std::pair<int, int> count_missing_data(const block_update& bu) {

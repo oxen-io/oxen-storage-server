@@ -36,21 +36,24 @@ struct block_update {
 
 void debug_print(std::ostream& os, const block_update& bu);
 
-// Returns a reference to the SwarmInfo member of `all_swarms` for the given user pub.  Returns
-// a reference to a null SwarmInfo with swarm_id set to INVALID_SWARM_ID on error (which will
-// only happen if there are no swarms at all).
-const SwarmInfo& get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk);
+// Returns a pointer to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
+// nullptr on error (which will only happen if there are no swarms at all).  `all_swarms` must be
+// sorted by swarm id.
+const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk);
+// Not invokable with a temporary:
+const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey_t& pk) = delete;
 
 // Takes a swarm update, returns the number of active SN entries with missing
 // IP/port/ed25519/x25519 data and the total number of entries.  (We don't include
 // decommissioned nodes in either count).
 std::pair<int, int> count_missing_data(const block_update& bu);
 
-/// For every node in `swarms_to_keep`, this checks whether the node
-/// exists in incoming `other_swarms` and has a new IP address.
-/// If it does and the value is not "0.0.0.0", it updates the value for that node.
-std::vector<SwarmInfo> apply_ips(
-        const std::vector<SwarmInfo>& swarms_to_keep, const std::vector<SwarmInfo>& other_swarms);
+/// In rare cases (such as when oxend has just been reset/resynced, and our initial swarm data came
+/// from a bootstrap node) we might have existing data that has valid ip/port info in it, but new
+/// data that does not: in such a case we want to preserve the old data before replacing the swarm
+/// data.  This function takes care of updating any such missing values in `new_swarms` from
+/// `old_swarms`.
+void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInfo>& old_swarms);
 
 /// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one
 /// has a swarm id closest to this pubkey-derived value.
@@ -96,12 +99,12 @@ class Swarm {
     /// Update swarm state according to `events`. If not `is_active`
     /// only update the list of all nodes
     void update_state(
-            const std::vector<SwarmInfo>& swarms,
+            std::vector<SwarmInfo>&& swarms,
             const std::vector<sn_record>& decommissioned,
             const SwarmEvents& events,
             bool is_active);
 
-    void apply_swarm_changes(const std::vector<SwarmInfo>& new_swarms);
+    void apply_swarm_changes(std::vector<SwarmInfo>&& new_swarms);
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 

@@ -52,9 +52,14 @@ std::string to_string(const Response& res) {
 }
 
 namespace {
-    json swarm_to_json(const snode::SwarmInfo& swarm) {
+    json swarm_to_json(const std::optional<snode::SwarmInfo>& swarm) {
+        if (!swarm)
+            return json{
+                    {"snodes", json::array()},
+                    {"swarm", util::int_to_string(snode::INVALID_SWARM_ID, 16)},
+            };
         json snodes_json = json::array();
-        for (const auto& sn : swarm.snodes) {
+        for (const auto& sn : swarm->snodes) {
             snodes_json.push_back(
                     json{{"address",  // Deprecated, use pubkey_legacy instead
                           oxenc::to_base32z(sn.pubkey_legacy.view()) + ".snode"},
@@ -70,7 +75,7 @@ namespace {
 
         return json{
                 {"snodes", std::move(snodes_json)},
-                {"swarm", util::int_to_string(swarm.swarm_id, 16)},
+                {"swarm", util::int_to_string(swarm->swarm_id, 16)},
         };
     }
 
@@ -640,7 +645,7 @@ void RequestHandler::process_client_req(
             logcat,
             "get swarm for {}, swarm size: {}",
             obfuscate_pubkey(req.pubkey),
-            swarm.snodes.size());
+            swarm ? swarm->snodes.size() : 0);
 
     auto body = swarm_to_json(swarm);
     add_misc_response_fields(body, service_node_);

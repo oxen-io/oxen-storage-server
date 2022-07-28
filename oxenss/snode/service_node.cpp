@@ -116,6 +116,7 @@ static block_update parse_swarm_update(const std::string& response_body) {
         throw std::runtime_error("Failed to parse swarm update");
     }
 
+    // map (not unordered_map) because we need the eventual swarm list to be sorted
     std::map<swarm_id_t, std::vector<sn_record>> swarm_map;
     block_update bu;
 
@@ -438,7 +439,7 @@ void ServiceNode::on_bootstrap_update(block_update&& bu) {
     // Used in a callback to needs a mutex even if it is private
     std::lock_guard guard(sn_mutex_);
 
-    swarm_->apply_swarm_changes(bu.swarms);
+    swarm_->apply_swarm_changes(std::move(bu.swarms));
     target_height_ = std::max(target_height_, bu.height);
 
     if (syncing_)
@@ -526,7 +527,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
 
     if (std::string reason; !snode_ready(&reason)) {
         log::warning(logcat, "Storage server is still not ready: {}", reason);
-        swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, false);
+        swarm_->update_state(std::move(bu.swarms), std::move(bu.decommissioned_nodes), events, false);
         return;
     } else {
         if (!active_) {
@@ -538,7 +539,7 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
         }
     }
 
-    swarm_->update_state(bu.swarms, bu.decommissioned_nodes, events, true);
+    swarm_->update_state(std::move(bu.swarms), std::move(bu.decommissioned_nodes), events, true);
 
     if (!events.new_snodes.empty()) {
         relay_messages(db_->retrieve_all(), events.new_snodes);
@@ -1159,8 +1160,10 @@ void ServiceNode::bootstrap_swarms(const std::vector<swarm_id_t>& swarms) const 
         }
 
         auto [it, ins] = pk_swarm_cache.try_emplace(entry.pubkey);
-        if (ins)
-            it->second = get_swarm_by_pk(all_swarms, entry.pubkey).swarm_id;
+        if (ins) {
+            auto swarm = get_swarm_by_pk(all_swarms, entry.pubkey);
+            it->second = swarm ? swarm->swarm_id : INVALID_SWARM_ID;
+        }
         auto swarm_id = it->second;
 
         if (swarms.empty() || std::find(swarms.begin(), swarms.end(), swarm_id) != swarms.end())
@@ -1325,7 +1328,7 @@ bool ServiceNode::is_pubkey_for_us(const user_pubkey_t& pk) const {
     return swarm_->is_pubkey_for_us(pk);
 }
 
-SwarmInfo ServiceNode::get_swarm(const user_pubkey_t& pk) const {
+std::optional<SwarmInfo> ServiceNode::get_swarm(const user_pubkey_t& pk) const {
     std::lock_guard guard(sn_mutex_);
 
     if (!swarm_) {
@@ -1333,7 +1336,9 @@ SwarmInfo ServiceNode::get_swarm(const user_pubkey_t& pk) const {
         return {};
     }
 
-    return get_swarm_by_pk(swarm_->all_valid_swarms(), pk);
+    if (auto* swarm = get_swarm_by_pk(swarm_->all_valid_swarms(), pk))
+        return *swarm;
+    return std::nullopt;
 }
 
 std::vector<sn_record> ServiceNode::get_swarm_peers() const {

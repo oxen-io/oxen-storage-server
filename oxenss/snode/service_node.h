@@ -243,7 +243,7 @@ class ServiceNode {
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    SwarmInfo get_swarm(const user_pubkey_t& pk) const;
+    std::optional<SwarmInfo> get_swarm(const user_pubkey_t& pk) const;
 
     std::vector<sn_record> get_swarm_peers() const;
 
