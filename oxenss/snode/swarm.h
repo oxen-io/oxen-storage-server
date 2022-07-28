@@ -43,7 +43,8 @@ void debug_print(std::ostream& os, const block_update& bu);
 // sorted by swarm id.
 const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk);
 // Not invokable with a temporary:
-const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey_t& pk) = delete;
+const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey_t& pk) =
+        delete;
 
 // Takes a swarm update, returns the number of active SN entries with missing
 // IP/port/ed25519/x25519 data and the total number of entries.  (We don't include

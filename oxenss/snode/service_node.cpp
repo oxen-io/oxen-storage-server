@@ -527,7 +527,8 @@ void ServiceNode::on_swarm_update(block_update&& bu) {
 
     if (std::string reason; !snode_ready(&reason)) {
         log::warning(logcat, "Storage server is still not ready: {}", reason);
-        swarm_->update_state(std::move(bu.swarms), std::move(bu.decommissioned_nodes), events, false);
+        swarm_->update_state(
+                std::move(bu.swarms), std::move(bu.decommissioned_nodes), events, false);
         return;
     } else {
         if (!active_) {

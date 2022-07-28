@@ -40,7 +40,7 @@ TEST_CASE("swarm - pubkey to swarm space", "[swarm]") {
 
 TEST_CASE("service nodes - pubkey to swarm id") {
     std::vector<oxen::snode::SwarmInfo> swarms{
-        {100, {}}, {200, {}}, {300, {}}, {399, {}}, {498, {}}, {596, {}}, {694, {}}};
+            {100, {}}, {200, {}}, {300, {}}, {399, {}}, {498, {}}, {596, {}}, {694, {}}};
 
     oxen::user_pubkey_t pk;
 
@@ -75,7 +75,6 @@ TEST_CASE("service nodes - pubkey to swarm id") {
 
     REQUIRE(pk.load("05000000000000000000000000000000000000000000000000fffffffffffffffe"));
     CHECK(get_swarm_by_pk(swarms, pk)->swarm_id == 100);
-
 
     // Midpoint tests; we prefer the lower value when exactly in the middle between two swarms.
     // 0x96 = 150
@@ -129,7 +128,6 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     REQUIRE(pk.load("05000000000000000000000000000000000000000000000000800000000000018e"));
     CHECK(get_swarm_by_pk(swarms, pk)->swarm_id == 100);
 
-
     // With a swarm at -20 the midpoint is now 40 (=0x28).  When our value is the *low* value we
     // prefer the *last* swarm in the case of a tie (while consistent with the general case of
     // preferring the left edge, it means we're inconsistent with the other wraparound case, above.
@@ -142,7 +140,6 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     REQUIRE(pk.load("050000000000000000000000000000000000000000000000000000000000000029"));
     CHECK(get_swarm_by_pk(swarms, pk)->swarm_id == swarms.front().swarm_id);
 
-
     // The code used to have a broken edge case if we have a swarm at zero and a client at max-u64
     // because of an overflow in how the distance is calculated (the first swarm will be calculated
     // as max-u64 away, rather than 1 away), and so the id always maps to the highest swarm (even
@@ -153,4 +150,3 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     REQUIRE(pk.load("05000000000000000000000000000000000000000000000000fffffffffffffffe"));
     CHECK(get_swarm_by_pk(swarms, pk)->swarm_id == 0);
 }
-
