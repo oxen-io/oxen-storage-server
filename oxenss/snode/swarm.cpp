@@ -346,14 +346,6 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
             total++;
             if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
                 !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
-                log::warning(
-                        logcat,
-                        "well wtf {} {} {} {} {}",
-                        snode.ip,
-                        snode.port,
-                        snode.omq_port,
-                        snode.pubkey_ed25519,
-                        snode.pubkey_x25519);
                 missing++;
             }
         }
