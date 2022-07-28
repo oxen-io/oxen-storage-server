@@ -21,6 +21,8 @@ constexpr swarm_id_t INVALID_SWARM_ID = std::numeric_limits<uint64_t>::max();
 struct SwarmInfo {
     swarm_id_t swarm_id;
     std::vector<sn_record> snodes;
+
+    bool operator<(const SwarmInfo& other) const { return swarm_id < other.swarm_id; }
 };
 
 struct block_update {

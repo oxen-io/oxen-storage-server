@@ -10,6 +10,7 @@ add_executable(Test
     serialization.cpp
     service_node.cpp
     storage.cpp
+    swarm.cpp
 )
 
 target_link_libraries(Test
