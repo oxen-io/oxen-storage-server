@@ -29,6 +29,7 @@ std::string to_string(namespace_id ns);
 constexpr auto NAMESPACE_MIN = to_int(namespace_id::Min);
 constexpr auto NAMESPACE_MAX = to_int(namespace_id::Max);
 
-template <> inline constexpr bool to_string_formattable<namespace_id> = true;
+template <>
+inline constexpr bool to_string_formattable<namespace_id> = true;
 
 }  // namespace oxen

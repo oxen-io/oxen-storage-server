@@ -130,8 +130,8 @@ class OMQ {
     ///   - P -- an ed25519 pubkey underlying a session ID, in bytes (32 bytes).  The account
     ///     will be derived by converting to an x25519 pubkey and prepending the 0x05 byte.  The
     ///     signature uses *this* key, not the derived x25519 key.
-    /// - S -- (optional) a 32-byte authentication subkey to use for authentication.  The
-    ///   signature with such a subkey uses a derived key (as described in the RPC endpoint
+    /// - S -- (optional) a 32-byte authentication subkey tag to use for authentication.  The
+    ///   signature with such a subkey tag uses a derived subkey (as described in the RPC endpoint
     ///   documentation).
     /// - n -- list of namespace ids to monitor for new messages; the ids must be valid (i.e. -32768
     ///   through 32767), must be sorted in numeric order, and must contain no duplicates.
@@ -143,7 +143,7 @@ class OMQ {
     /// - s -- the signature associated with this message.  This is an Ed25519 signature of the
     ///   value:
     ///       ( "MONITOR" || ACCOUNT || TS || D || NS[0] || "," || ... || "," || NS[n] )
-    ///   signed by the account Ed25519 key or derived subkey (if using subkey):
+    ///   signed by the account Ed25519 key or derived subkey (if using a subkey tag):
     ///   - ACCOUNT is the full account ID, expressed in hex (e.g. "0512345...").
     ///   - TS is the signature timestamp value, expressed as a base-10 string
     ///   - D is "0" or "1" depending on whether data is wanted (i.e. the "d" request parameter)

@@ -118,7 +118,7 @@ def test_monitor_reg_session(omq, random_sn, sk, exclude):
 def test_monitor_reg_subkey(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
 
-    # Highly random subkey value:
+    # Highly random subkey tag:
     subk = b'abcdefghijklmnopqrstuvwxyzomg123'
     o = oxenmq.OxenMQ()
     o.start()

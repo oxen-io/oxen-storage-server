@@ -42,9 +42,9 @@ namespace {
             oxenc::bt_dict_consumer d, oxenc::bt_dict_producer& out, std::vector<sub_info>& subs) {
 
         // Values we receive, in bt-dict order:
-        std::string_view ed_pk;   // P
-        std::string_view subkey;  // S
-        bool want_data = false;   // d
+        std::string_view ed_pk;       // P
+        std::string_view subkey_tag;  // S
+        bool want_data = false;       // d
         using namespace_int = std::underlying_type_t<namespace_id>;
         std::vector<namespace_id> namespaces;  // n
         std::string pubkey;                    // p
@@ -62,14 +62,14 @@ namespace {
                             "Provided P= Session Ed25519 pubkey must be 32 bytes");
             }
 
-            // Subkey for subkey auth (optional)
+            // Subkey tag for subkey auth (optional)
             if (d.skip_until("S")) {
-                subkey = d.consume_string_view();
-                if (subkey.size() != 32)
+                subkey_tag = d.consume_string_view();
+                if (subkey_tag.size() != 32)
                     return monitor_error(
                             out,
                             MonitorResponse::BAD_PUBKEY,
-                            "Provided S= subkey must be 32 bytes");
+                            "Provided S= subkey tag must be 32 bytes");
             }
 
             // Send full data (optional)
@@ -155,9 +155,9 @@ namespace {
 
         std::string_view verify_key = ed_pk;
         std::array<unsigned char, 32> subkey_pub;
-        if (!subkey.empty()) {
+        if (!subkey_tag.empty()) {
             try {
-                subkey_pub = crypto::subkey_verify_key(ed_pk, subkey);
+                subkey_pub = crypto::subkey_verify_key(ed_pk, subkey_tag);
             } catch (const std::invalid_argument& ex) {
                 auto m = fmt::format("Signature verification failed: {}", ex.what());
                 log::warning(logcat, "{}", m);
