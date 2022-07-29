@@ -234,7 +234,6 @@ def test_monitor_push(omq, random_sn, sk, exclude):
         ],
     )
 
-
     # It's pretty rare that we don't get all the responses before the store responses (since they
     # don't have to be onion-routed back to us), but give it a couple seconds anyway.
     s = s.get()
@@ -265,6 +264,108 @@ def test_monitor_push(omq, random_sn, sk, exclude):
         b't': ts,
         b'z': exp,
         b'~': b'abc 123',
+    }
+
+    assert [s['response'] for s in swarm['snodes']] == [[expected_notify]] * len(swarm['snodes'])
+
+
+def test_monitor_multi(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk)
+
+    conns = {}
+
+    n_notifies = 0
+
+    sk2 = SigningKey.generate()
+
+    def handle_notify_message(m):
+        nonlocal conns, n_notifies
+        snode = conns[m.conn]
+        print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
+        conns[m.conn]['response'].append(bt_deserialize(m.data()[0]))
+        n_notifies += 1
+
+    # We need to make our own OMQ because we need to add the cat/command for notifies
+    o = oxenmq.OxenMQ()
+    o.max_message_size = 10 * 1024 * 1024
+    notify = o.add_category('notify', oxenmq.AuthLevel.none)
+    notify.add_command("message", handle_notify_message)
+    o.start()
+
+    ts = int(time.time())
+    registered = []
+    for snode in swarm['snodes']:
+        snode['response'] = []
+        c = o.connect_remote(
+            oxenmq.Address(f"curve://{snode['ip']}:{snode['port_omq']}/{snode['pubkey_x25519']}"),
+            on_success=lambda conn: connected.add(conn),
+            on_failure=lambda _, msg: print(f"Connection failed: {msg}"),
+        )
+        snode['conn'] = c
+        conns[c] = snode
+
+        registered.append(
+            o.request_future(
+                c,
+                "monitor.messages",
+                bt_serialize(
+                    [
+                        notify_request(sk2, ts, True, [0], netid=3),
+                        notify_request(sk, ts, True, [-5, 0, 23], netid=3),
+                    ]
+                ),
+                request_timeout=datetime.timedelta(seconds=5),
+            )
+        )
+
+    registered = [r.get() for r in registered]
+    assert registered == [[b'l' + b'd7:successi1ee' * 2 + b'e']] * len(registered)
+
+    # Now go send a message:
+    sn = ss.random_swarm_members(swarm, 1, exclude)[0]
+    conn = omq.connect_remote(sn_address(sn))
+
+    print(f"starting store at {time.time()}")
+    ts = int(time.time() * 1000)
+    ttl = 86400000
+    exp = ts + ttl
+    # Store a message for myself
+    s = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "data": base64.b64encode("xyz 123".encode()).decode(),
+                }
+            ).encode()
+        ],
+    )
+
+    s = s.get()
+    print(f"got store response at {time.time()}")
+    assert len(s) == 1
+    s = json.loads(s[0])
+
+    tries = 0
+    while n_notifies < len(swarm['snodes']) and tries < 8:
+        time.sleep(0.25)
+        tries += 1
+
+    for sn in s['swarm'].values():
+        hash = sn['hash']
+        break
+
+    expected_notify = {
+        b'@': b'\x03' + sk.verify_key.encode(),
+        b'h': hash.encode(),
+        b'n': 0,
+        b't': ts,
+        b'z': exp,
+        b'~': b'xyz 123',
     }
 
     assert [s['response'] for s in swarm['snodes']] == [[expected_notify]] * len(swarm['snodes'])
