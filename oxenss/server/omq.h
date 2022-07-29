@@ -116,9 +116,14 @@ class OMQ {
             std::string_view method, oxenmq::Message& message, bool forwarded = false);
 
     /// Handles a subscription request to monitor new messages (OMQ endpoint monitor.messages).  The
-    /// message body must be bt-encoded, and contains the following keys.  Note that keys are
-    /// case-sensitive and, for proper bt-encoding, must be in ascii-sorted order (rather than the
-    /// order described here).  Keys are:
+    /// message body must be bt-encoded, and can be either a dict, or a list of dicts, containing
+    /// the following keys.  Note that keys are case-sensitive and, for proper bt-encoding, must be
+    /// in ascii-sorted order (rather than the order described here).
+    ///
+    /// The list of dicts mode is primarily intended to batch multiple subscription requests
+    /// together
+    ///
+    /// Keys are:
     /// - exactly one of:
     ///   - p -- the account public key, prefixed with the netid, in bytes (33 bytes).  This should
     ///     be used for pubkeys that are ed keys (but not 05 session ids, see the next entry)
@@ -148,7 +153,10 @@ class OMQ {
     /// messages in the given namespace(s).  A caller should renew subscriptions periodically by
     /// re-submitting the subscription request (with at most 1h between re-subscriptions).
     ///
-    /// The reply to the subscription request is a bencoded dict containing keys:
+    /// The reply to the subscription request is either a bencoded dict or list of dicts containing
+    /// the following keys.  In the case of a list of subscriptions in the request, the returned
+    /// list will be the same length with the ith element corresponding to the ith element of the
+    /// input.
     /// - success -- included on successful subscription and set to the integer 1
     /// - errcode -- a numeric error value indicating the failure.  Currently implemented are:
     ///   - 1 -- invalid arguments -- called for invalid data (e.g. wrong encoding, wrong value
