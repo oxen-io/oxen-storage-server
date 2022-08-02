@@ -176,15 +176,33 @@ class OMQ {
     /// message details in a dict with keys:
     ///
     /// - @ -- the account pubkey, in bytes (33).  This is the actual account value, regardless of
-    ///   which of `p`/`P`/`S` was used in the request.  (Symbol so that it sorts very early).
+    ///   which of `p`/`P`/`S` was used in the request.  (The dict key is a symbol so that it sorts
+    ///   first in the encoded data).
     /// - h -- the message hash
     /// - n -- the message namespace (-32768 to 32767)
     /// - t -- the message timestamp (milliseconds since unix epoch), as provided by the client who
     ///   deposited the message.
     /// - z -- the expiry (milliseconds since unix epoch) of the message.
-    /// - ~d -- the message data.  Note that this is only included if it was requested by specifying
-    ///   `d` as 1 in the subscription request.  (This is `~d` rather than `d` to put it at the end
-    ///   of the dict, which makes construction here a little easier).
+    /// - ~ -- the message data, if requested.
+    ///
+    /// Note: if the same connection submits multiple simultaneous subscriptions then the subsequent
+    /// subscriptions add to earlier subscriptions.  This has some implications:
+    ///
+    /// - The caller only receives one notification on the connection for a matching message from
+    ///   any of the matching subscription requests on that same connection.
+    /// - All pubkey/subkey/ed25519 pubkeys that access the same account are treated as the same
+    ///   subscription.
+    /// - The data key (`~`) will be present in a notification if *any* subscription request for the
+    ///   same account on the same connection requested data.  Same a flag only expires when the
+    ///   subscription itself expires, but, like namespaces, persists as long as the subscription is
+    ///   renewed (even if the renewals no longer request data).
+    /// - Subscription renewal will renew all subscribed namespaces for that connection.  This *may*
+    ///   extend the subscription of some namespaces (e.g. if you subscribe to namespaces 0 and 1,
+    ///   then stop subscribing to namespace 1 but keep renewing a subscription to ns 0 on the same
+    ///   connection for the same account).
+    ///
+    /// Thus any code that is managing subscriptions for multiple end clients should take care to
+    /// check the namespace/data values and only pass it on if actually desired by a client.
     ///
     /// Note that the client should accept (and ignore) unknown keys, to allow for future expansion.
     void handle_monitor_messages(oxenmq::Message& message);

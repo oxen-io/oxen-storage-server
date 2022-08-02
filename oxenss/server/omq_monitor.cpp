@@ -191,6 +191,50 @@ namespace {
         out.append("success", 1);
     }
 
+    // Merges sorted vectors a and b together, returns the sorted, combined vector (but without any
+    // duplicates).  We avoid reallocating the vectors when possible (i.e. if either is a subset of
+    // the other).
+    std::vector<namespace_id> merge_namespaces(
+            std::vector<namespace_id> a, std::vector<namespace_id> b) {
+        // If the first arg of b comes before a, then our only subset case can be b as a superset of
+        // a, so swap arguments so that the subset case always involves `a` as the superset.
+        if (!b.empty() && (a.empty() || b.front() < a.front()))
+            a.swap(b);
+        // Figure out if a is a superset of b (in which case we can just return a):
+        auto ita = a.begin(), itb = b.begin();
+        while (ita != a.end() && itb != b.end()) {
+            if (*itb > *ita)
+                ita++;  // We have an element only in a, which is fine, skip it
+            else if (*itb == *ita) {
+                ita++;  // The element is in both, which is fine.
+                itb++;
+            } else
+                break;  // We found a b that isn't in a, so we don't have a subset.
+        }
+        if (itb == b.end())
+            return a;  // We hit the end of b without any violations above, which means everything
+                       // in b is already in a.
+
+        // Otherwise we need to merge them into a new sorted container c:
+        std::vector<namespace_id> c;
+        ita = a.begin();
+        itb = b.begin();
+        while (ita != a.end() || itb != b.end()) {
+            if (itb == b.end())
+                c.push_back(*ita++);
+            else if (ita == a.end())
+                c.push_back(*itb++);
+            else if (*ita < *itb)
+                c.push_back(*ita++);
+            else if (*ita == *itb) {
+                c.push_back(*ita++);
+                itb++;  // Value is in both vectors, but we only want it once
+            } else
+                c.push_back(*itb++);
+        }
+        return c;
+    }
+
 }  // namespace
 
 void OMQ::handle_monitor_messages(oxenmq::Message& message) {
@@ -239,14 +283,15 @@ void OMQ::handle_monitor_messages(oxenmq::Message& message) {
             for (auto [it, end] = monitoring_.equal_range(pubkey); it != end; ++it) {
                 auto& mon_data = it->second;
                 if (mon_data.push_conn == message.conn) {
+                    mon_data.namespaces =
+                            merge_namespaces(std::move(mon_data.namespaces), std::move(namespaces));
                     log::debug(
                             logcat,
                             "monitor.messages sub renewed for {} monitoring namespace(s) {}",
                             pubkey_hex,
-                            fmt::join(namespaces, ", "));
+                            fmt::join(mon_data.namespaces, ", "));
                     mon_data.reset_expiry();
-                    mon_data.namespaces = std::move(namespaces);
-                    mon_data.want_data = want_data;
+                    mon_data.want_data |= want_data;
                     found = true;
                     break;
                 }
@@ -300,7 +345,7 @@ void OMQ::send_notifies(message msg) {
     // - n msg namespace
     // - t msg timestamp
     // - z msg expiry
-    // - ~d msg data (optional)
+    // - ~ msg data (optional)
     constexpr size_t metadata_size = 2       // d...e
                                    + 3 + 36  // 1:@ and 33:[33-byte pubkey]
                                    + 3 + 46  // 1:h and 43:[43-byte base64 unpadded hash]
