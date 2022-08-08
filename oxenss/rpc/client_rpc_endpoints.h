@@ -309,6 +309,40 @@ struct delete_msgs final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
+/// Revokes a Subkey
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - revoke_subkey -- the subkey tag which is to be added to the revocation list, Subkey tags are
+///   32 byte, passed in hex or base64-encoding 9for a json request) or as
+///   bytes (bt-encoded requests)
+/// - signature -- Ed25519 signature of ("revoke_subkey" || subkey); this signs the subkey tag,
+/// using `pubkey` to sign.
+///   Must be base64 encoded for json requests; binary for OMQ requests.
+///
+/// Returns dict of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "signature": signature of:
+///             ( PUBKEY_HEX || SUBKEY_TAG_BYTES )
+///       where SUBKEY_TAG_BYTES is the requested subkey tag for revocation
+struct revoke_subkey final : recursive {
+    static constexpr auto names() { return NAMES("revoke_subkey"); }
+
+    user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::array<unsigned char, 32> revoke_subkey;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
+};
+
 struct namespace_all_t {};
 inline constexpr namespace_all_t namespace_all{};
 
@@ -563,6 +597,7 @@ struct oxend_request final : endpoint {
 // batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
 // requests within them).
 using client_rpc_subrequests = type_list<
+        revoke_subkey,
         store,
         retrieve,
         delete_msgs,

@@ -522,6 +522,43 @@ bt_value delete_msgs::to_bt() const {
 }
 
 template <typename Dict>
+static void load(revoke_subkey& rs, Dict& d) {
+    auto [pubkey, pubkey_ed25519, revoke_subkey, signature] = load_fields<Str, SV, SV, SV>(
+            d, "pubkey", "pubkey_ed25519", "revoke_subkey", "signature");
+    load_pk_signature(rs, d, pubkey, pubkey_ed25519, signature);
+    require("revoke_subkey", revoke_subkey);
+    const auto& sk = *revoke_subkey;
+    if constexpr (std::is_same_v<json, Dict>) {
+        if (oxenc::is_base64(sk) && (sk.size() == 43 || (sk.size() == 44 && sk.back() == '=')))
+            oxenc::from_base64(sk.begin(), sk.end(), rs.revoke_subkey.begin());
+        else if (oxenc::is_hex(sk) && sk.size() == 64)
+            oxenc::from_hex(sk.begin(), sk.end(), rs.revoke_subkey.begin());
+        else
+            throw parse_error{"invalid subkey: expected base64 or hex-encoded 32-byte subkey tag"};
+    } else {
+        if (sk.size() != 32)
+            throw parse_error{"invalid subkey: expected 32-byte subkey tag"};
+        std::memcpy(rs.revoke_subkey.data(), sk.data(), 32);
+    }
+}
+void revoke_subkey::load_from(json params) {
+    load(*this, params);
+}
+void revoke_subkey::load_from(bt_dict_consumer params) {
+    load(*this, params);
+}
+bt_value revoke_subkey::to_bt() const {
+    bt_dict ret{
+            {"pubkey", pubkey.prefixed_raw()},
+            {"revoke_subkey", util::view_guts(revoke_subkey)},
+            {"signature", util::view_guts(signature)}};
+    if (pubkey_ed25519)
+        ret["pubkey_ed25519"] = std::string_view{
+                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    return ret;
+}
+
+template <typename Dict>
 static void load(delete_all& da, Dict& d) {
     auto [msgs_ns, pubkey, pubkey_ed25519, signature, timestamp] =
             load_fields<namespace_var, Str, SV, SV, TP>(

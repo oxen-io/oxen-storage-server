@@ -287,6 +287,30 @@ ALTER TABLE messages ADD COLUMN namespace INTEGER NOT NULL DEFAULT 0;
             )");
         }
 
+        if (!db.tableExists("revoked_subkeys")) {
+            log::info(logcat, "Upgrading database schema");
+            db.exec(R"(
+CREATE TABLE revoked_subkeys (
+    owner INTEGER REFERENCES owners(id) ON DELETE CASCADE,
+    subkey BLOB NOT NULL,
+    timestamp INTEGER NOT NULL DEFAULT (CAST((julianday('now') - 2440587.5)*86400000 AS INTEGER)),
+
+    PRIMARY Key(owner, subkey)
+);
+
+CREATE TRIGGER IF NOT EXISTS subkey_autoclean
+    AFTER INSERT ON revoked_subkeys WHEN (SELECT COUNT(*) FROM revoked_subkeys WHERE owner = NEW.owner) > 50
+    BEGIN
+        DELETE FROM revoked_subkeys
+            WHERE owner = NEW.owner and subkey NOT IN (
+                SELECT subkey FROM revoked_subkeys
+                WHERE owner = NEW.owner
+                ORDER BY timestamp DESC LIMIT 50
+        );
+    END;
+            )");
+        }
+
         views_triggers_indices();
 
         log::info(logcat, "Database setup complete");
@@ -796,6 +820,23 @@ std::vector<std::string> Database::delete_by_timestamp(
             " AND timestamp <= ? AND namespace = ?"
             " RETURNING hash");
     return get_all<std::string>(st, pubkey, to_epoch_ms(timestamp), ns);
+}
+
+void Database::revoke_subkey(
+        const user_pubkey_t& pubkey, const std::array<unsigned char, 32>& revoke_subkey) {
+    auto insert_subkey = impl->prepared_st(
+            "INSERT INTO revoked_subkeys (owner, subkey) "
+            "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
+            "ON CONFLICT DO NOTHING");
+    exec_query(insert_subkey, pubkey, blob_binder{util::view_guts(revoke_subkey)});
+}
+
+bool Database::subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey) {
+    auto get_subkey_count =
+            impl->prepared_st("SELECT count(*) FROM revoked_subkeys WHERE subkey = ?");
+    auto subkey_count =
+            exec_and_get<int64_t>(get_subkey_count, blob_binder{util::view_guts(revoke_subkey)});
+    return subkey_count > 0;
 }
 
 std::vector<std::string> Database::update_expiry(

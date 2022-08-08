@@ -238,12 +238,14 @@ namespace {
 
     template <typename... T>
     bool verify_signature(
+            oxen::Database& db,
             const user_pubkey_t& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
             const std::optional<std::array<unsigned char, 32>>& subkey,
             const std::array<unsigned char, 64>& sig,
             const T&... val) {
         std::string data = concatenate_sig_message_parts(val...);
+
         const auto& raw = pubkey.raw();
         const unsigned char* pk;
         if ((pubkey.type() == 5 || (pubkey.type() == 0 && !is_mainnet)) && pk_ed25519) {
@@ -262,6 +264,11 @@ namespace {
 
         std::array<unsigned char, 32> subkey_pub;
         if (subkey) {
+            if (db.subkey_revoked(*subkey)) {
+                log::warning(logcat, "Signature verification failed: subkey previously revoked");
+                return false;
+            }
+
             // Need to compute: (c + H(c || A)) A and use that instead of A for verification:
 
             // H(c || A):
@@ -516,7 +523,9 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
             return cb(
                     Response{http::NOT_ACCEPTABLE, "store timestamp too far from current time"sv});
         }
+
         if (!verify_signature(
+                    service_node_.get_db(),
                     req.pubkey,
                     req.pubkey_ed25519,
                     req.subkey,
@@ -678,7 +687,9 @@ void RequestHandler::process_client_req(
             return cb(Response{
                     http::NOT_ACCEPTABLE, "retrieve timestamp too far from current time"sv});
         }
+
         if (!verify_signature(
+                    service_node_.get_db(),
                     req.pubkey,
                     req.pubkey_ed25519,
                     req.subkey,
@@ -812,8 +823,8 @@ void RequestHandler::process_client_req(
         return cb(
                 Response{http::NOT_ACCEPTABLE, "delete_all timestamp too far from current time"sv});
     }
-
     if (!verify_signature(
+                service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subkey allowed
@@ -869,6 +880,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
         return cb(handle_wrong_swarm(req.pubkey));
 
     if (!verify_signature(
+                service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subkey allowed
@@ -922,6 +934,43 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
 }
 
 void RequestHandler::process_client_req(
+        rpc::revoke_subkey&& req, std::function<void(Response)> cb) {
+    log::debug(logcat, "processing revoke_subkey{} request", req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    if (!verify_signature(
+                service_node_.get_db(),
+                req.pubkey,
+                req.pubkey_ed25519,
+                std::nullopt,  // no subkey allowed
+                req.signature,
+                "revoke_subkey",
+                util::view_guts(req.revoke_subkey))) {
+        log::debug(logcat, "revoke_subkey: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "revoke_subkey signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // Put our stuff inside "swarm" alongside all the other results
+    auto& mine = req.recurse
+                       ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+                       : res->result;
+
+    service_node_.get_db().revoke_subkey(req.pubkey, req.revoke_subkey);
+    auto sig = create_signature(
+            ed25519_sk_, req.pubkey.prefixed_hex(), util::view_guts(req.revoke_subkey));
+    mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    if (req.recurse)
+        add_misc_response_fields(res->result, service_node_);
+
+    if (--res->pending == 0)
+        reply_or_fail(std::move(res));
+}
+
+void RequestHandler::process_client_req(
         rpc::delete_before&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing delete_before {} request", req.recurse ? "direct" : "forwarded");
 
@@ -938,6 +987,7 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
+                service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subkey allowed
@@ -1002,6 +1052,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
     }
 
     if (!verify_signature(
+                service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subkey allowed
@@ -1064,6 +1115,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     }
 
     if (!verify_signature(
+                service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subkey,
