@@ -120,6 +120,13 @@ class Database {
             namespace_id ns,
             std::chrono::system_clock::time_point timestamp);
 
+    // Adds subkey to revoked subkey database, revokes the subkey.
+    void revoke_subkey(
+            const user_pubkey_t& pubkey, const std::array<unsigned char, 32>& revoke_subkey);
+
+    // Checks if a subkey exists in the revoked subkey database. True if exists and has been revoked
+    bool subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey);
+
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
     // hashes of found messages (i.e. hashes that don't exist are not returned).
     //

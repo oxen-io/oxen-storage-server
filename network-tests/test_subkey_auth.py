@@ -8,6 +8,7 @@ from nacl.hash import blake2b
 from hashlib import sha512
 from nacl.signing import SigningKey, VerifyKey
 import nacl.bindings as sodium
+import nacl.exceptions
 
 def make_subkey(sk, subuser_pk: VerifyKey):
     # Typically we'll do this, though in theory we can generate any old 32-byte value for c:
@@ -198,3 +199,133 @@ def test_expire_subkey(omq, random_sn, sk, exclude):
     for pk, exp in r['swarm'].items():
         assert exp["expiry"] == new_exp
         assert set(exp["updated"]) == set([m['hash'] for m in msgs[1:]])
+
+def test_revoke_subkey(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk, 3)
+
+    sn = ss.random_swarm_members(swarm, 1, exclude)[0]
+    conn = omq.connect_remote(sn_address(sn))
+
+    ts = int(time.time() * 1000)
+    ttl = 86400000
+    exp = ts + ttl
+
+    # Store a message for myself, using master key
+    s = omq.request_future(conn, 'storage.store', [json.dumps({
+        "pubkey": '03' + sk.verify_key.encode().hex(),
+        'namespace': 42,
+        "timestamp": ts,
+        "ttl": ttl,
+        "data": base64.b64encode(b"abc 123").decode(),
+        "signature": sk.sign(f"store42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+        }).encode()]).get()
+    assert len(s) == 1
+    s = json.loads(s[0])
+    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+            encoder=Base64Encoder).decode().rstrip('=')
+    for k, v in s['swarm'].items():
+        assert hash == v['hash']
+
+    # Retrieve it using the subkey
+    dude_sk = SigningKey.generate()
+    c, d, D = make_subkey(sk, dude_sk.verify_key)
+    to_sign = f"retrieve42{ts}".encode()
+    sig = blinded_ed25519_signature(to_sign, dude_sk, d, D)
+
+    r = omq.request_future(conn, 'storage.retrieve', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "namespace": 42,
+            "timestamp": ts,
+            "signature": base64.b64encode(sig).decode(),
+            "subkey": base64.b64encode(c).decode(),
+        }).encode()]).get()
+
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert r["hf"] >= [19, 0]
+    assert len(r["messages"]) == 1
+    assert r["messages"][0]["hash"] == hash
+
+    # Revoke the subkey
+    r = omq.request_future(conn, 'storage.revoke_subkey', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "revoke_subkey": base64.b64encode(c).decode(),
+            "signature": sk.sign(f"revoke_subkey".encode() + c, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+
+    assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
+
+    # Check the signature of the revoked subkey response, should be signing ( PUBKEY_HEX || SUBKEY_TAG_BYTES )
+    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + c
+    for k, v in r['swarm'].items():
+        edpk = VerifyKey(k, encoder=HexEncoder)
+        try:
+            edpk.verify(expected_signed, base64.b64decode(v['signature']))
+        except nacl.exceptions.BadSignatureError as e:
+            print("Bad signature from swarm member {}".format(k))
+            raise e
+
+    # Try retrieve it again using the subkey, should fail
+    r = omq.request_future(conn, 'storage.retrieve', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "namespace": 42,
+            "timestamp": ts,
+            "signature": base64.b64encode(sig).decode(),
+            "subkey": base64.b64encode(c).decode(),
+        }).encode()]).get()
+    assert r == [b'401', b'retrieve signature verification failed']
+
+    # Revoke another 49 subkeys, the original subkey should still fail to retrieve the messages
+    for i in range (49):
+        more_dude_sk = SigningKey.generate()
+        more_c, more_d, D = make_subkey(sk, more_dude_sk.verify_key)
+        r = omq.request_future(conn, 'storage.revoke_subkey', [
+            json.dumps({
+                "pubkey": '03' + sk.verify_key.encode().hex(),
+                "revoke_subkey": base64.b64encode(more_c).decode(),
+                "signature": sk.sign(f"revoke_subkey".encode() + more_c, encoder=Base64Encoder).signature.decode()
+            }).encode()]).get()
+        assert len(r) == 1
+
+    # Try retrieve it again using the subkey, should fail again
+    r = omq.request_future(conn, 'storage.retrieve', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "namespace": 42,
+            "timestamp": ts,
+            "signature": base64.b64encode(sig).decode(),
+            "subkey": base64.b64encode(c).decode(),
+        }).encode()]).get()
+    assert r == [b'401', b'retrieve signature verification failed']
+
+    # Revoke one more subkey, the original subkey should now succeed in retrieving the messages
+    more_dude_sk = SigningKey.generate()
+    more_c, more_d, D = make_subkey(sk, more_dude_sk.verify_key)
+    r = omq.request_future(conn, 'storage.revoke_subkey', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "revoke_subkey": base64.b64encode(more_c).decode(),
+            "signature": sk.sign(f"revoke_subkey".encode() + more_c, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(r) == 1
+
+    # Try retrieve it again using the subkey, should succeed now
+    r = omq.request_future(conn, 'storage.retrieve', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "namespace": 42,
+            "timestamp": ts,
+            "signature": base64.b64encode(sig).decode(),
+            "subkey": base64.b64encode(c).decode(),
+        }).encode()]).get()
+
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert r["hf"] >= [19, 0]
+    assert len(r["messages"]) == 1
+    assert r["messages"][0]["hash"] == hash

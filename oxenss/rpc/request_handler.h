@@ -201,6 +201,7 @@ class RequestHandler {
     void process_client_req(rpc::batch&&, std::function<void(Response)> cb);
     void process_client_req(rpc::sequence&&, std::function<void(Response)> cb);
     void process_client_req(rpc::ifelse&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::revoke_subkey&& req, std::function<void(Response)> cb);
 
     struct rpc_handler {
         std::function<client_request(std::variant<nlohmann::json, oxenc::bt_dict_consumer> params)>
