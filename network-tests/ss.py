@@ -58,7 +58,7 @@ def random_swarm_members(swarm, n, exclude={}):
     return random.sample([s for s in swarm['snodes'] if s['pubkey_ed25519'] not in exclude], n)
 
 
-def store_n(omq, conn, sk, basemsg, n, offset=0, netid=5):
+def store_n(omq, conn, sk, basemsg, n, *, offset=0, netid=5):
     msgs = []
     pubkey = chr(netid).encode() + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode()
     for i in range(n):

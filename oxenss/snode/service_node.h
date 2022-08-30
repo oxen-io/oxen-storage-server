@@ -64,6 +64,16 @@ enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
 enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
+constexpr std::string_view to_string(SnodeStatus status) {
+    switch (status) {
+        case SnodeStatus::UNSTAKED: return "Unstaked"sv;
+        case SnodeStatus::DECOMMISSIONED: return "Decommissioned"sv;
+        case SnodeStatus::ACTIVE: return "Active"sv;
+        case SnodeStatus::UNKNOWN: return "Unknown"sv;
+    }
+    return "Unknown"sv;
+}
+
 /// All service node logic that is not network-specific
 class ServiceNode {
     bool syncing_ = true;
@@ -163,10 +173,6 @@ class ServiceNode {
     // retesting.
     void report_reachability(const sn_record& sn, bool reachable, int previous_failures);
 
-    /// Deprecated; can be removed after HF19
-    /// Returns headers to add to the request containing signature info for the given body
-    std::vector<std::pair<std::string, std::string>> sign_request(std::string_view body) const;
-
   public:
     ServiceNode(
             sn_record address,
@@ -237,7 +243,7 @@ class ServiceNode {
 
     bool is_pubkey_for_us(const user_pubkey_t& pk) const;
 
-    SwarmInfo get_swarm(const user_pubkey_t& pk) const;
+    std::optional<SwarmInfo> get_swarm(const user_pubkey_t& pk) const;
 
     std::vector<sn_record> get_swarm_peers() const;
 
@@ -268,3 +274,6 @@ class ServiceNode {
 };
 
 }  // namespace oxen::snode
+
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::snode::SnodeStatus> = true;

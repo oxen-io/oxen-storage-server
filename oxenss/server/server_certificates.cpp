@@ -18,6 +18,8 @@ namespace oxen {
 
 namespace {
 
+    auto logcat = log::Cat("server");
+
     /* Add extension using V3 code: we can set the config file as NULL
      * because we wont reference any other sections.
      */
@@ -143,21 +145,21 @@ void generate_dh_pem(const std::filesystem::path& dh_path) {
     const int generator = DH_GENERATOR_2;
     DH* dh = DH_new();
     if (dh == NULL) {
-        OXEN_LOG(err, "Alloc for dh failed");
+        log::critical(logcat, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
-    OXEN_LOG(info, "Generating DH parameter, this might take a while...");
+    log::info(logcat, "Generating DH parameter, this might take a while...");
 
     const int res = DH_generate_parameters_ex(dh, prime_len, generator, nullptr);
 
     if (!res) {
-        OXEN_LOG(err, "Alloc for dh failed");
+        log::critical(logcat, "Alloc for dh failed");
         ERR_print_errors_fp(stderr);
         abort();
     }
 
-    OXEN_LOG(info, "DH parameter done!");
+    log::info(logcat, "DH parameter done!");
     FILE* pFile = NULL;
     pFile = fopen(dh_path.u8string().c_str(), "wt");
     PEM_write_DHparams(pFile, dh);
