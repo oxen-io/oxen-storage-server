@@ -1,3 +1,39 @@
+oxen-storage-server (2.4.0-1~deb10) buster; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Fix binary path for static libs check
+  * Set BUILD_SHARED_LIBS OFF for static submodule libs
+  * Fix missing jemalloc linking
+  * Convert to oxen-logging's logger implementation
+  * Remove obsolete cruft
+  * Remove now-unused spdlog submodule
+  * Remove spdlog from up-to-date submodule check
+  * Add failable delete_msgs
+  * Miscellaneous network test fixes
+  * Formatting: use short typedefs for load_fields
+  * Fix "swarms" -> "swarm" typo in rpc docs
+  * Allow subkey authentication for expiry extension
+  * Bump version
+  * Remove debugging
+  * Fix and optimize swarm replacement
+  * Fix broken nearest-swarm logic & optimizations
+  * Formatting
+  * Remove unused function
+
+  [ Sean Darcy ]
+  * Revoking Subkeys
+
+  [ Jason Rhinelander ]
+  * Bump oxenc for bt_dict_producer fix
+  * Message monitoring
+  * Add testnet network tests for monitoring endpoint
+  * Allow subscribing to multiple pubkeys at once
+  * Add test case for multi-sub request
+  * Clarify "subkey" vs "subkey tag" descriptions
+  * Merge namespace/data values into a single subscription
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 30 Aug 2022 19:56:19 -0300
+
 oxen-storage-server (2.3.0-2~deb10) buster; urgency=medium
 
   * Dep updates
