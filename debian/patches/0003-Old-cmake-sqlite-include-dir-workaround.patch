@@ -7,10 +7,10 @@ Subject: Old cmake sqlite include dir workaround
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index 76322d3..948de13 100644
+index 086b972..28ea3e4 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
-@@ -209,7 +209,7 @@ if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target i
+@@ -211,7 +211,7 @@ if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target i
      add_library(SQLite::SQLite3 STATIC IMPORTED GLOBAL)
      add_dependencies(SQLite::SQLite3 sqlite3_external)
      set_target_properties(SQLite::SQLite3 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a)
