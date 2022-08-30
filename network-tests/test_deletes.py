@@ -97,7 +97,7 @@ def test_delete(omq, random_sn, sk, exclude):
     ts = int(time.time() * 1000)
     actual_del_msgs = sorted(msgs[i]['hash'] for i in (1, 4))
     # Deliberately mis-sort the requested hashes to verify that the return is sorted as expected
-    del_msgs = sorted(actual_del_msgs + ['bepQtTaYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I'], reverse=True)
+    del_msgs = sorted(actual_del_msgs + ['garbageYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I'], reverse=True)
     to_sign = ("delete" + "".join(del_msgs)).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     params = json.dumps({
@@ -135,6 +135,45 @@ def test_delete(omq, random_sn, sk, exclude):
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 3
+
+
+def test_delete_required(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk, netid=2)
+    sns = ss.random_swarm_members(swarm, 2, exclude)
+    conns = [omq.connect_remote(sn_address(sn)) for sn in sns]
+
+    msgs = ss.store_n(omq, conns[0], sk, b"omg123", 2, netid=2)
+
+    my_ss_id = '02' + sk.verify_key.encode().hex()
+
+    ts = int(time.time() * 1000)
+    actual_del_msgs = sorted(m['hash'] for m in msgs)
+    del_msgs = actual_del_msgs + ['garbageYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I']
+    to_sign = ("delete" + "".join(del_msgs)).encode()
+    sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+    params = {
+            "pubkey": my_ss_id,
+            "messages": del_msgs,
+            "required": True,
+            "signature": sig
+    }
+
+    resp = omq.request_future(conns[1], 'storage.delete', [json.dumps(params)]).get()
+
+    assert len(resp) == 1
+    r = json.loads(resp[0])
+
+    # Submit again; since they are already deleted, this should give back a 404
+    resp = omq.request_future(conns[1], 'storage.delete', [json.dumps(params)]).get()
+
+    assert len(resp) == 2
+    assert resp[0] == b'404'
+
+    # Make sure we don't get a 404 without required specified, even when nothing found:
+    del params["required"]
+    resp = omq.request_future(conns[1], 'storage.delete', [json.dumps(params)]).get()
+
+    assert len(resp) == 1
 
 
 def test_delete_before(omq, random_sn, sk, exclude):
