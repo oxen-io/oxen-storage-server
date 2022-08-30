@@ -1,6 +1,6 @@
 #pragma once
 
-#include <iosfwd>
+#include <oxenss/common/formattable.h>
 #include <string>
 #include <string_view>
 
@@ -27,8 +27,6 @@ inline constexpr std::string_view to_string(EncryptType type) {
     }
     return ""sv;
 }
-
-std::ostream& operator<<(std::ostream& o, const EncryptType& t);
 
 // Encryption/decription class for encryption/decrypting outgoing/incoming messages.
 class ChannelEncryption {
@@ -73,3 +71,6 @@ class ChannelEncryption {
 };
 
 }  // namespace oxen::crypto
+
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::EncryptType> = true;
