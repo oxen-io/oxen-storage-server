@@ -13,7 +13,7 @@ endif()
 cmake_minimum_required(VERSION 3.13)
 
 project(oxenss
-    VERSION 2.3.0
+    VERSION 2.4.0
     LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -72,9 +72,9 @@ else()
   endfunction ()
 
   message(STATUS "Checking submodules")
-  check_submodule(external/spdlog)
   check_submodule(external/oxenc)
   check_submodule(external/oxen-mq cppzmq)
+  check_submodule(external/oxen-logging fmt spdlog)
   check_submodule(external/nlohmann_json)
   check_submodule(external/uWebSockets uSockets)
   check_submodule(external/cpr)
