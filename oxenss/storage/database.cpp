@@ -19,6 +19,9 @@
 #include <sqlite3.h>
 
 namespace oxen {
+
+static auto logcat = log::Cat("db");
+
 constexpr std::chrono::milliseconds SQLite_busy_timeout = 3s;
 
 namespace {
@@ -169,8 +172,8 @@ namespace {
         std::optional<type_or_tuple<T...>> result;
         while (st.executeStep()) {
             if (result) {
-                OXEN_LOG(
-                        err,
+                log::error(
+                        logcat,
                         "Expected single-row result, got multiple rows from {}",
                         st.getQuery());
                 throw std::runtime_error{"DB error: expected single-row result, got multiple rows"};
@@ -188,7 +191,7 @@ namespace {
     type_or_tuple<T...> exec_and_get(SQLite::Statement& st, const Args&... bind) {
         auto maybe_result = exec_and_maybe_get<T...>(st, bind...);
         if (!maybe_result) {
-            OXEN_LOG(err, "Expected single-row result, got no rows from {}", st.getQuery());
+            log::error(logcat, "Expected single-row result, got no rows from {}", st.getQuery());
             throw std::runtime_error{"DB error: expected single-row result, got not rows"};
         }
         return *std::move(maybe_result);
@@ -231,21 +234,21 @@ class DatabaseImpl {
                SQLite_busy_timeout.count()} {
         // Don't fail on these because we can still work even if they fail
         if (int rc = db.tryExec("PRAGMA journal_mode = WAL"); rc != SQLITE_OK)
-            OXEN_LOG(err, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
+            log::error(logcat, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
 
         if (int rc = db.tryExec("PRAGMA synchronous = NORMAL"); rc != SQLITE_OK)
-            OXEN_LOG(err, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
+            log::error(logcat, "Failed to set synchronous mode to NORMAL: {}", sqlite3_errstr(rc));
 
         if (int rc = db.tryExec("PRAGMA foreign_keys = ON"); rc != SQLITE_OK) {
             auto m = fmt::format(
                     "Failed to enable foreign keys constraints: {}", sqlite3_errstr(rc));
-            OXEN_LOG(critical, m);
+            log::critical(logcat, m);
             throw std::runtime_error{m};
         }
         int fk_enabled = db.execAndGet("PRAGMA foreign_keys").getInt();
         if (fk_enabled != 1) {
-            OXEN_LOG(
-                    critical,
+            log::critical(
+                    logcat,
                     "Failed to enable foreign key constraints; perhaps this sqlite3 is "
                     "compiled without it?");
             throw std::runtime_error{"Foreign key support is required"};
@@ -258,7 +261,7 @@ class DatabaseImpl {
                     "PRAGMA max_page_count = " + std::to_string(Database::SIZE_LIMIT / page_size));
             rc != SQLITE_OK) {
             auto m = fmt::format("Failed to set max page count: {}", sqlite3_errstr(rc));
-            OXEN_LOG(critical, m);
+            log::critical(logcat, m);
             throw std::runtime_error{m};
         }
 
@@ -275,7 +278,7 @@ class DatabaseImpl {
         }
 
         if (!have_namespace) {
-            OXEN_LOG(info, "Upgrading database schema");
+            log::info(logcat, "Upgrading database schema");
             db.exec(R"(
 DROP INDEX IF EXISTS messages_owner;
 DROP TRIGGER IF EXISTS owned_messages_insert;
@@ -284,9 +287,33 @@ ALTER TABLE messages ADD COLUMN namespace INTEGER NOT NULL DEFAULT 0;
             )");
         }
 
+        if (!db.tableExists("revoked_subkeys")) {
+            log::info(logcat, "Upgrading database schema");
+            db.exec(R"(
+CREATE TABLE revoked_subkeys (
+    owner INTEGER REFERENCES owners(id) ON DELETE CASCADE,
+    subkey BLOB NOT NULL,
+    timestamp INTEGER NOT NULL DEFAULT (CAST((julianday('now') - 2440587.5)*86400000 AS INTEGER)),
+
+    PRIMARY Key(owner, subkey)
+);
+
+CREATE TRIGGER IF NOT EXISTS subkey_autoclean
+    AFTER INSERT ON revoked_subkeys WHEN (SELECT COUNT(*) FROM revoked_subkeys WHERE owner = NEW.owner) > 50
+    BEGIN
+        DELETE FROM revoked_subkeys
+            WHERE owner = NEW.owner and subkey NOT IN (
+                SELECT subkey FROM revoked_subkeys
+                WHERE owner = NEW.owner
+                ORDER BY timestamp DESC LIMIT 50
+        );
+    END;
+            )");
+        }
+
         views_triggers_indices();
 
-        OXEN_LOG(info, "Database setup complete");
+        log::info(logcat, "Database setup complete");
     }
 
     void create_schema() {
@@ -315,7 +342,7 @@ CREATE TABLE messages (
         )");
 
         if (db.tableExists("Data")) {
-            OXEN_LOG(warn, "Old database schema detected; performing migration...");
+            log::warning(logcat, "Old database schema detected; performing migration...");
 
             // Migratation from old table structure:
             //
@@ -346,7 +373,8 @@ CREATE TABLE messages (
                     type = 0;
                     oxenc::from_hex(old_owner.begin(), old_owner.end(), pubkey.begin());
                 } else {
-                    OXEN_LOG(warn, "Found invalid owner pubkey '{}' during migration; ignoring");
+                    log::warning(
+                            logcat, "Found invalid owner pubkey '{}' during migration; ignoring");
                     continue;
                 }
 
@@ -355,7 +383,8 @@ CREATE TABLE messages (
                 owner_ids.emplace(std::move(old_owner), id);
             }
 
-            OXEN_LOG(warn, "Migrated {} owner pubkeys.  Migrating messages...", owner_ids.size());
+            log::warning(
+                    logcat, "Migrated {} owner pubkeys.  Migrating messages...", owner_ids.size());
 
             SQLite::Statement ins_msg{
                     db,
@@ -379,15 +408,15 @@ CREATE TABLE messages (
                 msgs++;
             }
 
-            OXEN_LOG(
-                    warn,
+            log::warning(
+                    logcat,
                     "Migrated {} messages ({} invalid owner ids); dropping old Data table",
                     msgs,
                     bad_owners);
 
             db.exec("DROP TABLE Data");
 
-            OXEN_LOG(warn, "Data migration complete!");
+            log::warning(logcat, "Data migration complete!");
         }
 
         transaction.commit();
@@ -561,10 +590,10 @@ std::optional<bool> Database::store(const message& msg) {
             return false;
         else if (rc == SQLITE_FULL) {
             if (impl->db_full_counter++ % DB_FULL_FREQUENCY == 0)
-                OXEN_LOG(err, "Failed to store message: database is full");
+                log::error(logcat, "Failed to store message: database is full");
             return std::nullopt;
         } else {
-            OXEN_LOG(err, "Failed to store message: {}", e.getErrorStr());
+            log::error(logcat, "Failed to store message: {}", e.getErrorStr());
             throw;
         }
     }
@@ -590,7 +619,10 @@ void Database::bulk_store(const std::vector<message>& items) {
             if (ownerid)
                 it->second = *ownerid;
             else {
-                OXEN_LOG(err, "Failed to insert owner {} for bulk store", m.pubkey.prefixed_hex());
+                log::error(
+                        logcat,
+                        "Failed to insert owner {} for bulk store",
+                        m.pubkey.prefixed_hex());
                 seen.erase(it);
             }
         }
@@ -790,16 +822,35 @@ std::vector<std::string> Database::delete_by_timestamp(
     return get_all<std::string>(st, pubkey, to_epoch_ms(timestamp), ns);
 }
 
+void Database::revoke_subkey(
+        const user_pubkey_t& pubkey, const std::array<unsigned char, 32>& revoke_subkey) {
+    auto insert_subkey = impl->prepared_st(
+            "INSERT INTO revoked_subkeys (owner, subkey) "
+            "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
+            "ON CONFLICT DO NOTHING");
+    exec_query(insert_subkey, pubkey, blob_binder{util::view_guts(revoke_subkey)});
+}
+
+bool Database::subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey) {
+    auto get_subkey_count =
+            impl->prepared_st("SELECT count(*) FROM revoked_subkeys WHERE subkey = ?");
+    auto subkey_count =
+            exec_and_get<int64_t>(get_subkey_count, blob_binder{util::view_guts(revoke_subkey)});
+    return subkey_count > 0;
+}
+
 std::vector<std::string> Database::update_expiry(
         const user_pubkey_t& pubkey,
         const std::vector<std::string>& msg_hashes,
-        std::chrono::system_clock::time_point new_exp) {
+        std::chrono::system_clock::time_point new_exp,
+        bool extend_only) {
     auto new_exp_ms = to_epoch_ms(new_exp);
 
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
         auto st = impl->prepared_st(
-                "UPDATE messages SET expiry = ? WHERE hash = ?"
+                "UPDATE messages SET expiry = ? WHERE hash = ?"s +
+                (extend_only ? " AND expiry < ?1" : "") +
                 " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
                 " RETURNING hash");
         return get_all<std::string>(st, new_exp_ms, msg_hashes[0], pubkey);
@@ -809,8 +860,9 @@ std::vector<std::string> Database::update_expiry(
             impl->db,
             multi_in_query(
                     "UPDATE messages SET expiry = ?"
-                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
-                    " AND hash IN ("sv,  // ?,?,?,...,?
+                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"s +
+                            (extend_only ? " AND expiry < ?1" : "") +
+                            " AND hash IN (",  // ?,?,?,...,?
                     msg_hashes.size(),
                     ") RETURNING hash"sv)};
     st.bind(1, new_exp_ms);

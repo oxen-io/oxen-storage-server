@@ -6,7 +6,7 @@
 set -o errexit
 
 anybad=
-for bin in httpserver/oxen-storage; do
+for bin in oxen-storage; do
     bad=
     if [ "$DRONE_STAGE_OS" == "darwin" ]; then
         if otool -L $bin | grep -Ev '^'$bin':|^\t(/usr/lib/libSystem\.|/usr/lib/libc\+\+\.|/usr/lib/libresolv\.|/System/Library/Frameworks/(CoreFoundation|IOKit|Security|SystemConfiguration))'; then

@@ -8,9 +8,13 @@
 #include <string_view>
 #include <utility>
 
+#include <oxenss/common/formattable.h>
+
 namespace oxen::crypto {
 
 using namespace std::literals;
+
+constexpr std::string_view SUBKEY_HASH_KEY = "OxenSSSubkey"sv;
 
 namespace detail {
     template <size_t Length>
@@ -55,6 +59,7 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
 template <typename Derived, size_t KeyLength>
 struct pubkey_base : key_base<Derived, KeyLength> {
     using PubKeyBase = pubkey_base<Derived, KeyLength>;
+    std::string to_string() const { return PubKeyBase::hex(); }
 };
 
 struct legacy_pubkey : pubkey_base<legacy_pubkey, 32> {};
@@ -63,17 +68,6 @@ struct ed25519_pubkey : pubkey_base<ed25519_pubkey, 32> {
     // Returns the {base32z}.snode representation of this pubkey
     std::string snode_address() const;
 };
-
-// Converts pubkey to a hex string when outputting.
-inline std::ostream& operator<<(std::ostream& o, const legacy_pubkey& pk) {
-    return o << pk.hex();
-}
-inline std::ostream& operator<<(std::ostream& o, const x25519_pubkey& pk) {
-    return o << pk.hex();
-}
-inline std::ostream& operator<<(std::ostream& o, const ed25519_pubkey& pk) {
-    return o << pk.hex();
-}
 
 template <typename Derived, size_t KeyLength>
 struct seckey_base : key_base<Derived, KeyLength> {};
@@ -99,7 +93,20 @@ legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in);
 ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
 
+/// Computes the signature verification derived pubkey for a pubkey+subkey string.  Throws
+/// std::invalid_argument if the pubkey/subkey aren't valid.
+std::array<unsigned char, 32> subkey_verify_key(std::string_view pubkey, std::string_view subkey);
+std::array<unsigned char, 32> subkey_verify_key(
+        const unsigned char* pubkey, const unsigned char* subkey);
+
 }  // namespace oxen::crypto
+
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::legacy_pubkey> = true;
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::ed25519_pubkey> = true;
+template <>
+inline constexpr bool oxen::to_string_formattable<oxen::crypto::x25519_pubkey> = true;
 
 namespace std {
 

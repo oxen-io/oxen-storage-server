@@ -3,19 +3,18 @@
 
 namespace oxen {
 
-void omq_logger(oxenmq::LogLevel level, const char* file, int line, std::string message) {
-#define LMQ_LOG_MAP(LMQ_LVL, SS_LVL) \
-    case oxenmq::LogLevel::LMQ_LVL: OXEN_LOG(SS_LVL, "[{}:{}]: {}", file, line, message); break;
+static auto logcat = log::Cat("omq");
 
+void omq_logger(oxenmq::LogLevel level, const char* file, int line, std::string message) {
+    constexpr std::string_view format = "[{}:{}]: {}";
     switch (level) {
-        LMQ_LOG_MAP(fatal, critical);
-        LMQ_LOG_MAP(error, err);
-        LMQ_LOG_MAP(warn, warn);
-        LMQ_LOG_MAP(info, info);
-        LMQ_LOG_MAP(trace, trace);
-        LMQ_LOG_MAP(debug, debug);
+        case oxenmq::LogLevel::fatal: log::critical(logcat, format, file, line, message); break;
+        case oxenmq::LogLevel::error: log::error(logcat, format, file, line, message); break;
+        case oxenmq::LogLevel::warn: log::warning(logcat, format, file, line, message); break;
+        case oxenmq::LogLevel::info: log::info(logcat, format, file, line, message); break;
+        case oxenmq::LogLevel::debug: log::debug(logcat, format, file, line, message); break;
+        case oxenmq::LogLevel::trace: log::trace(logcat, format, file, line, message); break;
     }
-#undef LMQ_LOG_MAP
 }
 
 }  // namespace oxen
