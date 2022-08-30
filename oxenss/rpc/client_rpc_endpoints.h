@@ -24,8 +24,6 @@ namespace oxen::rpc {
 
 using namespace std::literals;
 
-constexpr std::string_view SUBKEY_HASH_KEY = "OxenSSSubkey"sv;
-
 // Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ
 // "storage.whatever" endpoints, and as the final target of an onion request.
 
@@ -98,9 +96,7 @@ namespace {
 ///   76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
 /// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
 ///   this message.  Messages in different namespaces are treated as separate storage boxes from
-///   untagged messages.  (Note that before the Oxen 10 hardfork (HF 19) this field will be ignored
-///   and the message will end up in the default namespace (i.e. namespace 0) regardless of what was
-///   specified here.)
+///   untagged messages.
 /// - `subkey` (optional) if provided this is a 32-byte subkey value, encoded base64 or hex (for
 ///   json requests; bytes, for bt-encoded requests), to use for subkey signature verification
 ///   instead of using `pubkey` directly.  Denoting this value as `c` and `pubkey` as `A`, the
@@ -144,7 +140,7 @@ namespace {
 ///   possible.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
 ///       (TIMESTAMP || EXPIRY || PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
@@ -280,12 +276,16 @@ struct info final : no_args {
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - messages -- array of message hash strings (as provided by the storage server) to delete.
 ///   Message IDs can be from any message namespace(s).
+/// - required -- if provided and set to true then require that at least one given message is
+///   deleted from at least one swarm member for a 200 response; otherwise return a 404.  When this
+///   field is omitted (or false) the response will be a 200 OK even if none of the messages
+///   existed.
 /// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value constructed
 ///   by concatenating "delete" and all `messages` values, using `pubkey` to sign.  Must be base64
 ///   encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": list of hashes of messages that were found and deleted, sorted by ascii value
 ///     - "signature": signature of:
@@ -299,6 +299,41 @@ struct delete_msgs final : recursive {
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::vector<std::string> messages;
+    std::array<unsigned char, 64> signature;
+    bool required = false;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
+};
+
+/// Revokes a Subkey
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - revoke_subkey -- the subkey tag which is to be added to the revocation list, Subkey tags are
+///   32 byte, passed in hex or base64-encoding 9for a json request) or as
+///   bytes (bt-encoded requests)
+/// - signature -- Ed25519 signature of ("revoke_subkey" || subkey); this signs the subkey tag,
+/// using `pubkey` to sign.
+///   Must be base64 encoded for json requests; binary for OMQ requests.
+///
+/// Returns dict of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "signature": signature of:
+///             ( PUBKEY_HEX || SUBKEY_TAG_BYTES )
+///       where SUBKEY_TAG_BYTES is the requested subkey tag for revocation
+struct revoke_subkey final : recursive {
+    static constexpr auto names() { return NAMES("revoke_subkey"); }
+
+    user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::array<unsigned char, 32> revoke_subkey;
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
@@ -352,7 +387,7 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   prefix).  Must be base64 encoded for json requests; binary for OMQ requests.
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -397,7 +432,7 @@ struct delete_all final : recursive {
 ///   string for the default namespace (whether explicitly given or not).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "deleted": if deleting from a single namespace this is a list of hashes of deleted
 ///       messages from the namespace, sorted by ascii value.  If deleting from all namespaces this
@@ -444,10 +479,10 @@ struct delete_before final : recursive {
 ///   namespace (whether or not explicitly provided).
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "updated":
-///         - if deleting from a single namespace then this is a list of (ascii-sorted) hashes that
+///         - if expiring from a single namespace then this is a list of (ascii-sorted) hashes that
 ///           had their expiries updated to `expiry`; messages that did not exist or that already
 ///           had an expiry <= the given expiry are not included.
 ///         - otherwise (i.e. namespace="all") this is a dict of `{ namespace => [sorted hashes] }`
@@ -481,12 +516,15 @@ struct expire_all final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subkey` (optional) allows authentication using a derived subkey.  This endpoint only applies
+///   TTL extension (but not reduction) when authenticating with a subkey.  See `store` for details
+///   on how subkey authentication works.
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  As
-///   of HF19 this can be used to extend expiries instead of just shortening them.  The expiry can
-///   be extended to at most the maximum TTL (14 days) from now; specifying a later timestamp will
-///   be truncated to the maximum.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
+///   can be used to extend expiries instead of just shortening them.  The expiry can be extended to
+///   at most the maximum TTL (14 days) from now; specifying a later timestamp will be truncated to
+///   the maximum.
 /// - signature -- Ed25519 signature of:
 ///       ("expire" || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
@@ -494,11 +532,12 @@ struct expire_all final : recursive {
 ///
 ///
 /// Returns dict of:
-/// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of messages that had their expiries updated.  As of
-///       HF19, this includes messages that have had their expiries extended (before HF19 expiries
-///       could only be shortened but not extended).
+///     - "updated": ascii-sorted list of hashes of matched messages (messages that were not found
+///       are not included).  When using subkey authentication, only messages that had their
+///       expiries extended are included (that is: matched messages that already had a longer expiry
+///       are omitted).
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
 ///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
@@ -510,6 +549,7 @@ struct expire_msgs final : recursive {
 
     user_pubkey_t pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
     std::array<unsigned char, 64> signature;
@@ -555,6 +595,7 @@ struct oxend_request final : endpoint {
 // batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
 // requests within them).
 using client_rpc_subrequests = type_list<
+        revoke_subkey,
         store,
         retrieve,
         delete_msgs,

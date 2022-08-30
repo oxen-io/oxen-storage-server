@@ -8,6 +8,8 @@
 
 namespace oxen::snode {
 
+static auto logcat = log::Cat("snode");
+
 using fseconds = std::chrono::duration<float, std::chrono::seconds::period>;
 using fminutes = std::chrono::duration<float, std::chrono::minutes::period>;
 
@@ -26,19 +28,19 @@ static void check_incoming_tests_impl(
     if (whine) {
         incoming.last_whine = now;
         if (!failing) {
-            OXEN_LOG(info, "{} ping received; port is likely reachable again", name);
+            log::info(logcat, "{} ping received; port is likely reachable again", name);
         } else {
             if (incoming.last_test.time_since_epoch() == 0s) {
-                OXEN_LOG(warn, "Have NEVER received {} pings!", name);
+                log::warning(logcat, "Have NEVER received {} pings!", name);
             } else {
-                OXEN_LOG(
-                        warn,
+                log::warning(
+                        logcat,
                         "Have not received {} pings for a long time ({:.1f} mins)!",
                         name,
                         fminutes{elapsed}.count());
             }
-            OXEN_LOG(
-                    warn,
+            log::warning(
+                    logcat,
                     "Please check your {} port. Not being reachable "
                     "over {} may result in a deregistration!",
                     name,
