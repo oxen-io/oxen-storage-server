@@ -1,6 +1,7 @@
 #include "omq.h"
 
 #include <oxenss/crypto/channel_encryption.hpp>
+#include <oxenmq/auth.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/logging/oxen_logger.h>
 #include "utils.h"
@@ -16,10 +17,13 @@
 #include <oxenc/base64.h>
 #include <oxenc/bt_serialize.h>
 #include <oxenc/hex.h>
+#include <oxenc/bt_producer.h>
 #include <fmt/std.h>
+#include <sodium/crypto_sign.h>
 
 #include <optional>
 #include <stdexcept>
+#include <type_traits>
 #include <variant>
 
 namespace oxen::server {
@@ -204,10 +208,6 @@ void OMQ::handle_get_stats(oxenmq::Message& message) {
     message.send_reply(payload);
 }
 
-namespace {
-
-}  // namespace
-
 oxenc::bt_value json_to_bt(nlohmann::json j) {
     if (j.is_object()) {
         oxenc::bt_dict res;
@@ -391,6 +391,12 @@ OMQ::OMQ(
     auto st_cat = omq_.add_category("storage", oxenmq::AuthLevel::none, 1 /*reserved threads*/, 200 /*max queue*/);
     for (const auto& [name, _cb] : rpc::RequestHandler::client_rpc_endpoints)
         st_cat.add_request_command(std::string{name}, [this, name=name](auto& m) { handle_client_request(name, m); });
+
+    // monitor.* endpoints are used to subscribe to events such as new messages arriving for an
+    // account.
+    omq_.add_category("monitor", oxenmq::AuthLevel::none, 1 /*reserved threads*/, 500 /*max queue*/)
+        .add_request_command("messages", [this](auto& m) { handle_monitor_messages(m); })
+        ;
 
     // Endpoints invokable by a local admin
     omq_.add_category("service", oxenmq::AuthLevel::admin)

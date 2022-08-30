@@ -25,6 +25,7 @@
 #include <sodium/crypto_scalarmult_curve25519.h>
 #include <sodium/crypto_scalarmult_ed25519.h>
 #include <sodium/crypto_sign.h>
+#include <stdexcept>
 #include <type_traits>
 #include <variant>
 
@@ -274,26 +275,12 @@ namespace {
                 return false;
             }
 
-            // Need to compute: (c + H(c || A)) A and use that instead of A for verification:
-
-            // H(c || A):
-            crypto_generichash_state h_state;
-            crypto_generichash_init(
-                    &h_state,
-                    reinterpret_cast<const unsigned char*>(SUBKEY_HASH_KEY.data()),
-                    SUBKEY_HASH_KEY.size(),
-                    32);
-            crypto_generichash_update(&h_state, subkey->data(), 32);  // c
-            crypto_generichash_update(&h_state, pk, 32);              // A
-            crypto_generichash_final(&h_state, subkey_pub.data(), 32);
-
-            // c + H(c || A):
-            crypto_core_ed25519_scalar_add(subkey_pub.data(), subkey->data(), subkey_pub.data());
-
-            // (c + H(c || A)) A:
-            if (0 != crypto_scalarmult_ed25519_noclamp(subkey_pub.data(), subkey_pub.data(), pk)) {
-                log::warning(
-                        logcat, "Signature verification failed: invalid subkey multiplication");
+            // Compute our verification key: (c + H("OxenSSSubkey" || c || A)) A and use that
+            // instead of A for verification:
+            try {
+                subkey_pub = crypto::subkey_verify_key(pk, subkey->data());
+            } catch (const std::invalid_argument& ex) {
+                log::warning(logcat, "Signature verification failed: {}", ex.what());
                 return false;
             }
             pk = subkey_pub.data();
