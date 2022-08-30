@@ -8,9 +8,15 @@
 #include <oxenc/base32z.h>
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
-#include <sodium.h>
+#include <sodium/crypto_core_ed25519.h>
+#include <sodium/crypto_generichash.h>
+#include <sodium/crypto_scalarmult_curve25519.h>
+#include <sodium/crypto_scalarmult_ed25519.h>
+#include <sodium/crypto_sign_ed25519.h>
 
 namespace oxen::crypto {
+
+static auto logcat = oxen::log::Cat("crypto");
 
 namespace detail {
     void load_from_hex(void* buffer, size_t length, std::string_view hex) {
@@ -74,9 +80,9 @@ static T parse_pubkey(std::string_view pubkey_in) {
     else if (pubkey_in.size() == 52 && oxenc::is_base32z(pubkey_in))
         oxenc::from_base32z(pubkey_in.begin(), pubkey_in.end(), pk.begin());
     else {
-        OXEN_LOG(warn, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
-        OXEN_LOG(
-                debug,
+        log::warning(logcat, "Invalid public key: not valid bytes, hex, b64, or b32z encoded");
+        log::debug(
+                logcat,
                 "Received public key encoded value of size {}: {}",
                 pubkey_in.size(),
                 pubkey_in);
@@ -92,6 +98,44 @@ ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in) {
 }
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in) {
     return parse_pubkey<x25519_pubkey>(pubkey_in);
+}
+
+std::array<unsigned char, 32> subkey_verify_key(std::string_view pubkey, std::string_view subkey) {
+
+    if (pubkey.size() != 32 || subkey.size() != 32)
+        throw std::invalid_argument{"Invalid pubkey/subkey: both must be 32 bytes"};
+
+    return subkey_verify_key(
+            reinterpret_cast<const unsigned char*>(pubkey.data()),
+            reinterpret_cast<const unsigned char*>(subkey.data()));
+}
+
+std::array<unsigned char, 32> subkey_verify_key(
+        const unsigned char* pubkey, const unsigned char* subkey) {
+
+    std::array<unsigned char, 32> subkey_pub;
+    // Need to compute: (c + H("OxenSSSubkey" || c || A)) A and use that instead of A for
+    // verification:
+
+    // H("OxenSSSubkey" || c || A):
+    crypto_generichash_state h_state;
+    crypto_generichash_init(
+            &h_state,
+            reinterpret_cast<const unsigned char*>(SUBKEY_HASH_KEY.data()),
+            SUBKEY_HASH_KEY.size(),
+            32);
+    crypto_generichash_update(&h_state, subkey, 32);  // c
+    crypto_generichash_update(&h_state, pubkey, 32);  // A
+    crypto_generichash_final(&h_state, subkey_pub.data(), 32);
+
+    // c + H(...):
+    crypto_core_ed25519_scalar_add(subkey_pub.data(), subkey, subkey_pub.data());
+
+    // (c + H(...)) A:
+    if (0 != crypto_scalarmult_ed25519_noclamp(subkey_pub.data(), subkey_pub.data(), pubkey))
+        throw std::invalid_argument{"Invalid pubkey/subkey combination"};
+
+    return subkey_pub;
 }
 
 }  // namespace oxen::crypto
