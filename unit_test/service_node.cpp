@@ -11,7 +11,7 @@
 using namespace std::literals;
 using namespace oxen::crypto;
 
-static auto create_dummy_sn_record() -> oxen::snode::sn_record {
+static oxen::snode::sn_record create_dummy_sn_record() {
     const auto pk = legacy_pubkey::from_hex(
             "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
     const auto pk_x25519 = x25519_pubkey::from_hex(
@@ -25,7 +25,7 @@ static auto create_dummy_sn_record() -> oxen::snode::sn_record {
 
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
-static auto test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) -> void {
+static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) {
     using oxen::snode::sn_record;
 
     auto sn = create_dummy_sn_record();
@@ -33,26 +33,26 @@ static auto test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expect
     std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
 
     oxen::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
-    auto current = std::vector<oxen::snode::SwarmInfo>{si};
+    std::vector<oxen::snode::SwarmInfo> current{{si}};
 
     std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
 
     oxen::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
-    auto incoming = std::vector<oxen::snode::SwarmInfo>{si2};
+    std::vector<oxen::snode::SwarmInfo> incoming{{si2}};
 
-    auto new_records = apply_ips(current, incoming);
+    preserve_ips(incoming, current);
 
-    CHECK(new_records[0].snodes[0].ip == std::get<0>(expected));
-    CHECK(new_records[0].snodes[0].port == std::get<1>(expected));
-    CHECK(new_records[0].snodes[0].omq_port == std::get<2>(expected));
+    CHECK(incoming[0].snodes[0].ip == std::get<0>(expected));
+    CHECK(incoming[0].snodes[0].port == std::get<1>(expected));
+    CHECK(incoming[0].snodes[0].omq_port == std::get<2>(expected));
 }
 
 TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
     auto sn = create_dummy_sn_record();
 
-    const auto default_ip = ip_ports{"0.0.0.0", 0, 0};
-    const auto ip1 = ip_ports{"1.1.1.1", 123, 456};
-    const auto ip2 = ip_ports{"1.2.3.4", 123, 456};
+    const ip_ports default_ip{"0.0.0.0", 0, 0};
+    const ip_ports ip1{"1.1.1.1", 123, 456};
+    const ip_ports ip2{"1.2.3.4", 123, 456};
 
     // Should update
     test_ip_update(ip1, ip2, ip2);
@@ -66,7 +66,7 @@ TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 
 /// Check that we don't inadvertently change how we compute message hashes
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
-    const auto timestamp = std::chrono::system_clock::time_point{1616650862026ms};
+    const std::chrono::system_clock::time_point timestamp{1616650862026ms};
     const auto expiry = timestamp + 48h;
     oxen::user_pubkey_t pk;
     REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
@@ -85,16 +85,4 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
                   {std::to_string(oxen::to_epoch_ms(timestamp)) +
                    std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data}) ==
           expected);
-}
-
-TEST_CASE("service nodes - pubkey to swarm id") {
-    oxen::user_pubkey_t pk;
-    REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
-    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 4532060000165252872ULL);
-
-    REQUIRE(pk.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
-    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 0);
-
-    REQUIRE(pk.load("050000000000000000000000000000000000000000000000000123456789abcdef"));
-    CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 0x0123456789abcdefULL);
 }

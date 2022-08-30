@@ -9,8 +9,8 @@ add_executable(Test
     rate_limiter.cpp
     serialization.cpp
     service_node.cpp
-    signature.cpp
     storage.cpp
+    swarm.cpp
 )
 
 target_link_libraries(Test

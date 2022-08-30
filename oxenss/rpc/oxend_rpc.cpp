@@ -12,6 +12,8 @@
 
 namespace oxen::rpc {
 
+static auto logcat = log::Cat("rpc");
+
 using namespace std::literals;
 
 oxend_seckeys get_sn_privkeys(
@@ -20,7 +22,7 @@ oxend_seckeys get_sn_privkeys(
     omq.start();
     constexpr auto retry_interval = 5s;
     auto last_try = std::chrono::steady_clock::now() - retry_interval;
-    OXEN_LOG(info, "Retrieving SN keys from oxend");
+    log::info(logcat, "Retrieving SN keys from oxend");
 
     while (true) {
         // Rate limit ourselves so that we don't spam connection/request attempts
@@ -37,7 +39,7 @@ oxend_seckeys get_sn_privkeys(
         auto conn = omq.connect_remote(
                 oxenmq::address{oxend_rpc_address},
                 [&omq, &prom](auto conn) {
-                    OXEN_LOG(info, "Connected to oxend; retrieving SN keys");
+                    log::info(logcat, "Connected to oxend; retrieving SN keys");
                     omq.request(
                             conn,
                             "admin.get_service_node_privkey",
@@ -80,7 +82,8 @@ oxend_seckeys get_sn_privkeys(
         try {
             return fut.get();
         } catch (const std::exception& e) {
-            OXEN_LOG(critical, "Error retrieving private keys from oxend: {}; retrying", e.what());
+            log::critical(
+                    logcat, "Error retrieving private keys from oxend: {}; retrying", e.what());
         }
         if (keep_trying && !keep_trying())
             return {};

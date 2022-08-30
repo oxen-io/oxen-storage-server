@@ -14,11 +14,13 @@
 
 #include <oxenmq/oxenmq.h>
 #include <sodium/core.h>
+#include <fmt/std.h>
 
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <variant>
 #include <vector>
 
@@ -32,6 +34,8 @@ extern "C" {
 }
 
 namespace fs = std::filesystem;
+
+static auto logcat = oxen::log::Cat("daemon");
 
 std::atomic<int> signalled = 0;
 extern "C" void handle_signal(int sig) {
@@ -54,12 +58,15 @@ int main(int argc, char* argv[]) {
     if (!fs::exists(options.data_dir))
         fs::create_directories(options.data_dir);
 
-    logging::LogLevel log_level;
-    if (auto level = logging::parse_level(options.log_level)) {
-        log_level = *level;
-    } else {
-        std::cerr << "Incorrect log level: " << options.log_level << std::endl;
-        logging::print_levels();
+    log::Level log_level;
+    try {
+        log_level = log::level_from_string(options.log_level);
+    } catch (const std::invalid_argument& e) {
+        log::critical(
+                logcat,
+                "{}; supported levels: trace, debug, info, warn, error, critical, off",
+                e.what(),
+                options.log_level);
         return EXIT_FAILURE;
     }
 
@@ -67,47 +74,47 @@ int main(int argc, char* argv[]) {
 
     if (options.testnet) {
         is_mainnet = false;
-        OXEN_LOG(warn, "Starting in testnet mode, make sure this is intentional!");
+        log::warning(logcat, "Starting in testnet mode, make sure this is intentional!");
     }
 
     // Always print version for the logs
-    OXEN_LOG(info, "{}", STORAGE_SERVER_VERSION_INFO);
+    log::info(logcat, "{}", STORAGE_SERVER_VERSION_INFO);
 
     if (options.ip == "127.0.0.1") {
-        OXEN_LOG(
-                critical,
+        log::critical(
+                logcat,
                 "Tried to bind oxen-storage to localhost, please bind "
                 "to outward facing address");
         return EXIT_FAILURE;
     }
 
-    OXEN_LOG(info, "Setting log level to {}", options.log_level);
-    OXEN_LOG(info, "Setting database location to {}", options.data_dir);
-    OXEN_LOG(info, "Connecting to oxend @ {}", options.oxend_omq_rpc);
+    log::info(logcat, "Setting log level to {}", options.log_level);
+    log::info(logcat, "Setting database location to {}", options.data_dir);
+    log::info(logcat, "Connecting to oxend @ {}", options.oxend_omq_rpc);
 
     if (sodium_init() != 0) {
-        OXEN_LOG(err, "Could not initialize libsodium");
+        log::error(logcat, "Could not initialize libsodium");
         return EXIT_FAILURE;
     }
 
     if (const auto fd_limit = sysconf(_SC_OPEN_MAX); fd_limit != -1) {
-        OXEN_LOG(debug, "Open file descriptor limit: {}", fd_limit);
+        log::debug(logcat, "Open file descriptor limit: {}", fd_limit);
     } else {
-        OXEN_LOG(debug, "Open descriptor limit: N/A");
+        log::debug(logcat, "Open descriptor limit: N/A");
     }
 
     try {
         std::vector<crypto::x25519_pubkey> stats_access_keys;
         for (const auto& key : options.stats_access_keys) {
             stats_access_keys.push_back(crypto::x25519_pubkey::from_hex(key));
-            OXEN_LOG(info, "Stats access key: {}", key);
+            log::info(logcat, "Stats access key: {}", key);
         }
 
         const auto [private_key, private_key_ed25519, private_key_x25519] =
                 rpc::get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
 
         if (signalled) {
-            OXEN_LOG(err, "Received signal {}, aborting startup", signalled.load());
+            log::error(logcat, "Received signal {}, aborting startup", signalled.load());
             return EXIT_FAILURE;
         }
 
@@ -119,11 +126,11 @@ int main(int argc, char* argv[]) {
                 private_key_ed25519.pubkey(),
                 private_key_x25519.pubkey()};
 
-        OXEN_LOG(info, "Retrieved keys from oxend; our SN pubkeys are:");
-        OXEN_LOG(info, "- legacy:  {}", me.pubkey_legacy);
-        OXEN_LOG(info, "- ed25519: {}", me.pubkey_ed25519);
-        OXEN_LOG(info, "- x25519:  {}", me.pubkey_x25519);
-        OXEN_LOG(info, "- lokinet: {}", me.pubkey_ed25519.snode_address());
+        log::info(logcat, "Retrieved keys from oxend; our SN pubkeys are:");
+        log::info(logcat, "- legacy:  {}", me.pubkey_legacy);
+        log::info(logcat, "- ed25519: {}", me.pubkey_ed25519);
+        log::info(logcat, "- x25519:  {}", me.pubkey_x25519);
+        log::info(logcat, "- lokinet: {}", me.pubkey_ed25519.snode_address());
 
         crypto::ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
 
@@ -176,20 +183,20 @@ int main(int argc, char* argv[]) {
 #endif
 
         // Log general stats at startup and again every hour
-        OXEN_LOG(info, service_node.get_status_line());
+        log::info(logcat, service_node.get_status_line());
         oxenmq_server->add_timer(
-                [&service_node] { OXEN_LOG(info, service_node.get_status_line()); }, 1h);
+                [&service_node] { log::info(logcat, service_node.get_status_line()); }, 1h);
 
         while (signalled.load() == 0)
             std::this_thread::sleep_for(100ms);
 
-        OXEN_LOG(warn, "Received signal {}; shutting down...", signalled.load());
+        log::warning(logcat, "Received signal {}; shutting down...", signalled.load());
         service_node.shutdown();
-        OXEN_LOG(info, "Stopping https server");
+        log::info(logcat, "Stopping https server");
         https_server.shutdown(true);
-        OXEN_LOG(info, "Stopping omq server");
+        log::info(logcat, "Stopping omq server");
         oxenmq_server_ptr.reset();
-        OXEN_LOG(info, "Shutting down");
+        log::info(logcat, "Shutting down");
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,
         // in which case it will be propagated to libc...
