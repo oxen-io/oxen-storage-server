@@ -10,7 +10,7 @@ b64_m_yes = 'Yes='
 m_no = b'\x36\x8a\x5e'
 b64_m_no = 'Nope'
 
-def test_expire_all(omq, random_sn, sk, exclude):
+def test_ifelse(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
 
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
@@ -42,7 +42,7 @@ def test_expire_all(omq, random_sn, sk, exclude):
 
     r.append(omq.request_future(conn, 'storage.ifelse',
             [json.dumps({
-                'if': { 'hf_at_least': [19], 'height_before': 123456 },
+                'if': { 'hf_at_least': [19], 'height_before': 1234 },
                 'then': store_action(b64_m_yes, ts+1),
                 'else': store_action(b64_m_no, ts+1),
             })]))

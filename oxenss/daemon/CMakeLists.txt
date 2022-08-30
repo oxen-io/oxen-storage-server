@@ -6,6 +6,7 @@ add_executable(daemon
 target_link_libraries(daemon
     PRIVATE
     common crypto logging rpc server snode storage utils version
+    jemalloc::jemalloc
     CLI11::CLI11)
 
 if(NOT BUILD_STATIC_DEPS)

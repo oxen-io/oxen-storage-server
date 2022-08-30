@@ -3,6 +3,7 @@ add_library(server STATIC
     https.cpp
     omq.cpp
     omq_logger.cpp
+    omq_monitor.cpp
     server_certificates.cpp)
 
 find_package(Threads)
