@@ -1,3 +1,12 @@
+oxen-storage-server (2.4.0-2~deb12) bookworm; urgency=medium
+
+  * Rediff patches
+  * submodule/dependency updates
+  * Version bumps
+  * Static dep updates
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 31 Aug 2022 12:40:13 -0300
+
 oxen-storage-server (2.4.0-1~deb12) bookworm; urgency=medium
 
   [ Jason Rhinelander ]
