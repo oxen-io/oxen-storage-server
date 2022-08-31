@@ -1,5 +1,5 @@
 #include "string_utils.hpp"
-#include "spdlog/fmt/fmt.h"
+#include <fmt/format.h>
 #include <cassert>
 
 namespace oxen::util {
