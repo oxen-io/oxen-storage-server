@@ -5,10 +5,10 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 3.0.3 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.5 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=ee0078adcef1de5f003c62c80cc96527721609c6f3bb42b7795df31f8b558c0b
+set(OPENSSL_HASH SHA256=aa7d8d9bef71ad6525c55ba11e5f4397889ce49c2c9349dcea6d3e4f0b024a7a
     CACHE STRING "openssl source hash")
 
 set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
@@ -29,11 +29,11 @@ set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
     CACHE STRING "libzmq source hash")
 
-set(LIBUV_VERSION 1.44.1 CACHE STRING "libuv version")
+set(LIBUV_VERSION 1.44.2 CACHE STRING "libuv version")
 set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
     CACHE STRING "libuv mirror(s)")
 set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
-set(LIBUV_HASH SHA512=b4f8944e2c79e3a6a31ded6cccbe4c0eeada50db6bc8a448d7015642795012a4b80ffeef7ca455bb093c59a8950d0e1430566c3c2fa87b73f82699098162d834
+set(LIBUV_HASH SHA512=91197ff9303112567bbb915bbb88058050e2ad1c048815a3b57c054635d5dc7df458b956089d785475290132236cb0edcfae830f5d749de29a9a3213eeaf0b20
     CACHE STRING "libuv source hash")
 
 set(ZLIB_VERSION 1.2.12 CACHE STRING "zlib version")
@@ -43,11 +43,11 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
 set(ZLIB_HASH SHA512=cc2366fa45d5dfee1f983c8c51515e0cff959b61471e2e8d24350dea22d3f6fcc50723615a911b046ffc95f51ba337d39ae402131a55e6d1541d3b095d6c0a14
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.83.1 CACHE STRING "curl version")
+set(CURL_VERSION 7.85.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=2f63327d6d3687ba36fb7b8d5d3d15599eca33ebfb08681613612ea9c4b629d3b6ce4d2742fa1ebd7a997ed332001d3a4c798985f9277c83b9e7a9aecdb1b1ee
+set(CURL_HASH SHA512=b57cc31649a4f47cc4b482f56a85c86c8e8aaeaf01bc1b51b065fdb9145a9092bc52535e52a85a66432eb163605b2edbf5bc5c33ea6e40e50f26a69ad1365cbd
     CACHE STRING "curl source hash")
 
 
