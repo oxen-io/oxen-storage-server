@@ -4,8 +4,9 @@ oxen-storage-server (2.4.0-2~deb10) buster; urgency=medium
   * submodule/dependency updates
   * Dep updates
   * Static dep updates
+  * Fix linkage/includes for fmt
 
- -- Jason Rhinelander <jason@imaginary.ca>  Wed, 31 Aug 2022 12:40:17 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 31 Aug 2022 17:41:06 -0300
 
 oxen-storage-server (2.4.0-1~deb10) buster; urgency=medium
 
