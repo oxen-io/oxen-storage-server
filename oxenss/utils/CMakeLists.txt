@@ -5,4 +5,4 @@ add_library(utils STATIC
     string_utils.cpp
 )
 
-target_link_libraries(utils PRIVATE spdlog::spdlog)
+target_link_libraries(utils PRIVATE oxen::logging)
