@@ -5,8 +5,9 @@ oxen-storage-server (2.4.0-2~ubuntu2210) kinetic; urgency=medium
   * submodule/dependency updates
   * Version bumps
   * Static dep updates
+  * Fix linkage/includes for fmt
 
- -- Jason Rhinelander <jason@imaginary.ca>  Wed, 31 Aug 2022 12:40:38 -0300
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 31 Aug 2022 17:42:01 -0300
 
 oxen-storage-server (2.4.0-1~ubuntu2210) kinetic; urgency=medium
 
