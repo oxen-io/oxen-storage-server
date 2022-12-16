@@ -120,7 +120,7 @@ static block_update parse_swarm_update(const std::string& response_body) {
     std::map<swarm_id_t, std::vector<sn_record>> swarm_map;
     block_update bu;
 
-    log::trace(logcat, "swarm repsonse: <{}>", response_body);
+    log::trace(logcat, "swarm response: <{}>", response_body);
 
     try {
         json result = json::parse(response_body, nullptr, true);
