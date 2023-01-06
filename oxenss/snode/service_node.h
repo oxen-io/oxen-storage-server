@@ -57,6 +57,9 @@ inline constexpr hf_revision HARDFORK_NAMESPACES = {19, 0};
 // -10 is temporarily exempt for closed group backwards support).
 inline constexpr hf_revision HARDFORK_RETRIEVE_AUTH = {19, 1};
 
+// The hardfork at which we start allowing 30d TTLs in private namespaces.
+inline constexpr hf_revision HARDFORK_EXTENDED_PRIVATE_TTL = {19, 3};
+
 class Swarm;
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)

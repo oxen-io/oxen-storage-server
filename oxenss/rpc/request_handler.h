@@ -28,9 +28,15 @@ inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
 // we give up and send an error response back to the requestor:
 inline constexpr auto TEST_RETRY_PERIOD = 55s;
 
-// Minimum and maximum TTL permitted for a message storage request
+// Minimum and maximum TTL permitted for storing a new, public message
 inline constexpr auto TTL_MINIMUM = 10s;
 inline constexpr auto TTL_MAXIMUM = 14 * 24h;
+
+// For messages in a user's control (i.e. new messages in private namespaces, or updating TTLs of
+// existing public or private namespace messages) we allow a longer TTL (starting at HF19.3).
+inline constexpr auto TTL_MAXIMUM_PRIVATE = 30*24h;
+
+
 
 // Tolerance for store requests: we don't allow stores with a timestamp more than this into the
 // future, and don't allow stores with an expiry in the past by more than this amount.
