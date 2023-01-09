@@ -60,7 +60,7 @@ inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 inline constexpr int RETRIEVE_MAX_SIZE = 7'800'000;
 
 // Maximum subrequests that can be stuffed into a single batch request
-inline constexpr size_t BATCH_REQUEST_MAX = 5;
+inline constexpr size_t BATCH_REQUEST_MAX = 20;
 
 // Simpler wrapper that works for most of our responses
 struct Response {
