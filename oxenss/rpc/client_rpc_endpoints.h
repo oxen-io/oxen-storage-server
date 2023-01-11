@@ -523,11 +523,15 @@ struct expire_all final : recursive {
 ///   Messages can be from any namespace(s).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
 ///   can be used to extend expiries instead of just shortening them.  The expiry can be extended to
-///   at most the maximum TTL (14 days) from now; specifying a later timestamp will be truncated to
+///   at most the maximum TTL (30 days) from now; specifying a later timestamp will be truncated to
 ///   the maximum.
+/// - shorten -- if provided and set to true then the expiry is only shortened, but not extended.
+///   If the expiry is already at or before the given `expiry` timestamp then expiry will not be
+///   changed.  (This option is only supported starting at network version 19.3).
 /// - signature -- Ed25519 signature of:
-///       ("expire" || expiry || messages[0] || ... || messages[N])
-///   where `expiry` is the expiry timestamp expressed as a string.  The signature must be base64
+///       ("expire" || ShortenIf || expiry || messages[0] || ... || messages[N])
+///   where `expiry` is the expiry timestamp expressed as a string.  `ShortenIf` is string "shorten"
+///   if the shorten option is given (and true), empty otherwise. The signature must be base64
 ///   encoded (json) or bytes (bt).
 ///
 ///
@@ -552,6 +556,7 @@ struct expire_msgs final : recursive {
     std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
+    bool shorten = false;
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;

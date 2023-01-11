@@ -10,6 +10,7 @@
 #include <oxenss/utils/time.hpp>
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
+#include <oxenss/common/format.h>
 
 #include <chrono>
 #include <future>
@@ -490,8 +491,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
     bool public_ns = is_public_namespace(req.msg_namespace);
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
     auto max_ttl = (!public_ns && service_node_.hf_at_least(snode::HARDFORK_EXTENDED_PRIVATE_TTL))
-        ? TTL_MAXIMUM_PRIVATE
-        : TTL_MAXIMUM;
+                         ? TTL_MAXIMUM_PRIVATE
+                         : TTL_MAXIMUM;
     if (ttl < TTL_MINIMUM || ttl > max_ttl) {
         log::warning(logcat, "Forbidden. Invalid TTL: {}ms", ttl.count());
         return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
@@ -1110,6 +1111,21 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 Response{http::UNAUTHORIZED, "expire_msgs timestamp should be >= current time"sv});
     }
 
+    if (req.shorten) {
+        if (req.subkey)
+            return cb(Response{
+                    http::BAD_REQUEST,
+                    "expire_msgs shorten=1 cannot be used with subkey authentication"sv});
+
+        // TODO: remove after HF19.3
+        if (!service_node_.hf_at_least(snode::HARDFORK_EXPIRY_SHORTEN_ONLY))
+            return cb(Response{
+                    http::BAD_REQUEST,
+                    "expire_msgs shorten=1 cannot be used before network version {}.{}"_format(
+                            snode::HARDFORK_EXPIRY_SHORTEN_ONLY.first,
+                            snode::HARDFORK_EXPIRY_SHORTEN_ONLY.second)});
+    }
+
     if (!verify_signature(
                 service_node_.get_db(),
                 req.pubkey,
@@ -1117,6 +1133,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 req.subkey,
                 req.signature,
                 "expire",
+                req.shorten ? "shorten" : "",
                 req.expiry,
                 req.messages)) {
         log::debug(logcat, "expire_msgs: signature verification failed");
@@ -1132,8 +1149,8 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        : res->result;
 
     auto max_ttl = service_node_.hf_at_least(snode::HARDFORK_EXTENDED_PRIVATE_TTL)
-        ? TTL_MAXIMUM_PRIVATE
-        : TTL_MAXIMUM;
+                         ? TTL_MAXIMUM_PRIVATE
+                         : TTL_MAXIMUM;
     auto expiry = std::min(std::chrono::system_clock::now() + max_ttl, req.expiry);
     auto updated = service_node_.get_db().update_expiry(
             req.pubkey,

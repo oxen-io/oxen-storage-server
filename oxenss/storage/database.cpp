@@ -843,14 +843,17 @@ std::vector<std::string> Database::update_expiry(
         const user_pubkey_t& pubkey,
         const std::vector<std::string>& msg_hashes,
         std::chrono::system_clock::time_point new_exp,
-        bool extend_only) {
+        bool extend_only,
+        bool shorten_only) {
     auto new_exp_ms = to_epoch_ms(new_exp);
 
+    auto expiry_constraint = extend_only  ? " AND expiry < ?1"s
+                           : shorten_only ? " AND expiry > ?1"s
+                                          : ""s;
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
         auto st = impl->prepared_st(
-                "UPDATE messages SET expiry = ? WHERE hash = ?"s +
-                (extend_only ? " AND expiry < ?1" : "") +
+                "UPDATE messages SET expiry = ? WHERE hash = ?"s + expiry_constraint +
                 " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
                 " RETURNING hash");
         return get_all<std::string>(st, new_exp_ms, msg_hashes[0], pubkey);
@@ -861,8 +864,7 @@ std::vector<std::string> Database::update_expiry(
             multi_in_query(
                     "UPDATE messages SET expiry = ?"
                     " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"s +
-                            (extend_only ? " AND expiry < ?1" : "") +
-                            " AND hash IN (",  // ?,?,?,...,?
+                            expiry_constraint + " AND hash IN (",  // ?,?,?,...,?
                     msg_hashes.size(),
                     ") RETURNING hash"sv)};
     st.bind(1, new_exp_ms);
