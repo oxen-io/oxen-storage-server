@@ -186,7 +186,12 @@ namespace {
             s = stringified_ints[N - sizeof...(More) - 1].size();
         else if constexpr (std::is_convertible_v<T, std::string_view>)
             s += std::string_view{val}.size();
-        else {
+        else if constexpr (std::is_same_v<T, std::map<std::string, int64_t>>) {
+            for (auto& [k, v] : val) {
+                s += k.size();
+                s += 13;  // Enough for unix epoch millisecond values up to 2286
+            }
+        } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
                     std::is_same_v<T, std::vector<std::string_view>>);
@@ -209,7 +214,12 @@ namespace {
             result += stringified_ints[N - sizeof...(More) - 1];
         else if constexpr (std::is_convertible_v<T, std::string_view>)
             result += std::string_view{val};
-        else {
+        else if constexpr (std::is_same_v<T, std::map<std::string, int64_t>>) {
+            for (auto& [k, v] : val) {
+                result += k;
+                "{}"_format_to(result, v);
+            }
+        } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
                     std::is_same_v<T, std::vector<std::string_view>>);
@@ -1096,7 +1106,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
         reply_or_fail(std::move(res));
 }
 void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<void(Response)> cb) {
-    log::debug(logcat, "processing expire_msgs {} request", req.recurse ? "direct" : "forwarded");
+    log::debug(logcat, "processing expire {} request", req.recurse ? "direct" : "forwarded");
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
@@ -1105,26 +1115,24 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     if (req.expiry < now - 1min) {
         log::debug(
                 logcat,
-                "expire_all: invalid timestamp ({}s ago)",
+                "expire: invalid timestamp ({}s ago)",
                 duration_cast<seconds>(now - req.expiry).count());
-        return cb(
-                Response{http::UNAUTHORIZED, "expire_msgs timestamp should be >= current time"sv});
+        return cb(Response{http::UNAUTHORIZED, "expire: timestamp should be >= current time"sv});
     }
 
-    if (req.shorten) {
-        if (req.subkey)
-            return cb(Response{
-                    http::BAD_REQUEST,
-                    "expire_msgs shorten=1 cannot be used with subkey authentication"sv});
+    // TODO: remove after HF19.3
+    if (!service_node_.hf_at_least(snode::HARDFORK_EXPIRY_SHORTEN_ONLY) &&
+        (req.shorten || req.extend))
+        return cb(Response{
+                http::BAD_REQUEST,
+                "expire: shorten/extend parameters cannot be used before network version {}.{}"_format(
+                        snode::HARDFORK_EXPIRY_SHORTEN_ONLY.first,
+                        snode::HARDFORK_EXPIRY_SHORTEN_ONLY.second)});
 
-        // TODO: remove after HF19.3
-        if (!service_node_.hf_at_least(snode::HARDFORK_EXPIRY_SHORTEN_ONLY))
-            return cb(Response{
-                    http::BAD_REQUEST,
-                    "expire_msgs shorten=1 cannot be used before network version {}.{}"_format(
-                            snode::HARDFORK_EXPIRY_SHORTEN_ONLY.first,
-                            snode::HARDFORK_EXPIRY_SHORTEN_ONLY.second)});
-    }
+    if (req.shorten and req.subkey)
+        return cb(Response{
+                http::BAD_REQUEST,
+                "expire: shorten parameter cannot be used with subkey authentication"sv});
 
     if (!verify_signature(
                 service_node_.get_db(),
@@ -1133,11 +1141,13 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 req.subkey,
                 req.signature,
                 "expire",
-                req.shorten ? "shorten" : "",
+                req.shorten  ? "shorten"
+                : req.extend ? "extend"
+                             : "",
                 req.expiry,
                 req.messages)) {
-        log::debug(logcat, "expire_msgs: signature verification failed");
-        return cb(Response{http::UNAUTHORIZED, "expire_msgs signature verification failed"sv});
+        log::debug(logcat, "expire: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "expire: signature verification failed"sv});
     }
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
@@ -1156,19 +1166,66 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
             req.pubkey,
             req.messages,
             expiry,
-            /*extend_only=*/req.subkey.has_value()  // can only extend when using a subkey
-    );
+            /*extend_only=*/req.extend || req.subkey,
+            /*shorten_only=*/req.shorten);
     std::sort(updated.begin(), updated.end());
-    auto sig =
-            create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), expiry, req.messages, updated);
+
+    std::map<std::string, int64_t> unchanged;
+    if (req.extend || req.shorten) {
+        std::vector<std::string> unchanged_hashes;
+        for (const auto& m : req.messages)
+            if (!std::binary_search(updated.begin(), updated.end(), m))
+                unchanged_hashes.push_back(m);
+        if (!unchanged_hashes.empty())
+            unchanged = service_node_.get_db().get_expiries(req.pubkey, unchanged_hashes);
+    }
+
+    auto sig = create_signature(
+            ed25519_sk_, req.pubkey.prefixed_hex(), expiry, req.messages, updated, unchanged);
     mine["expiry"] = to_epoch_ms(expiry);
     mine["updated"] = std::move(updated);
+    if (req.shorten || req.extend)
+        mine["unchanged"] = std::move(unchanged);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
+}
+
+void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<void(Response)> cb) {
+    log::debug(logcat, "processing get_expiries request");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.sig_ts < now - SIGNATURE_TOLERANCE || req.sig_ts > now + SIGNATURE_TOLERANCE) {
+        log::debug(
+                logcat,
+                "get_expiries: invalid timestamp ({}s from now)",
+                duration_cast<seconds>(req.sig_ts - now).count());
+        return cb(Response{
+                http::NOT_ACCEPTABLE, "get_expiries timestamp too far from current time"sv});
+    }
+
+    if (!verify_signature(
+                service_node_.get_db(),
+                req.pubkey,
+                req.pubkey_ed25519,
+                req.subkey,
+                req.signature,
+                "get_expiries",
+                req.sig_ts,
+                req.messages)) {
+        log::debug(logcat, "get_expiries: signature verification failed");
+        return cb(Response{http::UNAUTHORIZED, "get_expiries signature verification failed"sv});
+    }
+
+    json res = json::object();
+    res["expiries"] = service_node_.get_db().get_expiries(req.pubkey, req.messages);
+    return cb(Response{http::OK, std::move(res)});
 }
 
 void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc::Response)> cb) {

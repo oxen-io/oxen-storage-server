@@ -521,33 +521,43 @@ struct expire_all final : recursive {
 ///   on how subkey authentication works.
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  This
-///   can be used to extend expiries instead of just shortening them.  The expiry can be extended to
-///   at most the maximum TTL (30 days) from now; specifying a later timestamp will be truncated to
-///   the maximum.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  The
+///   new expiry can be anywhere from current time up to the maximum TTL (30 days) from now;
+///   specifying a later timestamp will be truncated to the maximum.
 /// - shorten -- if provided and set to true then the expiry is only shortened, but not extended.
 ///   If the expiry is already at or before the given `expiry` timestamp then expiry will not be
-///   changed.  (This option is only supported starting at network version 19.3).
+///   changed.  (This option is only supported starting at network version 19.3).  This option is
+///   not permitted when using subkey authentication.
+/// - extend -- if provided and set to true then the expiry is only extended, but not shortened.  If
+///   the expiry is already at or beyond the given `expiry` timestamp then expiry will not be
+///   changed.  (This option is only supported starting at network version 19.3).  This option is
+///   mutually exclusive of "shorten".
+///
+///   Note that extend-only mode is always applied when using subkey authentication, but specifying
+///   this argument anyway for subkey authentication has two effects: 1) the required signature is
+///   different; and 2) "unchanged" will be included in the results.
 /// - signature -- Ed25519 signature of:
-///       ("expire" || ShortenIf || expiry || messages[0] || ... || messages[N])
-///   where `expiry` is the expiry timestamp expressed as a string.  `ShortenIf` is string "shorten"
-///   if the shorten option is given (and true), empty otherwise. The signature must be base64
-///   encoded (json) or bytes (bt).
+///       ("expire" || ShortenOrExtend || expiry || messages[0] || ... || messages[N])
+///   where `expiry` is the expiry timestamp expressed as a string.  `ShortenOrExtend` is string
+///   "shorten" if the shorten option is given (and true), "extend" if `extend` is true, and empty
+///   otherwise. The signature must be base64 encoded (json) or bytes (bt).
 ///
 ///
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
-///     - "updated": ascii-sorted list of hashes of matched messages (messages that were not found
-///       are not included).  When using subkey authentication, only messages that had their
-///       expiries extended are included (that is: matched messages that already had a longer expiry
-///       are omitted).
+///     - "updated": ascii-sorted list of hashes that had their expiries changed (messages that were
+///       not found, and messages excluded by the shorten/extend options, are not included).
+///     - "unchanged": dict of hashes to current expiries of hashes that were found, but did not get
+///       updated expiries due a given "shorten"/"extend" constraint in the request.  This field is
+///       only included when the "shorten" or "extend" parameter is explicitly given.
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
 ///       expiry, e.g. if the requested value exceeded the permitted TTL).
 ///     - "signature": signature of:
-///             ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
-///       where RMSG are the requested expiry hashes and UMSG are the actual updated hashes.  The
-///       signature uses the node's ed25519 pubkey.
+///             ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+///       where RMSGs are the requested expiry hashes, UMSGs are the actual updated hashes, and
+///       CMSG_EXPs are (HASH || EXPIRY) values, ascii-sorted by hash, for the unchanged message
+///       hashes included in the "unchanged" field.  The signature uses the node's ed25519 pubkey.
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
 
@@ -557,11 +567,51 @@ struct expire_msgs final : recursive {
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
     bool shorten = false;
+    bool extend = false;
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenc::bt_dict_consumer params) override;
     oxenc::bt_value to_bt() const override;
+};
+
+/// Retrieves the current expiry timestamps of the given messages.
+///
+/// Takes parameters of:
+/// - `pubkey` -- the account
+/// - `pubkey_ed25519` if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - `subkey` (optional) allows authentication using a derived subkey.  See `store` for details on
+///   how subkey authentication works.
+/// - `messages` -- array of message hash strings (as provided by the storage server) to update.
+///   Messages can be from any namespace(s).  You may pass a single message id of "all" to retrieve
+///   the timestamps of all
+/// - `timestamp` -- the timestamp at which this request was initiated, in milliseconds since unix;
+///   must with ±60s of the current time (as with other signature timestamps, using the server time
+///   is recommended).
+/// - `signature` -- Ed25519 signature of:
+///       ("get_expiries" || timestamp || messages[0] || ... || messages[N])
+///   where `timestamp` is expressed as a string (base10).  The signature must be base64 encoded
+///   (json) or bytes (bt).
+///
+///
+/// Returns dict with keys:
+/// - "expiries" sub-dict of messageid => expiry (milliseconds since unix epoch) pairs.  Only
+///   message that exist on the server are included.
+struct get_expiries final : endpoint {
+    static constexpr auto names() { return NAMES("get_expiries"); }
+
+    user_pubkey_t pubkey;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<std::array<unsigned char, 32>> subkey;
+    std::vector<std::string> messages;
+    std::chrono::system_clock::time_point sig_ts;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
 };
 
 /// Retrieves the swarm information for a given pubkey. Takes keys of:
@@ -608,6 +658,7 @@ using client_rpc_subrequests = type_list<
         delete_before,
         expire_msgs,
         expire_all,
+        get_expiries,
         get_swarm,
         oxend_request,
         info>;

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -128,7 +129,8 @@ class Database {
     bool subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey);
 
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
-    // hashes of found messages (i.e. hashes that don't exist are not returned).
+    // hashes of updated messages (i.e. hashes that don't exist, or were not updated, are not
+    // returned).
     //
     // extend_only and shorten_only allow message expiries to only be adjusted in one way or the
     // other.  They are mutually exclusive.
@@ -152,6 +154,11 @@ class Database {
             const user_pubkey_t& pubkey,
             namespace_id ns,
             std::chrono::system_clock::time_point new_exp);
+
+    // Retrieves the expiries of messages by hash.  Returns a map of hash -> expiry (hashes not
+    // found are not included).
+    std::map<std::string, int64_t> get_expiries(
+            const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
 };
 
 }  // namespace oxen

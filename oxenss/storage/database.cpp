@@ -210,6 +210,17 @@ namespace {
         return results;
     }
 
+    // Similar to get_all<K, V>, but returns a std::map<K, V> rather than a std::vector<pair<K, V>>.
+    template <typename K, typename V, typename... Bind>
+    std::map<K, V> get_map(SQLite::Statement& st, const Bind&... bind) {
+        [[maybe_unused]] int i = 1;
+        (bind_oneshot(st, i, bind), ...);
+        std::map<K, V> results;
+        while (st.executeStep())
+            results[static_cast<K>(st.getColumn(0))] = static_cast<V>(st.getColumn(1));
+        return results;
+    }
+
 }  // namespace
 
 class DatabaseImpl {
@@ -873,6 +884,31 @@ std::vector<std::string> Database::update_expiry(
         st.bindNoCopy(4 + i, msg_hashes[i]);
 
     return get_all<std::string>(st);
+}
+
+std::map<std::string, int64_t> Database::get_expiries(
+        const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes) {
+    if (msg_hashes.size() == 1) {
+        // Pre-prepared version for the common single hash case
+        auto st = impl->prepared_st(
+                "SELECT hash, expiry FROM messages WHERE hash = ?"
+                " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)");
+        return get_map<std::string, int64_t>(st);
+    }
+
+    SQLite::Statement st{
+            impl->db,
+            multi_in_query(
+                    "SELECT hash, expiry FROM messages"
+                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+                    " AND hash IN ("sv,  // ?,?,?,...,?
+                    msg_hashes.size(),
+                    ")"sv)};
+    bind_pubkey(st, 1, 2, pubkey);
+    for (size_t i = 0; i < msg_hashes.size(); i++)
+        st.bindNoCopy(3 + i, msg_hashes[i]);
+
+    return get_map<std::string, int64_t>(st);
 }
 
 std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(

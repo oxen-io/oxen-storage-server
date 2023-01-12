@@ -647,15 +647,26 @@ bt_value expire_all::to_bt() const {
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
-    auto [expiry, messages, pubkey, pubkey_ed25519, signature, shorten, subkey] =
-            load_fields<TP, Vec<Str>, Str, SV, SV, bool, SV>(
-                    d, "expiry", "messages", "pubkey", "pubkey_ed25519", "signature", "shorten", "subkey");
+    auto [expiry, extend, messages, pubkey, pubkey_ed25519, shorten, signature, subkey] =
+            load_fields<TP, bool, Vec<Str>, Str, SV, bool, SV, SV>(
+                    d,
+                    "expiry",
+                    "extend",
+                    "messages",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "shorten",
+                    "signature",
+                    "subkey");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
     load_subkey(e, d, subkey);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     e.shorten = shorten.value_or(false);
+    e.extend = extend.value_or(false);
+    if (e.shorten && e.extend)
+        throw parse_error{"cannot specify both 'shorten' and 'extend'"};
     require("messages", messages);
     e.messages = std::move(*messages);
     if (e.messages.empty())
@@ -685,10 +696,34 @@ bt_value expire_msgs::to_bt() const {
                 reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
     if (shorten)
         ret["shorten"] = 1;
+    if (extend)
+        ret["extend"] = 1;
     if (subkey)
         ret["subkey"] =
                 std::string_view{reinterpret_cast<const char*>(subkey->data()), subkey->size()};
     return ret;
+}
+
+template <typename Dict>
+static void load(get_expiries& ge, Dict& d) {
+    auto [messages, pubkey, pk_ed25519, sig, subkey, timestamp] =
+            load_fields<Vec<Str>, Str, SV, SV, SV, TP>(
+                    d, "messages", "pubkey", "pubkey_ed25519", "signature", "subkey", "timestamp");
+
+    load_pk_signature(ge, d, pubkey, pk_ed25519, sig);
+    load_subkey(ge, d, subkey);
+    require("timestamp", timestamp);
+    ge.sig_ts = *timestamp;
+    require("messages", messages);
+    ge.messages = std::move(*messages);
+    if (ge.messages.empty())
+        throw parse_error{"messages does not contain any message hashes"};
+}
+void get_expiries::load_from(json params) {
+    load(*this, params);
+}
+void get_expiries::load_from(bt_dict_consumer params) {
+    load(*this, params);
 }
 
 template <typename Dict>
