@@ -343,7 +343,8 @@ std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
     return b64hash;
 }
 
-std::string computeMessageHash(
+// FIXME: remove this after fully transitioned to HF19.3
+std::string computeMessageHash_old(
         system_clock::time_point timestamp,
         system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
@@ -362,6 +363,17 @@ std::string computeMessageHash(
             pubkey.raw(),
             ns_for_hash,
             data);
+}
+
+std::string computeMessageHash(
+        const user_pubkey_t& pubkey, namespace_id ns, std::string_view data) {
+    char netid = static_cast<char>(pubkey.type());
+    std::array<char, 20> ns_buf;
+    char* ns_buf_ptr = ns_buf.data();
+    std::string_view ns_for_hash =
+            ns != namespace_id::Default ? detail::to_hashable(to_int(ns), ns_buf_ptr) : ""sv;
+    return compute_hash(
+            compute_hash_blake2b_b64, std::string_view{&netid, 1}, pubkey.raw(), ns_for_hash, data);
 }
 
 RequestHandler::RequestHandler(
@@ -552,8 +564,12 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
+    // TODO: remove after HF19.3
     std::string message_hash =
-            computeMessageHash(req.timestamp, req.expiry, req.pubkey, req.msg_namespace, req.data);
+            service_node_.hf_at_least(snode::HARDFORK_HASH_NO_TIME)
+                    ? computeMessageHash(req.pubkey, req.msg_namespace, req.data)
+                    : computeMessageHash_old(
+                              req.timestamp, req.expiry, req.pubkey, req.msg_namespace, req.data);
 
     bool new_msg;
     bool success = false;

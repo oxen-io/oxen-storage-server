@@ -64,6 +64,10 @@ inline constexpr hf_revision HARDFORK_EXTENDED_PRIVATE_TTL = {19, 3};
 // extend) expiries.
 inline constexpr hf_revision HARDFORK_EXPIRY_SHORTEN_ONLY = {19, 3};
 
+// Starting at this hf the message hash generator changes to not include timestamp/expiry for better
+// de-duplication (this is transparent to clients).
+inline constexpr hf_revision HARDFORK_HASH_NO_TIME = {19, 3};
+
 class Swarm;
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)

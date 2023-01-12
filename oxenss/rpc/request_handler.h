@@ -135,10 +135,17 @@ std::string compute_hash(Func hasher, const T&... args) {
     return hasher({detail::to_hashable(args, b)...});
 }
 
-/// Computes a message hash using blake2b hash of various messages attributes.
-std::string computeMessageHash(
+/// Computes a message hash using blake2b hash of various messages attributes.  This is the
+/// pre-HF19.3 version, which includes timestamp/expiry.  (TODO: delete after HF19.3).
+std::string computeMessageHash_old(
         std::chrono::system_clock::time_point timestamp,
         std::chrono::system_clock::time_point expiry,
+        const user_pubkey_t& pubkey,
+        namespace_id ns,
+        std::string_view data);
+
+/// Computes a message hash using blake2b hash of various messages attributes.
+std::string computeMessageHash(
         const user_pubkey_t& pubkey,
         namespace_id ns,
         std::string_view data);
