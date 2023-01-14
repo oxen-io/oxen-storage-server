@@ -164,7 +164,9 @@ namespace {
     }
 
 #ifndef NDEBUG
-    constexpr bool check_ascending(std::string_view) { return true; }
+    constexpr bool check_ascending(std::string_view) {
+        return true;
+    }
     template <typename... Args>
     constexpr bool check_ascending(std::string_view a, std::string_view b, Args&&... args) {
         return a < b && check_ascending(b, std::forward<Args>(args)...);

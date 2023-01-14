@@ -579,10 +579,10 @@ struct expire_msgs final : recursive {
 ///
 /// Takes parameters of:
 /// - `pubkey` -- the account
-/// - `pubkey_ed25519` if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
-///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
-///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
-///   to the given `pubkey` value (without the `05` prefix).
+/// - `pubkey_ed25519` if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey`
+///   will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
+///   be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
+///   convert to the given `pubkey` value (without the `05` prefix).
 /// - `subkey` (optional) allows authentication using a derived subkey.  See `store` for details on
 ///   how subkey authentication works.
 /// - `messages` -- array of message hash strings (as provided by the storage server) to update.

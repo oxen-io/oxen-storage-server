@@ -145,10 +145,7 @@ std::string computeMessageHash_old(
         std::string_view data);
 
 /// Computes a message hash using blake2b hash of various messages attributes.
-std::string computeMessageHash(
-        const user_pubkey_t& pubkey,
-        namespace_id ns,
-        std::string_view data);
+std::string computeMessageHash(const user_pubkey_t& pubkey, namespace_id ns, std::string_view data);
 
 struct OnionRequestMetadata {
     crypto::x25519_pubkey ephem_key;

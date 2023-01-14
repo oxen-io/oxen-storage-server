@@ -155,7 +155,7 @@ local static_check_and_upload = [
         'echo "Building on ${DRONE_STAGE_MACHINE}"',
         apt_get_quiet + ' update',
         apt_get_quiet + ' install -y eatmydata',
-        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-11 jsonnet',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-14 jsonnet',
         './contrib/drone-format-verify.sh',
       ],
     }],
@@ -164,7 +164,7 @@ local static_check_and_upload = [
   // Various debian builds
   debian_pipeline('Debian (amd64)', docker_base + 'debian-sid', lto=true),
   debian_pipeline('Debian Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),
-  clang(13, lto=true),
+  clang(14, lto=true),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386'),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
