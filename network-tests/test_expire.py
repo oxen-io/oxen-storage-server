@@ -221,3 +221,309 @@ def test_expire_extend(omq, random_sn, sk, exclude):
         assert exps[m['hash']] == exp_5min
     for m in msgs[8:]:
         assert abs(exps[m['hash']] - 1000*(time.time() + 14*24*60*60)) <= 5000
+
+
+def test_expire_shorten_extend(omq, random_sn, sk, exclude):
+    swarm = ss.get_swarm(omq, random_sn, sk)
+
+    sn = ss.random_swarm_members(swarm, 1, exclude)[0]
+    conn = omq.connect_remote(sn_address(sn))
+
+    now_s = time.time()
+    now = int(now_s * 1000)
+
+    msgs = ss.store_n(omq, conn, sk, b"omg123", 10, now=now_s, ttl=60)
+
+    my_ss_id = '05' + sk.verify_key.encode().hex()
+
+    assert [m["req"]["expiry"] for m in msgs] == [now + x * 1000 for x in range(60, 50, -1)]
+
+    do_not_exist = [
+        '///////////////////////////////////////////',
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq',
+        'rstuvwxyz0123456789+/ABCDEFGHIJKLMNOPQRSTUV',
+    ]
+    dne_sig = ''.join(do_not_exist)
+
+    exp_20s = now + 20 * 1000
+    exp_30s = now + 30 * 1000
+    exp_45s = now + 45 * 1000
+    exp_10m = now + 10 * 60 * 1000
+    e = omq.request_future(
+        conn,
+        'storage.sequence',
+        [
+            json.dumps(
+                {
+                    'requests': [
+                        {
+                            # shorten 0-3 from 1min to 30s
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[0:4]] + do_not_exist,
+                                "expiry": exp_30s,
+                                "shorten": True,
+                                "signature": sk.sign(
+                                    f"expireshorten{exp_30s}{''.join(m['hash'] for m in msgs[0:4])}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'get_expiries',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs] + do_not_exist,
+                                "timestamp": now,
+                                "signature": sk.sign(
+                                    f"get_expiries{now}{''.join(m['hash'] for m in msgs)}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            # shorten 4-7 from 1min to 20s
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[4:8]] + do_not_exist,
+                                "expiry": exp_20s,
+                                "shorten": True,
+                                "signature": sk.sign(
+                                    f"expireshorten{exp_20s}{''.join(m['hash'] for m in msgs[4:8])}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'get_expiries',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs] + do_not_exist,
+                                "timestamp": now,
+                                "signature": sk.sign(
+                                    f"get_expiries{now}{''.join(m['hash'] for m in msgs)}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            # shorten 6-9 to 10min (from 1min); should all fail to shorten
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[6:]],
+                                "expiry": exp_10m,
+                                "shorten": True,
+                                "signature": sk.sign(
+                                    f"expireshorten{exp_10m}{''.join(m['hash'] for m in msgs[6:])}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'get_expiries',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs] + do_not_exist,
+                                "timestamp": now,
+                                "signature": sk.sign(
+                                    f"get_expiries{now}{''.join(m['hash'] for m in msgs)}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            # shorten 2-5 to 20s; should work for 2-3 (30s) but fail for 4-5
+                            # (already <=20s).
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[2:6]] + do_not_exist,
+                                "expiry": exp_20s,
+                                "shorten": True,
+                                "signature": sk.sign(
+                                    f"expireshorten{exp_20s}{''.join(m['hash'] for m in msgs[2:6])}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'get_expiries',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs] + do_not_exist,
+                                "timestamp": now,
+                                "signature": sk.sign(
+                                    f"get_expiries{now}{''.join(m['hash'] for m in msgs)}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            # length everything to 45s in extend-only mode; should fail for shorten
+                            # 2-5 to 20s; should work for 0-7 (20s or 30s) but fail for 8-9 (1min)
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs] + do_not_exist,
+                                "expiry": exp_45s,
+                                "extend": True,
+                                "signature": sk.sign(
+                                    f"expireextend{exp_45s}{''.join(m['hash'] for m in msgs)}{dne_sig}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'retrieve',
+                            'params': {
+                                'pubkey': my_ss_id,
+                                'timestamp': now,
+                                'signature': sk.sign(
+                                    f"retrieve{now}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                    ]
+                }
+            )
+        ],
+    ).get()
+
+    assert len(e) == 1
+    e = json.loads(e[0])
+    assert [x['code'] for x in e['results']] == [200] * 10
+    e = [x['body'] for x in e['results']]
+
+    e0_exp = {'expiry': exp_30s, 'updated': sorted(m["hash"] for m in msgs[0:4]), 'unchanged': {}}
+
+    assert 5 <= len(e[0]['swarm']) <= 10
+    for snpk, s in e[0]['swarm'].items():
+        assert s['expiry'] == exp_30s
+        assert s['updated'] == sorted(m["hash"] for m in msgs[0:4])
+        assert s['unchanged'] == {}
+        # signature of ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+        expected_signed = "".join(
+            [my_ss_id, str(exp_30s)] + [m["hash"] for m in msgs[0:4]] + do_not_exist + s['updated']
+        ).encode()
+        edpk = VerifyKey(snpk, encoder=HexEncoder)
+        edpk.verify(expected_signed, base64.b64decode(s['signature']))
+
+    assert e[1] == {
+        "expiries": {
+            **{m["hash"]: exp_30s for m in msgs[0:4]},
+            **{msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(4, 10)},
+        }
+    }
+
+    assert 5 <= len(e[2]['swarm']) <= 10
+    for snpk, s in e[2]['swarm'].items():
+        assert s['expiry'] == exp_20s
+        assert s['updated'] == sorted(m["hash"] for m in msgs[4:8])
+        assert s['unchanged'] == {}
+        # signature of ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+        expected_signed = "".join(
+            [my_ss_id, str(exp_20s)] + [m["hash"] for m in msgs[4:8]] + do_not_exist + s['updated']
+        ).encode()
+        edpk = VerifyKey(snpk, encoder=HexEncoder)
+        edpk.verify(expected_signed, base64.b64decode(s['signature']))
+
+    assert e[3] == {
+        "expiries": {
+            **{m["hash"]: exp_30s for m in msgs[0:4]},
+            **{m["hash"]: exp_20s for m in msgs[4:8]},
+            **{msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(8, 10)},
+        }
+    }
+
+    assert 5 <= len(e[4]['swarm']) <= 10
+    for snpk, s in e[4]['swarm'].items():
+        assert s['expiry'] == exp_10m
+        assert s['updated'] == []
+        assert s['unchanged'] == {
+            **{m["hash"]: exp_20s for m in msgs[6:8]},
+            **{msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(8, 10)},
+        }
+        # signature of ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+        expected_signed = "".join(
+            [my_ss_id, str(exp_10m)]
+            + [m["hash"] for m in msgs[6:]]
+            + sorted(
+                [
+                    f"{msgs[6]['hash']}{exp_20s}",
+                    f"{msgs[7]['hash']}{exp_20s}",
+                    f"{msgs[8]['hash']}{now + 52_000}",
+                    f"{msgs[9]['hash']}{now + 51_000}",
+                ]
+            )
+        ).encode()
+        edpk = VerifyKey(snpk, encoder=HexEncoder)
+        edpk.verify(expected_signed, base64.b64decode(s['signature']))
+
+    assert e[5] == {
+        "expiries": {
+            **{m["hash"]: exp_30s for m in msgs[0:4]},
+            **{m["hash"]: exp_20s for m in msgs[4:8]},
+            **{msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(8, 10)},
+        }
+    }
+
+    assert 5 <= len(e[6]['swarm']) <= 10
+    for snpk, s in e[6]['swarm'].items():
+        assert s['expiry'] == exp_20s
+        assert s['updated'] == sorted(m["hash"] for m in msgs[2:4])
+        assert s['unchanged'] == {m["hash"]: exp_20s for m in msgs[4:6]}
+        # signature of ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+        expected_signed = "".join(
+            [my_ss_id, str(exp_20s)]
+            + [m["hash"] for m in msgs[2:6]]
+            + do_not_exist
+            + sorted(m["hash"] for m in msgs[2:4])
+            + sorted([f"{msgs[4]['hash']}{exp_20s}", f"{msgs[5]['hash']}{exp_20s}"])
+        ).encode()
+        edpk = VerifyKey(snpk, encoder=HexEncoder)
+        edpk.verify(expected_signed, base64.b64decode(s['signature']))
+
+    assert e[7] == {
+        "expiries": {
+            **{m["hash"]: exp_30s for m in msgs[0:2]},
+            **{m["hash"]: exp_20s for m in msgs[2:8]},
+            **{msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(8, 10)},
+        }
+    }
+
+    assert 5 <= len(e[8]['swarm']) <= 10
+    for snpk, s in e[8]['swarm'].items():
+        assert s['expiry'] == exp_45s
+        assert s['updated'] == sorted(m["hash"] for m in msgs[0:8])
+        assert s['unchanged'] == {msgs[i]["hash"]: now + (60 - i) * 1000 for i in range(8, 10)}
+        # signature of ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
+        expected_signed = "".join(
+            [my_ss_id, str(exp_45s)]
+            + [m["hash"] for m in msgs]
+            + do_not_exist
+            + s['updated']
+            + sorted([f"{msgs[8]['hash']}{now + 52_000}", f"{msgs[9]['hash']}{now + 51_000}"])
+        ).encode()
+        edpk = VerifyKey(snpk, encoder=HexEncoder)
+        edpk.verify(expected_signed, base64.b64decode(s['signature']))
+
+    assert e[9]['hf'] >= [19, 3]
+    assert now - 60_000 <= e[9]['t'] <= now + 60_000
+    del e[9]['hf']
+    del e[9]['t']
+    expected_expiries = [exp_45s] * 8 + [now + 52_000, now + 51_000]
+    assert e[9] == {
+        "messages": [
+            {
+                'data': base64.b64encode(msgs[i]['data']).decode(),
+                'expiration': expected_expiries[i],
+                'hash': msgs[i]['hash'],
+                'timestamp': msgs[i]['req']['timestamp'],
+            }
+            for i in range(len(msgs))
+        ],
+        "more": False,
+    }
