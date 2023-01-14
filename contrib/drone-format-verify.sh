@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 test "x$IGNORE" != "x" && exit 0
+set -e
 repo=$(readlink -e $(dirname $0)/../)
 clang-format-14 -i $(find $repo/{oxenss,unit_test} | grep -E '\.[hc](pp)?$' | grep -v 'Catch2')
 jsonnetfmt -i $repo/.drone.jsonnet
