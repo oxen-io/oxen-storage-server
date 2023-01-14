@@ -25,7 +25,7 @@ def test_store(omq, random_sn, sk, exclude):
     assert len(s) == 1
     s = json.loads(s[0])
 
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
+    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(s["swarm"]) == len(swarm['snodes'])
@@ -58,7 +58,7 @@ def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
     assert len(s) == 1
     s = json.loads(s[0])
 
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
+    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert all(v['hash'] == hash for v in s['swarm'].values())
@@ -98,7 +98,7 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert len(s1) == 1
     s1 = json.loads(s1[0])
 
-    hash1 = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + xpk.encode() + b'abc 123',
+    hash1 = blake2b(b'\x05' + xpk.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert all(v['hash'] == hash1 for v in s1['swarm'].values())
@@ -107,7 +107,7 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert len(s2) == 1
     s2 = json.loads(s2[0])
 
-    hash2 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'def 456',
+    hash2 = blake2b(b'\x03' + sk.verify_key.encode() + b'def 456',
             encoder=Base64Encoder).decode().rstrip('=')
 
     to_sign = "retrieve{}".format(ts).encode()
@@ -206,7 +206,7 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
 
     # Store 6 more messages
     basemsg = b'another msg'
-    new_msgs = ss.store_n(omq, conn2, sk, basemsg, 6, 1)
+    new_msgs = ss.store_n(omq, conn2, sk, basemsg, 6, offset=1)
 
     # Retrieve using a last_hash so that we should get back only the 6:
     resp = omq.request_future(conn1, 'storage.retrieve', [json.dumps({
