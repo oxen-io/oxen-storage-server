@@ -161,6 +161,7 @@ def test_expire_extend(omq, random_sn, sk, exclude):
 
     exp_5min = now + 5*60*1000
     exp_long = now + 15*24*60*60*1000  # Beyond max TTL, should get shortened to now + max TTL
+    exp_long = now + 31*24*60*60*1000  # Beyond max TTL, should get shortened to now + max TTL
     e = omq.request_future(conn, 'storage.sequence',
             [json.dumps({
                 'requests': [
@@ -209,7 +210,7 @@ def test_expire_extend(omq, random_sn, sk, exclude):
     for s in e[1]['swarm'].values():
         # expiry should have been shortened to now + max TTL:
         assert s['expiry'] < exp_long
-        assert abs(s['expiry'] - 1000*(time.time() + 14*24*60*60)) <= 5000
+        assert abs(s['expiry'] - 1000 * (time.time() + 30 * 24 * 60 * 60)) <= 5000
         assert s['updated'] == sorted([m["hash"] for m in msgs[8:]])
 
     assert set(m['hash'] for m in e[2]['messages']) == set(m['hash'] for m in msgs)
@@ -220,7 +221,7 @@ def test_expire_extend(omq, random_sn, sk, exclude):
     for m in msgs[0:8]:
         assert exps[m['hash']] == exp_5min
     for m in msgs[8:]:
-        assert abs(exps[m['hash']] - 1000*(time.time() + 14*24*60*60)) <= 5000
+        assert abs(exps[m['hash']] - 1000 * (time.time() + 30 * 24 * 60 * 60)) <= 5000
 
 
 def test_expire_shorten_extend(omq, random_sn, sk, exclude):
