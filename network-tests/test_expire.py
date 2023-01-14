@@ -7,6 +7,7 @@ from nacl.encoding import HexEncoder, Base64Encoder
 from nacl.signing import VerifyKey
 import nacl.exceptions
 
+
 def test_expire_all(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
     sns = ss.random_swarm_members(swarm, 2, exclude)
@@ -19,11 +20,7 @@ def test_expire_all(omq, random_sn, sk, exclude):
     ts = msgs[2]['req']['expiry']
     to_sign = "expire_all{}".format(ts).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = json.dumps({
-            "pubkey": my_ss_id,
-            "expiry": ts,
-            "signature": sig
-    }).encode()
+    params = json.dumps({"pubkey": my_ss_id, "expiry": ts, "signature": sig}).encode()
 
     resp = omq.request_future(conns[1], 'storage.expire_all', [params]).get()
 
@@ -31,7 +28,6 @@ def test_expire_all(omq, random_sn, sk, exclude):
     r = json.loads(resp[0])
 
     assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
-
 
     # 0 and 1 have later expiries than 2, so they should get updated; 2's expiry is already the
     # given value, and 3/4 are <= so shouldn't get updated.
@@ -44,13 +40,21 @@ def test_expire_all(omq, random_sn, sk, exclude):
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(expected_signed, base64.b64decode(v['signature']))
 
-    r = omq.request_future(conns[0], 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode()
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conns[0],
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 5
@@ -74,11 +78,7 @@ def test_stale_expire_all(omq, random_sn, sk, exclude):
     ts = int((time.time() - 120) * 1000)
     to_sign = "expire_all{}".format(ts).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = {
-            "pubkey": my_ss_id,
-            "expiry": ts,
-            "signature": sig
-    }
+    params = {"pubkey": my_ss_id, "expiry": ts, "signature": sig}
 
     resp = omq.request_future(conn, 'storage.expire_all', [json.dumps(params).encode()]).get()
     assert resp == [b'406', b'expire_all timestamp should be >= current time']
@@ -94,7 +94,9 @@ def test_expire(omq, random_sn, sk, exclude):
     my_ss_id = '05' + sk.verify_key.encode().hex()
 
     ts = msgs[6]['req']['expiry']
-    hashes = [msgs[i]['hash'] for i in (0, 1, 5, 6, 7, 9)] + ['bepQtTaYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I']
+    hashes = [msgs[i]['hash'] for i in (0, 1, 5, 6, 7, 9)] + [
+        'bepQtTaYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I'
+    ]
     # Make sure `hashes` input isn't provided in sorted order:
     if hashes[0] < hashes[1]:
         hashes[0], hashes[1] = hashes[1], hashes[0]
@@ -104,12 +106,9 @@ def test_expire(omq, random_sn, sk, exclude):
     hashes = sorted(hashes, reverse=True)
     to_sign = ("expire" + str(ts) + "".join(hashes)).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = json.dumps({
-            "pubkey": my_ss_id,
-            "messages": hashes,
-            "expiry": ts,
-            "signature": sig
-    }).encode()
+    params = json.dumps(
+        {"pubkey": my_ss_id, "messages": hashes, "expiry": ts, "signature": sig}
+    ).encode()
 
     resp = omq.request_future(conns[1], 'storage.expire', [params]).get()
 
@@ -129,19 +128,29 @@ def test_expire(omq, random_sn, sk, exclude):
             print("Bad signature from swarm member {}".format(k))
             raise e
 
-    r = omq.request_future(conns[0], 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode()
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conns[0],
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 10
 
     for i in range(10):
-        assert r['messages'][i]['expiration'] == ts if i in (0, 1, 5, 6) else msgs[i]['req']['expiry']
+        assert (
+            r['messages'][i]['expiration'] == ts if i in (0, 1, 5, 6) else msgs[i]['req']['expiry']
+        )
 
 
 def test_expire_extend(omq, random_sn, sk, exclude):
@@ -159,42 +168,56 @@ def test_expire_extend(omq, random_sn, sk, exclude):
     for m in msgs:
         assert m["req"]["expiry"] < now + 60_000
 
-    exp_5min = now + 5*60*1000
-    exp_long = now + 15*24*60*60*1000  # Beyond max TTL, should get shortened to now + max TTL
-    exp_long = now + 31*24*60*60*1000  # Beyond max TTL, should get shortened to now + max TTL
-    e = omq.request_future(conn, 'storage.sequence',
-            [json.dumps({
-                'requests': [
-                    {
-                        'method': 'expire',
-                        'params': {
-                            "pubkey": my_ss_id,
-                            "messages": [m["hash"] for m in msgs[0:8]],
-                            "expiry": exp_5min,
-                            "signature": sk.sign(f"expire{exp_5min}{''.join(m['hash'] for m in msgs[0:8])}".encode(),
-                                encoder=Base64Encoder).signature.decode(),
-                        }
-                    },
-                    {
-                        'method': 'expire',
-                        'params': {
-                            "pubkey": my_ss_id,
-                            "messages": [m["hash"] for m in msgs[8:]],
-                            "expiry": exp_long,
-                            "signature": sk.sign(f"expire{exp_long}{''.join(m['hash'] for m in msgs[8:])}".encode(),
-                                encoder=Base64Encoder).signature.decode(),
-                        }
-                    },
-                    {
-                        'method': 'retrieve',
-                        'params': {
-                            'pubkey': my_ss_id,
-                            'timestamp': now,
-                            'signature': sk.sign(f"retrieve{now}".encode(), encoder=Base64Encoder).signature.decode(),
-                        }
-                    }
-                ]
-            })]).get()
+    exp_5min = now + 5 * 60 * 1000
+    exp_long = (
+        now + 31 * 24 * 60 * 60 * 1000
+    )  # Beyond max TTL, should get shortened to now + max TTL
+    e = omq.request_future(
+        conn,
+        'storage.sequence',
+        [
+            json.dumps(
+                {
+                    'requests': [
+                        {
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[0:8]],
+                                "expiry": exp_5min,
+                                "signature": sk.sign(
+                                    f"expire{exp_5min}{''.join(m['hash'] for m in msgs[0:8])}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'expire',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [m["hash"] for m in msgs[8:]],
+                                "expiry": exp_long,
+                                "signature": sk.sign(
+                                    f"expire{exp_long}{''.join(m['hash'] for m in msgs[8:])}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            'method': 'retrieve',
+                            'params': {
+                                'pubkey': my_ss_id,
+                                'timestamp': now,
+                                'signature': sk.sign(
+                                    f"retrieve{now}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                    ]
+                }
+            )
+        ],
+    ).get()
 
     assert len(e) == 1
     e = json.loads(e[0])
@@ -214,8 +237,8 @@ def test_expire_extend(omq, random_sn, sk, exclude):
         assert s['updated'] == sorted([m["hash"] for m in msgs[8:]])
 
     assert set(m['hash'] for m in e[2]['messages']) == set(m['hash'] for m in msgs)
-    exps = { m['hash']: m['expiration'] for m in e[2]['messages'] }
-    ts = { m['hash']: m['timestamp'] for m in e[2]['messages'] }
+    exps = {m['hash']: m['expiration'] for m in e[2]['messages']}
+    ts = {m['hash']: m['timestamp'] for m in e[2]['messages']}
     for m in msgs:
         assert ts[m['hash']] == m['req']['timestamp']
     for m in msgs[0:8]:
