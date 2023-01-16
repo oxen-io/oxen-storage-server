@@ -36,10 +36,10 @@ inline constexpr auto TTL_MAXIMUM = 14 * 24h;
 // future, and don't allow stores with an expiry in the past by more than this amount.
 inline constexpr auto STORE_TOLERANCE = 10s;
 
-// Tolerance for timestamp-dependent, signed requests (such as `delete_all`); we accept the
-// initial request if within SIGNATURE_TOLERANCE of now, and accept a recursive request if
-// within SIGNATURE_TOLERANCE_FORWARDED (generally slightly larger to account for swarm
-// forwarding latency).
+// Tolerance for timestamp-dependent, signed requests (such as storing to a non-public namespace,
+// `delete_all`, etc.); we accept the initial request if within SIGNATURE_TOLERANCE of now, and
+// accept a recursive request if within SIGNATURE_TOLERANCE_FORWARDED (generally slightly larger to
+// account for swarm forwarding latency).
 inline constexpr auto SIGNATURE_TOLERANCE = 60s;
 inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 

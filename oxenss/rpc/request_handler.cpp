@@ -506,14 +506,13 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
             log::warning(logcat, err);
             return cb(Response{http::UNAUTHORIZED, err});
         }
-        if (req.timestamp < now - SIGNATURE_TOLERANCE ||
-            req.timestamp > now + SIGNATURE_TOLERANCE) {
+        if (*req.sig_ts < now - SIGNATURE_TOLERANCE || *req.sig_ts > now + SIGNATURE_TOLERANCE) {
             log::debug(
                     logcat,
-                    "store: invalid timestamp ({}s from now)",
+                    "store: invalid signature timestamp ({}s from now)",
                     duration_cast<seconds>(req.timestamp - now).count());
-            return cb(
-                    Response{http::NOT_ACCEPTABLE, "store timestamp too far from current time"sv});
+            return cb(Response{
+                    http::NOT_ACCEPTABLE, "store signature timestamp too far from current time"sv});
         }
 
         if (!verify_signature(
@@ -524,7 +523,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                     *req.signature,
                     "store",
                     req.msg_namespace == namespace_id::Default ? "" : to_string(req.msg_namespace),
-                    req.timestamp)) {
+                    *req.sig_ts)) {
             log::debug(logcat, "store: signature verification failed");
             return cb(Response{http::UNAUTHORIZED, "store signature verification failed"sv});
         }
