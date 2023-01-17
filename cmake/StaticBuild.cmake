@@ -261,11 +261,11 @@ set_target_properties(libzmq PROPERTIES
 
 set(curl_extra)
 if(WIN32)
-  set(curl_ssl_opts --without-ssl --with-schannel)
+  set(curl_ssl_opts --with-schannel)
 elseif(APPLE)
-  set(curl_ssl_opts --without-ssl --with-secure-transport)
+  set(curl_ssl_opts --with-secure-transport)
 else()
-  set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
+  set(curl_ssl_opts --with-openssl=${DEPS_DESTDIR})
   set(curl_extra "LIBS=-pthread")
 endif()
 
