@@ -78,11 +78,7 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
             "d9+vvm7X+8vh+jIenJfjxf+8CWER+9adNfb4YUH07I+godNCV0O0J05gzqfKdT7J8MBZzFBtKrbk8oCagPpTs"
             "q/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
 
-    auto expected = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";
-    CHECK(oxen::rpc::computeMessageHash(timestamp, expiry, pk, oxen::namespace_id::Default, data) ==
-          expected);
-    CHECK(oxen::rpc::compute_hash_blake2b_b64(
-                  {std::to_string(oxen::to_epoch_ms(timestamp)) +
-                   std::to_string(oxen::to_epoch_ms(expiry)) + pk.prefixed_raw() + data}) ==
-          expected);
+    auto expected = "4sMyAuaZlMwww3oFvfhazfw7ASx/7TDtO+TVc8aAjHs";
+    CHECK(oxen::rpc::computeMessageHash(pk, oxen::namespace_id::Default, data) == expected);
+    CHECK(oxen::rpc::compute_hash_blake2b_b64({pk.prefixed_raw() + data}) == expected);
 }

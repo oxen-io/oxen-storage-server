@@ -8,6 +8,7 @@
 #include <oxenss/snode/service_node.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/server/utils.h>
+#include <oxenss/utils/time.hpp>
 
 #include <chrono>
 #include <forward_list>
@@ -34,9 +35,7 @@ inline constexpr auto TTL_MAXIMUM = 14 * 24h;
 
 // For messages in a user's control (i.e. new messages in private namespaces, or updating TTLs of
 // existing public or private namespace messages) we allow a longer TTL (starting at HF19.3).
-inline constexpr auto TTL_MAXIMUM_PRIVATE = 30*24h;
-
-
+inline constexpr auto TTL_MAXIMUM_PRIVATE = 30 * 24h;
 
 // Tolerance for store requests: we don't allow stores with a timestamp more than this into the
 // future, and don't allow stores with an expiry in the past by more than this amount.
@@ -60,7 +59,7 @@ inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 inline constexpr int RETRIEVE_MAX_SIZE = 7'800'000;
 
 // Maximum subrequests that can be stuffed into a single batch request
-inline constexpr size_t BATCH_REQUEST_MAX = 5;
+inline constexpr size_t BATCH_REQUEST_MAX = 20;
 
 // Simpler wrapper that works for most of our responses
 struct Response {
@@ -105,10 +104,7 @@ namespace detail {
     }
     inline std::string_view to_hashable(
             const std::chrono::system_clock::time_point& val, char*& buffer) {
-        return to_hashable(
-                std::chrono::duration_cast<std::chrono::milliseconds>(val.time_since_epoch())
-                        .count(),
-                buffer);
+        return to_hashable(to_epoch_ms(val), buffer);
     }
     template <typename T, std::enable_if_t<std::is_convertible_v<T, std::string_view>, int> = 0>
     std::string_view to_hashable(const T& value, char*&) {
@@ -139,13 +135,17 @@ std::string compute_hash(Func hasher, const T&... args) {
     return hasher({detail::to_hashable(args, b)...});
 }
 
-/// Computes a message hash using blake2b hash of various messages attributes.
-std::string computeMessageHash(
+/// Computes a message hash using blake2b hash of various messages attributes.  This is the
+/// pre-HF19.3 version, which includes timestamp/expiry.  (TODO: delete after HF19.3).
+std::string computeMessageHash_old(
         std::chrono::system_clock::time_point timestamp,
         std::chrono::system_clock::time_point expiry,
         const user_pubkey_t& pubkey,
         namespace_id ns,
         std::string_view data);
+
+/// Computes a message hash using blake2b hash of various messages attributes.
+std::string computeMessageHash(const user_pubkey_t& pubkey, namespace_id ns, std::string_view data);
 
 struct OnionRequestMetadata {
     crypto::x25519_pubkey ephem_key;
@@ -204,6 +204,7 @@ class RequestHandler {
     void process_client_req(rpc::delete_before&&, std::function<void(Response)> cb);
     void process_client_req(rpc::expire_all&&, std::function<void(Response)> cb);
     void process_client_req(rpc::expire_msgs&&, std::function<void(Response)> cb);
+    void process_client_req(rpc::get_expiries&&, std::function<void(Response)> cb);
     void process_client_req(rpc::batch&&, std::function<void(Response)> cb);
     void process_client_req(rpc::sequence&&, std::function<void(Response)> cb);
     void process_client_req(rpc::ifelse&&, std::function<void(Response)> cb);

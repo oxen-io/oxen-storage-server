@@ -236,7 +236,7 @@ oxenc::bt_value json_to_bt(nlohmann::json j) {
 }
 
 nlohmann::json bt_to_json(oxenc::bt_dict_consumer d) {
-    nlohmann::json j;
+    nlohmann::json j = nlohmann::json::object();
     while (!d.is_finished()) {
         std::string key{d.key()};
         if (d.is_string())
