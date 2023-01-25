@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -128,15 +129,17 @@ class Database {
     bool subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey);
 
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
-    // hashes of found messages (i.e. hashes that don't exist are not returned).
+    // hashes of updated messages (i.e. hashes that don't exist, or were not updated, are not
+    // returned).
     //
-    // If extend_only is given as true, then only messages that have a current expiry less than the
-    // new expiry are updated (i.e. it will only extend expiries).
+    // extend_only and shorten_only allow message expiries to only be adjusted in one way or the
+    // other.  They are mutually exclusive.
     std::vector<std::string> update_expiry(
             const user_pubkey_t& pubkey,
             const std::vector<std::string>& msg_hashes,
             std::chrono::system_clock::time_point new_exp,
-            bool extend_only = false);
+            bool extend_only = false,
+            bool shorten_only = false);
 
     // Shortens the expiry time of all messages owned by the given pubkey.  Expiries can only be
     // shortened (i.e. brought closer to now), not extended into the future.  Returns a vector of
@@ -151,6 +154,11 @@ class Database {
             const user_pubkey_t& pubkey,
             namespace_id ns,
             std::chrono::system_clock::time_point new_exp);
+
+    // Retrieves the expiries of messages by hash.  Returns a map of hash -> expiry (hashes not
+    // found are not included).
+    std::map<std::string, int64_t> get_expiries(
+            const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes);
 };
 
 }  // namespace oxen
