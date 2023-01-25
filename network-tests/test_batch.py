@@ -55,9 +55,9 @@ def test_batch_json(omq, random_sn, sk, exclude):
     assert s["results"][0]["code"] == 200
     assert s["results"][1]["code"] == 200
 
-    hash0 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+    hash0 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
-    hash1 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
+    hash1 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
             encoder=Base64Encoder).decode().rstrip('=')
     assert s["results"][0]["body"]["hash"] == hash0
     assert s["results"][1]["body"]["hash"] == hash1
@@ -107,9 +107,9 @@ def test_batch_bt(omq, random_sn, sk, exclude):
     assert s[b"results"][0][b"code"] == 200
     assert s[b"results"][1][b"code"] == 200
 
-    hash0 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+    hash0 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
             encoder=Base64Encoder).rstrip(b'=')
-    hash1 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
+    hash1 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
             encoder=Base64Encoder).rstrip(b'=')
     assert s[b"results"][0][b"body"][b"hash"] == hash0
     assert s[b"results"][1][b"body"][b"hash"] == hash1
@@ -177,9 +177,9 @@ def test_sequence(omq, random_sn, sk, exclude):
     s = json.loads(s[0])
     assert "results" in s
     assert len(s["results"]) == 5
-    h0 = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
+    h0 = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
-    h1 = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'xyz 123',
+    h1 = blake2b(b'\x05' + sk.verify_key.encode() + b'xyz 123',
             encoder=Base64Encoder).decode().rstrip('=')
     assert s["results"][0]["body"]["hash"] == h0
     assert s["results"][1]["body"]["messages"] == [{"data": "YWJjIDEyMw==", "expiration": ts + ttl, "hash": h0, "timestamp": ts}]
