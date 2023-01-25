@@ -4,9 +4,9 @@ import subkey
 import time
 import base64
 import json
-from nacl.encoding import Base64Encoder
+from nacl.encoding import Base64Encoder, HexEncoder
 from nacl.hash import blake2b
-from nacl.signing import SigningKey
+from nacl.signing import SigningKey, VerifyKey
 import nacl.exceptions
 
 def test_retrieve_subkey(omq, random_sn, sk, exclude):
@@ -30,7 +30,7 @@ def test_retrieve_subkey(omq, random_sn, sk, exclude):
         }).encode()]).get()
     assert len(s) == 1
     s = json.loads(s[0])
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
     for k, v in s['swarm'].items():
         assert hash == v['hash']
@@ -85,7 +85,7 @@ def test_store_subkey(omq, random_sn, sk, exclude):
     s = json.loads(s[0])
     assert s["hf"] >= [19, 0]
 
-    hash = blake2b(f"{ts}{exp}".encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
     assert len(s["swarm"]) > 0
     for k, v in s['swarm'].items():
@@ -181,16 +181,16 @@ def test_revoke_subkey(omq, random_sn, sk, exclude):
         }).encode()]).get()
     assert len(s) == 1
     s = json.loads(s[0])
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
+    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
     for k, v in s['swarm'].items():
         assert hash == v['hash']
 
     # Retrieve it using the subkey
     dude_sk = SigningKey.generate()
-    c, d, D = make_subkey(sk, dude_sk.verify_key)
+    c, d, D = subkey.make_subkey(sk, dude_sk.verify_key)
     to_sign = f"retrieve42{ts}".encode()
-    sig = blinded_ed25519_signature(to_sign, dude_sk, d, D)
+    sig = subkey.sign(to_sign, dude_sk, d, D)
 
     r = omq.request_future(conn, 'storage.retrieve', [
         json.dumps({
@@ -243,7 +243,7 @@ def test_revoke_subkey(omq, random_sn, sk, exclude):
     # Revoke another 49 subkeys, the original subkey should still fail to retrieve the messages
     for i in range (49):
         more_dude_sk = SigningKey.generate()
-        more_c, more_d, D = make_subkey(sk, more_dude_sk.verify_key)
+        more_c, more_d, D = subkey.make_subkey(sk, more_dude_sk.verify_key)
         r = omq.request_future(conn, 'storage.revoke_subkey', [
             json.dumps({
                 "pubkey": '03' + sk.verify_key.encode().hex(),
@@ -265,7 +265,7 @@ def test_revoke_subkey(omq, random_sn, sk, exclude):
 
     # Revoke one more subkey, the original subkey should now succeed in retrieving the messages
     more_dude_sk = SigningKey.generate()
-    more_c, more_d, D = make_subkey(sk, more_dude_sk.verify_key)
+    more_c, more_d, D = subkey.make_subkey(sk, more_dude_sk.verify_key)
     r = omq.request_future(conn, 'storage.revoke_subkey', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
