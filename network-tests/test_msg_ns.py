@@ -38,7 +38,7 @@ def test_store_ns(omq, random_sn, sk, exclude):
     
     spub = json.loads(spub.get()[0])
 
-    hpub = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123',
+    hpub = blake2b(b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(spub["swarm"]) == len(swarm['snodes'])
@@ -55,7 +55,7 @@ def test_store_ns(omq, random_sn, sk, exclude):
 
 
     spriv = json.loads(spriv.get()[0])
-    hpriv = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123',
+    hpriv = blake2b(b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(spriv["swarm"]) == len(swarm['snodes'])
@@ -123,7 +123,7 @@ def test_legacy_closed_ns(omq, random_sn, sk, exclude):
         "data": base64.b64encode("blah blah".encode()).decode()})])
 
     sclosed = json.loads(sclosed.get()[0])
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'-10' + b'blah blah',
+    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'-10' + b'blah blah',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(sclosed["swarm"]) == len(swarm['snodes'])
