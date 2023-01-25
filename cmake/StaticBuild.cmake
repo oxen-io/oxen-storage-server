@@ -5,10 +5,10 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 3.0.5 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.7 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=aa7d8d9bef71ad6525c55ba11e5f4397889ce49c2c9349dcea6d3e4f0b024a7a
+set(OPENSSL_HASH SHA256=83049d042a260e696f62406ac5c08bf706fd84383f945cf21bd61e9ed95c396e
     CACHE STRING "openssl source hash")
 
 set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
@@ -43,11 +43,11 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.85.0 CACHE STRING "curl version")
+set(CURL_VERSION 7.87.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=b57cc31649a4f47cc4b482f56a85c86c8e8aaeaf01bc1b51b065fdb9145a9092bc52535e52a85a66432eb163605b2edbf5bc5c33ea6e40e50f26a69ad1365cbd
+set(CURL_HASH SHA512=aa125991592667280dce3788aabe81487cf8c55b0afc59d675cc30b76055bb7114f5380b4a0e3b6461a8f81bf9812fa26d493a85f7e01d84263d484a0d699ee7
     CACHE STRING "curl source hash")
 
 
@@ -261,11 +261,11 @@ set_target_properties(libzmq PROPERTIES
 
 set(curl_extra)
 if(WIN32)
-  set(curl_ssl_opts --without-ssl --with-schannel)
+  set(curl_ssl_opts --with-schannel)
 elseif(APPLE)
-  set(curl_ssl_opts --without-ssl --with-secure-transport)
+  set(curl_ssl_opts --with-secure-transport)
 else()
-  set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
+  set(curl_ssl_opts --with-openssl=${DEPS_DESTDIR})
   set(curl_extra "LIBS=-pthread")
 endif()
 
@@ -280,7 +280,8 @@ build_external(curl
   --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
   --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
   --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
-  --without-zsh-functions-dir --without-fish-functions-dir
+  --without-zsh-functions-dir --without-fish-functions-dir --without-zstd
+  --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
   "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
   BUILD_COMMAND true
   INSTALL_COMMAND make -C lib install && make -C include install

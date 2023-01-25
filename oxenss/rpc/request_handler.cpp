@@ -596,13 +596,9 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                 req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg)
             mine["already"] = true;
-        if (entry_router) {
+        if (entry_router)
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
             res->result["hash"] = message_hash;
-            // No longer used, but here to avoid breaking older clients.  TODO: remove
-            // eventually
-            res->result["difficulty"] = 1;
-        }
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
