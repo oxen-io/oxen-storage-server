@@ -242,7 +242,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     s = json.loads(s[0])
     hash = (
         blake2b(
-            "{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'abc 123',
+            b'\x03' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder,
         )
         .decode()

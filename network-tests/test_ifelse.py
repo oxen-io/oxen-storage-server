@@ -128,7 +128,7 @@ def test_ifelse(omq, random_sn, sk, exclude):
             })])
 
     def hash(body, ts):
-        return blake2b(f"{ts}{ts+ttl}".encode() + b'\x05' + sk.verify_key.encode() + body,
+        return blake2b(b'\x05' + sk.verify_key.encode() + body,
             encoder=Base64Encoder).decode().rstrip('=')
 
     for i in range(len(r)):
