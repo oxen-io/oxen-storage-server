@@ -120,7 +120,7 @@ static block_update parse_swarm_update(const std::string& response_body) {
     std::map<swarm_id_t, std::vector<sn_record>> swarm_map;
     block_update bu;
 
-    log::trace(logcat, "swarm repsonse: <{}>", response_body);
+    log::trace(logcat, "swarm response: <{}>", response_body);
 
     try {
         json result = json::parse(response_body, nullptr, true);
@@ -146,8 +146,9 @@ static block_update parse_swarm_update(const std::string& response_body) {
 
             total++;
             const auto& pk_hex = sn_json.at("service_node_pubkey").get_ref<const std::string&>();
-            const auto& pk_x25519_hex = sn_json.at("pubkey_x25519").get_ref<const std::string&>();
-            const auto& pk_ed25519_hex = sn_json.at("pubkey_ed25519").get_ref<const std::string&>();
+
+            const auto pk_x25519_hex = sn_json.value<std::string>("pubkey_x25519", "");
+            const auto pk_ed25519_hex = sn_json.value<std::string>("pubkey_ed25519", "");
 
             if (pk_x25519_hex.empty() || pk_ed25519_hex.empty()) {
                 // These will always either both be present or neither present.  If they are
