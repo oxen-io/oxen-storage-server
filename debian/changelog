@@ -1,3 +1,33 @@
+oxen-storage-server (2.5.0-1) unstable; urgency=medium
+
+  * submodule/dependency updates
+  * Static dep updates
+  * Fix linkage/includes for fmt
+  * zlib version bump
+  * Fix typo
+  * Allow missing aux pubkeys
+  * Allow 30-day TTL for owned messages
+  * Increase max batch request size to 20 subrequests
+  * Add _format helper
+  * Add "shorten" option to expire_msgs
+  * Add expiry retrieval, expiry extend-only mode
+  * Drop timestamp/expiry from message hash
+  * Fix bt-to-json skipping empty dicts
+  * Add tests for shorten/extend options
+  * TTL change test suite fixes
+  * Reformatting
+  * Network test fixes
+  * Bump clang-format to 14
+  * Add `set -e` to format verify script
+  * Fix store sig_timestamp handling
+  * Dependency updates
+  * Version bump
+  * Remove deprecated fields
+  * Fix openssl build flags
+  * Fix macos static lib detection
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 25 Jan 2023 13:13:30 -0400
+
 oxen-storage-server (2.4.0-2) unstable; urgency=medium
 
   * Rediff patches
