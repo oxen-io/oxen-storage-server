@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-CLANG_FORMAT_DESIRED_VERSION=11
+CLANG_FORMAT_DESIRED_VERSION=14
 
 binary=$(command -v clang-format-$CLANG_FORMAT_DESIRED_VERSION 2>/dev/null)
 if [ $? -ne 0 ]; then

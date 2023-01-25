@@ -25,7 +25,7 @@ def test_store(omq, random_sn, sk, exclude):
     assert len(s) == 1
     s = json.loads(s[0])
 
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
+    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert len(s["swarm"]) == len(swarm['snodes'])
@@ -58,7 +58,7 @@ def test_store_retrieve_unauthenticated(omq, random_sn, sk, exclude):
     assert len(s) == 1
     s = json.loads(s[0])
 
-    hash = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + sk.verify_key.encode() + b'abc 123',
+    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert all(v['hash'] == hash for v in s['swarm'].values())
@@ -98,7 +98,7 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert len(s1) == 1
     s1 = json.loads(s1[0])
 
-    hash1 = blake2b("{}{}".format(ts, exp).encode() + b'\x05' + xpk.encode() + b'abc 123',
+    hash1 = blake2b(b'\x05' + xpk.encode() + b'abc 123',
             encoder=Base64Encoder).decode().rstrip('=')
 
     assert all(v['hash'] == hash1 for v in s1['swarm'].values())
@@ -107,7 +107,7 @@ def test_store_retrieve_authenticated(omq, random_sn, sk, exclude):
     assert len(s2) == 1
     s2 = json.loads(s2[0])
 
-    hash2 = blake2b("{}{}".format(ts, exp).encode() + b'\x03' + sk.verify_key.encode() + b'def 456',
+    hash2 = blake2b(b'\x03' + sk.verify_key.encode() + b'def 456',
             encoder=Base64Encoder).decode().rstrip('=')
 
     to_sign = "retrieve{}".format(ts).encode()
@@ -206,7 +206,7 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
 
     # Store 6 more messages
     basemsg = b'another msg'
-    new_msgs = ss.store_n(omq, conn2, sk, basemsg, 6, 1)
+    new_msgs = ss.store_n(omq, conn2, sk, basemsg, 6, offset=1)
 
     # Retrieve using a last_hash so that we should get back only the 6:
     resp = omq.request_future(conn1, 'storage.retrieve', [json.dumps({
@@ -237,3 +237,64 @@ def test_store_retrieve_multiple(omq, random_sn, sk, exclude):
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 11
+
+
+def test_store_sig_timestamp(omq, random_sn, sk, exclude):
+    """Tests that sig_timestamp is used properly for the signature both sig_timestamp and timestamp
+    are given."""
+    swarm = ss.get_swarm(omq, random_sn, sk)
+
+    sn = ss.random_swarm_members(swarm, 1, exclude)[0]
+    conn = omq.connect_remote(sn_address(sn))
+
+    ts = int(time.time() * 1000)
+    ns = 123
+    ttl = 86400000
+    exp = ts + ttl
+
+    # Should be fine: timestamp is current, and we sign with it (so timestamp is double double-duty
+    # as both the message timestamp, and the signature timestamp):
+    to_sign = f"store{ns}{ts}".encode()
+    s = omq.request_future(conn, 'storage.store', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "namespace": ns,
+        "timestamp": ts,
+        "ttl": ttl,
+        "data": base64.b64encode("msg1".encode()).decode(),
+        "signature": sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(s) == 1
+    s = json.loads(s[0])
+
+    assert 'hash' in s
+
+
+    # Simulate a 100s storage delay:
+    ts -= 100_000
+
+    # Fails because timestamp is too old for a store signature:
+    to_sign = f"store{ns}{ts}".encode()
+    s = omq.request_future(conn, 'storage.store', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "namespace": ns,
+        "timestamp": ts,
+        "ttl": ttl,
+        "data": base64.b64encode("msg2".encode()).decode(),
+        "signature": sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert s == [b'406', b'store signature timestamp too far from current time']
+
+    # This should work: sig_timestamp is current, timestamp is old:
+    sig_ts = int(time.time() * 1000)
+    to_sign = f"store{ns}{sig_ts}".encode()
+    s = omq.request_future(conn, 'storage.store', [json.dumps({
+        "pubkey": '05' + sk.verify_key.encode().hex(),
+        "namespace": ns,
+        "timestamp": ts,
+        "sig_timestamp": sig_ts,
+        "ttl": ttl,
+        "data": base64.b64encode("msg3".encode()).decode(),
+        "signature": sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(s) == 1
+    s = json.loads(s[0])
