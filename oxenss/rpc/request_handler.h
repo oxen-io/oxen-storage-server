@@ -55,7 +55,7 @@ inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 // calculation, but not the second, and so this value is reduced to accomodate it.
 //
 // The maximum network message size is 10MiB, which means the max before b64 encoding is 7.5MiB
-// (7864320).  We allow for some respoinse overhead, which lands us on this effective maximum:
+// (7864320).  We allow for some response overhead, which lands us on this effective maximum:
 inline constexpr int RETRIEVE_MAX_SIZE = 7'800'000;
 
 // Maximum subrequests that can be stuffed into a single batch request
