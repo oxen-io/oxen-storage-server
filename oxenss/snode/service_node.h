@@ -220,7 +220,7 @@ class ServiceNode {
     //
     // If this ServiceNode was created with force_start enabled then this function always
     // returns true (except when shutting down); the reason string is still set (when non-null)
-    // when errors would have occured without force_start.
+    // when errors would have occurred without force_start.
     bool snode_ready(std::string* reason = nullptr);
 
     // Puts the storage server into shutdown mode; this operation is irreversible and should

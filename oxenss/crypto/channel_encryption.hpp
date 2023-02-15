@@ -28,7 +28,7 @@ inline constexpr std::string_view to_string(EncryptType type) {
     return ""sv;
 }
 
-// Encryption/decription class for encryption/decrypting outgoing/incoming messages.
+// Encryption/decryption class for encryption/decrypting outgoing/incoming messages.
 class ChannelEncryption {
   public:
     ChannelEncryption(x25519_seckey private_key, x25519_pubkey public_key, bool server = true) :

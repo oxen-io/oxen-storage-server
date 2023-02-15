@@ -57,7 +57,7 @@ void OMQ::handle_sn_data(oxenmq::Message& message) {
         ss << part;
     }
 
-    // TODO: proces push batch should move to "Request handler"
+    // TODO: process push batch should move to "Request handler"
     service_node_->process_push_batch(ss.str());
 
     log::debug(logcat, "[LMQ] send reply");
@@ -407,7 +407,7 @@ OMQ::OMQ(
     // endpoint:
     omq_.add_category("notify", oxenmq::AuthLevel::admin)
         .add_request_command("block", [this](auto&&) {
-            log::debug(logcat, "Recieved new block notification from oxend, updating swarms");
+            log::debug(logcat, "Received new block notification from oxend, updating swarms");
             if (service_node_) service_node_->update_swarms();
         });
 

@@ -254,7 +254,7 @@ const SwarmInfo* get_swarm_by_pk(
 
     const uint64_t res = pubkey_to_swarm_space(pk);
 
-    // NB: this code used to be far more convoluted by trying to accomodate the INVALID_SWARM_ID
+    // NB: this code used to be far more convoluted by trying to accommodate the INVALID_SWARM_ID
     // value, but that was wrong (because pubkeys map to the *full* uint64_t range, including
     // INVALID_SWARM_ID), more complicated, and didn't calculate distances properly when wrapping
     // around (in generally, but catastrophically for the INVALID_SWARM_ID value).

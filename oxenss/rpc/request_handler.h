@@ -52,7 +52,7 @@ inline constexpr auto SIGNATURE_TOLERANCE_FORWARDED = 70s;
 // several ways with multiple layers of base64 encoding that can occur: first, for json, the body
 // gets base64 encoded, but then onion requests (by default) also b64 encode the encrypted payload,
 // so we might have double base64 encoding.  We include the first b64 encoding overhead in our size
-// calculation, but not the second, and so this value is reduced to accomodate it.
+// calculation, but not the second, and so this value is reduced to accommodate it.
 //
 // The maximum network message size is 10MiB, which means the max before b64 encoding is 7.5MiB
 // (7864320).  We allow for some response overhead, which lands us on this effective maximum:
@@ -259,7 +259,7 @@ class RequestHandler {
     // a failure response with a body of the error string.
     void process_oxend_request(const nlohmann::json& params, std::function<void(Response)> cb);
 
-    // Test only: retrieve all db entires
+    // Test only: retrieve all db entries
     Response process_retrieve_all();
 
     // The result will arrive asynchronously, so it needs a callback handler
