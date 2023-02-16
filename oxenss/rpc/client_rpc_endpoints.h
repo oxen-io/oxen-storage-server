@@ -60,7 +60,7 @@ struct no_args : endpoint {
 /// - "timeout": true if the inter-swarm request timed out
 /// - "code": X if the inter-swarm request returned error code X
 /// - "reason": a reason string, e.g. propagating a thrown exception messages
-/// - "bad_peer_response": true if the peer returned an unparseable response
+/// - "bad_peer_response": true if the peer returned an unparsable response
 /// - "query_failure": true if the database failed to perform the query
 struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
@@ -712,7 +712,7 @@ using client_subrequest = type_list_variant_t<client_rpc_subrequests>;
 /// The batch request itself returns a 200 status code if the batch was processed, regardless of the
 /// return value of the individual subrequests (i.e. you get a 200 back even if all subrequests
 /// returned error codes).  Error statuses are returned only for bad batch requests (e.g. missing
-/// method/params arguments, invalid/unparseable subrequests, or too many subrequests).
+/// method/params arguments, invalid/unparsable subrequests, or too many subrequests).
 ///
 /// Note that batch requests may not recurse (i.e. you cannot invoke the batch endpoint as a batch
 /// subrequest).
