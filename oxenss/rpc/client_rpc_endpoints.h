@@ -198,6 +198,10 @@ struct store final : recursive {
 ///   namespaces then specify `"max_size": -5` on each of them to ensure that, if all are full, you
 ///   will not exceed network limits.
 ///
+///   Alternatively, if some are expected to be larger than others, you could use different
+///   fractions that add up to <= 1.  For example, -2 on a large mailbox (for 1/2 the limit) and
+///   -10 on five smaller mailboxes so that that maximum returned data is 1/2 + 5*(1/10) = 1.
+///
 ///   When both `max_count` and `max_size` are specified then the returned message count will not
 ///   exceed either limit.
 ///
@@ -672,8 +676,8 @@ using client_subrequest = type_list_variant_t<client_rpc_subrequests>;
 /// Note that requests may be performed in parallel or out of order; if you need sequential requests
 /// use "sequence" instead.
 ///
-/// This request takes an object containing a single key "requests" which contains a list of 1 to 5
-/// elements to invoke up to 5 subrequests.  Each element is a dict containing keys:
+/// This request takes an object containing a single key "requests" which contains a list of 1 to 20
+/// elements to invoke up to 20 subrequests.  Each element is a dict containing keys:
 ///
 /// - "method" -- the method name, e.g. "retrieve".
 /// - "params" -- the parameters to pass to the subrequest.
