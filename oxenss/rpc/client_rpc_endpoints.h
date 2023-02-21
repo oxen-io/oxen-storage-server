@@ -143,7 +143,7 @@ namespace {
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "hash": the hash of the stored message; will be an unpadded base64-encode blake2b hash of
-///       (TIMESTAMP || EXPIRY || PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
+///       (PUBKEY || NAMESPACE || DATA), where PUBKEY is in bytes (not hex!);
 ///       DATA is in bytes (not base64); and NAMESPACE is empty for namespace 0, and otherwise is
 ///       the decimal representation of the namespace index.
 ///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).  Returned
