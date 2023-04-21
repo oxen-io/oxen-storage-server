@@ -1,3 +1,9 @@
+oxen-storage-server (2.5.0-1~ubuntu2304) lunar; urgency=medium
+
+  * rebuild for lunar
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 21 Apr 2023 18:30:13 -0300
+
 oxen-storage-server (2.5.0-1~ubuntu2210) kinetic; urgency=medium
 
   * submodule/dependency updates
