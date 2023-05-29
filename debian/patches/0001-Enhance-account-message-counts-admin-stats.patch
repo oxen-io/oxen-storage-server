@@ -1,0 +1,131 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 29 May 2023 17:56:57 -0300
+Subject: Enhance account/message counts admin stats
+
+Adds various statistics to the admin.get_stats oxenmq endpoint:
+
+- Add number of accounts (this was already in the systemd Status line
+  but wasn't exposed in the get_stats endpoint).
+- Per-account message count stats:
+    - min, 5th, 25th, median, 75th, 9th, max values
+    - mean
+- Aggregate per-namespace counts
+---
+ oxenss/snode/service_node.cpp | 52 ++++++++++++++++++++++++++++++++++++++++++-
+ oxenss/storage/database.cpp   | 12 ++++++++++
+ oxenss/storage/database.hpp   |  6 +++++
+ 3 files changed, 69 insertions(+), 1 deletion(-)
+
+diff --git a/oxenss/snode/service_node.cpp b/oxenss/snode/service_node.cpp
+index 6df620b..d175646 100644
+--- a/oxenss/snode/service_node.cpp
++++ b/oxenss/snode/service_node.cpp
+@@ -6,6 +6,7 @@
+ #include <oxenss/rpc/request_handler.h>
+ #include <oxenss/server/omq.h>
+ #include <oxenss/logging/oxen_logger.h>
++#include <numeric>
+ #include <oxenss/utils/string_utils.hpp>
+ #include <oxenss/utils/random.hpp>
+ 
+@@ -1248,7 +1249,56 @@ std::string ServiceNode::get_stats() const {
+     val["height"] = block_height_;
+     val["target_height"] = target_height_;
+ 
+-    val["total_stored"] = db_->get_message_count();
++    std::vector<int> counts = db_->get_message_counts();
++    int64_t total = std::accumulate(counts.begin(), counts.end(), int64_t{0});
++
++    // If less than 5 our iterators below could end up at the same position, so just require at
++    // least 5 rather than worrying about that case:
++    if (counts.size() >= 5) {
++        // We're going to calculate a few numbers here from the list of stored account sizes:
++        // - minimum
++        // - 5th percentile
++        // - 25th percentile
++        // - median (i.e. 50th percentile)
++        // - 75th percentile
++        // - 95th percentile
++        // - maximum
++        // - total
++        // - mean
++        //
++        // To get a percentile we partially sort the data via nth_element; we don't muck around with
++        // averaging the middle two elements or anything like that (because that's of limited actual
++        // real world use) and instead just use the upper value by rounding up.  These look a little
++        // weird as `size-1+n` values but that's because we to divide the top index, not the size.
++        auto pct_5th = std::next(counts.begin(), (counts.size() - 1 + 19) / 20 - 1);
++        auto pct_25th = std::next(counts.begin(), (counts.size() - 1 + 3) / 4 - 1);
++        auto pct_50th = std::next(counts.begin(), (counts.size() - 1) / 2 - 1);
++        auto pct_75th = std::next(counts.begin(), (3 * counts.size() - 1 + 3) / 4 - 1);
++        auto pct_95th = std::next(counts.begin(), (19 * counts.size() - 1 + 19) / 20);
++        std::nth_element(counts.begin(), pct_5th, counts.end());
++        std::nth_element(std::next(pct_5th), pct_25th, counts.end());
++        std::nth_element(std::next(pct_25th), pct_50th, counts.end());
++        std::nth_element(std::next(pct_50th), pct_75th, counts.end());
++        std::nth_element(std::next(pct_75th), pct_95th, counts.end());
++
++        val["account_msg_count_min"] = *std::min_element(counts.begin(), pct_5th);
++        val["account_msg_count_max"] = *std::max_element(pct_95th, counts.end());
++        val["account_msg_count_5th"] = *pct_5th;
++        val["account_msg_count_25th"] = *pct_25th;
++        val["account_msg_count_median"] = *pct_50th;
++        val["account_msg_count_75th"] = *pct_75th;
++        val["account_msg_count_95th"] = *pct_95th;
++    }
++
++    val["accounts"] = counts.size();
++    val["total_stored"] = total;
++    if (counts.size() > 0)
++        val["account_msg_mean"] = total / (double)counts.size();
++
++    auto& ns_stats = (val["namespace_messages"] = nlohmann::json::object());
++    for (auto& [ns, count] : db_->get_namespace_counts())
++        ns_stats[fmt::format("{}", ns)] = count;
++
+     val["db_used"] = db_->get_used_bytes();
+     val["db_max"] = Database::SIZE_LIMIT;
+ 
+diff --git a/oxenss/storage/database.cpp b/oxenss/storage/database.cpp
+index 1e8e402..49ac4d4 100644
+--- a/oxenss/storage/database.cpp
++++ b/oxenss/storage/database.cpp
+@@ -543,6 +543,18 @@ int64_t Database::get_owner_count() {
+     return impl->prepared_get<int64_t>("SELECT COUNT(*) FROM owners");
+ }
+ 
++std::vector<int> Database::get_message_counts() {
++    auto st = impl->prepared_st(
++            "SELECT COUNT(*) FROM messages GROUP BY owner");
++    return get_all<int>(st);
++}
++
++std::vector<std::pair<namespace_id, int64_t>> Database::get_namespace_counts() {
++    auto st = impl->prepared_st(
++            "SELECT namespace, COUNT(*) FROM messages GROUP BY namespace");
++    return get_all<namespace_id, int64_t>(st);
++}
++
+ int64_t Database::get_used_bytes() {
+     return impl->prepared_get<int64_t>("PRAGMA page_count") * impl->page_size;
+ }
+diff --git a/oxenss/storage/database.hpp b/oxenss/storage/database.hpp
+index a0512f9..8e4bca4 100644
+--- a/oxenss/storage/database.hpp
++++ b/oxenss/storage/database.hpp
+@@ -79,9 +79,15 @@ class Database {
+     // Return the total number of messages stored
+     int64_t get_message_count();
+ 
++    // Returns the per-owner counts of stored messages, for storage statistics purposes.
++    std::vector<int> get_message_counts();
++
+     // Returns the number of distinct owner pubkeys with stored messages
+     int64_t get_owner_count();
+ 
++    // Returns the number of messages grouped by namespace id
++    std::vector<std::pair<namespace_id, int64_t>> get_namespace_counts();
++
+     // Returns the number of used bytes (i.e. used pages * page size) of the database
+     int64_t get_used_bytes();
+ 
