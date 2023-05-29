@@ -1,3 +1,9 @@
+oxen-storage-server (2.5.0-2) unstable; urgency=medium
+
+  * Enhance account/message counts admin stats
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 29 May 2023 19:47:58 -0300
+
 oxen-storage-server (2.5.0-1) unstable; urgency=medium
 
   * submodule/dependency updates
