@@ -580,9 +580,27 @@ int64_t Database::get_owner_count() {
     return get_impl()->prepared_get<int64_t>("SELECT COUNT(*) FROM owners");
 }
 
-int64_t Database::get_used_bytes() {
+std::vector<int> Database::get_message_counts() {
+    auto impl = get_impl();
+    auto st = impl->prepared_st("SELECT COUNT(*) FROM messages GROUP BY owner");
+    return get_all<int>(st);
+}
+
+std::vector<std::pair<namespace_id, int64_t>> Database::get_namespace_counts() {
+    auto impl = get_impl();
+    auto st = impl->prepared_st("SELECT namespace, COUNT(*) FROM messages GROUP BY namespace");
+    return get_all<namespace_id, int64_t>(st);
+}
+
+int64_t Database::get_total_bytes() {
     auto impl = get_impl();
     return impl->prepared_get<int64_t>("PRAGMA page_count") * impl->page_size;
+}
+
+int64_t Database::get_used_bytes() {
+    auto impl = get_impl();
+    return get_total_bytes() -
+           impl->prepared_get<int64_t>("PRAGMA freelist_count") * impl->page_size;
 }
 
 static std::optional<message> get_message(DatabaseImpl& impl, SQLite::Statement& st) {
