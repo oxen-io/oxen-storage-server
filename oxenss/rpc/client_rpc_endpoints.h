@@ -157,7 +157,7 @@ struct store final : recursive {
     /// Maximum `data` size in bytes (max acceptable b64 size will be 4/3 of this).
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
@@ -242,7 +242,7 @@ struct store final : recursive {
 struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> subkey;
     namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
@@ -300,7 +300,7 @@ struct info final : no_args {
 struct delete_msgs final : recursive {
     static constexpr auto names() { return NAMES("delete"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::vector<std::string> messages;
     std::array<unsigned char, 64> signature;
@@ -335,7 +335,7 @@ struct delete_msgs final : recursive {
 struct revoke_subkey final : recursive {
     static constexpr auto names() { return NAMES("revoke_subkey"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::array<unsigned char, 32> revoke_subkey;
     std::array<unsigned char, 64> signature;
@@ -403,7 +403,7 @@ inline std::string signature_value(const namespace_var& ns) {
 struct delete_all final : recursive {
     static constexpr auto names() { return NAMES("delete_all"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point timestamp;
@@ -448,7 +448,7 @@ struct delete_all final : recursive {
 struct delete_before final : recursive {
     static constexpr auto names() { return NAMES("delete_before"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point before;
@@ -499,7 +499,7 @@ struct delete_before final : recursive {
 struct expire_all final : recursive {
     static constexpr auto names() { return NAMES("expire_all"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point expiry;
@@ -565,7 +565,7 @@ struct expire_all final : recursive {
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
@@ -607,7 +607,7 @@ struct expire_msgs final : recursive {
 struct get_expiries final : endpoint {
     static constexpr auto names() { return NAMES("get_expiries"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::optional<std::array<unsigned char, 32>> subkey;
     std::vector<std::string> messages;
@@ -623,7 +623,7 @@ struct get_expiries final : endpoint {
 struct get_swarm final : endpoint {
     static constexpr auto names() { return NAMES("get_swarm", "get_snodes_for_pubkey"); }
 
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
 
     void load_from(nlohmann::json params) override;
     void load_from(oxenc::bt_dict_consumer params) override;

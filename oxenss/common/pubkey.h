@@ -9,23 +9,23 @@ namespace oxen {
 inline constexpr size_t USER_PUBKEY_SIZE_BYTES = 33;
 inline constexpr size_t USER_PUBKEY_SIZE_HEX = USER_PUBKEY_SIZE_BYTES * 2;
 
-class user_pubkey_t {
+class user_pubkey {
     int network_ = -1;
     std::string pubkey_;
 
-    user_pubkey_t(int network, std::string raw_pk) :
+    user_pubkey(int network, std::string raw_pk) :
             network_{network}, pubkey_{std::move(raw_pk)} {}
 
     friend class DatabaseImpl;
 
   public:
     // Default constructor; constructs an invalid pubkey
-    user_pubkey_t() = default;
+    user_pubkey() = default;
 
     // bool conversion: returns true if this object contains a valid pubkey
     explicit operator bool() const { return !pubkey_.empty(); }
 
-    bool operator==(const user_pubkey_t& other) const {
+    bool operator==(const user_pubkey& other) const {
         return type() == other.type() && raw() == other.raw();
     }
 
@@ -34,7 +34,7 @@ class user_pubkey_t {
     // pubkey then `this` is put into an invalid-pubkey state (i.e. `(bool)pk` will be false).
     // Returns a reference to *this (primary that `if (upk.load(pk)) { ... }` can be used to
     // load-and-test).
-    user_pubkey_t& load(std::string_view pk);
+    user_pubkey& load(std::string_view pk);
 
     // Returns the network id (0-255) that is typically prefixed on the beginning of the pubkey
     // string; currently 5 is used for Session Ed25519 pubkey IDs on mainnet, 0 is used for
@@ -62,8 +62,8 @@ class user_pubkey_t {
 
 namespace std {
 template <>
-struct hash<oxen::user_pubkey_t> {
-    size_t operator()(const oxen::user_pubkey_t& pk) const {
+struct hash<oxen::user_pubkey> {
+    size_t operator()(const oxen::user_pubkey& pk) const {
         return static_cast<size_t>(pk.type()) ^ hash<std::string>{}(pk.raw());
     }
 };

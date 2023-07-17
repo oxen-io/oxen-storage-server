@@ -50,7 +50,7 @@ namespace {
     }
 
     // Called from exec_query and similar to bind statement parameters for immediate execution.
-    // strings (and c strings) use no-copy binding; user_pubkey_t values use *two* sequential
+    // strings (and c strings) use no-copy binding; user_pubkey values use *two* sequential
     // binding slots for pubkey (first) and type (second); integer values are bound by value.
     // You can bind a blob (by reference, like strings) by passing `blob_binder{data}`.
     template <typename T>
@@ -59,7 +59,7 @@ namespace {
             st.bindNoCopy(i++, val);
         else if constexpr (std::is_same_v<T, blob_binder>)
             bind_blob_ref(st, i++, val.data);
-        else if constexpr (std::is_same_v<T, user_pubkey_t>) {
+        else if constexpr (std::is_same_v<T, user_pubkey>) {
             bind_blob_ref(st, i++, val.raw());
             st.bind(i++, val.type());
         } else if constexpr (std::is_same_v<T, namespace_id>)
@@ -69,9 +69,9 @@ namespace {
     }
 
     // Binds pubkey in a query such as `... WHERE pubkey = ? AND type = ?` into positions i
-    // (pubkey) and j (type).  The user_pubkey_t reference must stay valid for the duration of
+    // (pubkey) and j (type).  The user_pubkey reference must stay valid for the duration of
     // the statement.
-    void bind_pubkey(SQLite::Statement& st, int i, int j, const user_pubkey_t& pk) {
+    void bind_pubkey(SQLite::Statement& st, int i, int j, const user_pubkey& pk) {
         bind_blob_ref(st, i, pk.raw());
         st.bind(j, pk.type());
     }
@@ -519,7 +519,7 @@ CREATE TRIGGER IF NOT EXISTS owned_messages_insert
         return exec_and_get<T...>(prepared_st(query), bind...);
     }
 
-    user_pubkey_t load_pubkey(uint8_t type, std::string pk) { return {type, std::move(pk)}; }
+    user_pubkey load_pubkey(uint8_t type, std::string pk) { return {type, std::move(pk)}; }
 };
 
 Database::Database(const std::filesystem::path& db_path) :
@@ -616,7 +616,7 @@ void Database::bulk_store(const std::vector<message>& items) {
     auto get_owner = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto insert_owner = impl->prepared_st(
             "INSERT INTO owners (pubkey, type) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING id");
-    std::unordered_map<user_pubkey_t, int64_t> seen;
+    std::unordered_map<user_pubkey, int64_t> seen;
     for (auto& m : items) {
         if (!m.pubkey)
             continue;
@@ -666,7 +666,7 @@ void Database::bulk_store(const std::vector<message>& items) {
 }
 
 std::pair<std::vector<message>, bool> Database::retrieve(
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         namespace_id ns,
         const std::string& last_hash,
         std::optional<size_t> max_results,
@@ -752,7 +752,7 @@ std::vector<message> Database::retrieve_all() {
 }
 
 std::vector<std::pair<namespace_id, std::string>> Database::delete_all(
-        const user_pubkey_t& pubkey) {
+        const user_pubkey& pubkey) {
     auto st = impl->prepared_st(
             "DELETE FROM messages"
             " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
@@ -760,7 +760,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::delete_all(
     return get_all<namespace_id, std::string>(st, pubkey);
 }
 
-std::vector<std::string> Database::delete_all(const user_pubkey_t& pubkey, namespace_id ns) {
+std::vector<std::string> Database::delete_all(const user_pubkey& pubkey, namespace_id ns) {
     auto st = impl->prepared_st(
             "DELETE FROM messages"
             " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
@@ -785,7 +785,7 @@ namespace {
 }  // namespace
 
 std::vector<std::string> Database::delete_by_hash(
-        const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes) {
+        const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes) {
     if (msg_hashes.size() == 1) {
         // Use an optimized prepared statement for very common single-hash deletions
         auto st = impl->prepared_st(
@@ -812,7 +812,7 @@ std::vector<std::string> Database::delete_by_hash(
 }
 
 std::vector<std::pair<namespace_id, std::string>> Database::delete_by_timestamp(
-        const user_pubkey_t& pubkey, std::chrono::system_clock::time_point timestamp) {
+        const user_pubkey& pubkey, std::chrono::system_clock::time_point timestamp) {
     auto st = impl->prepared_st(
             "DELETE FROM messages"
             " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
@@ -822,7 +822,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::delete_by_timestamp(
 }
 
 std::vector<std::string> Database::delete_by_timestamp(
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         namespace_id ns,
         std::chrono::system_clock::time_point timestamp) {
     auto st = impl->prepared_st(
@@ -834,7 +834,7 @@ std::vector<std::string> Database::delete_by_timestamp(
 }
 
 void Database::revoke_subkey(
-        const user_pubkey_t& pubkey, const std::array<unsigned char, 32>& revoke_subkey) {
+        const user_pubkey& pubkey, const std::array<unsigned char, 32>& revoke_subkey) {
     auto insert_subkey = impl->prepared_st(
             "INSERT INTO revoked_subkeys (owner, subkey) "
             "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
@@ -851,7 +851,7 @@ bool Database::subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey
 }
 
 std::vector<std::string> Database::update_expiry(
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         const std::vector<std::string>& msg_hashes,
         std::chrono::system_clock::time_point new_exp,
         bool extend_only,
@@ -887,7 +887,7 @@ std::vector<std::string> Database::update_expiry(
 }
 
 std::map<std::string, int64_t> Database::get_expiries(
-        const user_pubkey_t& pubkey, const std::vector<std::string>& msg_hashes) {
+        const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes) {
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
         auto st = impl->prepared_st(
@@ -912,7 +912,7 @@ std::map<std::string, int64_t> Database::get_expiries(
 }
 
 std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(
-        const user_pubkey_t& pubkey, std::chrono::system_clock::time_point new_exp) {
+        const user_pubkey& pubkey, std::chrono::system_clock::time_point new_exp) {
     auto new_exp_ms = to_epoch_ms(new_exp);
     auto st = impl->prepared_st(
             "UPDATE messages SET expiry = ?"
@@ -922,7 +922,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(
 }
 
 std::vector<std::string> Database::update_all_expiries(
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         namespace_id ns,
         std::chrono::system_clock::time_point new_exp) {
     auto new_exp_ms = to_epoch_ms(new_exp);

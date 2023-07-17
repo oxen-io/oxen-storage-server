@@ -39,9 +39,9 @@ struct block_update {
 // Returns a pointer to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
 // nullptr on error (which will only happen if there are no swarms at all).  `all_swarms` must be
 // sorted by swarm id.
-const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk);
+const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk);
 // Not invokable with a temporary:
-const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey_t& pk) =
+const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey& pk) =
         delete;
 
 // Takes a swarm update, returns the number of active SN entries with missing
@@ -58,7 +58,7 @@ void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInf
 
 /// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one
 /// has a swarm id closest to this pubkey-derived value.
-uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk);
+uint64_t pubkey_to_swarm_space(const user_pubkey& pk);
 
 struct SwarmEvents {
     /// our (potentially new) swarm id
@@ -107,7 +107,7 @@ class Swarm {
 
     void apply_swarm_changes(std::vector<SwarmInfo>&& new_swarms);
 
-    bool is_pubkey_for_us(const user_pubkey_t& pk) const;
+    bool is_pubkey_for_us(const user_pubkey& pk) const;
 
     const std::vector<sn_record>& other_nodes() const { return swarm_peers_; }
 

@@ -140,12 +140,12 @@ std::string compute_hash(Func hasher, const T&... args) {
 std::string computeMessageHash_old(
         std::chrono::system_clock::time_point timestamp,
         std::chrono::system_clock::time_point expiry,
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         namespace_id ns,
         std::string_view data);
 
 /// Computes a message hash using blake2b hash of various messages attributes.
-std::string computeMessageHash(const user_pubkey_t& pubkey, namespace_id ns, std::string_view data);
+std::string computeMessageHash(const user_pubkey& pubkey, namespace_id ns, std::string_view data);
 
 struct OnionRequestMetadata {
     crypto::x25519_pubkey ephem_key;
@@ -171,7 +171,7 @@ class RequestHandler {
             bool base64 = true) const;
 
     // Return the correct swarm for `pubKey`
-    Response handle_wrong_swarm(const user_pubkey_t& pubKey);
+    Response handle_wrong_swarm(const user_pubkey& pubKey);
 
     // ===== Session Client Requests =====
 

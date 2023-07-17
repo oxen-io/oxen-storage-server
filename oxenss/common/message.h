@@ -9,7 +9,7 @@ namespace oxen {
 
 /// message received from a client
 struct message {
-    user_pubkey_t pubkey;
+    user_pubkey pubkey;
     std::string hash;
     namespace_id msg_namespace;
     std::chrono::system_clock::time_point timestamp;
@@ -18,7 +18,7 @@ struct message {
 
     message() = default;
 
-    message(user_pubkey_t pubkey,
+    message(user_pubkey pubkey,
             std::string hash,
             namespace_id msg_ns,
             std::chrono::system_clock::time_point timestamp,

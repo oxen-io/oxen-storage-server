@@ -89,7 +89,7 @@ namespace {
         j["hf"] = sn.hf();
     }
 
-    std::string obfuscate_pubkey(const user_pubkey_t& pk) {
+    std::string obfuscate_pubkey(const user_pubkey& pk) {
         const auto& pk_raw = pk.raw();
         if (pk_raw.empty())
             return "(none)";
@@ -256,7 +256,7 @@ namespace {
     template <typename... T>
     bool verify_signature(
             oxen::Database& db,
-            const user_pubkey_t& pubkey,
+            const user_pubkey& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
             const std::optional<std::array<unsigned char, 32>>& subkey,
             const std::array<unsigned char, 64>& sig,
@@ -347,7 +347,7 @@ std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
 std::string computeMessageHash_old(
         system_clock::time_point timestamp,
         system_clock::time_point expiry,
-        const user_pubkey_t& pubkey,
+        const user_pubkey& pubkey,
         namespace_id ns,
         std::string_view data) {
     char netid = static_cast<char>(pubkey.type());
@@ -366,7 +366,7 @@ std::string computeMessageHash_old(
 }
 
 std::string computeMessageHash(
-        const user_pubkey_t& pubkey, namespace_id ns, std::string_view data) {
+        const user_pubkey& pubkey, namespace_id ns, std::string_view data) {
     char netid = static_cast<char>(pubkey.type());
     std::array<char, 20> ns_buf;
     char* ns_buf_ptr = ns_buf.data();
@@ -388,7 +388,7 @@ RequestHandler::RequestHandler(
             1s);
 }
 
-Response RequestHandler::handle_wrong_swarm(const user_pubkey_t& pubKey) {
+Response RequestHandler::handle_wrong_swarm(const user_pubkey& pubKey) {
     log::trace(logcat, "Got client request to a wrong swarm");
 
     json swarm = swarm_to_json(service_node_.get_swarm(pubKey));

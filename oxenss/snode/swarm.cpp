@@ -220,7 +220,7 @@ std::optional<sn_record> Swarm::find_node(const crypto::x25519_pubkey& pk) const
     return std::nullopt;
 }
 
-uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
+uint64_t pubkey_to_swarm_space(const user_pubkey& pk) {
     const auto bytes = pk.raw();
     assert(bytes.size() == 32);
 
@@ -235,13 +235,13 @@ uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
     return res;
 }
 
-bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
+bool Swarm::is_pubkey_for_us(const user_pubkey& pk) const {
     auto* swarm = get_swarm_by_pk(all_valid_swarms_, pk);
     return swarm && cur_swarm_id_ == swarm->swarm_id;
 }
 
 const SwarmInfo* get_swarm_by_pk(
-        const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk) {
+        const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk) {
 
     if (all_swarms.empty())
         return nullptr;
