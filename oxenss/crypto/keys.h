@@ -93,12 +93,6 @@ legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in);
 ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
 
-/// Computes the signature verification derived pubkey for a pubkey+subkey string.  Throws
-/// std::invalid_argument if the pubkey/subkey aren't valid.
-std::array<unsigned char, 32> subkey_verify_key(std::string_view pubkey, std::string_view subkey);
-std::array<unsigned char, 32> subkey_verify_key(
-        const unsigned char* pubkey, const unsigned char* subkey);
-
 }  // namespace oxen::crypto
 
 template <>

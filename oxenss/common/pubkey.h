@@ -13,8 +13,7 @@ class user_pubkey {
     int network_ = -1;
     std::string pubkey_;
 
-    user_pubkey(int network, std::string raw_pk) :
-            network_{network}, pubkey_{std::move(raw_pk)} {}
+    user_pubkey(int network, std::string raw_pk) : network_{network}, pubkey_{std::move(raw_pk)} {}
 
     friend class DatabaseImpl;
 
