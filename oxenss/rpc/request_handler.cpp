@@ -343,30 +343,7 @@ std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
     return b64hash;
 }
 
-// FIXME: remove this after fully transitioned to HF19.3
-std::string computeMessageHash_old(
-        system_clock::time_point timestamp,
-        system_clock::time_point expiry,
-        const user_pubkey& pubkey,
-        namespace_id ns,
-        std::string_view data) {
-    char netid = static_cast<char>(pubkey.type());
-    std::array<char, 20> ns_buf;
-    char* ns_buf_ptr = ns_buf.data();
-    std::string_view ns_for_hash =
-            ns != namespace_id::Default ? detail::to_hashable(to_int(ns), ns_buf_ptr) : ""sv;
-    return compute_hash(
-            compute_hash_blake2b_b64,
-            timestamp,
-            expiry,
-            std::string_view{&netid, 1},
-            pubkey.raw(),
-            ns_for_hash,
-            data);
-}
-
-std::string computeMessageHash(
-        const user_pubkey& pubkey, namespace_id ns, std::string_view data) {
+std::string computeMessageHash(const user_pubkey& pubkey, namespace_id ns, std::string_view data) {
     char netid = static_cast<char>(pubkey.type());
     std::array<char, 20> ns_buf;
     char* ns_buf_ptr = ns_buf.data();
@@ -512,9 +489,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
     using namespace std::chrono;
     bool public_ns = is_public_namespace(req.msg_namespace);
     auto ttl = duration_cast<milliseconds>(req.expiry - req.timestamp);
-    auto max_ttl = (!public_ns && service_node_.hf_at_least(snode::HARDFORK_EXTENDED_PRIVATE_TTL))
-                         ? TTL_MAXIMUM_PRIVATE
-                         : TTL_MAXIMUM;
+    auto max_ttl = public_ns ? TTL_MAXIMUM : TTL_MAXIMUM_PRIVATE;
     if (ttl < TTL_MINIMUM || ttl > max_ttl) {
         log::warning(logcat, "Forbidden. Invalid TTL: {}ms", ttl.count());
         return cb(Response{http::FORBIDDEN, "Provided expiry/TTL is not valid."sv});
@@ -563,12 +538,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    // TODO: remove after HF19.3
-    std::string message_hash =
-            service_node_.hf_at_least(snode::HARDFORK_HASH_NO_TIME)
-                    ? computeMessageHash(req.pubkey, req.msg_namespace, req.data)
-                    : computeMessageHash_old(
-                              req.timestamp, req.expiry, req.pubkey, req.msg_namespace, req.data);
+    std::string message_hash = computeMessageHash(req.pubkey, req.msg_namespace, req.data);
 
     bool new_msg;
     bool success = false;
@@ -1131,15 +1101,6 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         return cb(Response{http::UNAUTHORIZED, "expire: timestamp should be >= current time"sv});
     }
 
-    // TODO: remove after HF19.3
-    if (!service_node_.hf_at_least(snode::HARDFORK_EXPIRY_SHORTEN_ONLY) &&
-        (req.shorten || req.extend))
-        return cb(Response{
-                http::BAD_REQUEST,
-                "expire: shorten/extend parameters cannot be used before network version {}.{}"_format(
-                        snode::HARDFORK_EXPIRY_SHORTEN_ONLY.first,
-                        snode::HARDFORK_EXPIRY_SHORTEN_ONLY.second)});
-
     if (req.shorten and req.subkey)
         return cb(Response{
                 http::BAD_REQUEST,
@@ -1169,10 +1130,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    auto max_ttl = service_node_.hf_at_least(snode::HARDFORK_EXTENDED_PRIVATE_TTL)
-                         ? TTL_MAXIMUM_PRIVATE
-                         : TTL_MAXIMUM;
-    auto expiry = std::min(std::chrono::system_clock::now() + max_ttl, req.expiry);
+    auto expiry = std::min(std::chrono::system_clock::now() + TTL_MAXIMUM_PRIVATE, req.expiry);
     auto updated = service_node_.get_db().update_expiry(
             req.pubkey,
             req.messages,

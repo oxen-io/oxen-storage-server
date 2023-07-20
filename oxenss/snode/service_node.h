@@ -46,18 +46,7 @@ inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 1};
-
-// The hardfork at which we start allowing 30d TTLs in private namespaces.
-inline constexpr hf_revision HARDFORK_EXTENDED_PRIVATE_TTL = {19, 3};
-
-// The hardfork at which we allow the `shorten=1` argument in expiries to only shorten (but not
-// extend) expiries.
-inline constexpr hf_revision HARDFORK_EXPIRY_SHORTEN_ONLY = {19, 3};
-
-// Starting at this hf the message hash generator changes to not include timestamp/expiry for better
-// de-duplication (this is transparent to clients).
-inline constexpr hf_revision HARDFORK_HASH_NO_TIME = {19, 3};
+inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 3};
 
 class Swarm;
 
