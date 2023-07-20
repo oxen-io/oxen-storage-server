@@ -1,5 +1,4 @@
 #include "request_handler.h"
-#include <oxenss/crypto/channel_encryption.hpp>
 #include "client_rpc_endpoints.h"
 #include <oxen/log.hpp>
 #include <oxenss/server/utils.h>
@@ -11,6 +10,8 @@
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
 #include <oxenss/common/format.h>
+#include <oxenss/crypto/subaccount.h>
+#include <oxenss/crypto/channel_encryption.hpp>
 
 #include <chrono>
 #include <future>
@@ -186,11 +187,15 @@ namespace {
             s = stringified_ints[N - sizeof...(More) - 1].size();
         else if constexpr (std::is_convertible_v<T, std::string_view>)
             s += std::string_view{val}.size();
+        else if constexpr (std::is_same_v<T, std::basic_string_view<unsigned char>>)
+            s += val.size();
         else if constexpr (std::is_same_v<T, std::map<std::string, int64_t>>) {
             for (auto& [k, v] : val) {
                 s += k.size();
                 s += 13;  // Enough for unix epoch millisecond values up to 2286
             }
+        } else if constexpr (std::is_same_v<T, std::vector<subaccount_token>>) {
+            s += val.size() * SUBACCOUNT_TOKEN_LENGTH;
         } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
@@ -214,11 +219,16 @@ namespace {
             result += stringified_ints[N - sizeof...(More) - 1];
         else if constexpr (std::is_convertible_v<T, std::string_view>)
             result += std::string_view{val};
+        else if constexpr (std::is_same_v<T, std::basic_string_view<unsigned char>>)
+            result += std::string_view{reinterpret_cast<const char*>(val.data()), val.size()};
         else if constexpr (std::is_same_v<T, std::map<std::string, int64_t>>) {
             for (auto& [k, v] : val) {
                 result += k;
                 "{}"_format_to(result, v);
             }
+        } else if constexpr (std::is_same_v<T, std::vector<subaccount_token>>) {
+            for (const auto& sa : val)
+                result += sa.sview();
         } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
@@ -258,7 +268,8 @@ namespace {
             oxen::Database& db,
             const user_pubkey& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
-            const std::optional<std::array<unsigned char, 32>>& subkey,
+            const std::optional<signed_subaccount_token>& subaccount,
+            subaccount_access required_access,
             const std::array<unsigned char, 64>& sig,
             const T&... val) {
         std::string data = concatenate_sig_message_parts(val...);
@@ -276,25 +287,27 @@ namespace {
                         logcat, "Signature verification failed: ed -> x conversion did not match");
                 return false;
             }
-        } else
+        } else {
             pk = reinterpret_cast<const unsigned char*>(raw.data());
+        }
 
-        std::array<unsigned char, 32> subkey_pub;
-        if (subkey) {
-            if (db.subkey_revoked(*subkey)) {
-                log::warning(logcat, "Signature verification failed: subkey previously revoked");
+        if (subaccount) {
+            // Make sure the token isn't revoked
+            if (db.subaccount_revoked(pubkey, subaccount->token)) {
+                log::warning(logcat, "Signature verification failed: subaccount is revoked");
                 return false;
             }
 
-            // Compute our verification key: (c + H("OxenSSSubkey" || c || A)) A and use that
-            // instead of A for verification:
+            // Check that it has the required flags and is signed:
             try {
-                subkey_pub = crypto::subkey_verify_key(pk, subkey->data());
-            } catch (const std::invalid_argument& ex) {
-                log::warning(logcat, "Signature verification failed: {}", ex.what());
+                subaccount->verify(pubkey, required_access, pk);
+            } catch (const subaccount_verification_error& e) {
+                log::warning(logcat, "Signature verification failed: {}", e.what());
                 return false;
             }
-            pk = subkey_pub.data();
+
+            // We are now going to use *this* pubkey for verifying the request signature
+            pk = subaccount->token.pubkey().data();
         }
 
         bool verified = 0 == crypto_sign_verify_detached(
@@ -521,7 +534,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                     service_node_.get_db(),
                     req.pubkey,
                     req.pubkey_ed25519,
-                    req.subkey,
+                    req.subaccount,
+                    subaccount_access::Write,
                     *req.signature,
                     "store",
                     req.msg_namespace == namespace_id::Default ? "" : to_string(req.msg_namespace),
@@ -680,7 +694,8 @@ void RequestHandler::process_client_req(
                     service_node_.get_db(),
                     req.pubkey,
                     req.pubkey_ed25519,
-                    req.subkey,
+                    req.subaccount,
+                    subaccount_access::Read,
                     req.signature,
                     "retrieve",
                     req.msg_namespace != namespace_id::Default
@@ -815,7 +830,8 @@ void RequestHandler::process_client_req(
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                req.subaccount,
+                subaccount_access::Delete,
                 req.signature,
                 "delete_all",
                 signature_value(req.msg_namespace),
@@ -871,7 +887,8 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                req.subaccount,
+                subaccount_access::Delete,
                 req.signature,
                 "delete",
                 req.messages)) {
@@ -922,22 +939,36 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
 }
 
 void RequestHandler::process_client_req(
-        rpc::revoke_subkey&& req, std::function<void(Response)> cb) {
-    log::debug(logcat, "processing revoke_subkey{} request", req.recurse ? "direct" : "forwarded");
+        rpc::revoke_subaccount&& req, std::function<void(Response)> cb) {
+    log::debug(
+            logcat, "processing revoke_subaccount{} request", req.recurse ? "direct" : "forwarded");
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
+        log::debug(
+                logcat,
+                "revoke_subaccount: invalid timestamp ({}s from now)",
+                duration_cast<seconds>(req.timestamp - now).count());
+        return cb(Response{
+                http::NOT_ACCEPTABLE, "revoke_subaccount timestamp too far from current time"sv});
+    }
 
     if (!verify_signature(
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                std::nullopt,  // no subaccount allowed
+                subaccount_access::None,
                 req.signature,
-                "revoke_subkey",
-                util::view_guts(req.revoke_subkey))) {
-        log::debug(logcat, "revoke_subkey: signature verification failed");
-        return cb(Response{http::UNAUTHORIZED, "revoke_subkey signature verification failed"sv});
+                "revoke_subaccount",
+                req.timestamp,
+                req.revoke)) {
+        log::debug(logcat, "revoke_subaccount: signature verification failed");
+        return cb(
+                Response{http::UNAUTHORIZED, "revoke_subaccount signature verification failed"sv});
     }
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
@@ -947,9 +978,61 @@ void RequestHandler::process_client_req(
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    service_node_.get_db().revoke_subkey(req.pubkey, req.revoke_subkey);
-    auto sig = create_signature(
-            ed25519_sk_, req.pubkey.prefixed_hex(), util::view_guts(req.revoke_subkey));
+    mine["count"] = service_node_.get_db().revoke_subaccounts(req.pubkey, req.revoke);
+    auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.revoke);
+    mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+    if (req.recurse)
+        add_misc_response_fields(res->result, service_node_);
+
+    if (--res->pending == 0)
+        reply_or_fail(std::move(res));
+}
+
+void RequestHandler::process_client_req(
+        rpc::unrevoke_subaccount&& req, std::function<void(Response)> cb) {
+    log::debug(
+            logcat,
+            "processing unrevoke_subaccount{} request",
+            req.recurse ? "direct" : "forwarded");
+
+    if (!service_node_.is_pubkey_for_us(req.pubkey))
+        return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
+        log::debug(
+                logcat,
+                "unrevoke_subaccount: invalid timestamp ({}s from now)",
+                duration_cast<seconds>(req.timestamp - now).count());
+        return cb(Response{
+                http::NOT_ACCEPTABLE, "unrevoke_subaccount timestamp too far from current time"sv});
+    }
+
+    if (!verify_signature(
+                service_node_.get_db(),
+                req.pubkey,
+                req.pubkey_ed25519,
+                std::nullopt,  // no subaccount allowed
+                subaccount_access::None,
+                req.signature,
+                "unrevoke_subaccount",
+                req.timestamp,
+                req.unrevoke)) {
+        log::debug(logcat, "unrevoke_subaccount: signature verification failed");
+        return cb(Response{
+                http::UNAUTHORIZED, "unrevoke_subaccount signature verification failed"sv});
+    }
+
+    auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
+
+    // Put our stuff inside "swarm" alongside all the other results
+    auto& mine = req.recurse
+                       ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
+                       : res->result;
+
+    mine["count"] = service_node_.get_db().unrevoke_subaccounts(req.pubkey, req.unrevoke);
+    auto sig =
+            create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.unrevoke);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         add_misc_response_fields(res->result, service_node_);
@@ -978,7 +1061,8 @@ void RequestHandler::process_client_req(
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                req.subaccount,
+                subaccount_access::Delete,
                 req.signature,
                 "delete_before",
                 signature_value(req.msg_namespace),
@@ -1043,7 +1127,8 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                std::nullopt,  // no subkey allowed
+                req.subaccount,
+                subaccount_access::Delete,
                 req.signature,
                 "expire_all",
                 signature_value(req.msg_namespace),
@@ -1101,16 +1186,12 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         return cb(Response{http::UNAUTHORIZED, "expire: timestamp should be >= current time"sv});
     }
 
-    if (req.shorten and req.subkey)
-        return cb(Response{
-                http::BAD_REQUEST,
-                "expire: shorten parameter cannot be used with subkey authentication"sv});
-
     if (!verify_signature(
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                req.subkey,
+                req.subaccount,
+                subaccount_access::Write,
                 req.signature,
                 "expire",
                 req.shorten  ? "shorten"
@@ -1120,6 +1201,24 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 req.messages)) {
         log::debug(logcat, "expire: signature verification failed");
         return cb(Response{http::UNAUTHORIZED, "expire: signature verification failed"sv});
+    }
+
+    bool extend_only = req.extend;
+
+    if (req.subaccount && !req.subaccount->token.has(subaccount_access::Delete)) {
+        // We know we have write access (from the verification above), but if we don't also have
+        // delete access then ensure we are only extending but not shortening expiries (because
+        // shortening an expiry to delete very soon is almost the same as deleting it).
+        if (req.shorten) {
+            return cb(Response{
+                    http::BAD_REQUEST,
+                    "expire: shorten parameter cannot be used with this subaccount token (missing delete access)"sv});
+        } else if (!req.extend) {
+            // Implicitly force on the extend-only mode when the subaccount can't delete (we can't
+            // actually change req.extend because that would break the signature if we are
+            // forwarding the request).
+            extend_only = true;
+        }
     }
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
@@ -1135,7 +1234,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
             req.pubkey,
             req.messages,
             expiry,
-            /*extend_only=*/req.extend || req.subkey,
+            extend_only,
             /*shorten_only=*/req.shorten);
     std::sort(updated.begin(), updated.end());
 
@@ -1183,7 +1282,8 @@ void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<v
                 service_node_.get_db(),
                 req.pubkey,
                 req.pubkey_ed25519,
-                req.subkey,
+                req.subaccount,
+                subaccount_access::Read,
                 req.signature,
                 "get_expiries",
                 req.sig_ts,

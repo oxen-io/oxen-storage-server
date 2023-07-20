@@ -130,9 +130,10 @@ class OMQ {
     ///   - P -- an ed25519 pubkey underlying a session ID, in bytes (32 bytes).  The account
     ///     will be derived by converting to an x25519 pubkey and prepending the 0x05 byte.  The
     ///     signature uses *this* key, not the derived x25519 key.
-    /// - S -- (optional) a 32-byte authentication subkey tag to use for authentication.  The
-    ///   signature with such a subkey tag uses a derived subkey (as described in the RPC endpoint
-    ///   documentation).
+    /// - S, T -- (optional) - subaccount signature (S) and token (T) for subaccount authentication:
+    ///   T is the 36-byte subaccount token, and S is the 64-byte main account signature authorizing
+    ///   that token.  See the subaccount description in the "store" RPC endpoint documentation for
+    ///   more details.  Both keys must be given when doing subaccount auth, neither key otherwise.
     /// - n -- list of namespace ids to monitor for new messages; the ids must be valid (i.e. -32768
     ///   through 32767), must be sorted in numeric order, and must contain no duplicates.
     /// - d -- set to 1 if the caller wants the full message data, 0 (or omitted) will omit the data
@@ -143,7 +144,7 @@ class OMQ {
     /// - s -- the signature associated with this message.  This is an Ed25519 signature of the
     ///   value:
     ///       ( "MONITOR" || ACCOUNT || TS || D || NS[0] || "," || ... || "," || NS[n] )
-    ///   signed by the account Ed25519 key or derived subkey (if using a subkey tag):
+    ///   signed by the account Ed25519 key or subaccount key (if using subaccount auth):
     ///   - ACCOUNT is the full account ID, expressed in hex (e.g. "0512345...").
     ///   - TS is the signature timestamp value, expressed as a base-10 string
     ///   - D is "0" or "1" depending on whether data is wanted (i.e. the "d" request parameter)
@@ -190,7 +191,7 @@ class OMQ {
     ///
     /// - The caller only receives one notification on the connection for a matching message from
     ///   any of the matching subscription requests on that same connection.
-    /// - All pubkey/subkey/ed25519 pubkeys that access the same account are treated as the same
+    /// - All pubkey/subaccount/ed25519 pubkeys that access the same account are treated as the same
     ///   subscription.
     /// - The data key (`~`) will be present in a notification if *any* subscription request for the
     ///   same account on the same connection requested data.  Same a flag only expires when the

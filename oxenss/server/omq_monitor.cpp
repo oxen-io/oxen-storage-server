@@ -1,5 +1,6 @@
 #include "omq.h"
 #include "../common/namespace.h"
+#include "../common/format.h"
 #include "../rpc/client_rpc_endpoints.h"
 #include "../utils/time.hpp"
 
@@ -42,13 +43,13 @@ namespace {
             oxenc::bt_dict_consumer d, oxenc::bt_dict_producer& out, std::vector<sub_info>& subs) {
 
         // Values we receive, in bt-dict order:
-        std::string_view ed_pk;       // P
-        std::string_view subkey_tag;  // S
-        bool want_data = false;       // d
+        std::string_view ed_pk;                         // P (ed25519 pubkey only for session ids)
+        std::optional<signed_subaccount_token> subacc;  // S (token signature), T (token)
+        bool want_data = false;                         // d (given and true if data is desired)
         using namespace_int = std::underlying_type_t<namespace_id>;
-        std::vector<namespace_id> namespaces;  // n
-        std::string pubkey;                    // p
-        std::string_view signature;            // s
+        std::vector<namespace_id> namespaces;  // n (ordered list of numeric namespaces)
+        std::string pubkey;                    // p (network id + ed25519 pubkey; not a session id)
+        std::string_view signature;            // s (signature, by subacc.token.pubkey() or pubkey)
         std::chrono::seconds timestamp;        // t
 
         try {
@@ -62,39 +63,49 @@ namespace {
                             "Provided P= Session Ed25519 pubkey must be 32 bytes");
             }
 
-            // Subkey tag for subkey auth (optional)
+            // Subaccount signature & token
             if (d.skip_until("S")) {
-                subkey_tag = d.consume_string_view();
-                if (subkey_tag.size() != 32)
+                subacc.emplace();
+                if (auto sig = d.consume_string_view(); sig.size() == subacc->signature.size())
+                    std::memcpy(subacc->signature.data(), sig.data(), sig.size());
+                else
                     return monitor_error(
                             out,
                             MonitorResponse::BAD_PUBKEY,
-                            "Provided S= subkey tag must be 32 bytes");
+                            "Provided S subaccount signature must be {} bytes"_format(
+                                    subacc->signature.size()));
+
+                if (auto token = d.require<std::string_view>("T");
+                    token.size() == SUBACCOUNT_TOKEN_LENGTH)
+                    std::memcpy(subacc->token.token.data(), token.data(), token.size());
+                else
+                    return monitor_error(
+                            out,
+                            MonitorResponse::BAD_PUBKEY,
+                            "Provided T subaccount token must be {} bytes"_format(
+                                    SUBACCOUNT_TOKEN_LENGTH));
             }
 
-            // Send full data (optional)
+            // Flag to send full message data as part of the pushed notifications (optional)
             if (d.skip_until("d"))
                 want_data = d.consume_integer<bool>();
 
             // List of namespaces to monitor (required)
-            if (d.skip_until("n")) {
-                auto ns = d.consume_list_consumer();
-                namespaces.push_back(
-                        static_cast<namespace_id>(ns.consume_integer<namespace_int>()));
-                while (!ns.is_finished()) {
-                    auto nsi = static_cast<namespace_id>(ns.consume_integer<namespace_int>());
-                    if (nsi > namespaces.back())
-                        namespaces.push_back(nsi);
-                    else
-                        return monitor_error(
-                                out,
-                                MonitorResponse::BAD_NS,
-                                "Invalid n= namespace list: namespaces must be ascending");
-                }
-            } else {
-                throw std::runtime_error{"required namespace list is missing"};
+            auto ns = d.require<oxenc::bt_list_consumer>("n");
+            namespaces.push_back(static_cast<namespace_id>(ns.consume_integer<namespace_int>()));
+            while (!ns.is_finished()) {
+                auto nsi = static_cast<namespace_id>(ns.consume_integer<namespace_int>());
+                if (nsi > namespaces.back())
+                    namespaces.push_back(nsi);
+                else
+                    return monitor_error(
+                            out,
+                            MonitorResponse::BAD_NS,
+                            "Invalid n= namespace list: namespaces must be ascending");
             }
 
+            // Account ID (i.e. network prefix followed by an Ed25519 pubkey).  *Not* for Session
+            // IDs, which must use P instead (because Session IDs are X25519 pubkeys).
             if (d.skip_until("p")) {
                 if (!ed_pk.empty())
                     throw std::runtime_error{"Cannot provide both p= and P= pubkey values"};
@@ -108,9 +119,7 @@ namespace {
                 throw std::runtime_error{"Either p= or P= must be given"};
             }
 
-            if (!d.skip_until("s"))
-                throw std::runtime_error{"required signature is missing"};
-            signature = d.consume_string_view();
+            signature = d.require<std::string_view>("s");
             if (signature.size() != 64)
                 return monitor_error(
                         out, MonitorResponse::BAD_SIG, "Provided s= signature must be 64 bytes");
@@ -121,9 +130,7 @@ namespace {
 
         } catch (const std::exception& ex) {
             return monitor_error(
-                    out,
-                    MonitorResponse::BAD_ARGS,
-                    fmt::format("Invalid arguments: invalid {}= value: {}", d.key(), ex.what()));
+                    out, MonitorResponse::BAD_ARGS, "Invalid arguments: "s + ex.what());
         }
 
         // Make sure the sig timestamp isn't too old or too new
@@ -154,17 +161,20 @@ namespace {
         }
 
         std::string_view verify_key = ed_pk;
-        std::array<unsigned char, 32> subkey_pub;
-        if (!subkey_tag.empty()) {
+        if (subacc) {
             try {
-                subkey_pub = crypto::subkey_verify_key(ed_pk, subkey_tag);
-            } catch (const std::invalid_argument& ex) {
-                auto m = fmt::format("Signature verification failed: {}", ex.what());
+                subacc->verify(
+                        pubkey[0],
+                        reinterpret_cast<const unsigned char*>(ed_pk.data()),
+                        subaccount_access::Read);
+            } catch (const std::exception& ex) {
+                auto m = "Subaccount verification failed: {}"_format(ex.what());
                 log::warning(logcat, "{}", m);
                 return monitor_error(out, MonitorResponse::BAD_SIG, m);
             }
-            verify_key = std::string_view{
-                    reinterpret_cast<const char*>(subkey_pub.data()), subkey_pub.size()};
+            auto sub_pk = subacc->token.pubkey();
+            verify_key =
+                    std::string_view{reinterpret_cast<const char*>(sub_pk.data()), sub_pk.size()};
         }
         assert(verify_key.size() == 32);
 
@@ -189,6 +199,11 @@ namespace {
         subs.emplace_back(
                 std::move(pubkey), std::move(pubkey_hex), std::move(namespaces), want_data);
         out.append("success", 1);
+    }
+
+    void handle_monitor_message_single(
+            oxenc::bt_dict_consumer d, oxenc::bt_dict_producer&& out, std::vector<sub_info>& subs) {
+        handle_monitor_message_single(d, out, subs);
     }
 
     // Merges sorted vectors a and b together, returns the sorted, combined vector (but without any
@@ -244,7 +259,7 @@ void OMQ::handle_monitor_messages(oxenmq::Message& message) {
         message.send_reply(oxenc::bt_serialize(oxenc::bt_dict{
                 {"errcode", static_cast<int>(MonitorResponse::BAD_ARGS)},
                 {"error",
-                 "Invalid arguments: monitor.messages takes a single bencoded dict/list "
+                 "Invalid arguments: monitor.messages takes a single bencoded dict or list "
                  "parameter"}}));
         return;
     }
@@ -254,20 +269,15 @@ void OMQ::handle_monitor_messages(oxenmq::Message& message) {
     std::vector<sub_info> subs;
     try {
         if (m.front() == 'd') {
-            result.resize(256);
-            oxenc::bt_dict_producer out{result.data(), result.size()};
+            oxenc::bt_dict_producer out;
             handle_monitor_message_single(oxenc::bt_dict_consumer{m}, out, subs);
-            result.resize(out.view().size());
+            result = std::move(out).str();
         } else {
-            result += 'l';
+            oxenc::bt_list_producer out;
             oxenc::bt_list_consumer l{m};
-            std::array<char, 256> buf;
-            while (!l.is_finished()) {
-                oxenc::bt_dict_producer out{buf.data(), buf.size()};
-                handle_monitor_message_single(l.consume_dict_consumer(), out, subs);
-                result.append(out.view());
-            }
-            result += 'e';
+            while (!l.is_finished())
+                handle_monitor_message_single(l.consume_dict_consumer(), out.append_dict(), subs);
+            result = std::move(out).str();
         }
     } catch (const std::exception& e) {
         message.send_reply(oxenc::bt_serialize(oxenc::bt_dict{

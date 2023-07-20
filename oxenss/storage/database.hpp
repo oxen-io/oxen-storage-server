@@ -1,6 +1,8 @@
 #pragma once
 
+#include <oxenss/common/subaccount_token.h>
 #include <oxenss/common/message.h>
+#include <oxenss/common/pubkey.h>
 
 #include <chrono>
 #include <cstdint>
@@ -121,12 +123,21 @@ class Database {
             namespace_id ns,
             std::chrono::system_clock::time_point timestamp);
 
-    // Adds subkey to revoked subkey database, revokes the subkey.
-    void revoke_subkey(
-            const user_pubkey& pubkey, const std::array<unsigned char, 32>& revoke_subkey);
+    // Adds access tokens to the revoked token database so that users may not longer use those
+    // tokens to authenticate.  Returns the number of new revocations added (i.e. does not count
+    // existing ones).
+    int revoke_subaccounts(
+            const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccount);
 
-    // Checks if a subkey exists in the revoked subkey database. True if exists and has been revoked
-    bool subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey);
+    // Removes access tokens from the revoked token database so that users may use those tokens to
+    // authenticate (if currently revoked).  Returns the number of token that were found and
+    // removed.
+    int unrevoke_subaccounts(
+            const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccount);
+
+    // Checks if a subaccount token exists in the revoked subaccount database. Returns true if the
+    // subaccount has been revoked, false otherwise.
+    bool subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount);
 
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
     // hashes of updated messages (i.e. hashes that don't exist, or were not updated, are not

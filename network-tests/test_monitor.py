@@ -1,11 +1,12 @@
 from util import sn_address
 import ss
-import subkey
+import subaccount
 import time
 import datetime
 from nacl.hash import blake2b
 from nacl.encoding import RawEncoder, Base64Encoder
 from nacl.signing import SigningKey, VerifyKey
+from typing import Optional, Union
 import nacl.bindings as sodium
 import json
 import base64
@@ -20,19 +21,25 @@ def notify_request(
     data: bool,
     namespaces: list,
     *,
-    netid=0x05,
+    netid: int = 0x05,
     sessionid: bool = False,
-    subk: bytes = None,
+    account: Optional[Union[SigningKey, VerifyKey]] = None,  # For use with subaccounts
+    subacc_token: bytes = b"",
+    subacc_sig: bytes = b"",
 ):
-
     req = {'n': sorted(namespaces), 'd': int(data), 't': ts}
+
+    if account is None:
+        account = sk.verify_key
+    elif isinstance(account, SigningKey):
+        account = account.verify_key
 
     if sessionid:
         assert netid == 0x05
-        req['P'] = sk.verify_key.encode()
-        account = b'\x05' + sk.verify_key.to_curve25519_public_key().encode()
+        req['P'] = account.encode()
+        account = b'\x05' + account.to_curve25519_public_key().encode()
     else:
-        account = chr(netid).encode() + sk.verify_key.encode()
+        account = netid.to_bytes(1, 'big') + account.encode()
         req['p'] = account
 
     # ( "MONITOR" || ACCOUNT || TS || D || NS[0] || ... || NS[n] )
@@ -40,15 +47,12 @@ def notify_request(
         f'MONITOR{account.hex()}{ts:d}{data:d}' + ','.join(f'{n}' for n in req['n'])
     ).encode()
 
-    if not subk:
-        req['s'] = sk.sign(message).signature
-    else:
-        assert len(subk) == 32
-        req['S'] = subk
-        _, d, D = subkey.make_subkey(sk, subk)
-        sig = subkey.sign(message, sk, d, D)
-        assert len(sig) == 64
-        req['s'] = sig
+    req['s'] = sk.sign(message).signature
+    if subacc_token:
+        assert type(subacc_token) == bytes and len(subacc_token) == 36
+        assert type(subacc_sig) == bytes and len(subacc_sig) == 64
+        req['S'] = subacc_sig
+        req['T'] = subacc_token
 
     return req
 
@@ -115,11 +119,9 @@ def test_monitor_reg_session(omq, random_sn, sk, exclude):
     assert registered == [[b'd7:successi1ee']] * len(registered)
 
 
-def test_monitor_reg_subkey(omq, random_sn, sk, exclude):
+def test_monitor_reg_subaccount(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
 
-    # Highly random subkey tag:
-    subk = b'abcdefghijklmnopqrstuvwxyzomg123'
     o = oxenmq.OxenMQ()
     o.start()
     ts = int(time.time())
@@ -134,7 +136,18 @@ def test_monitor_reg_subkey(omq, random_sn, sk, exclude):
             on_failure=lambda _, msg: print(f"Connection failed: {msg}"),
             timeout=datetime.timedelta(seconds=3),
         )
-        req = notify_request(sk, ts, True, [-5, 0, 23], netid=2, subk=subk)
+        sub_sk, sub_token, sub_sig = subaccount.make_subaccount(2, sk)
+        req = notify_request(
+            sub_sk,
+            ts,
+            True,
+            [-5, 0, 23],
+            netid=2,
+            account=sk,
+            subacc_token=sub_token,
+            subacc_sig=sub_sig,
+        )
+
         registered.append(
             o.request_future(
                 c,
@@ -158,7 +171,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     def handle_notify_message(m):
         nonlocal conns, n_notifies
         snode = conns[m.conn]
-        print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
+        #print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
         conns[m.conn]['response'].append(bt_deserialize(m.data()[0]))
         n_notifies += 1
 
@@ -181,11 +194,16 @@ def test_monitor_push(omq, random_sn, sk, exclude):
         snode['conn'] = c
         conns[c] = snode
 
+        # The first three are set up as full subscriptions; beyond that we use subaccounts:
+        req_sk, sub_token, sub_sig = sk, None, None
+        if len(registered) >= 3:
+            req_sk, sub_token, sub_sig = subaccount.make_subaccount(3, sk)
+
         registered.append(
             o.request_future(
                 c,
                 "monitor.messages",
-                bt_serialize(notify_request(sk, ts, True, [-5, 0, 23], netid=3)),
+                bt_serialize(notify_request(req_sk, ts, True, [-5, 0, 23], netid=3, account=sk, subacc_token=sub_token, subacc_sig = sub_sig)),
                 request_timeout=datetime.timedelta(seconds=5),
             )
         )
@@ -197,7 +215,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
     conn = omq.connect_remote(sn_address(sn))
 
-    print(f"starting store at {time.time()}")
+    #print(f"starting store at {time.time()}")
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
@@ -237,14 +255,11 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     # It's pretty rare that we don't get all the responses before the store responses (since they
     # don't have to be onion-routed back to us), but give it a couple seconds anyway.
     s = s.get()
-    print(f"got store response at {time.time()}")
+    #print(f"got store response at {time.time()}")
     assert len(s) == 1
     s = json.loads(s[0])
     hash = (
-        blake2b(
-            b'\x03' + sk.verify_key.encode() + b'abc 123',
-            encoder=Base64Encoder,
-        )
+        blake2b(b'\x03' + sk.verify_key.encode() + b'abc 123', encoder=Base64Encoder)
         .decode()
         .rstrip('=')
     )
@@ -281,7 +296,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     def handle_notify_message(m):
         nonlocal conns, n_notifies
         snode = conns[m.conn]
-        print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
+        #print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
         conns[m.conn]['response'].append(bt_deserialize(m.data()[0]))
         n_notifies += 1
 
@@ -325,7 +340,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
     conn = omq.connect_remote(sn_address(sn))
 
-    print(f"starting store at {time.time()}")
+    #print(f"starting store at {time.time()}")
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
@@ -346,7 +361,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     )
 
     s = s.get()
-    print(f"got store response at {time.time()}")
+    #print(f"got store response at {time.time()}")
     assert len(s) == 1
     s = json.loads(s[0])
 

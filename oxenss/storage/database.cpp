@@ -6,6 +6,7 @@
 #include "oxenss/utils/time.hpp"
 #include <oxenc/hex.h>
 
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <exception>
@@ -42,6 +43,9 @@ namespace {
     struct blob_binder {
         std::string_view data;
         explicit blob_binder(std::string_view d) : data{d} {}
+        template <typename Char, typename = std::enable_if_t<sizeof(Char) == 1>>
+        explicit blob_binder(const std::basic_string_view<Char>& d) :
+                data{reinterpret_cast<const char*>(d.data()), d.size()} {}
     };
 
     // Binds a string_view as a no-copy blob at parameter index i.
@@ -289,7 +293,7 @@ class DatabaseImpl {
         }
 
         if (!have_namespace) {
-            log::info(logcat, "Upgrading database schema");
+            log::info(logcat, "Upgrading database schema: adding namespace column");
             db.exec(R"(
 DROP INDEX IF EXISTS messages_owner;
 DROP TRIGGER IF EXISTS owned_messages_insert;
@@ -298,23 +302,27 @@ ALTER TABLE messages ADD COLUMN namespace INTEGER NOT NULL DEFAULT 0;
             )");
         }
 
-        if (!db.tableExists("revoked_subkeys")) {
-            log::info(logcat, "Upgrading database schema");
+        if (db.tableExists("revoked_subkeys")) {
+            log::info(logcat, "Upgrading database schema: dropping revoked_subkeys");
+            db.exec("DROP TABLE revoked_subkeys");
+        }
+        if (!db.tableExists("revoked_subaccounts")) {
+            log::info(logcat, "Upgrading database schema: adding revoked_subaccounts");
             db.exec(R"(
-CREATE TABLE revoked_subkeys (
+CREATE TABLE revoked_subaccounts (
     owner INTEGER REFERENCES owners(id) ON DELETE CASCADE,
-    subkey BLOB NOT NULL,
+    token BLOB NOT NULL,
     timestamp INTEGER NOT NULL DEFAULT (CAST((julianday('now') - 2440587.5)*86400000 AS INTEGER)),
 
-    PRIMARY Key(owner, subkey)
+    PRIMARY Key(owner, token)
 );
 
-CREATE TRIGGER IF NOT EXISTS subkey_autoclean
-    AFTER INSERT ON revoked_subkeys WHEN (SELECT COUNT(*) FROM revoked_subkeys WHERE owner = NEW.owner) > 50
+CREATE TRIGGER IF NOT EXISTS revoked_autoclean
+    AFTER INSERT ON revoked_subaccounts WHEN (SELECT COUNT(*) FROM revoked_subaccounts WHERE owner = NEW.owner) > 50
     BEGIN
-        DELETE FROM revoked_subkeys
-            WHERE owner = NEW.owner and subkey NOT IN (
-                SELECT subkey FROM revoked_subkeys
+        DELETE FROM revoked_subaccounts
+            WHERE owner = NEW.owner and token NOT IN (
+                SELECT token FROM revoked_subaccounts
                 WHERE owner = NEW.owner
                 ORDER BY timestamp DESC LIMIT 50
         );
@@ -751,8 +759,7 @@ std::vector<message> Database::retrieve_all() {
     return results;
 }
 
-std::vector<std::pair<namespace_id, std::string>> Database::delete_all(
-        const user_pubkey& pubkey) {
+std::vector<std::pair<namespace_id, std::string>> Database::delete_all(const user_pubkey& pubkey) {
     auto st = impl->prepared_st(
             "DELETE FROM messages"
             " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
@@ -833,21 +840,78 @@ std::vector<std::string> Database::delete_by_timestamp(
     return get_all<std::string>(st, pubkey, to_epoch_ms(timestamp), ns);
 }
 
-void Database::revoke_subkey(
-        const user_pubkey& pubkey, const std::array<unsigned char, 32>& revoke_subkey) {
-    auto insert_subkey = impl->prepared_st(
-            "INSERT INTO revoked_subkeys (owner, subkey) "
-            "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
+int Database::revoke_subaccounts(
+        const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccounts) {
+    if (subaccounts.empty())
+        return 0;
+
+    if (subaccounts.size() == 1) {
+        auto insert_token = impl->prepared_st(
+                "INSERT INTO revoked_subaccounts (owner, token) "
+                "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
+                "ON CONFLICT DO NOTHING");
+        return exec_query(insert_token, pubkey, blob_binder{subaccounts[0].view()});
+    }
+
+    SQLite::Transaction transaction{impl->db};
+
+    auto get_owner = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
+    auto ownerid = exec_and_maybe_get<int64_t>(get_owner, pubkey);
+    if (!ownerid)
+        return 0;
+
+    auto insert_token = impl->prepared_st(
+            "INSERT INTO revoked_subaccounts (owner, token) VALUES (?, ?) "
             "ON CONFLICT DO NOTHING");
-    exec_query(insert_subkey, pubkey, blob_binder{util::view_guts(revoke_subkey)});
+
+    int count = 0;
+    for (const auto& sa : subaccounts) {
+        count += exec_query(insert_token, *ownerid, blob_binder{sa.view()});
+        insert_token->reset();
+    }
+
+    transaction.commit();
+    return count;
 }
 
-bool Database::subkey_revoked(const std::array<unsigned char, 32>& revoke_subkey) {
-    auto get_subkey_count =
-            impl->prepared_st("SELECT count(*) FROM revoked_subkeys WHERE subkey = ?");
-    auto subkey_count =
-            exec_and_get<int64_t>(get_subkey_count, blob_binder{util::view_guts(revoke_subkey)});
-    return subkey_count > 0;
+int Database::unrevoke_subaccounts(
+        const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccounts) {
+    if (subaccounts.empty())
+        return 0;
+
+    if (subaccounts.size() == 1) {
+        auto remove_token = impl->prepared_st(
+                "DELETE FROM revoked_subaccounts"
+                " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+                " AND token = ?");
+        return exec_query(remove_token, pubkey, blob_binder{subaccounts[0].view()});
+    }
+
+    SQLite::Statement st{
+            impl->db,
+            multi_in_query(
+                    "DELETE FROM revoked_subaccounts"
+                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+                    " AND token IN ("sv,  // ?,?,?,...,?
+                    subaccounts.size(),
+                    ")"sv)};
+
+    bind_pubkey(st, 1, 2, pubkey);
+    for (size_t i = 0; i < subaccounts.size(); i++) {
+        auto sa = subaccounts[i].sview();
+        st.bindNoCopy(3 + i, static_cast<const void*>(sa.data()), sa.size());
+    }
+
+    return exec_query(st);
+}
+
+bool Database::subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount) {
+    auto count = exec_and_get<int64_t>(
+            impl->prepared_st("SELECT COUNT(*) FROM revoked_subaccounts WHERE token = ? AND "
+                              "owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"),
+            blob_binder{subaccount.view()},
+            pubkey);
+    return count > 0;
 }
 
 std::vector<std::string> Database::update_expiry(
@@ -922,9 +986,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(
 }
 
 std::vector<std::string> Database::update_all_expiries(
-        const user_pubkey& pubkey,
-        namespace_id ns,
-        std::chrono::system_clock::time_point new_exp) {
+        const user_pubkey& pubkey, namespace_id ns, std::chrono::system_clock::time_point new_exp) {
     auto new_exp_ms = to_epoch_ms(new_exp);
     auto st = impl->prepared_st(
             "UPDATE messages SET expiry = ?"
