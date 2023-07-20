@@ -14,6 +14,7 @@
 
 #include <oxenss/common/pubkey.h>
 #include <oxenss/common/namespace.h>
+#include <oxenss/common/subaccount_token.h>
 #include <oxenss/common/type_list.h>
 
 namespace oxen::snode {
@@ -97,16 +98,6 @@ namespace {
 /// - `namespace` (optional) a non-zero integer namespace (from -32768 to 32767) in which to store
 ///   this message.  Messages in different namespaces are treated as separate storage boxes from
 ///   untagged messages.
-/// - `subkey` (optional) if provided this is a 32-byte subkey value, encoded base64 or hex (for
-///   json requests; bytes, for bt-encoded requests), to use for subkey signature verification
-///   instead of using `pubkey` directly.  Denoting this value as `c` and `pubkey` as `A`, the
-///   signature verification will use public key value `D=(c+H(c‖A))A` to verify the request
-///   signature instead of `A`.  `H(.)` here is 32-byte BLAKE2b with a key of the 12-byte ascii
-///   string `OxenSSSubkey`. The client must therefore sign using `d=a(c+H(c‖A))`, where this `d`
-///   value has been calculated and provided securely to the sub-user by an owner of the account
-///   (i.e. someone with master secret key `a`).  Though `c` can be any cryptographically secure
-///   32-byte value, it is recommended to use `c=H(A‖S)`, where `S` is the user's pubkey.
-///
 ///   Different IDs have different storage properties:
 ///   - namespaces divisible by 10 (e.g. 0, 60, -30) allow unauthenticated submission: that is,
 ///     anyone may deposit messages into them without authentication.  Authentication is required
@@ -116,6 +107,19 @@ namespace {
 ///     closed groups), 5 (Session account private metadata).
 ///   - non-divisible-by-10 namespaces require authentication for all operations, including storage.
 ///   Omitting the namespace is equivalent to specifying the 0 namespace.
+/// - `subaccount` (optional) if provided this is a 33-byte subaccount token (encoded as base64 or
+///   hex in JSON requests), consisting of a 32-byte Ed25519 pubkey (typically blinded) and a byte
+///   of permission bits governing the type of access the subaccount has for the account.  When
+///   provided this must be paired with `subaccount_sig`, and the request `signature` value must be
+///   produced using the private key associated with the subaccount pubkey rather than the main
+///   account's pubkey.
+///
+///   When using a subaccount, the `store` method requires authentication with a subaccount token
+///   with the `write` flag set.
+/// - `subaccount_sig` (required when and only when `subaccount` present) this specifies a signature
+///   of the `subaccount` bytes value, signed by the main account's private key, authorizing the
+///   subaccount token to be used.
+///
 ///
 /// Authentication parameters: these are required when storing to a namespace not divisible by 10,
 /// and must match the pubkey of the storage address.  If provided then the request will be denied
@@ -126,7 +130,8 @@ namespace {
 ///   sig_timestamp are the base10 expression of the namespace and sig_timestamp values.  Must be
 ///   base64 encoded for json requests; binary for OMQ requests.  For non-05 type pubkeys (i.e. non
 ///   session ids) the signature will be verified using `pubkey`.  For 05 pubkeys, see the following
-///   option.
+///   option.  This signature is produced by the private key associated with the account, unless
+///   using the `subaccount`/`subaccount_sig` parameters.
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 ///   be interpreted as an `x25519` pubkey derived from *this* given ed25519 pubkey (which must be
 ///   64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
@@ -158,7 +163,7 @@ struct store final : recursive {
     inline static constexpr size_t MAX_MESSAGE_BODY = 76'800;
 
     user_pubkey pubkey;
-    std::optional<std::array<unsigned char, 32>> subkey;
+    std::optional<signed_subaccount_token> subaccount;
     namespace_id msg_namespace = namespace_id::Default;
     std::chrono::system_clock::time_point timestamp;
     std::chrono::system_clock::time_point expiry;  // computed from timestamp+ttl if ttl was given
@@ -183,8 +188,8 @@ struct store final : recursive {
 /// - `last_hash` (optional) retrieve messages stored by this storage server since `last_hash` was
 ///   stored.  Can also be specified as `lastHash`.  An empty string (or null) is treated as an
 ///   omitted value.
-/// - `subkey` (optional) allows retrieval using a derived subkey for authentication.  See `store`
-///   for details on how this works.
+/// - `subaccount`/`subaccount_sig` (optional) see description in `store`.  Only subaccount tokens
+///   with the read bit set may invoke this method.
 /// - `max_count`/`max_size` (optional) these two integer values control how many messages to
 ///   retrieve.  `max_count` takes an absolute count; at most the given value will be returned, when
 ///   specified.  `max_size` specifies a maximum aggregate size of messages to return (in bytes, if
@@ -243,7 +248,7 @@ struct retrieve final : endpoint {
     static constexpr auto names() { return NAMES("retrieve"); }
 
     user_pubkey pubkey;
-    std::optional<std::array<unsigned char, 32>> subkey;
+    std::optional<signed_subaccount_token> subaccount;
     namespace_id msg_namespace{0};
     std::optional<std::string> last_hash;
     std::optional<int> max_count;
@@ -287,6 +292,8 @@ struct info final : no_args {
 /// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value constructed
 ///   by concatenating "delete" and all `messages` values, using `pubkey` to sign.  Must be base64
 ///   encoded for json requests; binary for OMQ requests.
+/// - `subaccount`/`subaccount_sig` (optional) see description in `store`.  Only subaccounts with
+///   the read bit set in the subaccount token may invoke this method.
 ///
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -302,6 +309,7 @@ struct delete_msgs final : recursive {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<signed_subaccount_token> subaccount;
     std::vector<std::string> messages;
     std::array<unsigned char, 64> signature;
     bool required = false;
@@ -311,7 +319,7 @@ struct delete_msgs final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
-/// Revokes a Subkey
+/// Revokes a subaccount
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
@@ -319,25 +327,24 @@ struct delete_msgs final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
-/// - revoke_subkey -- the subkey tag which is to be added to the revocation list, Subkey tags are
-///   32 byte, passed in hex or base64-encoding 9for a json request) or as
-///   bytes (bt-encoded requests)
-/// - signature -- Ed25519 signature of ("revoke_subkey" || subkey); this signs the subkey tag,
-/// using `pubkey` to sign.
-///   Must be base64 encoded for json requests; binary for OMQ requests.
+/// - `revoke` -- the subaccount token which is to be added to the revocation list; see `store` for
+///   details of subaccount tag format.
+/// - signature -- Ed25519 signature of ("revoke_subaccount" || subaccount); this signs the
+///   subaccount (33 bytes), using `pubkey` to sign.  Must be base64 encoded for json requests;
+///   binary for OMQ requests.
 ///
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "signature": signature of:
-///             ( PUBKEY_HEX || SUBKEY_TAG_BYTES )
-///       where SUBKEY_TAG_BYTES is the requested subkey tag for revocation
-struct revoke_subkey final : recursive {
-    static constexpr auto names() { return NAMES("revoke_subkey"); }
+///             ( PUBKEY_HEX || SUBACCOUNT_TAG_BYTES )
+///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tag for revocation
+struct revoke_subaccount final : recursive {
+    static constexpr auto names() { return NAMES("revoke_subaccount"); }
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
-    std::array<unsigned char, 32> revoke_subkey;
+    subaccount_token revoke;
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
@@ -377,6 +384,8 @@ inline std::string signature_value(const namespace_var& ns) {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subaccount`/`subaccount_sig` - see `store` for details.  Only subaccounts with the `delete`
+///   bit set in the token may invoke this endpoint.
 /// - namespace -- (optional) the message namespace from which to delete messages.  This is either
 ///   an integer to delete messages from a specific namespace, or the string "all" to delete all
 ///   messages from all namespaces.  If omitted, messages are deleted from the default namespace
@@ -405,6 +414,7 @@ struct delete_all final : recursive {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<signed_subaccount_token> subaccount;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point timestamp;
     std::array<unsigned char, 64> signature;
@@ -423,6 +433,8 @@ struct delete_all final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subaccount`/`subaccount_sig` - see `store` for details.  Only subaccounts with the `delete`
+///   bit set in the token may invoke this endpoint.
 /// - namespace -- (optional) the message namespace from which to delete messages.  This is either
 ///   an integer to delete messages from a specific namespace, or the string "all" to delete
 ///   messages from all namespaces.  If omitted, messages are deleted from the default namespace
@@ -450,6 +462,7 @@ struct delete_before final : recursive {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<signed_subaccount_token> subaccount;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point before;
     std::array<unsigned char, 64> signature;
@@ -471,6 +484,8 @@ struct delete_before final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
+/// - `subaccount`/`subaccount_sig` - see `store` for details.  Only subaccounts with the `delete`
+///   bit set in the token may invoke this endpoint.
 /// - namespace -- (optional) the message namespace from which to change message expiries.  This is
 ///   either an integer to expire messages from a specific namespace, or the string "all" to update
 ///   messages in all namespaces.  If omitted, the update applies only to messages from the default
@@ -501,6 +516,7 @@ struct expire_all final : recursive {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    std::optional<signed_subaccount_token> subaccount;
     namespace_var msg_namespace;
     std::chrono::system_clock::time_point expiry;
     std::array<unsigned char, 64> signature;
@@ -520,26 +536,21 @@ struct expire_all final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
-/// - `subkey` (optional) allows authentication using a derived subkey.  This endpoint only applies
-///   TTL extension (but not reduction) when authenticating with a subkey.  See `store` for details
-///   on how subkey authentication works.
+/// - `subaccount`/`subaccount_sig` - see `store` for details.  Subaccounts must have the `write`
+///   bit set to invoke this endpoint at all, but also require the `delete` bit to shorten any
+///   expiries.  (That is: with only the write bit set on a subaccount this method will only extend
+///   expiries, as if `"extend": true` had been specified).
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  The
 ///   new expiry can be anywhere from current time up to the maximum TTL (30 days) from now;
 ///   specifying a later timestamp will be truncated to the maximum.
 /// - shorten -- if provided and set to true then the expiry is only shortened, but not extended.
-///   If the expiry is already at or before the given `expiry` timestamp then expiry will not be
-///   changed.  (This option is only supported starting at network version 19.3).  This option is
-///   not permitted when using subkey authentication.
+///   If the expiry of a given message is already at or before the given `expiry` timestamp then the
+///   expiry of that message will not be changed.
 /// - extend -- if provided and set to true then the expiry is only extended, but not shortened.  If
-///   the expiry is already at or beyond the given `expiry` timestamp then expiry will not be
-///   changed.  (This option is only supported starting at network version 19.3).  This option is
-///   mutually exclusive of "shorten".
-///
-///   Note that extend-only mode is always applied when using subkey authentication, but specifying
-///   this argument anyway for subkey authentication has two effects: 1) the required signature is
-///   different; and 2) "unchanged" will be included in the results.
+///   the expiry of a given message is already at or beyond the given `expiry` timestamp then its
+///   expiry will not be changed.  This option is mutually exclusive of "shorten".
 /// - signature -- Ed25519 signature of:
 ///       ("expire" || ShortenOrExtend || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string.  `ShortenOrExtend` is string
@@ -567,7 +578,7 @@ struct expire_msgs final : recursive {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
-    std::optional<std::array<unsigned char, 32>> subkey;
+    std::optional<signed_subaccount_token> subaccount;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point expiry;
     bool shorten = false;
@@ -587,8 +598,8 @@ struct expire_msgs final : recursive {
 ///   will be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must
 ///   be 64 hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also
 ///   convert to the given `pubkey` value (without the `05` prefix).
-/// - `subkey` (optional) allows authentication using a derived subkey.  See `store` for details on
-///   how subkey authentication works.
+/// - `subaccount`/`subaccount_sig` - see `store` for details.  Only subaccounts with the `read` bit
+///   set in the token may invoke this endpoint.
 /// - `messages` -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).  You may pass a single message id of "all" to retrieve
 ///   the timestamps of all
@@ -609,7 +620,7 @@ struct get_expiries final : endpoint {
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
-    std::optional<std::array<unsigned char, 32>> subkey;
+    std::optional<signed_subaccount_token> subaccount;
     std::vector<std::string> messages;
     std::chrono::system_clock::time_point sig_ts;
     std::array<unsigned char, 64> signature;
@@ -654,7 +665,7 @@ struct oxend_request final : endpoint {
 // batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
 // requests within them).
 using client_rpc_subrequests = type_list<
-        revoke_subkey,
+        revoke_subaccount,
         store,
         retrieve,
         delete_msgs,

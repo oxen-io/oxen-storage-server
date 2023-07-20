@@ -240,8 +240,7 @@ bool Swarm::is_pubkey_for_us(const user_pubkey& pk) const {
     return swarm && cur_swarm_id_ == swarm->swarm_id;
 }
 
-const SwarmInfo* get_swarm_by_pk(
-        const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk) {
+const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk) {
 
     if (all_swarms.empty())
         return nullptr;
