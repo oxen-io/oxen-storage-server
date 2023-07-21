@@ -746,10 +746,10 @@ void RequestHandler::process_client_req(
 }
 
 void RequestHandler::process_client_req(rpc::info&&, std::function<void(rpc::Response)> cb) {
-    return cb(Response{
-            http::OK,
-            json{{"version", STORAGE_SERVER_VERSION},
-                 {"timestamp", to_epoch_ms(system_clock::now())}}});
+    auto res = json{
+            {"version", STORAGE_SERVER_VERSION}, {"timestamp", to_epoch_ms(system_clock::now())}};
+    add_misc_response_fields(res, service_node_);
+    return cb(Response{http::OK, std::move(res)});
 }
 
 namespace {
