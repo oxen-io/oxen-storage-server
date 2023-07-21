@@ -299,16 +299,14 @@ namespace {
         const auto& sa = *subacc;
         const auto& sa_sig = *subacc_sig;
         auto& signed_subacc = rpc.subaccount.emplace();
-        static_assert(sizeof(signed_subacc.token) == 33 && sizeof(signed_subacc.signature) == 64);
         if constexpr (std::is_same_v<json, Dict>) {
-            if (oxenc::is_base64(sa) && sa.size() == 44)
+            if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH*4/3)
                 oxenc::from_base64(sa.begin(), sa.end(), signed_subacc.token.token.begin());
-            else if (oxenc::is_hex(sa) && sa.size() == 66)
+            else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH*2)
                 oxenc::from_hex(sa.begin(), sa.end(), signed_subacc.token.token.begin());
             else
                 throw parse_error{
-                        "invalid subaccount: expected base64 or hex-encoded 33-byte subaccount "
-                        "token"};
+                        "invalid subaccount: expected base64 or hex-encoded subaccount token"};
 
             if (!oxenc::is_base64(sa_sig) ||
                 !(sa_sig.size() == 86 || (sa_sig.size() == 88 && sa_sig.substr(86) == "==")))
@@ -316,9 +314,9 @@ namespace {
                         "invalid subaccount signature: expected base64 encoded Ed25519 signature"};
             oxenc::from_base64(sa_sig.begin(), sa_sig.end(), signed_subacc.signature.begin());
         } else {
-            if (sa.size() != 33)
-                throw parse_error{"invalid subaccount: expected 33-byte subaccount token"};
-            std::memcpy(signed_subacc.token.token.data(), sa.data(), 33);
+            if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+                throw parse_error{"invalid subaccount token: invalid token length"};
+            std::memcpy(signed_subacc.token.token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
             if (sa_sig.size() != 64)
                 throw parse_error{"invalid signature: expected 64-byte Ed25519 signature"};
             std::memcpy(signed_subacc.signature.data(), sa_sig.data(), 64);
@@ -568,17 +566,17 @@ static void load(revoke_subaccount& rs, Dict& d) {
     require("revoke", revoke);
     const auto& sa = *revoke;
     if constexpr (std::is_same_v<json, Dict>) {
-        if (oxenc::is_base64(sa) && sa.size() == 44)
+        if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH*4/3)
             oxenc::from_base64(sa.begin(), sa.end(), rs.revoke.token.begin());
-        else if (oxenc::is_hex(sa) && sa.size() == 66)
+        else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH*2)
             oxenc::from_hex(sa.begin(), sa.end(), rs.revoke.token.begin());
         else
             throw parse_error{
-                    "invalid revoke: expected base64 or hex-encoded 33-byte subaccount tag"};
+                    "invalid revoke: expected base64 or hex-encoded subaccount tag"};
     } else {
-        if (sa.size() != 32)
-            throw parse_error{"invalid revoke subaccount: expected 33-byte subaccount tag"};
-        std::memcpy(rs.revoke.token.data(), sa.data(), 33);
+        if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+            throw parse_error{"invalid revoke subaccount: invalid subaccount tag length"};
+        std::memcpy(rs.revoke.token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
     }
 }
 void revoke_subaccount::load_from(json params) {

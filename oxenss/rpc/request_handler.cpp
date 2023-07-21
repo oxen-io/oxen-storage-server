@@ -292,6 +292,11 @@ namespace {
                 return false;
             }
 
+            if (!subaccount->token.prefix_allowed(pubkey.type())) {
+                log::warning(logcat, "Signature verification failed: subaccount network prefix mismatch");
+                return false;
+            }
+
             // Check that this token allows whatever access flag(s) are needed for this endpoint
             if ((subaccount->token.flags() & required_access) != required_access) {
                 log::warning(
@@ -1131,8 +1136,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
-                subaccount_access::Write,  // We require at least Write for everything, and Delete
-                                           // for some requests.
+                subaccount_access::Write,
                 req.signature,
                 "expire",
                 req.shorten  ? "shorten"
@@ -1144,10 +1148,10 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         return cb(Response{http::UNAUTHORIZED, "expire: signature verification failed"sv});
     }
 
-    if (req.subaccount && !req.subaccount->token.can_delete()) {
-        // We know we have write access, but if we don't also have delete access then ensure we are
-        // only extending but not shortening expiries (because shortening an expiry to delete very
-        // soon is almost the same as deleting it).
+    if (req.subaccount && !req.subaccount->token.has(subaccount_access::Delete)) {
+        // We know we have write access (from the verification above), but if we don't also have
+        // delete access then ensure we are only extending but not shortening expiries (because
+        // shortening an expiry to delete very soon is almost the same as deleting it).
         if (req.shorten) {
             return cb(Response{
                     http::BAD_REQUEST,
