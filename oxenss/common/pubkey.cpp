@@ -1,5 +1,6 @@
 #include "pubkey.h"
 #include "mainnet.h"
+#include <cstdint>
 #include <oxenc/hex.h>
 #include <charconv>
 #include <cassert>

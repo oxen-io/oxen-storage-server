@@ -293,7 +293,9 @@ namespace {
             }
 
             if (!subaccount->token.prefix_allowed(pubkey.type())) {
-                log::warning(logcat, "Signature verification failed: subaccount network prefix mismatch");
+                log::warning(
+                        logcat,
+                        "Signature verification failed: subaccount network prefix mismatch");
                 return false;
             }
 
@@ -906,8 +908,8 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
     }
 
     if (req.required) {
-        // If required is true then we need to intercept the response and change it to a 404 if none
-        // of the swarm members deleted anything.
+        // If required is true then we need to intercept the response and change it to a 404 if
+        // none of the swarm members deleted anything.
         cb = [cb = std::move(cb)](Response r) {
             if (r.status.first == 200) {
                 if (auto* jsonptr = std::get_if<nlohmann::json>(&r.body)) {
@@ -1157,9 +1159,9 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                     http::BAD_REQUEST,
                     "expire: shorten parameter cannot be used with this subaccount token (missing delete access)"sv});
         } else if (!req.extend) {
-            // Implicitly force on the extend-only mode when the subaccount can't delete (we do this
-            // here, after the signature verification, rather than above, because this doesn't go in
-            // the signature if not explicitly given).
+            // Implicitly force on the extend-only mode when the subaccount can't delete (we do
+            // this here, after the signature verification, rather than above, because this
+            // doesn't go in the signature if not explicitly given).
             req.extend = true;
         }
     }
@@ -1241,14 +1243,14 @@ void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<v
 }
 
 void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc::Response)> cb) {
-
     assert(!req.subreqs.empty());
 
-    // `cb` expects to be invoked once with the full response, but we have a vector of requests to
-    // initiate and many possible subrequests (like `store`) are asynchronous because they recurse
-    // through the swarm.  Responses thus may arrive at random times, so we need to fully populate
-    // our subresults initially (with nulls) them fill in the values as they arrive.  Once we get a
-    // full set of non-null values, we can then pass the final response back to `cb`.
+    // `cb` expects to be invoked once with the full response, but we have a vector of requests
+    // to initiate and many possible subrequests (like `store`) are asynchronous because they
+    // recurse through the swarm.  Responses thus may arrive at random times, so we need to
+    // fully populate our subresults initially (with nulls) them fill in the values as they
+    // arrive.  Once we get a full set of non-null values, we can then pass the final response
+    // back to `cb`.
 
     auto subresults = std::make_shared<json>(json::array());
     for (size_t i = 0; i < req.subreqs.size(); i++)
@@ -1289,27 +1291,28 @@ namespace {
 
 void RequestHandler::process_client_req(
         rpc::sequence&& req, std::function<void(rpc::Response)> cb) {
-
     assert(!req.subreqs.empty());
 
     // This gets a bit hairy because of how the asynchronous requests can work when we have a
-    // swarm-recursive request (like a store), and so we define a recursive lambda here that owns
-    // itself (via the captured `sequence_manager` shared pointer) and clears that ownership only
-    // once the response is fully constructed.
+    // swarm-recursive request (like a store), and so we define a recursive lambda here that
+    // owns itself (via the captured `sequence_manager` shared pointer) and clears that
+    // ownership only once the response is fully constructed.
     //
     // It goes like this:
-    // - we initiate the first request, and once it is done (i.e. locally *and* all remote responses
+    // - we initiate the first request, and once it is done (i.e. locally *and* all remote
+    // responses
     //   are collected or timed out) then the lambda below gets called.
     // - we append the result to our collected results, then:
     //   - if that result was a failure, we return what we have but stop processing more
     //   - if we have a full set of results we fire it back to the requestor via `cb`
-    //   - otherwise (i.e. the result is good and we have fewer results than requests), we fire the
-    //     next subrequest (which will call back into the same lambda when it finishes, repeating
-    //     everything)
+    //   - otherwise (i.e. the result is good and we have fewer results than requests), we fire
+    //   the
+    //     next subrequest (which will call back into the same lambda when it finishes,
+    //     repeating everything)
     //
     // The `manager` object here is a bit of an Ouroborus: it contains a lambda that captures a
-    // shared pointer to itself.  We break the link (by clearing the lambda) as soon as we have the
-    // full response.
+    // shared pointer to itself.  We break the link (by clearing the lambda) as soon as we have
+    // the full response.
     //
     auto manager = std::make_shared<sequence_manager>();
     manager->subreqs = std::move(req.subreqs);
@@ -1343,7 +1346,6 @@ void RequestHandler::process_client_req(
 }
 
 void RequestHandler::process_client_req(rpc::ifelse&& req, std::function<void(rpc::Response)> cb) {
-
     bool cond = req.condition(service_node_);
     json response{
             {"hf", service_node_.hf()},
