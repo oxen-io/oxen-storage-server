@@ -135,17 +135,8 @@ std::string compute_hash(Func hasher, const T&... args) {
     return hasher({detail::to_hashable(args, b)...});
 }
 
-/// Computes a message hash using blake2b hash of various messages attributes.  This is the
-/// pre-HF19.3 version, which includes timestamp/expiry.  (TODO: delete after HF19.3).
-std::string computeMessageHash_old(
-        std::chrono::system_clock::time_point timestamp,
-        std::chrono::system_clock::time_point expiry,
-        const user_pubkey_t& pubkey,
-        namespace_id ns,
-        std::string_view data);
-
 /// Computes a message hash using blake2b hash of various messages attributes.
-std::string computeMessageHash(const user_pubkey_t& pubkey, namespace_id ns, std::string_view data);
+std::string computeMessageHash(const user_pubkey& pubkey, namespace_id ns, std::string_view data);
 
 struct OnionRequestMetadata {
     crypto::x25519_pubkey ephem_key;
@@ -171,7 +162,7 @@ class RequestHandler {
             bool base64 = true) const;
 
     // Return the correct swarm for `pubKey`
-    Response handle_wrong_swarm(const user_pubkey_t& pubKey);
+    Response handle_wrong_swarm(const user_pubkey& pubKey);
 
     // ===== Session Client Requests =====
 
@@ -208,7 +199,7 @@ class RequestHandler {
     void process_client_req(rpc::batch&&, std::function<void(Response)> cb);
     void process_client_req(rpc::sequence&&, std::function<void(Response)> cb);
     void process_client_req(rpc::ifelse&&, std::function<void(Response)> cb);
-    void process_client_req(rpc::revoke_subkey&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::revoke_subaccount&& req, std::function<void(Response)> cb);
 
     struct rpc_handler {
         std::function<client_request(std::variant<nlohmann::json, oxenc::bt_dict_consumer> params)>
