@@ -43,6 +43,10 @@ if (m{^\s*<script>\s*$} .. m{^\s*</script>\s*$}) {
       loadSidebar: "sidebar.md",
       subMaxLevel: 3,
       homepage: "index.md",
+      latex: {
+        inlineMath   : [["\$", "\$"]],
+        displayMath  : [["\$\$", "\$\$"]],
+      },
     }
   </script>\n};
     }
@@ -52,7 +56,7 @@ if (m{^\s*<script>\s*$} .. m{^\s*</script>\s*$}) {
     if (m{^\s*</body>}) {
         print qq{
   <script src="vendor/prism-json.min.js"></script>
-  <script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script type="text/javascript" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify-latex@0"></script>
 };
     }
