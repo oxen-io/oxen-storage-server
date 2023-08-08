@@ -1,3 +1,9 @@
+oxen-storage-server (2.5.0-3~deb11) bullseye; urgency=medium
+
+  * Fix `get_used_bytes` to subtract free pages
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 08 Aug 2023 14:52:46 -0300
+
 oxen-storage-server (2.5.0-2~deb11) bullseye; urgency=medium
 
   * Enhance account/message counts admin stats
