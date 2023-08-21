@@ -1,3 +1,9 @@
+oxen-storage-server (2.5.0-4~deb10) buster; urgency=medium
+
+  * Don't count single-message boxes as accounts
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 21 Aug 2023 13:03:50 -0300
+
 oxen-storage-server (2.5.0-3~deb10) buster; urgency=medium
 
   * Fix `get_used_bytes` to subtract free pages
