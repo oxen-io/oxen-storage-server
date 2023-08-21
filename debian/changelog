@@ -1,3 +1,9 @@
+oxen-storage-server (2.5.0-4~ubuntu2204) jammy; urgency=medium
+
+  * Don't count single-message boxes as accounts
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 21 Aug 2023 13:04:03 -0300
+
 oxen-storage-server (2.5.0-3~ubuntu2204) jammy; urgency=medium
 
   * Fix `get_used_bytes` to subtract free pages
