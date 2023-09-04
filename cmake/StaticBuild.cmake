@@ -37,10 +37,10 @@ set(LIBUV_HASH SHA512=91197ff9303112567bbb915bbb88058050e2ad1c048815a3b57c054635
     CACHE STRING "libuv source hash")
 
 set(ZLIB_VERSION 1.2.13 CACHE STRING "zlib version")
-set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net/fossils
     CACHE STRING "zlib mirror(s)")
-set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
-set(ZLIB_HASH SHA256=d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98
+set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
+set(ZLIB_HASH SHA256=b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30
     CACHE STRING "zlib source hash")
 
 set(CURL_VERSION 7.87.0 CACHE STRING "curl version")
