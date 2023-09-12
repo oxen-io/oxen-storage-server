@@ -75,7 +75,7 @@ const oxenmq::address TESTNET_OMQ{"tcp://public.loki.foundation:9999"};
 const oxenmq::address MAINNET_OMQ{"tcp://public.loki.foundation:22029"};
 
 void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
-        bool mainnet, std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control);
+        std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control);
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> pubkeys_hex;
@@ -181,8 +181,7 @@ int main(int argc, char** argv) {
         if (first_ip.empty() || !first_port)
             throw std::runtime_error{"Missing IP/port of first hop"};
 
-        onion_request(first_ip, first_port, std::move(chain), omq_addr == MAINNET_OMQ,
-                enc_type, payload, control);
+        onion_request(first_ip, first_port, std::move(chain), enc_type, payload, control);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
@@ -210,11 +209,8 @@ EncryptType random_etype() {
         EncryptType::xchacha20;
 }
 
-void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys, bool mainnet,
+void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
         std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control) {
-    std::string_view user_pubkey = "05fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
-    if (!mainnet) user_pubkey.remove_prefix(2);
-
     std::string blob;
 
     std::cerr << "Building " << (keys.size()-1) << "-hop onion request\n";
