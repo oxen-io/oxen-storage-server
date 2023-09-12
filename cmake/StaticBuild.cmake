@@ -5,49 +5,49 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 3.0.7 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.12 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=83049d042a260e696f62406ac5c08bf706fd84383f945cf21bd61e9ed95c396e
+set(OPENSSL_HASH SHA256=f93c9e8edde5e9166119de31755fc87b4aa34863662f67ddfcba14d0b6b69b61
     CACHE STRING "openssl source hash")
 
-set(SODIUM_VERSION 1.0.18 CACHE STRING "libsodium version")
+set(SODIUM_VERSION 1.0.19 CACHE STRING "libsodium version")
 set(SODIUM_MIRROR ${LOCAL_MIRROR}
   https://download.libsodium.org/libsodium/releases
   https://github.com/jedisct1/libsodium/releases/download/${SODIUM_VERSION}-RELEASE
   CACHE STRING "libsodium mirror(s)")
 set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
-set(SODIUM_HASH SHA512=17e8638e46d8f6f7d024fe5559eccf2b8baf23e143fadd472a7d29d228b186d86686a5e6920385fe2020729119a5f12f989c3a782afbd05a8db4819bb18666ef
+set(SODIUM_HASH SHA512=8e9b6d796f6330e00921ce37f1b43545966094250938626ae227deef5fd1279f2fc18b5cd55e23484732a27df4d919cf0d2f07b9c2f1aa0c0ef689e668b0d439
   CACHE STRING "libsodium source hash")
 
 include(sqlite3_source)
 
-set(ZMQ_VERSION 4.3.4 CACHE STRING "libzmq version")
+set(ZMQ_VERSION 4.3.5 CACHE STRING "libzmq version")
 set(ZMQ_MIRROR ${LOCAL_MIRROR} https://github.com/zeromq/libzmq/releases/download/v${ZMQ_VERSION}
     CACHE STRING "libzmq mirror(s)")
 set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
-set(ZMQ_HASH SHA512=e198ef9f82d392754caadd547537666d4fba0afd7d027749b3adae450516bcf284d241d4616cad3cb4ad9af8c10373d456de92dc6d115b037941659f141e7c0e
+set(ZMQ_HASH SHA512=a71d48aa977ad8941c1609947d8db2679fc7a951e4cd0c3a1127ae026d883c11bd4203cf315de87f95f5031aec459a731aec34e5ce5b667b8d0559b157952541
     CACHE STRING "libzmq source hash")
 
-set(LIBUV_VERSION 1.44.2 CACHE STRING "libuv version")
+set(LIBUV_VERSION 1.46.0 CACHE STRING "libuv version")
 set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
     CACHE STRING "libuv mirror(s)")
 set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
-set(LIBUV_HASH SHA512=91197ff9303112567bbb915bbb88058050e2ad1c048815a3b57c054635d5dc7df458b956089d785475290132236cb0edcfae830f5d749de29a9a3213eeaf0b20
+set(LIBUV_HASH SHA512=41b5606bd4575e1fd1a3a275d00e0bafdef0f43f251c9a032c49ab03134f50fb361e7f355ac0b34dd35959b3b0d29faf1aa7411002f430e3b0d78935a366b3da
     CACHE STRING "libuv source hash")
 
-set(ZLIB_VERSION 1.2.13 CACHE STRING "zlib version")
+set(ZLIB_VERSION 1.3 CACHE STRING "zlib version")
 set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
-set(ZLIB_HASH SHA256=d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98
+set(ZLIB_HASH SHA256=8a9ba2898e1d0d774eca6ba5b4627a11e5588ba85c8851336eb38de4683050a7
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 7.87.0 CACHE STRING "curl version")
+set(CURL_VERSION 8.4.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=aa125991592667280dce3788aabe81487cf8c55b0afc59d675cc30b76055bb7114f5380b4a0e3b6461a8f81bf9812fa26d493a85f7e01d84263d484a0d699ee7
+set(CURL_HASH SHA512=7027dbf3b759b39d6ec9c4da58fadd254e84bb93bff599541b3bc3135bad4c2955c6237d7ddd60973f9f1a6948bc32d7e312985fb50658bc958b9f22fee74f2b
     CACHE STRING "curl source hash")
 
 

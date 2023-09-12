@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 
+#include <cpr/async_wrapper.h>
 #include <oxenss/storage/database.hpp>
 #include <oxenss/crypto/keys.h>
 #include "reachability_testing.h"
@@ -108,7 +109,7 @@ class ServiceNode {
 
     mutable std::recursive_mutex sn_mutex_;
 
-    std::forward_list<std::future<void>> outstanding_https_reqs_;
+    std::forward_list<cpr::AsyncWrapper<void>> outstanding_https_reqs_;
 
     // Save multiple messages to the database at once (i.e. in a single transaction)
     void save_bulk(const std::vector<message>& msgs);

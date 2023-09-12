@@ -18,6 +18,7 @@
 #include <type_traits>
 
 #include <nlohmann/json_fwd.hpp>
+#include <cpr/async_wrapper.h>
 #include <variant>
 
 namespace oxen::rpc {
@@ -151,7 +152,7 @@ class RequestHandler {
     const crypto::ChannelEncryption& channel_cipher_;
     const crypto::ed25519_seckey ed25519_sk_;
 
-    std::forward_list<std::future<void>> pending_proxy_requests_;
+    std::forward_list<cpr::AsyncWrapper<void>> pending_proxy_requests_;
 
     // Wrap response `res` to an intermediate node
     Response wrap_proxy_response(
