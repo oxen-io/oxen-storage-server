@@ -404,6 +404,8 @@ bt_value store::to_bt() const {
             {"timestamp", to_epoch_ms(timestamp)},
             {"expiry", to_epoch_ms(expiry)},
             {"data", std::string_view{data}}};
+    if (sig_ts)
+        d["sig_timestamp"] = to_epoch_ms(*sig_ts);
     if (msg_namespace != namespace_id::Default)
         d["namespace"] = static_cast<std::underlying_type_t<namespace_id>>(msg_namespace);
     if (subkey)

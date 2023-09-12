@@ -298,3 +298,10 @@ def test_store_sig_timestamp(omq, random_sn, sk, exclude):
         }).encode()]).get()
     assert len(s) == 1
     s = json.loads(s[0])
+
+    assert 5 <= len(s['swarm']) <= 10
+    good = sum(not v.get('failed', False) for v in s['swarm'].values())
+    failed = sum(v.get('failed', False) for v in s['swarm'].values())
+    assert good == len(s['swarm'])
+    assert failed == 0
+    assert [v['hash'] for v in s['swarm'].values()] == [s['hash']] * len(s['swarm'])
