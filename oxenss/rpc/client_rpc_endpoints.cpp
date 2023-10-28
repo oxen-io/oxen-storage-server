@@ -578,8 +578,8 @@ bt_value delete_msgs::to_bt() const {
 
 template <typename Dict>
 static void load(revoke_subaccount& rs, Dict& d) {
-    auto [pubkey, pubkey_ed25519, revoke, signature] =
-            load_fields<Str, SV, SV, SV>(d, "pubkey", "pubkey_ed25519", "revoke", "signature");
+    auto [pubkey, pubkey_ed25519, revoke, signature, timestamp] =
+            load_fields<Str, SV, SV, SV, TP>(d, "pubkey", "pubkey_ed25519", "revoke", "signature", "timestamp");
     load_pk_signature(rs, d, pubkey, pubkey_ed25519, signature);
     require("revoke", revoke);
     const auto& sa = *revoke;
@@ -595,6 +595,8 @@ static void load(revoke_subaccount& rs, Dict& d) {
             throw parse_error{"invalid revoke subaccount: invalid subaccount tag length"};
         std::memcpy(rs.revoke.token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
     }
+    require("timestamp", timestamp);
+    rs.timestamp = *timestamp;
 }
 void revoke_subaccount::load_from(json params) {
     load(*this, params);
@@ -605,8 +607,45 @@ void revoke_subaccount::load_from(bt_dict_consumer params) {
 bt_value revoke_subaccount::to_bt() const {
     auto ret = to_bt_common(*this);
     ret["revoke"] = revoke.sview();
+    ret["timestamp"] = to_epoch_ms(timestamp);
     return ret;
 }
+
+template <typename Dict>
+static void load(unrevoke_subaccount& us, Dict& d) {
+    auto [pubkey, pubkey_ed25519, signature, timestamp, unrevoke] =
+            load_fields<Str, SV, SV, TP, SV>(d, "pubkey", "pubkey_ed25519", "signature", "timestamp", "unrevoke");
+    load_pk_signature(us, d, pubkey, pubkey_ed25519, signature);
+    require("timestamp", timestamp);
+    us.timestamp = *timestamp;
+    require("unrevoke", unrevoke);
+    const auto& sa = *unrevoke;
+    if constexpr (std::is_same_v<json, Dict>) {
+        if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 4 / 3)
+            oxenc::from_base64(sa.begin(), sa.end(), us.unrevoke.token.begin());
+        else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 2)
+            oxenc::from_hex(sa.begin(), sa.end(), us.unrevoke.token.begin());
+        else
+            throw parse_error{"invalid unrevoke: expected base64 or hex-encoded subaccount tag"};
+    } else {
+        if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+            throw parse_error{"invalid unrevoke subaccount: invalid subaccount tag length"};
+        std::memcpy(us.unrevoke.token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
+    }
+}
+void unrevoke_subaccount::load_from(json params) {
+    load(*this, params);
+}
+void unrevoke_subaccount::load_from(bt_dict_consumer params) {
+    load(*this, params);
+}
+bt_value unrevoke_subaccount::to_bt() const {
+    auto ret = to_bt_common(*this);
+    ret["timestamp"] = to_epoch_ms(timestamp);
+    ret["unrevoke"] = unrevoke.sview();
+    return ret;
+}
+
 
 template <typename Dict>
 static void load(delete_all& da, Dict& d) {

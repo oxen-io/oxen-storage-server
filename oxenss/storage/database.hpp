@@ -127,6 +127,11 @@ class Database {
     // token to authenticate.
     void revoke_subaccount(const user_pubkey& pubkey, const subaccount_token& subaccount);
 
+    // Removes an access token from the revoked token database so that a user may use that token to
+    // authenticate (if currently revoked).  Returns true if the token was found and removed, false
+    // if the token was not found.
+    bool unrevoke_subaccount(const user_pubkey& pubkey, const subaccount_token& subaccount);
+
     // Checks if a subaccount token exists in the revoked subaccount database. Returns true if the
     // subaccount has been revoked, false otherwise.
     bool subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount);

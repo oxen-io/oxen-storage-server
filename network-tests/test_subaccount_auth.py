@@ -217,15 +217,17 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "revoke": b64(dude_token),
-            "signature": sk.sign(f"revoke_subaccount".encode() + dude_token, encoder=Base64Encoder).signature.decode()
+            "timestamp": ts,
+            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
         }).encode()]).get()
     assert len(r) == 1
     r = json.loads(r[0])
 
     assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
 
-    # Check the signature of the revoked subaccount response, should be signing ( PUBKEY_HEX || SUBKEY_TAG_BYTES )
-    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + dude_token
+    # Check the signature of the revoked subaccount response, should be signing
+    # ( PUBKEY_HEX || ts || SUBKEY_TAG_BYTES )
+    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + dude_token
     for k, v in r['swarm'].items():
         edpk = VerifyKey(k, encoder=HexEncoder)
         try:
@@ -246,14 +248,80 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
         }).encode()]).get()
     assert r == [b'401', b'retrieve signature verification failed']
 
-    # Revoke another 49 subaccount, the original subaccount should still fail to retrieve the messages
+    # Unrevoke it:
+    r = omq.request_future(conn, 'storage.unrevoke_subaccount', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "unrevoke": b64(dude_token),
+            "timestamp": ts + 1,
+            "signature": sk.sign(f"unrevoke_subaccount{ts + 1}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+
+    assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
+
+    # Check the signature of the revoked subaccount response, should be signing
+    # ( PUBKEY_HEX || ts || SUBKEY_TAG_BYTES )
+    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts+1}".encode() + dude_token
+    for k, v in r['swarm'].items():
+        edpk = VerifyKey(k, encoder=HexEncoder)
+        try:
+            edpk.verify(expected_signed, base64.b64decode(v['signature']))
+        except nacl.exceptions.BadSignatureError as e:
+            print("Bad signature from swarm member {}".format(k))
+            raise e
+
+    # Retrieve should work now:
+    r = omq.request_future(conn, 'storage.retrieve', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "namespace": 42,
+            "timestamp": ts,
+            "signature": b64(sig),
+            "subaccount": b64(dude_token),
+            "subaccount_sig": b64(dude_sig),
+        }).encode()]).get()
+
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert r["hf"] >= [19, 0]
+    assert len(r["messages"]) == 1
+    assert r["messages"][0]["hash"] == hash
+
+    # Revoke the subaccount again:
+    r = omq.request_future(conn, 'storage.revoke_subaccount', [
+        json.dumps({
+            "pubkey": '03' + sk.verify_key.encode().hex(),
+            "revoke": b64(dude_token),
+            "timestamp": ts,
+            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
+        }).encode()]).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+
+    assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
+
+    # Check the signature of the revoked subaccount response, should be signing
+    # ( PUBKEY_HEX || ts || SUBKEY_TAG_BYTES )
+    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + dude_token
+    for k, v in r['swarm'].items():
+        edpk = VerifyKey(k, encoder=HexEncoder)
+        try:
+            edpk.verify(expected_signed, base64.b64decode(v['signature']))
+        except nacl.exceptions.BadSignatureError as e:
+            print("Bad signature from swarm member {}".format(k))
+            raise e
+
+    # Revoke another 49 subaccounts; the original subaccount should still fail to retrieve the messages
     for i in range (49):
         another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
         r = omq.request_future(conn, 'storage.revoke_subaccount', [
             json.dumps({
                 "pubkey": '03' + sk.verify_key.encode().hex(),
                 "revoke": b64(another_token),
-                "signature": sk.sign(f"revoke_subaccount".encode() + another_token, encoder=Base64Encoder).signature.decode()
+                "timestamp": ts,
+                "signature": sk.sign(f"revoke_subaccount{ts}".encode() + another_token, encoder=Base64Encoder).signature.decode()
             }).encode()]).get()
         assert len(r) == 1
 
@@ -275,7 +343,8 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "revoke": b64(another_token),
-            "signature": sk.sign(f"revoke_subaccount".encode() + another_token, encoder=Base64Encoder).signature.decode()
+            "timestamp": ts,
+            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + another_token, encoder=Base64Encoder).signature.decode()
         }).encode()]).get()
     assert len(r) == 1
 

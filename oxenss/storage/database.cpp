@@ -848,6 +848,14 @@ void Database::revoke_subaccount(const user_pubkey& pubkey, const subaccount_tok
     exec_query(insert_token, pubkey, blob_binder{subaccount.view()});
 }
 
+bool Database::unrevoke_subaccount(const user_pubkey& pubkey, const subaccount_token& subaccount) {
+    auto remove_token = impl->prepared_st(
+            "DELETE FROM revoked_subaccounts"
+            " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+            " AND token = ?");
+    return exec_query(remove_token, pubkey, blob_binder{subaccount.view()}) > 0;
+}
+
 bool Database::subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount) {
     auto count = exec_and_get<int64_t>(
             impl->prepared_st("SELECT COUNT(*) FROM revoked_subaccounts WHERE token = ? AND "

@@ -322,29 +322,75 @@ struct delete_msgs final : recursive {
 /// Revokes a subaccount
 ///
 /// Takes parameters of:
-/// - pubkey -- the pubkey whose messages shall be deleted, in hex (66) or bytes (33)
+/// - pubkey -- the pubkey of the account where the restriction it to apply, in hex (66) or bytes (33)
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
 /// - `revoke` -- the subaccount token which is to be added to the revocation list; see `store` for
-///   details of subaccount tag format.
-/// - signature -- Ed25519 signature of ("revoke_subaccount" || subaccount); this signs the
-///   subaccount (36 bytes), using `pubkey` to sign.  Must be base64 encoded for json requests;
-///   binary for OMQ requests.
+///   details of subaccount tag format.  Base64 or hex encoded.
+/// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
+///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+///   timestamp via `info` first, to avoid client time sync issues).
+/// - signature -- Ed25519 signature of ("revoke_subaccount" || timestamp || subaccount_token); this
+///   must be verifiable using `pubkey`.  Must be base64 encoded for json requests; binary for OMQ
+///   requests.
 ///
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
 ///     - "failed" and other failure keys -- see `recursive`.
 ///     - "signature": signature of:
-///             ( PUBKEY_HEX || SUBACCOUNT_TAG_BYTES )
-///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tag for revocation
+///             ( PUBKEY_HEX || timestamp || SUBACCOUNT_TAG_BYTES )
+///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tag for revocation and `timestamp`
+///       is the timestamp as given in the request.
 struct revoke_subaccount final : recursive {
     static constexpr auto names() { return NAMES("revoke_subaccount"); }
 
     user_pubkey pubkey;
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     subaccount_token revoke;
+    std::chrono::system_clock::time_point timestamp;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+    oxenc::bt_value to_bt() const override;
+};
+
+/// Unrevokes a subaccount.  This removes a subaccount revocation, if present.  It is used, for
+/// instance, by Session prior to adding a member to a group so that, if the member was previously
+/// removed and is being re-added, the deterministic group subaccount token will work.
+///
+/// Takes parameters of:
+/// - pubkey -- the pubkey of the account where the subaccount restriction should be removed, in hex
+///   (66) or bytes (33)
+/// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
+///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
+///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
+///   to the given `pubkey` value (without the `05` prefix).
+/// - `unrevoke` -- the subaccount token which is to be removed from the revocation list; see
+///   `store` for details of subaccount tag format.  Base64 or hex encoded.
+/// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
+///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
+///   timestamp via `info` first, to avoid client time sync issues).
+/// - signature -- Ed25519 signature of ("unrevoke_subaccount" || timestamp || subaccount_token);
+///   this must be verifiable using `pubkey`.  Must be base64 encoded for json requests; binary for
+///   OMQ requests.
+///
+/// Returns dict of:
+/// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
+///     - "failed" and other failure keys -- see `recursive`.
+///     - "signature": signature of:
+///             ( PUBKEY_HEX || timestamp || SUBACCOUNT_TAG_BYTES )
+///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tag for revocation removal and
+///       `timestamp` is the timestamp as given in the request.
+struct unrevoke_subaccount final : recursive {
+    static constexpr auto names() { return NAMES("unrevoke_subaccount"); }
+
+    user_pubkey pubkey;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
+    subaccount_token unrevoke;
+    std::chrono::system_clock::time_point timestamp;
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
@@ -666,6 +712,7 @@ struct oxend_request final : endpoint {
 // requests within them).
 using client_rpc_subrequests = type_list<
         revoke_subaccount,
+        unrevoke_subaccount,
         store,
         retrieve,
         delete_msgs,
