@@ -941,6 +941,16 @@ void RequestHandler::process_client_req(
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
+    auto now = system_clock::now();
+    if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
+        log::debug(
+                logcat,
+                "revoke_subaccount: invalid timestamp ({}s from now)",
+                duration_cast<seconds>(req.timestamp - now).count());
+        return cb(Response{
+                http::NOT_ACCEPTABLE, "revoke_subaccount timestamp too far from current time"sv});
+    }
+
     if (!verify_signature(
                 service_node_.get_db(),
                 req.pubkey,
@@ -980,6 +990,16 @@ void RequestHandler::process_client_req(
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
+
+    auto now = system_clock::now();
+    if (req.timestamp < now - SIGNATURE_TOLERANCE || req.timestamp > now + SIGNATURE_TOLERANCE) {
+        log::debug(
+                logcat,
+                "unrevoke_subaccount: invalid timestamp ({}s from now)",
+                duration_cast<seconds>(req.timestamp - now).count());
+        return cb(Response{
+                http::NOT_ACCEPTABLE, "unrevoke_subaccount timestamp too far from current time"sv});
+    }
 
     if (!verify_signature(
                 service_node_.get_db(),
