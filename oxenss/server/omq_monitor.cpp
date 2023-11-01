@@ -354,33 +354,24 @@ void OMQ::send_notifies(message msg) {
                                    + 3 + 16  // 1:z and i1658784776010e plus a byte to grow
                                    + 10;     // safety margin
 
-    std::string data;
-    if (!relay_to_with_data.empty())
-        data.resize(
-                metadata_size  // all the metadata above
-                + 3            // 1:~
-                + 8            // 76800: plus a couple bytes to grow
-                + msg.data.size());
-    else
-        data.resize(metadata_size);
+    oxenc::bt_dict_producer d;
+    d.reserve(
+            relay_to_with_data.empty() ? metadata_size
+                                       : metadata_size  // all the metadata above
+                                                 + 3    // 1:~
+                                                 + 8    // 76800: plus a couple bytes to grow
+                                                 + msg.data.size());
 
-    if (!relay_to.empty()) {
-        oxenc::bt_dict_producer d{data.data(), data.size()};
-        write_metadata(d, pubkey, msg);
-        data.resize(d.view().size());
+    write_metadata(d, pubkey, msg);
 
+    if (!relay_to.empty())
         for (const auto& conn : relay_to)
-            omq_.send(conn, "notify.message", data);
-    }
+            omq_.send(conn, "notify.message", d.view());
 
     if (!relay_to_with_data.empty()) {
-        oxenc::bt_dict_producer d{data.data(), data.size()};
-        write_metadata(d, pubkey, msg);
         d.append("~", msg.data);
-        data.resize(d.view().size());
-
         for (const auto& conn : relay_to_with_data)
-            omq_.send(conn, "notify.message", data);
+            omq_.send(conn, "notify.message", d.view());
     }
 }
 
