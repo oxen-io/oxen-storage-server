@@ -75,7 +75,8 @@ namespace {
                             "Provided S subaccount signature must be {} bytes"_format(
                                     subacc->signature.size()));
 
-                if (auto token = d.require<std::string_view>("T"); token.size() == SUBACCOUNT_TOKEN_LENGTH)
+                if (auto token = d.require<std::string_view>("T");
+                    token.size() == SUBACCOUNT_TOKEN_LENGTH)
                     std::memcpy(subacc->token.token.data(), token.data(), token.size());
                 else
                     return monitor_error(
@@ -91,8 +92,7 @@ namespace {
 
             // List of namespaces to monitor (required)
             auto ns = d.require<oxenc::bt_list_consumer>("n");
-            namespaces.push_back(
-                    static_cast<namespace_id>(ns.consume_integer<namespace_int>()));
+            namespaces.push_back(static_cast<namespace_id>(ns.consume_integer<namespace_int>()));
             while (!ns.is_finished()) {
                 auto nsi = static_cast<namespace_id>(ns.consume_integer<namespace_int>());
                 if (nsi > namespaces.back())
@@ -130,9 +130,7 @@ namespace {
 
         } catch (const std::exception& ex) {
             return monitor_error(
-                    out,
-                    MonitorResponse::BAD_ARGS,
-                    "Invalid arguments: "s + ex.what());
+                    out, MonitorResponse::BAD_ARGS, "Invalid arguments: "s + ex.what());
         }
 
         // Make sure the sig timestamp isn't too old or too new
