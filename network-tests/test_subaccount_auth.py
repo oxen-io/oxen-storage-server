@@ -9,8 +9,10 @@ from nacl.hash import blake2b
 from nacl.signing import SigningKey, VerifyKey
 import nacl.exceptions
 
+
 def b64(data: bytes):
     return base64.b64encode(data).decode()
+
 
 def test_retrieve_subaccount(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk, 3)
@@ -23,18 +25,31 @@ def test_retrieve_subaccount(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # Store a message for myself, using master key
-    s = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'namespace': 42,
-        "timestamp": ts,
-        "ttl": ttl,
-        "data": b64(b"abc 123"),
-        "signature": sk.sign(f"store42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()]).get()
+    s = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'namespace': 42,
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "data": b64(b"abc 123"),
+                    "signature": sk.sign(
+                        f"store42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
-    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     for k, v in s['swarm'].items():
         assert hash == v['hash']
 
@@ -45,21 +60,29 @@ def test_retrieve_subaccount(omq, random_sn, sk, exclude):
 
     assert dude_token.hex() == '03030000' + dude_sk.verify_key.encode().hex()
 
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
     assert r["hf"] >= [19, 0]
     assert len(r["messages"]) == 1
     assert r["messages"][0]["hash"] == hash
+
 
 def test_store_subaccount(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
@@ -76,38 +99,60 @@ def test_store_subaccount(omq, random_sn, sk, exclude):
     sig = dude_sk.sign(f"store42{ts}".encode()).signature
 
     # Store a message using the subaccount
-    s = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'namespace': 42,
-        "timestamp": ts,
-        "ttl": ttl,
-        "data": b64(b"abc 123"),
-        "signature": b64(sig),
-        "subaccount": b64(dude_token),
-        "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    s = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'namespace': 42,
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "data": b64(b"abc 123"),
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
     assert s["hf"] >= [19, 0]
 
-    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     assert len(s["swarm"]) > 0
     for k, v in s['swarm'].items():
         assert hash == v['hash']
 
     # Retrieve using master key:
-    s = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-            }).encode()]).get()
+    s = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
     assert s["hf"] >= [19, 0]
     assert len(s["messages"]) == 1
     assert s["messages"][0]["hash"] == hash
+
 
 def test_expire_subaccount(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
@@ -124,18 +169,26 @@ def test_expire_subaccount(omq, random_sn, sk, exclude):
 
     dude_sk, dude_token, dude_sig = subaccount.make_subaccount(0x03, sk)
 
-    new_exp = now + 24*60*60*1000
+    new_exp = now + 24 * 60 * 60 * 1000
 
     # Update one of the expiries from ~1min from now -> 1day from now
     sig = dude_sk.sign(f"expire{new_exp}{msgs[0]['hash']}".encode()).signature
-    r = omq.request_future(conn, 'storage.expire', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'subaccount': b64(dude_token),
-        'subaccount_sig': b64(dude_sig),
-        'messages': [msgs[0]['hash']],
-        'expiry': new_exp,
-        'signature': b64(sig),
-    }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.expire',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'subaccount': b64(dude_token),
+                    'subaccount_sig': b64(dude_sig),
+                    'messages': [msgs[0]['hash']],
+                    'expiry': new_exp,
+                    'signature': b64(sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
@@ -147,16 +200,24 @@ def test_expire_subaccount(omq, random_sn, sk, exclude):
     # Attempt to update all three, using the subaccount, to half a day from now.  msg[0] shouldn't
     # get updated, because subaccount are only allowed to extend.
 
-    new_exp = now + 12*60*60*1000
+    new_exp = now + 12 * 60 * 60 * 1000
     sig = dude_sk.sign(f"expire{new_exp}{''.join(m['hash'] for m in msgs)}".encode()).signature
-    r = omq.request_future(conn, 'storage.expire', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'subaccount': b64(dude_token),
-        'subaccount_sig': b64(dude_sig),
-        'messages': [m['hash'] for m in msgs],
-        'expiry': new_exp,
-        'signature': b64(sig),
-    }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.expire',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'subaccount': b64(dude_token),
+                    'subaccount_sig': b64(dude_sig),
+                    'messages': [m['hash'] for m in msgs],
+                    'expiry': new_exp,
+                    'signature': b64(sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
@@ -164,6 +225,7 @@ def test_expire_subaccount(omq, random_sn, sk, exclude):
     for pk, exp in r['swarm'].items():
         assert exp["expiry"] == new_exp
         assert set(exp["updated"]) == set([m['hash'] for m in msgs[1:]])
+
 
 def test_revoke_subaccount(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk, 3)
@@ -176,34 +238,60 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # Store a message for myself, using master key
-    s = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'namespace': 42,
-        "timestamp": ts,
-        "ttl": ttl,
-        "data": b64(b"abc 123"),
-        "signature": sk.sign(f"store42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()]).get()
+    s = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'namespace': 42,
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "data": b64(b"abc 123"),
+                    "signature": sk.sign(
+                        f"store42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
-    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     for k, v in s['swarm'].items():
         assert hash == v['hash']
 
     # Also store another message in the revoked-keys-allowed namespace
-    s = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '03' + sk.verify_key.encode().hex(),
-        'namespace': -11,
-        "timestamp": ts,
-        "ttl": ttl,
-        "data": b64(b"def 123"),
-        "signature": sk.sign(f"store-11{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()]).get()
+    s = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    'namespace': -11,
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "data": b64(b"def 123"),
+                    "signature": sk.sign(
+                        f"store-11{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
-    revoke_allowed_hash = blake2b(b'\x03' + sk.verify_key.encode() + b'-11' + b'def 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    revoke_allowed_hash = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'-11' + b'def 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     for k, v in s['swarm'].items():
         assert revoke_allowed_hash == v['hash']
 
@@ -212,15 +300,22 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     to_sign = f"retrieve42{ts}".encode()
     sig = dude_sk.sign(to_sign).signature
 
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
@@ -229,13 +324,22 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     assert r["messages"][0]["hash"] == hash
 
     # Revoke the subaccount
-    r = omq.request_future(conn, 'storage.revoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "revoke": b64(dude_token),
-            "timestamp": ts,
-            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.revoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "revoke": b64(dude_token),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
 
@@ -253,40 +357,63 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
             raise e
 
     # Try to retrieve it again using the subaccount, should fail
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
     assert r == [b'401', b'retrieve signature verification failed']
 
     # But the one in the revoked-keys-allowed namespace should work:
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": -11,
-            "timestamp": ts,
-            "signature": b64(dude_sk.sign(f"retrieve-11{ts}".encode()).signature),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": -11,
+                    "timestamp": ts,
+                    "signature": b64(dude_sk.sign(f"retrieve-11{ts}".encode()).signature),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r["messages"]) == 1
     assert r["messages"][0]["hash"] == revoke_allowed_hash
 
     # Unrevoke it:
-    r = omq.request_future(conn, 'storage.unrevoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "unrevoke": b64(dude_token),
-            "timestamp": ts + 1,
-            "signature": sk.sign(f"unrevoke_subaccount{ts + 1}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.unrevoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "unrevoke": b64(dude_token),
+                    "timestamp": ts + 1,
+                    "signature": sk.sign(
+                        f"unrevoke_subaccount{ts + 1}".encode() + dude_token, encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
 
@@ -294,7 +421,9 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
 
     # Check the signature of the revoked subaccount response, should be signing
     # ( PUBKEY_HEX || ts || SUBKEY_TAG_BYTES )
-    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts+1}".encode() + dude_token
+    expected_signed = (
+        ('03' + sk.verify_key.encode().hex()).encode() + f"{ts+1}".encode() + dude_token
+    )
     for k, v in r['swarm'].items():
         edpk = VerifyKey(k, encoder=HexEncoder)
         try:
@@ -304,15 +433,22 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
             raise e
 
     # Retrieve should work now:
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
@@ -321,13 +457,22 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     assert r["messages"][0]["hash"] == hash
 
     # Revoke the subaccount again:
-    r = omq.request_future(conn, 'storage.revoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "revoke": b64(dude_token),
-            "timestamp": ts,
-            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.revoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "revoke": b64(dude_token),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoke_subaccount{ts}".encode() + dude_token, encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
 
@@ -350,18 +495,28 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     for i in range(49):
         another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
         revoke_list.append(another_token)
-    r = omq.request_future(conn, 'storage.revoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "revoke": [b64(x) for x in revoke_list],
-            "timestamp": ts,
-            "signature": sk.sign(
-                f"revoke_subaccount{ts}".encode() + b"".join(revoke_list),
-                encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.revoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "revoke": [b64(x) for x in revoke_list],
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoke_subaccount{ts}".encode() + b"".join(revoke_list),
+                        encoder=Base64Encoder,
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
-    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + b"".join(revoke_list)
+    expected_signed = (
+        ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + b"".join(revoke_list)
+    )
     for k, v in r['swarm'].items():
         edpk = VerifyKey(k, encoder=HexEncoder)
         try:
@@ -371,40 +526,63 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
             raise e
 
     # Try retrieving it again using the subaccount, should fail again
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
     assert r == [b'401', b'retrieve signature verification failed']
 
     # Revoke one more subaccount, the original subaccount should now succeed in retrieving the messages
     another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
     revoke_list.append(another_token)
-    r = omq.request_future(conn, 'storage.revoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "revoke": b64(another_token),
-            "timestamp": ts,
-            "signature": sk.sign(f"revoke_subaccount{ts}".encode() + another_token, encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.revoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "revoke": b64(another_token),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoke_subaccount{ts}".encode() + another_token, encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
 
     # Try retrieving it again using the subaccount, should succeed now (because only the most recent
     # 50 revocations are kept by the swarm):
-    r = omq.request_future(conn, 'storage.retrieve', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "namespace": 42,
-            "timestamp": ts,
-            "signature": b64(sig),
-            "subaccount": b64(dude_token),
-            "subaccount_sig": b64(dude_sig),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "namespace": 42,
+                    "timestamp": ts,
+                    "signature": b64(sig),
+                    "subaccount": b64(dude_token),
+                    "subaccount_sig": b64(dude_sig),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
@@ -418,18 +596,28 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     for i in range(10):
         another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
         revoke_list.append(another_token)
-    r = omq.request_future(conn, 'storage.unrevoke_subaccount', [
-        json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "unrevoke": [b64(x) for x in revoke_list],
-            "timestamp": ts,
-            "signature": sk.sign(
-                f"unrevoke_subaccount{ts}".encode() + b"".join(revoke_list),
-                encoder=Base64Encoder).signature.decode()
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.unrevoke_subaccount',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "unrevoke": [b64(x) for x in revoke_list],
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"unrevoke_subaccount{ts}".encode() + b"".join(revoke_list),
+                        encoder=Base64Encoder,
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
-    expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + b"".join(revoke_list)
+    expected_signed = (
+        ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + b"".join(revoke_list)
+    )
     for k, v in r['swarm'].items():
         assert v['count'] == 50
         edpk = VerifyKey(k, encoder=HexEncoder)
@@ -438,7 +626,6 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
         except nacl.exceptions.BadSignatureError as e:
             print("Bad signature from swarm member {}".format(k))
             raise e
-
 
 
 def test_subaccount_permissions(omq, random_sn, sk, exclude):
@@ -469,15 +656,22 @@ def test_subaccount_permissions(omq, random_sn, sk, exclude):
     to_sign = f"retrieve42{ts}".encode()
 
     for i in range(4):
-        r = omq.request_future(conn, 'storage.retrieve', [
-            json.dumps({
-                "pubkey": '03' + sk.verify_key.encode().hex(),
-                "namespace": 42,
-                "timestamp": ts,
-                "signature": b64(keys[i][0].sign(to_sign).signature),
-                "subaccount": b64(keys[i][1]),
-                "subaccount_sig": b64(keys[i][2]),
-            }).encode()]).get()
+        r = omq.request_future(
+            conn,
+            'storage.retrieve',
+            [
+                json.dumps(
+                    {
+                        "pubkey": '03' + sk.verify_key.encode().hex(),
+                        "namespace": 42,
+                        "timestamp": ts,
+                        "signature": b64(keys[i][0].sign(to_sign).signature),
+                        "subaccount": b64(keys[i][1]),
+                        "subaccount_sig": b64(keys[i][2]),
+                    }
+                ).encode()
+            ],
+        ).get()
 
         if i == 1:
             assert r == [b'401', b'retrieve signature verification failed']
@@ -488,20 +682,31 @@ def test_subaccount_permissions(omq, random_sn, sk, exclude):
             del r["t"]
             assert r == {"messages": [], "more": False}
 
-    hash = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
 
     for i in range(4):
-        r = omq.request_future(conn, 'storage.store', [json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            'namespace': 42,
-            "timestamp": ts,
-            "ttl": ttl,
-            "data": b64(b"abc 123"),
-            "signature": b64(keys[i][0].sign(f"store42{ts}".encode()).signature),
-            "subaccount": b64(keys[i][1]),
-            "subaccount_sig": b64(keys[i][2]),
-            })]).get()
+        r = omq.request_future(
+            conn,
+            'storage.store',
+            [
+                json.dumps(
+                    {
+                        "pubkey": '03' + sk.verify_key.encode().hex(),
+                        'namespace': 42,
+                        "timestamp": ts,
+                        "ttl": ttl,
+                        "data": b64(b"abc 123"),
+                        "signature": b64(keys[i][0].sign(f"store42{ts}".encode()).signature),
+                        "subaccount": b64(keys[i][1]),
+                        "subaccount_sig": b64(keys[i][2]),
+                    }
+                )
+            ],
+        ).get()
 
         if i <= 1:
             assert r == [b'401', b'store signature verification failed']
@@ -512,13 +717,21 @@ def test_subaccount_permissions(omq, random_sn, sk, exclude):
                 assert v['hash'] == hash
 
     for i in range(4):
-        r = omq.request_future(conn, 'storage.delete', [json.dumps({
-            "pubkey": '03' + sk.verify_key.encode().hex(),
-            "messages": [hash],
-            "signature": b64(keys[i][0].sign(f"delete{hash}".encode()).signature),
-            "subaccount": b64(keys[i][1]),
-            "subaccount_sig": b64(keys[i][2]),
-            })]).get()
+        r = omq.request_future(
+            conn,
+            'storage.delete',
+            [
+                json.dumps(
+                    {
+                        "pubkey": '03' + sk.verify_key.encode().hex(),
+                        "messages": [hash],
+                        "signature": b64(keys[i][0].sign(f"delete{hash}".encode()).signature),
+                        "subaccount": b64(keys[i][1]),
+                        "subaccount_sig": b64(keys[i][2]),
+                    }
+                )
+            ],
+        ).get()
 
         if i == 2:
             assert len(r) == 1
@@ -529,17 +742,24 @@ def test_subaccount_permissions(omq, random_sn, sk, exclude):
             assert r == [b'401', b'delete_msgs signature verification failed']
 
     for i in range(4):
-        r = omq.request_future(conn, 'storage.retrieve', [
-            json.dumps({
-                "pubkey": '99' + sk.verify_key.encode().hex(),
-                "namespace": 42,
-                "timestamp": ts,
-                "signature": b64(keys[i][0].sign(to_sign).signature),
-                "subaccount": b64(keys[i][1]),
-                "subaccount_sig": b64(keys[i][2]),
-            }).encode()]).get()
+        r = omq.request_future(
+            conn,
+            'storage.retrieve',
+            [
+                json.dumps(
+                    {
+                        "pubkey": '99' + sk.verify_key.encode().hex(),
+                        "namespace": 42,
+                        "timestamp": ts,
+                        "signature": b64(keys[i][0].sign(to_sign).signature),
+                        "subaccount": b64(keys[i][1]),
+                        "subaccount_sig": b64(keys[i][2]),
+                    }
+                ).encode()
+            ],
+        ).get()
 
-        if i == 3: # Retrieving from another pubkey prefix: requires any_prefix flag
+        if i == 3:  # Retrieving from another pubkey prefix: requires any_prefix flag
             assert len(r) == 1
             r = json.loads(r[0])
             del r["hf"]

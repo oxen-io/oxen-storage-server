@@ -8,6 +8,7 @@ from nacl.encoding import HexEncoder, Base64Encoder
 from nacl.hash import blake2b
 from nacl.signing import SigningKey, VerifyKey
 
+
 def b64(data: bytes):
     return base64.b64encode(data).decode()
 
@@ -22,28 +23,49 @@ def test_store_ns(omq, random_sn, sk, exclude):
     ttl = 86400000
     exp = ts + ttl
     # Store a message (publicly depositable namespace, divisible by 10)
-    spub = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": 40,
-        "data": b64(b"abc 123")}).encode()])
+    spub = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": 40,
+                    "data": b64(b"abc 123"),
+                }
+            ).encode()
+        ],
+    )
 
     # Store a message for myself in a private namespace (not divisible by 10)
-    spriv = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": -42,
-        "data": b64(b"abc 123"),
-        "signature": sk.sign(f"store-42{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()])
+    spriv = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": -42,
+                    "data": b64(b"abc 123"),
+                    "signature": sk.sign(
+                        f"store-42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    )
 
-
-    
     spub = json.loads(spub.get()[0])
 
-    hpub = blake2b(b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hpub = (
+        blake2b(b'\x05' + sk.verify_key.encode() + b'40' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
 
     assert len(spub["swarm"]) == len(swarm['snodes'])
     edkeys = {x['pubkey_ed25519'] for x in swarm['snodes']}
@@ -55,12 +77,14 @@ def test_store_ns(omq, random_sn, sk, exclude):
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
     # NB: assumes the test machine is reasonably time synced
-    assert(ts - 30000 <= spub['t'] <= ts + 30000)
-
+    assert ts - 30000 <= spub['t'] <= ts + 30000
 
     spriv = json.loads(spriv.get()[0])
-    hpriv = blake2b(b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hpriv = (
+        blake2b(b'\x05' + sk.verify_key.encode() + b'-42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
 
     assert len(spriv["swarm"]) == len(swarm['snodes'])
     edkeys = {x['pubkey_ed25519'] for x in swarm['snodes']}
@@ -72,22 +96,49 @@ def test_store_ns(omq, random_sn, sk, exclude):
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
     # NB: assumes the test machine is reasonably time synced
-    assert(ts - 30000 <= spriv['t'] <= ts + 30000)
+    assert ts - 30000 <= spriv['t'] <= ts + 30000
 
-    rpub = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "namespace": 40,
-        "signature": sk.sign(f"retrieve40{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()])
-    rpriv = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "namespace": -42,
-        "signature": sk.sign(f"retrieve-42{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()])
-    rdenied = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "namespace": 40 }).encode()])
+    rpub = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "namespace": 40,
+                    "signature": sk.sign(
+                        f"retrieve40{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    )
+    rpriv = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "namespace": -42,
+                    "signature": sk.sign(
+                        f"retrieve-42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    )
+    rdenied = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {"pubkey": '05' + sk.verify_key.encode().hex(), "timestamp": ts, "namespace": 40}
+            ).encode()
+        ],
+    )
 
     rpub = rpub.get()
     assert len(rpub) == 1
@@ -104,7 +155,6 @@ def test_store_ns(omq, random_sn, sk, exclude):
     assert rdenied.get() == [b'400', b"invalid request: Required field 'signature' missing"]
 
 
-
 def test_legacy_closed_ns(omq, random_sn, sk, exclude):
     # For legacy closed groups the secret key is generated but then immediately discarded; it's only
     # used to generate a primary key storage address:
@@ -119,16 +169,28 @@ def test_legacy_closed_ns(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # namespace -10 is a special, no-auth namespace for legacy closed group messages.
-    sclosed = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": -10,
-        "data": b64(b"blah blah")})])
+    sclosed = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": -10,
+                    "data": b64(b"blah blah"),
+                }
+            )
+        ],
+    )
 
     sclosed = json.loads(sclosed.get()[0])
-    hash = blake2b(b'\x05' + sk.verify_key.encode() + b'-10' + b'blah blah',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash = (
+        blake2b(b'\x05' + sk.verify_key.encode() + b'-10' + b'blah blah', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
 
     assert len(sclosed["swarm"]) == len(swarm['snodes'])
     edkeys = {x['pubkey_ed25519'] for x in swarm['snodes']}
@@ -140,13 +202,14 @@ def test_legacy_closed_ns(omq, random_sn, sk, exclude):
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
     # NB: assumes the test machine is reasonably time synced
-    assert(ts - 30000 <= sclosed['t'] <= ts + 30000)
+    assert ts - 30000 <= sclosed['t'] <= ts + 30000
 
     # Now retrieve it: this is the only namespace we can access without authentication
-    r = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "namespace": -10,
-    }).encode()])
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [json.dumps({"pubkey": '05' + sk.verify_key.encode().hex(), "namespace": -10}).encode()],
+    )
 
     r = r.get()
     assert len(r) == 1
@@ -169,33 +232,65 @@ def test_store_invalid_ns(omq, random_sn, sk, exclude):
     ts = int(time.time() * 1000)
     ttl = 86400000
     # Attempt to store a message without authentication in a non-public (% 10 != 0) namespace:
-    s42 = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": 42,
-        "data": b64(b"abc 123")}).encode()])
+    s42 = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": 42,
+                    "data": b64(b"abc 123"),
+                }
+            ).encode()
+        ],
+    )
 
     # Attempt to store a message in a too-big/too-small namespace:
-    s32k = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": 32768,
-        "data": b64(b"abc 123")}).encode()])
+    s32k = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": 32768,
+                    "data": b64(b"abc 123"),
+                }
+            ).encode()
+        ],
+    )
 
     # Bad signature:
     dude_sk = SigningKey.generate()
-    sdude = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": -32123,
-        "signature": dude_sk.sign(f"store-32123{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-        "data": b64(b"abc 123")}).encode()])
+    sdude = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": -32123,
+                    "signature": dude_sk.sign(
+                        f"store-32123{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                    "data": b64(b"abc 123"),
+                }
+            ).encode()
+        ],
+    )
 
     assert s42.get() == [b'401', b'store: signature required to store to namespace 42']
-    assert s32k.get() == [b'400', b"invalid request: Invalid value given for 'namespace': value out of range"]
+    assert s32k.get() == [
+        b'400',
+        b"invalid request: Invalid value given for 'namespace': value out of range",
+    ]
     assert sdude.get() == [b'401', b"store signature verification failed"]
 
 
@@ -211,22 +306,41 @@ def test_public_outbox(omq, random_sn, sk, exclude):
 
     # Attempt to store a message without authentication in a public outbox (-1, -21, -41, ...)
     # namespace without authentication:
-    s1 = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": -1,
-        "data": b64(b"abc 123")}).encode()])
+    s1 = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": -1,
+                    "data": b64(b"abc 123"),
+                }
+            ).encode()
+        ],
+    )
 
     # Another store, this time *with* authentication:
-    s2 = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts,
-        "ttl": ttl,
-        "namespace": -1,
-        "data": b64(b"abc 456"),
-        "signature": sk.sign(f"store-1{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()])
+    s2 = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "ttl": ttl,
+                    "namespace": -1,
+                    "data": b64(b"abc 456"),
+                    "signature": sk.sign(
+                        f"store-1{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    )
 
     assert s1.get() == [b'401', b'store: signature required to store to namespace -1']
     r = s2.get()
@@ -235,10 +349,11 @@ def test_public_outbox(omq, random_sn, sk, exclude):
     h1 = r["hash"]
 
     # *Unauthenticated* retrieval:
-    r = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "namespace": -1
-    }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [json.dumps({"pubkey": '05' + sk.verify_key.encode().hex(), "namespace": -1}).encode()],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     del r["hf"]
@@ -249,57 +364,83 @@ def test_public_outbox(omq, random_sn, sk, exclude):
     }
 
     # Store another message to the namespace, which should replace the earlier one
-    r = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts + 1,
-        "ttl": ttl,
-        "namespace": -1,
-        "data": b64(b"abc 789"),
-        "signature": sk.sign(f"store-1{ts+1}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts + 1,
+                    "ttl": ttl,
+                    "namespace": -1,
+                    "data": b64(b"abc 789"),
+                    "signature": sk.sign(
+                        f"store-1{ts+1}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
     h2 = r["hash"]
 
-    r = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "namespace": -1
-    }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [json.dumps({"pubkey": '05' + sk.verify_key.encode().hex(), "namespace": -1}).encode()],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     del r["hf"]
     del r["t"]
     assert r == {
-        "messages": [{"data": b64(b'abc 789'), "expiration": exp + 1, "hash": h2, "timestamp": ts + 1}],
+        "messages": [
+            {"data": b64(b'abc 789'), "expiration": exp + 1, "hash": h2, "timestamp": ts + 1}
+        ],
         "more": False,
     }
 
     # Store the same message again, this time it should just update the ttl but *not* the timestamp
     # (which indicates that it properly recognized the duplicate and didn't wipe-and-store-again on
     # it).
-    r = omq.request_future(conn, 'storage.store', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "timestamp": ts + 2,
-        "ttl": ttl,
-        "namespace": -1,
-        "data": b64(b"abc 789"),
-        "signature": sk.sign(f"store-1{ts+2}".encode(), encoder=Base64Encoder).signature.decode(),
-        }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": '05' + sk.verify_key.encode().hex(),
+                    "timestamp": ts + 2,
+                    "ttl": ttl,
+                    "namespace": -1,
+                    "data": b64(b"abc 789"),
+                    "signature": sk.sign(
+                        f"store-1{ts+2}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
 
     assert len(r) == 1
     r = json.loads(r[0])
     assert r["hash"] == h2
 
-    r = omq.request_future(conn, 'storage.retrieve', [json.dumps({
-        "pubkey": '05' + sk.verify_key.encode().hex(),
-        "namespace": -1
-    }).encode()]).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [json.dumps({"pubkey": '05' + sk.verify_key.encode().hex(), "namespace": -1}).encode()],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     del r["hf"]
     del r["t"]
     assert r == {
-        "messages": [{"data": b64(b'abc 789'), "expiration": exp + 2, "hash": h2, "timestamp": ts + 1}],
+        "messages": [
+            {"data": b64(b'abc 789'), "expiration": exp + 2, "hash": h2, "timestamp": ts + 1}
+        ],
         "more": False,
     }
