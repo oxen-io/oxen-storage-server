@@ -171,7 +171,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     def handle_notify_message(m):
         nonlocal conns, n_notifies
         snode = conns[m.conn]
-        #print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
+        # print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
         conns[m.conn]['response'].append(bt_deserialize(m.data()[0]))
         n_notifies += 1
 
@@ -203,7 +203,18 @@ def test_monitor_push(omq, random_sn, sk, exclude):
             o.request_future(
                 c,
                 "monitor.messages",
-                bt_serialize(notify_request(req_sk, ts, True, [-5, 0, 23], netid=3, account=sk, subacc_token=sub_token, subacc_sig = sub_sig)),
+                bt_serialize(
+                    notify_request(
+                        req_sk,
+                        ts,
+                        True,
+                        [-5, 0, 23],
+                        netid=3,
+                        account=sk,
+                        subacc_token=sub_token,
+                        subacc_sig=sub_sig,
+                    )
+                ),
                 request_timeout=datetime.timedelta(seconds=5),
             )
         )
@@ -215,7 +226,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
     conn = omq.connect_remote(sn_address(sn))
 
-    #print(f"starting store at {time.time()}")
+    # print(f"starting store at {time.time()}")
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
@@ -255,7 +266,7 @@ def test_monitor_push(omq, random_sn, sk, exclude):
     # It's pretty rare that we don't get all the responses before the store responses (since they
     # don't have to be onion-routed back to us), but give it a couple seconds anyway.
     s = s.get()
-    #print(f"got store response at {time.time()}")
+    # print(f"got store response at {time.time()}")
     assert len(s) == 1
     s = json.loads(s[0])
     hash = (
@@ -296,7 +307,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     def handle_notify_message(m):
         nonlocal conns, n_notifies
         snode = conns[m.conn]
-        #print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
+        # print(f"got notify from {snode['pubkey_legacy']} at {time.time()}")
         conns[m.conn]['response'].append(bt_deserialize(m.data()[0]))
         n_notifies += 1
 
@@ -340,7 +351,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     sn = ss.random_swarm_members(swarm, 1, exclude)[0]
     conn = omq.connect_remote(sn_address(sn))
 
-    #print(f"starting store at {time.time()}")
+    # print(f"starting store at {time.time()}")
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
@@ -361,7 +372,7 @@ def test_monitor_multi(omq, random_sn, sk, exclude):
     )
 
     s = s.get()
-    #print(f"got store response at {time.time()}")
+    # print(f"got store response at {time.time()}")
     assert len(s) == 1
     s = json.loads(s[0])
 
