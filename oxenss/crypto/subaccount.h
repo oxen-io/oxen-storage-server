@@ -46,10 +46,8 @@ struct signed_subaccount_token {
             const unsigned char* ed_pk = nullptr) const;
 
     // Same as above, but works on more raw values
-    void verify(
-            uint8_t net_prefix,
-            const unsigned char* ed_pk,
-            subaccount_access required_access) const;
+    void verify(uint8_t net_prefix, const unsigned char* ed_pk, subaccount_access required_access)
+            const;
 };
 
 }  // namespace oxen

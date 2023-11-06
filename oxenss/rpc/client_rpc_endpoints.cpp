@@ -578,8 +578,8 @@ bt_value delete_msgs::to_bt() const {
 
 template <typename Dict>
 static void load(revoke_subaccount& rs, Dict& d) {
-    auto [pubkey, pubkey_ed25519, revoke, signature, timestamp] =
-            load_fields<Str, SV, SV, SV, TP>(d, "pubkey", "pubkey_ed25519", "revoke", "signature", "timestamp");
+    auto [pubkey, pubkey_ed25519, revoke, signature, timestamp] = load_fields<Str, SV, SV, SV, TP>(
+            d, "pubkey", "pubkey_ed25519", "revoke", "signature", "timestamp");
     load_pk_signature(rs, d, pubkey, pubkey_ed25519, signature);
     require("revoke", revoke);
     const auto& sa = *revoke;
@@ -614,7 +614,8 @@ bt_value revoke_subaccount::to_bt() const {
 template <typename Dict>
 static void load(unrevoke_subaccount& us, Dict& d) {
     auto [pubkey, pubkey_ed25519, signature, timestamp, unrevoke] =
-            load_fields<Str, SV, SV, TP, SV>(d, "pubkey", "pubkey_ed25519", "signature", "timestamp", "unrevoke");
+            load_fields<Str, SV, SV, TP, SV>(
+                    d, "pubkey", "pubkey_ed25519", "signature", "timestamp", "unrevoke");
     load_pk_signature(us, d, pubkey, pubkey_ed25519, signature);
     require("timestamp", timestamp);
     us.timestamp = *timestamp;
@@ -645,7 +646,6 @@ bt_value unrevoke_subaccount::to_bt() const {
     ret["unrevoke"] = unrevoke.sview();
     return ret;
 }
-
 
 template <typename Dict>
 static void load(delete_all& da, Dict& d) {

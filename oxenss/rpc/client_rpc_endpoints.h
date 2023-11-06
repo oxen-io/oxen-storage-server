@@ -322,7 +322,8 @@ struct delete_msgs final : recursive {
 /// Revokes a subaccount
 ///
 /// Takes parameters of:
-/// - pubkey -- the pubkey of the account where the restriction it to apply, in hex (66) or bytes (33)
+/// - pubkey -- the pubkey of the account where the restriction it to apply, in hex (66) or bytes
+/// (33)
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert

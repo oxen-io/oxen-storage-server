@@ -79,6 +79,7 @@ else()
   check_submodule(external/uWebSockets uSockets)
   check_submodule(external/cpr)
   check_submodule(external/CLI11)
+  check_submodule(external/oxen-libquic)
   if(BUILD_TESTS)
     check_submodule(unit_test/Catch2)
   endif()
@@ -98,12 +99,9 @@ endif()
 include(cmake/check_atomic.cmake)
 link_libatomic()
 
-include(cmake/check_for_std_filesystem.cmake)
-
 add_subdirectory(external)
 
 add_subdirectory(oxenss)
-
 
 if (BUILD_TESTS)
     add_subdirectory(unit_test)

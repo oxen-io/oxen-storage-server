@@ -974,7 +974,8 @@ void RequestHandler::process_client_req(
                        : res->result;
 
     service_node_.get_db().revoke_subaccount(req.pubkey, req.revoke);
-    auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.revoke.view());
+    auto sig = create_signature(
+            ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.revoke.view());
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         add_misc_response_fields(res->result, service_node_);
@@ -986,7 +987,9 @@ void RequestHandler::process_client_req(
 void RequestHandler::process_client_req(
         rpc::unrevoke_subaccount&& req, std::function<void(Response)> cb) {
     log::debug(
-            logcat, "processing unrevoke_subaccount{} request", req.recurse ? "direct" : "forwarded");
+            logcat,
+            "processing unrevoke_subaccount{} request",
+            req.recurse ? "direct" : "forwarded");
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
@@ -1012,8 +1015,8 @@ void RequestHandler::process_client_req(
                 req.timestamp,
                 req.unrevoke.view())) {
         log::debug(logcat, "unrevoke_subaccount: signature verification failed");
-        return cb(
-                Response{http::UNAUTHORIZED, "unrevoke_subaccount signature verification failed"sv});
+        return cb(Response{
+                http::UNAUTHORIZED, "unrevoke_subaccount signature verification failed"sv});
     }
 
     auto [res, lock] = setup_recursive_request(service_node_, req, std::move(cb));
@@ -1024,7 +1027,8 @@ void RequestHandler::process_client_req(
                        : res->result;
 
     service_node_.get_db().unrevoke_subaccount(req.pubkey, req.unrevoke);
-    auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.unrevoke.view());
+    auto sig = create_signature(
+            ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.unrevoke.view());
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         add_misc_response_fields(res->result, service_node_);
