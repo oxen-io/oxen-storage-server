@@ -527,7 +527,7 @@ static void load(retrieve& r, Dict& d) {
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     auto& pk = pubkey ? pubkey : pubKey;
 
-    if (pk_ed25519 || sig || ts || (msg_ns && *msg_ns != namespace_id::LegacyClosed)) {
+    if (pk_ed25519 || sig || ts || (msg_ns && !is_noauth_retrieve_namespace(*msg_ns))) {
         load_pk_signature(r, d, pk, pk_ed25519, sig);
         load_subaccount(r, d, subacc, subacc_sig);
         r.timestamp = std::move(*ts);

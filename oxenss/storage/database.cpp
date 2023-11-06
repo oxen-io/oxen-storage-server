@@ -1,4 +1,5 @@
 #include "database.hpp"
+#include "SQLiteCpp/Exception.h"
 #include "SQLiteCpp/Statement.h"
 #include "SQLiteCpp/Transaction.h"
 #include "oxenss/logging/oxen_logger.h"
@@ -591,6 +592,23 @@ std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
 }
 
 std::optional<bool> Database::store(const message& msg) {
+
+    // When storing to a public namespace we clear anything there (except for a duplicate, to avoid
+    // unnecessary storage churn).
+    if (is_public_outbox_namespace(msg.msg_namespace)) {
+        auto st = impl->prepared_st(
+                "DELETE FROM messages"
+                " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
+                " AND namespace = ? AND hash != ?");
+        try {
+            exec_query(st, msg.pubkey, msg.msg_namespace, msg.hash);
+        } catch (const SQLite::Exception& e) {
+            log::error(
+                    logcat, "Failed to clear existing public outbox messages: {}", e.getErrorStr());
+            throw;
+        }
+    }
+
     auto st = impl->prepared_st(
             "INSERT INTO owned_messages (pubkey, type, hash, namespace, timestamp, expiry, data)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)");
