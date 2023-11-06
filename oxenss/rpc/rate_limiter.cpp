@@ -9,7 +9,7 @@ extern "C" {
 #include <arpa/inet.h>
 }
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 namespace {
 
@@ -110,4 +110,4 @@ void RateLimiter::clean_buckets(steady_clock::time_point now) {
     }
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

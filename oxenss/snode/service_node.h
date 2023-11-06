@@ -17,15 +17,15 @@
 #include "stats.h"
 #include "swarm.h"
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 struct OnionRequestMetadata;
 }
 
-namespace oxen::server {
+namespace oxenss::server {
 class OMQ;
 }
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 
@@ -265,7 +265,7 @@ class ServiceNode {
     server::OMQ& omq_server() { return omq_server_; }
 };
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode
 
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::snode::SnodeStatus> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::snode::SnodeStatus> = true;

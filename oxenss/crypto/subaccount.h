@@ -4,7 +4,7 @@
 #include "../common/subaccount_token.h"
 #include "../common/pubkey.h"
 
-namespace oxen {
+namespace oxenss {
 
 // Exception types thrown by signed_subaccount_token::verify
 struct subaccount_verification_error : std::exception {};
@@ -50,4 +50,4 @@ struct signed_subaccount_token {
             const;
 };
 
-}  // namespace oxen
+}  // namespace oxenss

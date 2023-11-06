@@ -10,7 +10,7 @@
 #include <oxenss/common/pubkey.h>
 #include "sn_record.h"
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 class ServiceNode;
 
@@ -132,4 +132,4 @@ class Swarm {
     std::optional<sn_record> find_node(const crypto::x25519_pubkey& pk) const;
 };
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

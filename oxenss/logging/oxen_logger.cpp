@@ -5,7 +5,7 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <filesystem>
 
-namespace oxen::logging {
+namespace oxenss::logging {
 
 static auto logcat = oxen::log::Cat("logging");
 
@@ -39,4 +39,4 @@ void init(const std::filesystem::path& data_dir, oxen::log::Level log_level) {
     log::info(logcat, "Writing logs to {}", log_location);
 }
 
-}  // namespace oxen::logging
+}  // namespace oxenss::logging

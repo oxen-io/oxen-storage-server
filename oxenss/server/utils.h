@@ -8,7 +8,7 @@
 #include <oxenss/utils/string_utils.hpp>
 
 /// Namespace for http constants/types
-namespace oxen::http {
+namespace oxenss::http {
 
 using namespace std::literals;
 
@@ -64,4 +64,4 @@ using headers =
 // Returned in a HF19+ ping_test to include the remote's pubkey in the response
 constexpr auto SNODE_PUBKEY_HEADER = "X-Oxen-Snode-Pubkey";
 
-}  // namespace oxen::http
+}  // namespace oxenss::http

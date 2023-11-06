@@ -5,7 +5,7 @@
 #include <type_traits>
 #include "formattable.h"
 
-namespace oxen {
+namespace oxenss {
 
 enum class namespace_id : int16_t {
     Default = 0,  // Ordinary Session messages
@@ -32,4 +32,4 @@ constexpr auto NAMESPACE_MAX = to_int(namespace_id::Max);
 template <>
 inline constexpr bool to_string_formattable<namespace_id> = true;
 
-}  // namespace oxen
+}  // namespace oxenss

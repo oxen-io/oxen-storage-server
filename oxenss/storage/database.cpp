@@ -19,7 +19,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <sqlite3.h>
 
-namespace oxen {
+namespace oxenss {
 
 static auto logcat = log::Cat("db");
 
@@ -229,7 +229,7 @@ namespace {
 
 class DatabaseImpl {
   public:
-    oxen::Database& parent;
+    oxenss::Database& parent;
     SQLite::Database db;
 
     // keep track of db full errorss so we don't print them on every store
@@ -947,4 +947,4 @@ std::vector<std::string> Database::update_all_expiries(
     return get_all<std::string>(st, new_exp_ms, new_exp_ms, pubkey, ns);
 }
 
-}  // namespace oxen
+}  // namespace oxenss

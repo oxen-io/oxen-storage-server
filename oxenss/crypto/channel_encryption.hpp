@@ -6,7 +6,7 @@
 
 #include "keys.h"
 
-namespace oxen::crypto {
+namespace oxenss::crypto {
 
 enum class EncryptType {
     aes_cbc,
@@ -70,7 +70,7 @@ class ChannelEncryption {
     bool server_;  // True if we are the server (i.e. the snode).
 };
 
-}  // namespace oxen::crypto
+}  // namespace oxenss::crypto
 
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::crypto::EncryptType> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::crypto::EncryptType> = true;

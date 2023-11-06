@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <oxenc/endian.h>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -294,4 +294,4 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     return result;
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

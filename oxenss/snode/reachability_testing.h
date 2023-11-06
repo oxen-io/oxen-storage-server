@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 using namespace std::literals;
 
@@ -138,4 +138,4 @@ class reachability_testing {
     void check_incoming_tests(const clock::time_point& now = clock::now());
 };
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

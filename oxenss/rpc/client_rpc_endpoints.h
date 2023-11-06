@@ -17,11 +17,11 @@
 #include <oxenss/crypto/subaccount.h>
 #include <oxenss/common/type_list.h>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 class ServiceNode;
 }
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 using namespace std::literals;
 
@@ -914,4 +914,4 @@ struct ifelse : endpoint {
     void load_from(oxenc::bt_dict_consumer params) override;
 };
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

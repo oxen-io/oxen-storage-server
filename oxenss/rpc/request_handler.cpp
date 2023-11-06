@@ -34,7 +34,7 @@
 using nlohmann::json;
 using namespace std::chrono;
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 static auto logcat = log::Cat("rpc");
 
@@ -260,7 +260,7 @@ namespace {
 
     template <typename... T>
     bool verify_signature(
-            oxen::Database& db,
+            oxenss::Database& db,
             const user_pubkey& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
             const std::optional<signed_subaccount_token>& subaccount,
@@ -1719,4 +1719,4 @@ void RequestHandler::process_onion_req(
     }
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

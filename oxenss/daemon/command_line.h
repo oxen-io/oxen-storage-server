@@ -5,7 +5,7 @@
 #include <variant>
 #include <vector>
 
-namespace oxen::cli {
+namespace oxenss::cli {
 
 struct command_line_options {
     std::string ip = "0.0.0.0";
@@ -28,4 +28,4 @@ using parse_result = std::variant<command_line_options, int>;
 parse_result parse_cli_args(std::vector<const char*> args);
 parse_result parse_cli_args(int argc, char* argv[]);
 
-}  // namespace oxen::cli
+}  // namespace oxenss::cli

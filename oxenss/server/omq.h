@@ -15,18 +15,18 @@
 #include "../common/message.h"
 #include "../snode/sn_record.h"
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 class RequestHandler;
 class RateLimiter;
 struct OnionRequestMetadata;
 struct Response;
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc
 
-namespace oxen::snode {
+namespace oxenss::snode {
 class ServiceNode;
 }
 
-namespace oxen::server {
+namespace oxenss::server {
 
 using namespace std::literals;
 
@@ -267,4 +267,4 @@ class OMQ {
     void send_notifies(message msg);
 };
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

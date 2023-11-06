@@ -4,6 +4,8 @@
 #include "../rpc/client_rpc_endpoints.h"
 #include "../utils/time.hpp"
 
+#include <oxenss/logging/oxen_logger.h>
+
 #include <chrono>
 #include <oxen/log.hpp>
 #include <tuple>
@@ -14,7 +16,7 @@
 #include <sodium/crypto_sign.h>
 #include <sodium/crypto_sign_ed25519.h>
 
-namespace oxen::server {
+namespace oxenss::server {
 
 using namespace std::literals;
 
@@ -385,4 +387,4 @@ void OMQ::send_notifies(message msg) {
     }
 }
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

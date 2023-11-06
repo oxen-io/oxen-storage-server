@@ -23,7 +23,7 @@
 
 using json = nlohmann::json;
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -225,7 +225,7 @@ void ServiceNode::bootstrap_data() {
                                  .dump();
 
     std::vector<oxenmq::address> seed_nodes;
-    if (oxen::is_mainnet) {
+    if (oxenss::is_mainnet) {
         seed_nodes.emplace_back(
                 "curve://public.loki.foundation:22027/"
                 "3c157ed3c675f56280dc5d8b2f00b327b5865c127bf2c6c42becc3ca73d9132b");
@@ -650,7 +650,7 @@ void ServiceNode::update_swarms() {
                         // nodes: but currently we still need this to deal with the lag).
 
                         auto [missing, total] = count_missing_data(bu);
-                        if (total >= (oxen::is_mainnet ? 100 : 10) &&
+                        if (total >= (oxenss::is_mainnet ? 100 : 10) &&
                             missing <= MISSING_PUBKEY_THRESHOLD::num * total /
                                                MISSING_PUBKEY_THRESHOLD::den) {
                             log::info(
@@ -1267,7 +1267,7 @@ std::string ServiceNode::get_status_line() const {
     // 123/456/789/1011 (last 62.3min)
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
-    if (!oxen::is_mainnet)
+    if (!oxenss::is_mainnet)
         s << " (TESTNET)";
 
     if (syncing_)
@@ -1352,4 +1352,4 @@ std::vector<sn_record> ServiceNode::get_swarm_peers() const {
     return swarm_->other_nodes();
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

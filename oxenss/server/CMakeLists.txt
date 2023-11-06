@@ -15,6 +15,7 @@ target_link_libraries(server
     common
     utils
     rpc
+    quic
     snode
     logging
     OpenSSL::SSL
