@@ -7,7 +7,7 @@
 #include <chrono>
 #include <string>
 
-using namespace oxen::snode;
+using namespace oxenss::snode;
 
 TEST_CASE("v1 serialization - basic values", "[serialization]") {
     oxen::user_pubkey pub_key;

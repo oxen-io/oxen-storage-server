@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace oxen {
+namespace oxenss {
 
 using namespace std::literals;
 
@@ -190,4 +190,4 @@ class Database {
             const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes);
 };
 
-}  // namespace oxen
+}  // namespace oxenss

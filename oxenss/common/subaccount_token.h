@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <stdexcept>
 
-namespace oxen {
+namespace oxenss {
 
 // Number of bytes of the network prefix of the subaccount
 inline constexpr size_t SUBACCOUNT_TOKEN_LEN_PREFIX = 1;
@@ -150,4 +150,4 @@ struct subaccount_token {
     void clear_flag(subaccount_access flag) { set_flags(flags() & ~flag); }
 };
 
-}  // namespace oxen
+}  // namespace oxenss

@@ -26,7 +26,7 @@
 #include <type_traits>
 #include <variant>
 
-namespace oxen::server {
+namespace oxenss::server {
 
 static auto logcat = log::Cat("server");
 
@@ -549,4 +549,4 @@ std::pair<std::string_view, rpc::OnionRequestMetadata> OMQ::decode_onion_data(
     return result;
 }
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

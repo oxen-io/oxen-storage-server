@@ -5,7 +5,7 @@
 
 #include <oxenss/crypto/keys.h>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 struct sn_record {
     std::string ip;
@@ -26,4 +26,4 @@ inline bool operator!=(const sn_record& lhs, const sn_record& rhs) {
     return !(lhs == rhs);
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

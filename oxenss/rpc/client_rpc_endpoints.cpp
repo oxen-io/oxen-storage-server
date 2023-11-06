@@ -14,7 +14,7 @@
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 using nlohmann::json;
 using oxenc::bt_dict;
@@ -1118,4 +1118,4 @@ void ifelse::load_from(bt_dict_consumer params) {
         throw parse_error{"Invalid ifelse request: at least one of \"then\"/\"else\" required"};
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

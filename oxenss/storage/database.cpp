@@ -22,7 +22,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <sqlite3.h>
 
-namespace oxen {
+namespace oxenss {
 
 static auto logcat = log::Cat("db");
 
@@ -232,7 +232,7 @@ namespace {
 
 class DatabaseImpl {
   public:
-    oxen::Database& parent;
+    oxenss::Database& parent;
     SQLite::Database db;
 
     std::unordered_map<std::string, SQLite::Statement> prepared_sts;
@@ -1102,9 +1102,9 @@ std::vector<std::string> Database::update_all_expiries(
 }
 
 // Hack used by the test suite to simulate a blocking/busy thread:
-void oxen::Database::test_suite_block_for(std::chrono::milliseconds duration) {
+void oxenss::Database::test_suite_block_for(std::chrono::milliseconds duration) {
     auto impl = get_impl();
     std::this_thread::sleep_for(duration);
 }
 
-}  // namespace oxen
+}  // namespace oxenss

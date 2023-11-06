@@ -1,6 +1,6 @@
 #include "oxenss/version.h"
 
-namespace oxen {
+namespace oxenss {
 
 using namespace std::literals;
 

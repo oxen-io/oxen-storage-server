@@ -6,7 +6,7 @@
 
 #include <chrono>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -136,4 +136,4 @@ void reachability_testing::remove_node_from_failing(const crypto::legacy_pubkey&
     failing.erase(pk);
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

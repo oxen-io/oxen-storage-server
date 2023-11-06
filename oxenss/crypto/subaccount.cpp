@@ -2,7 +2,7 @@
 #include <sodium/crypto_sign_ed25519.h>
 #include <cassert>
 
-namespace oxen {
+namespace oxenss {
 
 void signed_subaccount_token::verify(
         uint8_t net_prefix, const unsigned char* ed_pk, subaccount_access required_access) const {
@@ -36,4 +36,4 @@ void signed_subaccount_token::verify(
     return verify(pubkey.type(), pk, required_access);
 }
 
-}  // namespace oxen
+}  // namespace oxenss

@@ -9,9 +9,9 @@
 #include <oxenc/base64.h>
 
 using namespace std::literals;
-using namespace oxen::crypto;
+using namespace oxenss::crypto;
 
-static oxen::snode::sn_record create_dummy_sn_record() {
+static oxenss::snode::sn_record create_dummy_sn_record() {
     const auto pk = legacy_pubkey::from_hex(
             "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
     const auto pk_x25519 = x25519_pubkey::from_hex(
@@ -26,19 +26,19 @@ static oxen::snode::sn_record create_dummy_sn_record() {
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
 static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) {
-    using oxen::snode::sn_record;
+    using oxenss::snode::sn_record;
 
     auto sn = create_dummy_sn_record();
 
     std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
 
-    oxen::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
-    std::vector<oxen::snode::SwarmInfo> current{{si}};
+    oxenss::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
+    std::vector<oxenss::snode::SwarmInfo> current{{si}};
 
     std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
 
-    oxen::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
-    std::vector<oxen::snode::SwarmInfo> incoming{{si2}};
+    oxenss::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
+    std::vector<oxenss::snode::SwarmInfo> incoming{{si2}};
 
     preserve_ips(incoming, current);
 
