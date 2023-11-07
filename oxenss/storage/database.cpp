@@ -297,7 +297,6 @@ class DatabaseImpl {
             log::info(logcat, "Upgrading database schema: adding namespace column");
             db.exec(R"(
 DROP INDEX IF EXISTS messages_owner;
-DROP TRIGGER IF EXISTS owned_messages_insert;
 DROP VIEW IF EXISTS owned_messages;
 ALTER TABLE messages ADD COLUMN namespace INTEGER NOT NULL DEFAULT 0;
             )");
@@ -463,7 +462,8 @@ CREATE VIEW IF NOT EXISTS owned_messages AS
     SELECT owners.id AS oid, type, pubkey, messages.id AS mid, hash, namespace, timestamp, expiry, data
     FROM messages JOIN owners ON messages.owner = owners.id;
 
-CREATE TRIGGER IF NOT EXISTS owned_messages_insert
+DROP TRIGGER IF EXISTS owned_messages_insert;
+CREATE TRIGGER IF NOT EXISTS owned_messages_upsert
     INSTEAD OF INSERT ON owned_messages FOR EACH ROW WHEN NEW.oid IS NULL
     BEGIN
         INSERT INTO owners (type, pubkey) VALUES (NEW.type, NEW.pubkey) ON CONFLICT DO NOTHING;
@@ -475,7 +475,8 @@ CREATE TRIGGER IF NOT EXISTS owned_messages_insert
             NEW.timestamp,
             NEW.expiry,
             NEW.data
-        );
+        ) ON CONFLICT(hash) WHERE expiry > messages.expiry
+            DO UPDATE SET expiry = excluded.expiry;
     END;
         )");
 
@@ -858,17 +859,23 @@ std::vector<std::string> Database::delete_by_timestamp(
     return get_all<std::string>(st, pubkey, to_epoch_ms(timestamp), ns);
 }
 
-int Database::revoke_subaccounts(
+static constexpr auto ins_revoke_prefix = "INSERT INTO revoked_subaccounts (owner, token) "sv;
+static constexpr auto ins_revoke_suffix =
+        " ON CONFLICT(owner, token) DO UPDATE SET timestamp = excluded.timestamp "
+        "WHERE revoked_subaccounts.timestamp < excluded.timestamp"sv;
+
+void Database::revoke_subaccounts(
         const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccounts) {
     if (subaccounts.empty())
-        return 0;
+        return;
 
     if (subaccounts.size() == 1) {
-        auto insert_token = impl->prepared_st(
-                "INSERT INTO revoked_subaccounts (owner, token) "
-                "VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) "
-                "ON CONFLICT DO NOTHING");
-        return exec_query(insert_token, pubkey, blob_binder{subaccounts[0].view()});
+        auto insert_token = impl->prepared_st(fmt::format(
+                "{} VALUES ((SELECT id FROM owners WHERE pubkey = ? AND type = ?), ?) {}",
+                ins_revoke_prefix,
+                ins_revoke_suffix));
+        exec_query(insert_token, pubkey, blob_binder{subaccounts[0].view()});
+        return;
     }
 
     SQLite::Transaction transaction{impl->db};
@@ -876,20 +883,17 @@ int Database::revoke_subaccounts(
     auto get_owner = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto ownerid = exec_and_maybe_get<int64_t>(get_owner, pubkey);
     if (!ownerid)
-        return 0;
+        return;
 
     auto insert_token = impl->prepared_st(
-            "INSERT INTO revoked_subaccounts (owner, token) VALUES (?, ?) "
-            "ON CONFLICT DO NOTHING");
+            fmt::format("{} VALUES (?, ?) {}", ins_revoke_prefix, ins_revoke_suffix));
 
-    int count = 0;
     for (const auto& sa : subaccounts) {
-        count += exec_query(insert_token, *ownerid, blob_binder{sa.view()});
+        exec_query(insert_token, *ownerid, blob_binder{sa.view()});
         insert_token->reset();
     }
 
     transaction.commit();
-    return count;
 }
 
 int Database::unrevoke_subaccounts(

@@ -124,13 +124,12 @@ class Database {
             std::chrono::system_clock::time_point timestamp);
 
     // Adds access tokens to the revoked token database so that users may not longer use those
-    // tokens to authenticate.  Returns the number of new revocations added (i.e. does not count
-    // existing ones).
-    int revoke_subaccounts(
+    // tokens to authenticate.
+    void revoke_subaccounts(
             const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccount);
 
     // Removes access tokens from the revoked token database so that users may use those tokens to
-    // authenticate (if currently revoked).  Returns the number of token that were found and
+    // authenticate (if currently revoked).  Returns the number of tokens that were found and
     // removed.
     int unrevoke_subaccounts(
             const user_pubkey& pubkey, const std::vector<subaccount_token>& subaccount);

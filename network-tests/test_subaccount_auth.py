@@ -344,9 +344,9 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
             print("Bad signature from swarm member {}".format(k))
             raise e
 
-    # Revoke the subaccount again (which is a duplicate) plus another 49 subaccounts; the original
-    # subaccount should still fail to retrieve the messages
-    revoke_list = [dude_token]
+    # Revoke another 49 subaccounts; the original subaccount should still fail to retrieve the
+    # messages
+    revoke_list = []
     for i in range(49):
         another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
         revoke_list.append(another_token)
@@ -364,7 +364,6 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     expected_signed = ('03' + sk.verify_key.encode().hex()).encode() + f"{ts}".encode() + b"".join(revoke_list)
     for k, v in r['swarm'].items():
         edpk = VerifyKey(k, encoder=HexEncoder)
-        assert v['count'] == 49
         try:
             edpk.verify(expected_signed, base64.b64decode(v['signature']))
         except nacl.exceptions.BadSignatureError as e:
@@ -394,8 +393,6 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
             "signature": sk.sign(f"revoke_subaccount{ts}".encode() + another_token, encoder=Base64Encoder).signature.decode()
         }).encode()]).get()
     assert len(r) == 1
-    r = json.loads(r[0])
-    assert set(v['count'] for v in r['swarm'].values()) == {1}
 
     # Try retrieving it again using the subaccount, should succeed now (because only the most recent
     # 50 revocations are kept by the swarm):
@@ -417,6 +414,7 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
 
     # Unrevoke the subaccounts plus 10 extra fake ones (61 in total); we should only actually get 50
     # back (since dude got shifted away, and the other 10 are fake).
+    revoke_list.append(dude_token)
     for i in range(10):
         another_sk, another_token, another_sig = subaccount.make_subaccount(0x03, sk)
         revoke_list.append(another_token)
