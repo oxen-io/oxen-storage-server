@@ -4,8 +4,8 @@
 
 #include <oxenss/rpc/onion_processing.h>
 
-using namespace oxen::rpc;
-using namespace oxen::crypto;
+using namespace oxenss::rpc;
+using namespace oxenss::crypto;
 using namespace std::literals;
 
 constexpr const char* ciphertext = "ciphertext";
