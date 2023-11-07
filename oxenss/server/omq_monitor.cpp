@@ -67,16 +67,13 @@ namespace {
 
 }  // namespace
 
-void OMQ::update_monitors(
-        std::vector<sub_info>& subs,
-        std::optional<oxenmq::ConnectionID> omq,
-        std::optional<std::shared_ptr<quic::Connection>> quic) {
+void OMQ::update_monitors(std::vector<sub_info>& subs, connection_handle conn) {
     std::unique_lock lock{monitoring_mutex_};
     for (auto& [pubkey, pubkey_hex, namespaces, want_data] : subs) {
         bool found = false;
         for (auto [it, end] = monitoring_.equal_range(pubkey); it != end; ++it) {
             auto& mon_data = it->second;
-            if ((omq and mon_data.push_conn == omq) || (quic and mon_data.quic == quic)) {
+            if (mon_data.conn == conn) {
                 mon_data.namespaces =
                         merge_namespaces(std::move(mon_data.namespaces), std::move(namespaces));
                 log::debug(
@@ -87,10 +84,6 @@ void OMQ::update_monitors(
                 mon_data.reset_expiry();
                 mon_data.want_data |= want_data;
                 found = true;
-                if (omq and not mon_data.push_conn)
-                    mon_data.push_conn = omq;
-                if (quic and not mon_data.quic)
-                    mon_data.quic = quic;
                 break;
             }
         }
@@ -103,8 +96,22 @@ void OMQ::update_monitors(
             monitoring_.emplace(
                     std::piecewise_construct,
                     std::forward_as_tuple(std::move(pubkey)),
-                    std::forward_as_tuple(std::move(namespaces), want_data, omq, quic));
+                    std::forward_as_tuple(std::move(namespaces), want_data, conn));
         }
+    }
+}
+
+void OMQ::get_notifiers(
+        message& m, std::vector<connection_handle>& to, std::vector<connection_handle>& with_data) {
+    auto now = std::chrono::steady_clock::now();
+    std::shared_lock lock{monitoring_mutex_};
+
+    for (auto [it, end] = monitoring_.equal_range(m.pubkey.prefixed_raw()); it != end; ++it) {
+        const auto& mon_data = it->second;
+        if (mon_data.expiry >= now &&
+            std::binary_search(
+                    mon_data.namespaces.begin(), mon_data.namespaces.end(), m.msg_namespace))
+            (mon_data.want_data ? with_data : to).push_back(mon_data.conn);
     }
 }
 
@@ -146,69 +153,6 @@ void OMQ::handle_monitor_messages(oxenmq::Message& message) {
         update_monitors(subs, message.conn);
 
     message.send_reply(result);
-}
-
-static void write_metadata(
-        oxenc::bt_dict_producer& d, std::string_view pubkey, const message& msg) {
-    d.append("@", pubkey);
-    d.append("h", msg.hash);
-    d.append("n", to_int(msg.msg_namespace));
-    d.append("t", to_epoch_ms(msg.timestamp));
-    d.append("z", to_epoch_ms(msg.expiry));
-}
-
-void OMQ::send_notifies(message msg) {
-    auto pubkey = msg.pubkey.prefixed_raw();
-    auto now = std::chrono::steady_clock::now();
-    std::vector<oxenmq::ConnectionID> relay_to, relay_to_with_data;
-    {
-        std::shared_lock lock{monitoring_mutex_};
-        for (auto [it, end] = monitoring_.equal_range(pubkey); it != end; ++it) {
-            const auto& mon_data = it->second;
-            if (mon_data.expiry >= now &&
-                std::binary_search(
-                        mon_data.namespaces.begin(), mon_data.namespaces.end(), msg.msg_namespace))
-                (mon_data.want_data ? relay_to_with_data : relay_to).push_back(*mon_data.push_conn);
-        }
-    }
-
-    if (relay_to.empty() && relay_to_with_data.empty())
-        return;
-
-    // We output a dict with keys (in order):
-    // - @ pubkey
-    // - h msg hash
-    // - n msg namespace
-    // - t msg timestamp
-    // - z msg expiry
-    // - ~ msg data (optional)
-    constexpr size_t metadata_size = 2       // d...e
-                                   + 3 + 36  // 1:@ and 33:[33-byte pubkey]
-                                   + 3 + 46  // 1:h and 43:[43-byte base64 unpadded hash]
-                                   + 3 + 8   // 1:n and i-32768e
-                                   + 3 + 16  // 1:t and i1658784776010e plus a byte to grow
-                                   + 3 + 16  // 1:z and i1658784776010e plus a byte to grow
-                                   + 10;     // safety margin
-
-    oxenc::bt_dict_producer d;
-    d.reserve(
-            relay_to_with_data.empty() ? metadata_size
-                                       : metadata_size  // all the metadata above
-                                                 + 3    // 1:~
-                                                 + 8    // 76800: plus a couple bytes to grow
-                                                 + msg.data.size());
-
-    write_metadata(d, pubkey, msg);
-
-    if (!relay_to.empty())
-        for (const auto& conn : relay_to)
-            omq_.send(conn, "notify.message", d.view());
-
-    if (!relay_to_with_data.empty()) {
-        d.append("~", msg.data);
-        for (const auto& conn : relay_to_with_data)
-            omq_.send(conn, "notify.message", d.view());
-    }
 }
 
 }  // namespace oxenss::server

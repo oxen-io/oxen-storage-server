@@ -16,6 +16,14 @@
 #include "../common/message.h"
 #include "../snode/sn_record.h"
 
+namespace oxenss::quic {
+struct Connection;
+}  // namespace oxenss::quic
+
+namespace oxenss {
+using connection_handle = std::variant<oxenmq::ConnectionID, std::shared_ptr<quic::Connection>>;
+}  // namespace oxenss
+
 namespace oxenss::rpc {
 class RequestHandler;
 class RateLimiter;
@@ -27,10 +35,6 @@ namespace oxenss::snode {
 class ServiceNode;
 }  // namespace oxenss::snode
 
-namespace oxenss::quic {
-struct Connection;
-}  // namespace oxenss::quic
-
 namespace oxenss::server {
 
 using namespace std::literals;
@@ -40,22 +44,17 @@ struct MonitorData {
 
     std::chrono::steady_clock::time_point expiry;  // When this notify reg expires
     std::vector<namespace_id> namespaces;          // sorted namespace_ids
-    std::optional<oxenmq::ConnectionID> push_conn =
-            std::nullopt;  // ConnectionID to push notifications to
-    std::optional<std::shared_ptr<quic::Connection>> quic =
-            std::nullopt;  // quic connection to push to
-    bool want_data;        // true if the subscriber wants msg data
+    connection_handle conn;
+    bool want_data;  // true if the subscriber wants msg data
 
     MonitorData(
             std::vector<namespace_id> namespaces,
             bool data,
-            std::optional<oxenmq::ConnectionID> conn,
-            std::optional<std::shared_ptr<quic::Connection>> q = std::nullopt,
+            connection_handle c,
             std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) :
             expiry{std::chrono::steady_clock::now() + ttl},
             namespaces{std::move(namespaces)},
-            push_conn{std::move(conn)},
-            quic{q},
+            conn{c},
             want_data{data} {}
 
     void reset_expiry(std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) {
@@ -229,10 +228,12 @@ class OMQ {
         const crypto::x25519_seckey& privkey,
         const std::vector<crypto::x25519_pubkey>& stats_access_keys_hex);
 
-    void update_monitors(
-            std::vector<sub_info>&,
-            std::optional<oxenmq::ConnectionID> = std::nullopt,
-            std::optional<std::shared_ptr<quic::Connection>> = std::nullopt);
+    void update_monitors(std::vector<sub_info>&, connection_handle);
+
+    void get_notifiers(
+            message& m,
+            std::vector<connection_handle>& to,
+            std::vector<connection_handle>& with_data);
 
     // Initialize oxenmq; return a future that completes once we have connected to and
     // initialized from oxend.
@@ -272,9 +273,6 @@ class OMQ {
     // Decodes onion request data; throws if invalid formatted or missing required fields.
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
-
-    // Called during message submission to send notifications to anyone subscribed to them.
-    void send_notifies(message msg);
 };
 
 }  // namespace oxenss::server

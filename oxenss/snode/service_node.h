@@ -17,6 +17,10 @@
 #include "stats.h"
 #include "swarm.h"
 
+namespace oxenss::quic {
+struct Endpoint;
+}
+
 namespace oxenss::rpc {
 struct OnionRequestMetadata;
 }
@@ -81,6 +85,7 @@ class ServiceNode {
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
+    std::shared_ptr<oxenss::quic::Endpoint> quic;
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
@@ -110,6 +115,8 @@ class ServiceNode {
     mutable std::recursive_mutex sn_mutex_;
 
     std::forward_list<cpr::AsyncWrapper<void>> outstanding_https_reqs_;
+
+    void send_notifies(message m);
 
     // Save multiple messages to the database at once (i.e. in a single transaction)
     void save_bulk(const std::vector<message>& msgs);
@@ -175,6 +182,8 @@ class ServiceNode {
 
     Database& get_db() { return *db_; }
     const Database& get_db() const { return *db_; }
+
+    void connect_quic(std::shared_ptr<oxenss::quic::Endpoint>&);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }
