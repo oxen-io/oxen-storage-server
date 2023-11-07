@@ -66,16 +66,28 @@ namespace {
                         : std::is_integral_v<T> || std::is_same_v<T, namespace_id>
                                 ? it->is_number_integer()
                         : is_namespace_var<T> ? it->is_number_integer() || it->is_string()
-                        : is_str_array<T> || is_int_array<T> ? it->is_array()
-                                                             : it->is_string();
-        if (is_str_array<T> && right_type) {
-            for (auto& x : *it)
-                if (!x.is_string())
-                    right_type = false;
-        } else if (is_int_array<T> && right_type) {
-            for (auto& x : *it)
-                if (!x.is_number_integer())
-                    right_type = false;
+                        : is_str_array<T>     ? it->is_array() || it->is_string()
+                        : is_int_array<T>     ? it->is_array() || it->is_number_integer()
+                                              : it->is_string();
+
+        if (right_type) {
+            // For vectors of string or ints we allow the value as either a list of strings/ints, or
+            // a single string/int (which becomes the single element of the returned vector).  The
+            // check here is to make sure, when given an array, that each array element has the
+            // right type (if not given an array then we already checked the singleton type above).
+            if (is_str_array<T> && it->is_array()) {
+                for (auto& x : *it)
+                    if (!x.is_string()) {
+                        right_type = false;
+                        break;
+                    }
+            } else if (is_int_array<T> && it->is_array()) {
+                for (auto& x : *it)
+                    if (!x.is_number_integer()) {
+                        right_type = false;
+                        break;
+                    }
+            }
         }
 
         if (!right_type)
@@ -104,6 +116,15 @@ namespace {
                     return namespace_all;
             throw parse_error{
                     fmt::format("Invalid value given for '{}': expected integer or \"all\"", name)};
+        } else if constexpr (is_str_array<T> || is_int_array<T>) {
+            if (it->is_array())
+                return it->template get<T>();
+            auto vals = std::make_optional<T>();
+            if constexpr (is_str_array<T>)
+                vals->push_back(it->get<std::string>());
+            else
+                vals->push_back(it->get<int>());
+            return vals;
         } else {
             return it->template get<T>();
         }
@@ -129,11 +150,20 @@ namespace {
                 return from_epoch_ms(params.consume_integer<int64_t>());
             else if constexpr (is_str_array<T> || is_int_array<T>) {
                 auto elems = std::make_optional<T>();
-                for (auto l = params.consume_list_consumer(); !l.is_finished();)
-                    if constexpr (is_str_array<T>)
-                        elems->push_back(l.consume_string());
-                    else
-                        elems->push_back(l.consume_integer<int>());
+                if constexpr (is_str_array<T>) {
+                    if (params.is_string())
+                        elems->push_back(params.consume_string());
+                } else if constexpr (is_int_array<T>) {
+                    if (params.is_integer())
+                        elems->push_back(params.consume_integer<int>());
+                }
+                if (elems->empty()) {
+                    for (auto l = params.consume_list_consumer(); !l.is_finished();)
+                        if constexpr (is_str_array<T>)
+                            elems->push_back(l.consume_string());
+                        else
+                            elems->push_back(l.consume_integer<int>());
+                }
                 return elems;
             } else if constexpr (is_namespace_var<T> || std::is_same_v<T, namespace_id>) {
                 if (params.is_integer())
