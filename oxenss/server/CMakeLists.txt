@@ -4,7 +4,9 @@ add_library(server STATIC
     omq.cpp
     omq_logger.cpp
     omq_monitor.cpp
-    server_certificates.cpp)
+    quic.cpp
+    server_certificates.cpp
+    utils.cpp)
 
 find_package(Threads)
 
