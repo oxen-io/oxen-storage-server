@@ -31,6 +31,7 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
     std::string_view view() const {
         return {reinterpret_cast<const char*>(this->data()), KeyLength};
     }
+    std::string str() const { return {reinterpret_cast<const char*>(this->data()), KeyLength}; }
     std::string hex() const { return detail::to_hex(this->data(), KeyLength); }
     explicit operator bool() const { return *this != detail::null_bytes<KeyLength>; }
 
