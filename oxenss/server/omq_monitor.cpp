@@ -67,6 +67,47 @@ namespace {
 
 }  // namespace
 
+void OMQ::update_monitors(
+        std::vector<sub_info>& subs,
+        std::optional<oxenmq::ConnectionID> omq,
+        std::optional<std::shared_ptr<quic::Connection>> quic) {
+    std::unique_lock lock{monitoring_mutex_};
+    for (auto& [pubkey, pubkey_hex, namespaces, want_data] : subs) {
+        bool found = false;
+        for (auto [it, end] = monitoring_.equal_range(pubkey); it != end; ++it) {
+            auto& mon_data = it->second;
+            if ((omq and mon_data.push_conn == omq) || (quic and mon_data.quic == quic)) {
+                mon_data.namespaces =
+                        merge_namespaces(std::move(mon_data.namespaces), std::move(namespaces));
+                log::debug(
+                        logcat,
+                        "monitor.messages sub renewed for {} monitoring namespace(s) {}",
+                        pubkey_hex,
+                        fmt::join(mon_data.namespaces, ", "));
+                mon_data.reset_expiry();
+                mon_data.want_data |= want_data;
+                found = true;
+                if (omq and not mon_data.push_conn)
+                    mon_data.push_conn = omq;
+                if (quic and not mon_data.quic)
+                    mon_data.quic = quic;
+                break;
+            }
+        }
+        if (not found) {
+            log::debug(
+                    logcat,
+                    "monitor.messages new subscription for {} monitoring namespace(s) {}",
+                    pubkey_hex,
+                    fmt::join(namespaces, ", "));
+            monitoring_.emplace(
+                    std::piecewise_construct,
+                    std::forward_as_tuple(std::move(pubkey)),
+                    std::forward_as_tuple(std::move(namespaces), want_data, omq, quic));
+        }
+    }
+}
+
 void OMQ::handle_monitor_messages(oxenmq::Message& message) {
     if (message.data.size() != 1 || message.data[0].size() < 2 ||
         !(message.data[0].front() == 'd' || message.data[0].front() == 'l') ||
@@ -101,39 +142,9 @@ void OMQ::handle_monitor_messages(oxenmq::Message& message) {
         return;
     }
 
-    if (!subs.empty()) {
-        std::unique_lock lock{monitoring_mutex_};
-        for (auto& [pubkey, pubkey_hex, namespaces, want_data] : subs) {
-            bool found = false;
-            for (auto [it, end] = monitoring_.equal_range(pubkey); it != end; ++it) {
-                auto& mon_data = it->second;
-                if (mon_data.push_conn == message.conn) {
-                    mon_data.namespaces =
-                            merge_namespaces(std::move(mon_data.namespaces), std::move(namespaces));
-                    log::debug(
-                            logcat,
-                            "monitor.messages sub renewed for {} monitoring namespace(s) {}",
-                            pubkey_hex,
-                            fmt::join(mon_data.namespaces, ", "));
-                    mon_data.reset_expiry();
-                    mon_data.want_data |= want_data;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                log::debug(
-                        logcat,
-                        "monitor.messages new subscription for {} monitoring namespace(s) {}",
-                        pubkey_hex,
-                        fmt::join(namespaces, ", "));
-                monitoring_.emplace(
-                        std::piecewise_construct,
-                        std::forward_as_tuple(std::move(pubkey)),
-                        std::forward_as_tuple(std::move(namespaces), message.conn, want_data));
-            }
-        }
-    }
+    if (not subs.empty())
+        update_monitors(subs, message.conn);
+
     message.send_reply(result);
 }
 
@@ -157,7 +168,7 @@ void OMQ::send_notifies(message msg) {
             if (mon_data.expiry >= now &&
                 std::binary_search(
                         mon_data.namespaces.begin(), mon_data.namespaces.end(), msg.msg_namespace))
-                (mon_data.want_data ? relay_to_with_data : relay_to).push_back(mon_data.push_conn);
+                (mon_data.want_data ? relay_to_with_data : relay_to).push_back(*mon_data.push_conn);
         }
     }
 

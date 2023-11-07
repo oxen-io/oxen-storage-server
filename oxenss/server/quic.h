@@ -11,6 +11,10 @@ namespace oxenss::rpc {
 class RequestHandler;
 }  // namespace oxenss::rpc
 
+namespace oxenss::server {
+class OMQ;
+}
+
 namespace oxenss::quic {
 
 static auto logcat = log::Cat("quic");
@@ -61,19 +65,24 @@ struct Connection {
 
 struct Endpoint {
 
-    Endpoint(rpc::RequestHandler& rh, const Address& bind, const crypto::ed25519_seckey& sk);
+    Endpoint(
+            rpc::RequestHandler& rh,
+            server::OMQ& q,
+            const Address& bind,
+            const crypto::ed25519_seckey& sk);
 
-    bool connect_to(const Address& remote);
+    // bool send_request(   // TODO: refactor
+    //         const Address& remote,
+    //         std::string method,
+    //         std::string body,
+    //         quic_callback func /* = nullptr */);  // may not need this default values
 
-    bool send_request(
-            const Address& remote,
-            std::string method,
-            std::string body,
-            quic_callback func /* = nullptr */);  // may not need this default values
+    std::optional<std::shared_ptr<quic::Connection>> get_conn(const oxen::quic::ConnectionID& cid) {
+        if (auto itr = conns.find(cid); itr != conns.end())
+            return itr->second;
 
-    bool send_datagram(const Address& remote, std::string payload);
-
-    std::shared_ptr<quic::Connection> get_conn(const Address& addr);
+        return std::nullopt;
+    }
 
   private:
     const Address local;
@@ -82,6 +91,7 @@ struct Endpoint {
     std::shared_ptr<oxen::quic::Endpoint> ep;
 
     rpc::RequestHandler& request_handler;
+    server::OMQ& omq;
 
     // Holds all connections currently being managed by the quic endpoint
     std::unordered_map<oxen::quic::ConnectionID, std::shared_ptr<quic::Connection>> conns;
@@ -96,8 +106,6 @@ struct Endpoint {
     void on_conn_closed(oxen::quic::connection_interface& ci, uint64_t ec);
 
     void register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s);
-
-    void recv_packet(bstring);
 
     void recv_data_message(oxen::quic::dgram_interface&, bstring);
 
@@ -127,3 +135,9 @@ struct Endpoint {
 };
 
 }  // namespace oxenss::quic
+
+/*
+    TODO:
+        - remove pending msg que
+        - no need for send_request and connect_to and send_datagrams
+*/

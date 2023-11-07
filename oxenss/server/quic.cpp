@@ -1,4 +1,5 @@
 #include "quic.h"
+#include "omq.h"
 
 #include <oxenss/rpc/request_handler.h>
 
@@ -9,12 +10,17 @@ Connection::Connection(
         std::shared_ptr<oxen::quic::BTRequestStream>& s) :
         conn{c}, control_stream{s} {}
 
-Endpoint::Endpoint(rpc::RequestHandler& rh, const Address& bind, const crypto::ed25519_seckey& sk) :
+Endpoint::Endpoint(
+        rpc::RequestHandler& rh,
+        server::OMQ& q,
+        const Address& bind,
+        const crypto::ed25519_seckey& sk) :
         local{bind},
         network{std::make_unique<oxen::quic::Network>()},
         tls_creds{oxen::quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
         ep{startup_endpoint()},
-        request_handler{rh} {}
+        request_handler{rh},
+        omq{q} {}
 
 std::shared_ptr<oxen::quic::Endpoint> Endpoint::startup_endpoint() {
     auto ep = network->endpoint(
@@ -39,54 +45,21 @@ std::shared_ptr<oxen::quic::Endpoint> Endpoint::startup_endpoint() {
     return ep;
 }
 
-bool Endpoint::connect_to(const Address& remote) {
-    if (auto conn = get_conn(remote)) {
-        log::info(logcat, "Connection to remote address:{} already established!", remote);
-        return false;
-    }
+// bool Endpoint::send_request(
+//         const Address& remote, std::string method, std::string body, quic_callback func) {
 
-    auto rv = establish_connection(remote);
-    log::info(
-            logcat,
-            "Connection to remote address:{} {}successfully established!",
-            remote,
-            rv ? ""sv : "un"sv);
-    return rv;
-}
+//     if (auto conn = get_conn(remote)) {
+//         conn->control_stream->command(std::move(method), std::move(body), std::move(func));
+//         return true;
+//     }
 
-bool Endpoint::send_request(
-        const Address& remote, std::string method, std::string body, quic_callback func) {
+//     auto pending = PendingMessage(std::move(method), std::move(body), std::move(func));
 
-    if (auto conn = get_conn(remote)) {
-        conn->control_stream->command(std::move(method), std::move(body), std::move(func));
-        return true;
-    }
+//     auto [itr, b] = pending_message_que.emplace(remote, MessageQueue{});
+//     itr->second.push_back(std::move(pending));
 
-    auto pending = PendingMessage(std::move(method), std::move(body), std::move(func));
-
-    auto [itr, b] = pending_message_que.emplace(remote, MessageQueue{});
-    itr->second.push_back(std::move(pending));
-
-    return false;
-}
-
-bool Endpoint::send_datagram(const Address& remote, std::string payload) {
-    if (auto conn = get_conn(remote)) {
-        conn->conn->send_datagram(std::move(payload));
-        return true;
-    }
-
-    auto pending = PendingMessage(std::move(payload));
-
-    auto [itr, b] = pending_message_que.emplace(remote, MessageQueue{});
-    itr->second.push_back(std::move(pending));
-
-    return false;
-}
-
-void Endpoint::recv_packet(bstring data) {
-    (void)data;
-}
+//     return false;
+// }
 
 void Endpoint::recv_data_message(oxen::quic::dgram_interface& di, bstring data) {
     (void)di;
@@ -163,6 +136,7 @@ void Endpoint::handle_monitor_message(oxen::quic::message m) {
     const auto& front = body.front();
     std::string result;
     std::vector<sub_info> subs;
+
     try {
         if (front == 'd') {
             oxenc::bt_dict_producer out;
@@ -182,6 +156,9 @@ void Endpoint::handle_monitor_message(oxen::quic::message m) {
         m.respond(std::move(result), true);
         return;
     }
+
+    if (not subs.empty())
+        omq.update_monitors(subs, std::nullopt, get_conn(m.scid()));
 
     m.respond(result);
 }
