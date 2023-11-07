@@ -426,7 +426,7 @@ static void distribute_command(
                     bool good_result = success && parts.size() == 1;
                     if (good_result) {
                         try {
-                            peer_result = server::bt_to_json(oxenc::bt_dict_consumer{parts[0]});
+                            peer_result = bt_to_json(oxenc::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
                             log::warning(
                                     logcat,
