@@ -7,10 +7,32 @@
 
 #include <oxenss/utils/string_utils.hpp>
 
+#include <oxenc/bt_value.h>
+#include <oxenc/bt_serialize.h>
+
+namespace oxenss {
+using ustring = std::basic_string<uint8_t>;
+using ustring_view = std::basic_string_view<uint8_t>;
+using bstring = std::basic_string<std::byte>;
+using bstring_view = std::basic_string_view<std::byte>;
+
+// place this here so we can use it in oxenss::*
+using namespace std::literals;
+
+inline std::string serialize_response(oxenc::bt_dict supplement = {}) {
+    return oxenc::bt_serialize(supplement);
+}
+
+// Quic request errors
+namespace quic::error {
+    inline constexpr auto TIMED_OUT = "TIMED OUT"sv;
+    inline constexpr auto EXCEPTION = "EXCEPTION"sv;
+}  // namespace quic::error
+
+}  // namespace oxenss
+
 /// Namespace for http constants/types
 namespace oxenss::http {
-
-using namespace std::literals;
 
 // HTTP response status code
 using response_code = std::pair<int, std::string_view>;
