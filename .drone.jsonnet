@@ -4,6 +4,7 @@ local default_deps_base = [
   'libcurl4-openssl-dev',
   'libjemalloc-dev',
   'libsodium-dev',
+  'libgnutls28-dev',
   'libsqlite3-dev',
   'libssl-dev',
   'libsystemd-dev',
@@ -23,6 +24,30 @@ local submodules = {
 
 local apt_get_quiet = 'apt-get -o=Dpkg::Use-Pty=0 -q';
 
+local local_gnutls(jobs=6, prefix='/usr/local') = [
+  apt_get_quiet + ' install -y curl ca-certificates',
+  'curl -sSL https://ftp.gnu.org/gnu/nettle/nettle-3.9.1.tar.gz | tar xfz -',
+  'curl -sSL https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.0.tar.xz | tar xfJ -',
+  'export PKG_CONFIG_PATH=' + prefix + '/lib/pkgconfig:' + prefix + '/lib64/pkgconfig',
+  'export LD_LIBRARY_PATH=' + prefix + '/lib:' + prefix + '/lib64',
+  'cd nettle-3.9.1',
+  './configure --prefix=' + prefix + ' CC="ccache gcc"',
+  'make -j' + jobs,
+  'make install',
+  'cd ..',
+  'cd gnutls-3.8.0',
+  './configure --prefix=' + prefix + ' --with-included-libtasn1 --with-included-unistring --without-p11-kit  --disable-libdane --disable-cxx --without-tpm --without-tpm2 CC="ccache gcc"',
+  'make -j' + jobs,
+  'make install',
+  'cd ..',
+];
+
+local debian_backports(distro, pkgs) = [
+  'echo "deb http://deb.debian.org/debian ' + distro + '-backports main" >/etc/apt/sources.list.d/' + distro + '-backports.list',
+  'eatmydata ' + apt_get_quiet + ' update',
+  'eatmydata ' + apt_get_quiet + ' install -y ' + std.join(' ', std.map(function(x) x + '/' + distro + '-backports', pkgs)),
+];
+
 local cmake_options(opts) = std.join(' ', [' -D' + o + '=' + (if opts[o] then 'ON' else 'OFF') for o in std.objectFields(opts)]) + ' ';
 
 // Regular build on a debian-like system:
@@ -30,6 +55,7 @@ local debian_pipeline(name,
                       image,
                       arch='amd64',
                       deps=default_deps,
+                      extra_setup=[],
                       build_type='Release',
                       lto=false,
                       werror=true,
@@ -66,7 +92,7 @@ local debian_pipeline(name,
                     'echo deb http://deb.oxen.io $$(lsb_release -sc) main >/etc/apt/sources.list.d/oxen.list',
                     'eatmydata ' + apt_get_quiet + ' update',
                   ] else []
-                ) + [
+                ) + extra_setup + [
                   'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
                   'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends cmake git ca-certificates ninja-build ccache '
                   + std.join(' ', deps),
@@ -168,9 +194,10 @@ local static_check_and_upload = [
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386'),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
-  debian_pipeline('Debian buster (amd64)',
-                  docker_base + 'debian-buster',
-                  deps=default_deps_base + ['g++', 'file'],
+  debian_pipeline('Debian 11 bullseye (amd64)',
+                  docker_base + 'debian-bullseye',
+                  deps=default_deps_base,
+                  extra_setup=local_gnutls() + debian_backports('bullseye', ['cmake']),
                   cmake_extra='-DDOWNLOAD_SODIUM=ON'),
 
   // ARM builds (ARM64 and armhf)

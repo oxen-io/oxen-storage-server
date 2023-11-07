@@ -11,7 +11,7 @@
 
 #include <catch2/catch.hpp>
 
-using namespace oxen;
+using namespace oxenss;
 
 using namespace std::literals;
 
