@@ -1,6 +1,5 @@
 #include "omq.h"
 #include "omq_logger.h"
-#include "utils.h"
 
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenmq/auth.h>

@@ -1,4 +1,5 @@
 #pragma once
+#include "utils.h"
 
 #include <cstdint>
 #include <memory>
@@ -24,7 +25,11 @@ struct Response;
 
 namespace oxenss::snode {
 class ServiceNode;
-}
+}  // namespace oxenss::snode
+
+namespace oxenss::quic {
+struct Connection;
+}  // namespace oxenss::quic
 
 namespace oxenss::server {
 
@@ -35,17 +40,22 @@ struct MonitorData {
 
     std::chrono::steady_clock::time_point expiry;  // When this notify reg expires
     std::vector<namespace_id> namespaces;          // sorted namespace_ids
-    oxenmq::ConnectionID push_conn;                // ConnectionID to push notifications to
-    bool want_data;                                // true if the subscriber wants msg data
+    std::optional<oxenmq::ConnectionID> push_conn =
+            std::nullopt;  // ConnectionID to push notifications to
+    std::optional<std::shared_ptr<quic::Connection>> quic =
+            std::nullopt;  // quic connection to push to
+    bool want_data;        // true if the subscriber wants msg data
 
     MonitorData(
             std::vector<namespace_id> namespaces,
-            oxenmq::ConnectionID conn,
             bool data,
+            std::optional<oxenmq::ConnectionID> conn,
+            std::optional<std::shared_ptr<quic::Connection>> q = std::nullopt,
             std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) :
             expiry{std::chrono::steady_clock::now() + ttl},
             namespaces{std::move(namespaces)},
             push_conn{std::move(conn)},
+            quic{q},
             want_data{data} {}
 
     void reset_expiry(std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) {
@@ -218,6 +228,11 @@ class OMQ {
     OMQ(const snode::sn_record& me,
         const crypto::x25519_seckey& privkey,
         const std::vector<crypto::x25519_pubkey>& stats_access_keys_hex);
+
+    void update_monitors(
+            std::vector<sub_info>&,
+            std::optional<oxenmq::ConnectionID> = std::nullopt,
+            std::optional<std::shared_ptr<quic::Connection>> = std::nullopt);
 
     // Initialize oxenmq; return a future that completes once we have connected to and
     // initialized from oxend.
