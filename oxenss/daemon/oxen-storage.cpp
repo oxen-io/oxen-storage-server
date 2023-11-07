@@ -7,6 +7,7 @@
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/server/https.h>
 #include <oxenss/server/omq.h>
+#include <oxenss/server/quic.h>
 #include <oxenss/server/server_certificates.h>
 #include <oxenss/snode/service_node.h>
 #include <oxenss/snode/swarm.h>
@@ -152,6 +153,14 @@ int main(int argc, char* argv[]) {
                 me, private_key, oxenmq_server, options.data_dir, options.force_start};
 
         rpc::RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
+
+        auto quic = quic::Endpoint::make(
+                request_handler,
+                oxenmq_server,
+                oxen::quic::Address{options.ip, options.omq_port},
+                private_key_ed25519);
+        service_node.connect_quic(quic);
+        quic->startup_endpoint();
 
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 

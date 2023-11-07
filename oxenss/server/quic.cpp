@@ -10,6 +10,15 @@ Connection::Connection(
         std::shared_ptr<oxen::quic::BTRequestStream>& s) :
         conn{c}, control_stream{s} {}
 
+std::shared_ptr<Endpoint> Endpoint::make(
+        rpc::RequestHandler& rh,
+        server::OMQ& q,
+        const Address& bind,
+        const crypto::ed25519_seckey& sk) {
+    std::shared_ptr<Endpoint> ep{new Endpoint{rh, q, bind, sk}};
+    return ep;
+}
+
 Endpoint::Endpoint(
         rpc::RequestHandler& rh,
         server::OMQ& q,
@@ -18,18 +27,18 @@ Endpoint::Endpoint(
         local{bind},
         network{std::make_unique<oxen::quic::Network>()},
         tls_creds{oxen::quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
-        ep{startup_endpoint()},
+        ep{create_endpoint()},
         request_handler{rh},
         omq{q} {}
 
-std::shared_ptr<oxen::quic::Endpoint> Endpoint::startup_endpoint() {
-    auto ep = network->endpoint(
-            local,
-            [this](oxen::quic::connection_interface& ci) { on_conn_open(ci); },
-            [this](oxen::quic::connection_interface& ci, uint64_t ec) { on_conn_closed(ci, ec); },
-            [this](oxen::quic::dgram_interface& di, bstring dgram) {
-                recv_data_message(di, dgram);
-            });
+std::shared_ptr<oxen::quic::Endpoint> Endpoint::create_endpoint() {
+    auto ep = network->endpoint(local, [this](oxen::quic::connection_interface& ci, uint64_t ec) {
+        on_conn_closed(ci, ec);
+    });
+    return ep;
+}
+
+void Endpoint::startup_endpoint() {
     ep->listen(
             tls_creds,
             [&](oxen::quic::Connection& c,
@@ -42,52 +51,21 @@ std::shared_ptr<oxen::quic::Endpoint> Endpoint::startup_endpoint() {
                 }
                 return std::make_shared<oxen::quic::Stream>(c, e);
             });
-    return ep;
 }
 
-// bool Endpoint::send_request(
-//         const Address& remote, std::string method, std::string body, quic_callback func) {
-
-//     if (auto conn = get_conn(remote)) {
-//         conn->control_stream->command(std::move(method), std::move(body), std::move(func));
-//         return true;
-//     }
-
-//     auto pending = PendingMessage(std::move(method), std::move(body), std::move(func));
-
-//     auto [itr, b] = pending_message_que.emplace(remote, MessageQueue{});
-//     itr->second.push_back(std::move(pending));
-
-//     return false;
-// }
-
-void Endpoint::recv_data_message(oxen::quic::dgram_interface& di, bstring data) {
-    (void)di;
-    (void)data;
+void Connection::send(std::string method, std::string body, quic_callback f) {
+    control_stream->command(std::move(method), std::move(body), std::move(f));
 }
 
-void Endpoint::on_conn_open(oxen::quic::connection_interface& conn_interface) {
-    const auto& remote = conn_interface.remote();
-    const auto& scid = conn_interface.scid();
+bool Endpoint::send(
+        oxen::quic::ConnectionID cid, std::string method, std::string body, quic_callback func) {
 
-    // check to see if this connection was established while we were attempting to queue
-    // messages to the remote
-    if (auto itr = pending_message_que.find(remote); itr != pending_message_que.end()) {
-        auto& que = itr->second;
-        const auto& control = conns[scid]->control_stream;
-
-        while (not que.empty()) {
-            auto& m = que.front();
-            const auto& type = m.type;
-
-            if (type == message_type::DATAGRAM)
-                control->command(std::move(*m.name), std::move(m.body), std::move(m.func));
-            else
-                conn_interface.send_datagram(std::move(m.body));
-
-            que.pop_front();
-        }
+    if (auto conn = get_conn(cid)) {
+        conn->control_stream->command(std::move(method), std::move(body), std::move(func));
+        return true;
     }
+
+    return false;
 }
 
 void Endpoint::on_conn_closed(oxen::quic::connection_interface& conn_interface, uint64_t ec) {
@@ -95,11 +73,6 @@ void Endpoint::on_conn_closed(oxen::quic::connection_interface& conn_interface, 
     const auto& scid = conn_interface.scid();
 
     log::debug(logcat, "Purging quic connection to remote address:{} (ec: {})", remote, ec);
-
-    if (const auto& itr = pending_message_que.find(remote); itr != pending_message_que.end()) {
-        pending_message_que.erase(itr);
-        log::trace(logcat, "Purged pending message que (CID:{})", scid);
-    }
 
     if (const auto& itr = conns.find(scid); itr != conns.end()) {
         conns.erase(itr);
@@ -123,7 +96,9 @@ void Endpoint::register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s
         });
     }
 
-    // register monitor.{endpoint} commands
+    s->register_command("monitor", [this](oxen::quic::message m) {
+        std::invoke(&Endpoint::handle_monitor_message, this, std::move(m));
+    });
 }
 
 void Endpoint::handle_monitor_message(oxen::quic::message m) {
@@ -158,7 +133,7 @@ void Endpoint::handle_monitor_message(oxen::quic::message m) {
     }
 
     if (not subs.empty())
-        omq.update_monitors(subs, std::nullopt, get_conn(m.scid()));
+        omq.update_monitors(subs, get_conn(m.scid()));
 
     m.respond(result);
 }

@@ -5,6 +5,7 @@
 #include <oxenss/common/mainnet.h>
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/server/omq.h>
+#include <oxenss/server/quic.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/random.hpp>
@@ -18,6 +19,7 @@
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
+#include <quic.hpp>
 
 #include <algorithm>
 
@@ -202,6 +204,10 @@ static block_update parse_swarm_update(const std::string& response_body) {
     }
 
     return bu;
+}
+
+void ServiceNode::connect_quic(std::shared_ptr<oxenss::quic::Endpoint>& q) {
+    quic = q;
 }
 
 void ServiceNode::bootstrap_data() {
@@ -401,6 +407,70 @@ void ServiceNode::record_retrieve_request() {
     all_stats_.bump_retrieve_requests();
 }
 
+static void write_metadata(
+        oxenc::bt_dict_producer& d, std::string_view pubkey, const message& msg) {
+    d.append("@", pubkey);
+    d.append("h", msg.hash);
+    d.append("n", to_int(msg.msg_namespace));
+    d.append("t", to_epoch_ms(msg.timestamp));
+    d.append("z", to_epoch_ms(msg.expiry));
+}
+
+void ServiceNode::send_notifies(message msg) {
+    auto pubkey = msg.pubkey.prefixed_raw();
+    std::vector<connection_handle> relay_to, relay_to_with_data;
+
+    omq_server_.get_notifiers(msg, relay_to, relay_to_with_data);
+
+    if (relay_to.empty() && relay_to_with_data.empty())
+        return;
+
+    // We output a dict with keys (in order):
+    // - @ pubkey
+    // - h msg hash
+    // - n msg namespace
+    // - t msg timestamp
+    // - z msg expiry
+    // - ~ msg data (optional)
+    constexpr size_t metadata_size = 2       // d...e
+                                   + 3 + 36  // 1:@ and 33:[33-byte pubkey]
+                                   + 3 + 46  // 1:h and 43:[43-byte base64 unpadded hash]
+                                   + 3 + 8   // 1:n and i-32768e
+                                   + 3 + 16  // 1:t and i1658784776010e plus a byte to grow
+                                   + 3 + 16  // 1:z and i1658784776010e plus a byte to grow
+                                   + 10;     // safety margin
+
+    oxenc::bt_dict_producer d;
+    d.reserve(
+            relay_to_with_data.empty() ? metadata_size
+                                       : metadata_size  // all the metadata above
+                                                 + 3    // 1:~
+                                                 + 8    // 76800: plus a couple bytes to grow
+                                                 + msg.data.size());
+
+    write_metadata(d, pubkey, msg);
+
+    if (!relay_to.empty())
+        for (const auto& conn : relay_to) {
+            if (auto* c = std::get_if<oxenmq::ConnectionID>(&conn))
+                omq_server_->send(*c, "notify.message", d.view());
+
+            if (auto* c = std::get_if<std::shared_ptr<quic::Connection>>(&conn))
+                c->get()->send("notify", d.str_ref());
+        }
+
+    if (!relay_to_with_data.empty()) {
+        d.append("~", msg.data);
+        for (const auto& conn : relay_to_with_data) {
+            if (auto* c = std::get_if<oxenmq::ConnectionID>(&conn))
+                omq_server_->send(*c, "notify.message", d.view());
+
+            if (auto* c = std::get_if<std::shared_ptr<quic::Connection>>(&conn))
+                c->get()->send("notify", d.str_ref());
+        }
+    }
+}
+
 bool ServiceNode::process_store(message msg, bool* new_msg) {
     std::lock_guard guard{sn_mutex_};
 
@@ -418,7 +488,7 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     if (stored) {
         log::trace(logcat, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
         if (*stored)
-            omq_server_.send_notifies(std::move(msg));
+            send_notifies(std::move(msg));
     }
     if (new_msg)
         *new_msg = stored.value_or(false);

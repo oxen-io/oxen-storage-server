@@ -55,6 +55,8 @@ struct Connection {
             std::shared_ptr<oxen::quic::connection_interface>& c,
             std::shared_ptr<oxen::quic::BTRequestStream>& s);
 
+    void send(std::string method, std::string body, quic_callback f = nullptr);
+
   private:
     std::shared_ptr<oxen::quic::connection_interface> conn;
     std::shared_ptr<oxen::quic::BTRequestStream> control_stream;
@@ -65,26 +67,34 @@ struct Connection {
 
 struct Endpoint {
 
+    static std::shared_ptr<Endpoint> make(
+            rpc::RequestHandler& rh,
+            server::OMQ& q,
+            const Address& bind,
+            const crypto::ed25519_seckey& sk);
+
+    bool send(
+            oxen::quic::ConnectionID cid,
+            std::string method,
+            std::string body,
+            quic_callback func = nullptr);  // may not need this default values
+
+    std::shared_ptr<quic::Connection> get_conn(const oxen::quic::ConnectionID& cid) {
+        if (auto itr = conns.find(cid); itr != conns.end())
+            return itr->second;
+
+        return nullptr;
+    }
+
+    void startup_endpoint();
+
+  private:
     Endpoint(
             rpc::RequestHandler& rh,
             server::OMQ& q,
             const Address& bind,
             const crypto::ed25519_seckey& sk);
 
-    // bool send_request(   // TODO: refactor
-    //         const Address& remote,
-    //         std::string method,
-    //         std::string body,
-    //         quic_callback func /* = nullptr */);  // may not need this default values
-
-    std::optional<std::shared_ptr<quic::Connection>> get_conn(const oxen::quic::ConnectionID& cid) {
-        if (auto itr = conns.find(cid); itr != conns.end())
-            return itr->second;
-
-        return std::nullopt;
-    }
-
-  private:
     const Address local;
     std::unique_ptr<oxen::quic::Network> network;
     std::shared_ptr<oxen::quic::GNUTLSCreds> tls_creds;
@@ -96,18 +106,11 @@ struct Endpoint {
     // Holds all connections currently being managed by the quic endpoint
     std::unordered_map<oxen::quic::ConnectionID, std::shared_ptr<quic::Connection>> conns;
 
-    // Holds any messages we attempt to send along a connection not yet been established
-    std::unordered_map<Address, MessageQueue> pending_message_que;
-
-    std::shared_ptr<oxen::quic::Endpoint> startup_endpoint();
-
-    void on_conn_open(oxen::quic::connection_interface& ci);
+    std::shared_ptr<oxen::quic::Endpoint> create_endpoint();
 
     void on_conn_closed(oxen::quic::connection_interface& ci, uint64_t ec);
 
     void register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s);
-
-    void recv_data_message(oxen::quic::dgram_interface&, bstring);
 
     void handle_request(std::string name, oxen::quic::message m, bool forwarded = false);
 
@@ -135,9 +138,3 @@ struct Endpoint {
 };
 
 }  // namespace oxenss::quic
-
-/*
-    TODO:
-        - remove pending msg que
-        - no need for send_request and connect_to and send_datagrams
-*/
