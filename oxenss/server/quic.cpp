@@ -5,6 +5,8 @@
 
 namespace oxenss::quic {
 
+struct request_data {};
+
 Connection::Connection(
         std::shared_ptr<oxen::quic::connection_interface>& c,
         std::shared_ptr<oxen::quic::BTRequestStream>& s) :
@@ -92,14 +94,18 @@ void Endpoint::register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s
         std::string name{n};
 
         s->register_command(name, [this, name](oxen::quic::message m) {
-            std::invoke(&Endpoint::handle_request, this, name, std::move(m), false);
+            std::invoke(&Endpoint::handle_storage_request, this, name, std::move(m), false);
         });
     }
 
     s->register_command("monitor", [this](oxen::quic::message m) {
         std::invoke(&Endpoint::handle_monitor_message, this, std::move(m));
     });
+
+    // register onion
 }
+
+void Endpoint::handle_onion_request() {}
 
 void Endpoint::handle_monitor_message(oxen::quic::message m) {
     if (m.timed_out) {
@@ -138,7 +144,7 @@ void Endpoint::handle_monitor_message(oxen::quic::message m) {
     m.respond(result);
 }
 
-void Endpoint::handle_request(std::string name, oxen::quic::message m, bool forwarded) {
+void Endpoint::handle_storage_request(std::string name, oxen::quic::message m, bool forwarded) {
     if (m.timed_out) {
         log::info(logcat, "Request (method:{}) timed out!");
         return;
@@ -154,6 +160,43 @@ void Endpoint::handle_request(std::string name, oxen::quic::message m, bool forw
 
         // This endpoint shouldn't have been registered if it isn't in here:
         assert(itr != rpc::RequestHandler::client_rpc_endpoints.end());
+
+        auto func = [msg = std::move(m), bt_encoded](rpc::Response res) mutable {
+            std::string body;
+
+            if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
+                nlohmann::json resp;
+
+                if (res.status != http::OK)
+                    resp = nlohmann::json::array({res.status.first, std::move(*j)});
+                else
+                    resp = std::move(*j);
+
+                if (bt_encoded)
+                    body = bt_serialize(json_to_bt(std::move(resp)));
+                else
+                    body = resp.dump();
+            } else
+                body = view_body(res);
+
+            std::string err;
+
+            if (res.status == http::OK)
+                err = fmt::format(
+                        "OMQ RPC request successful, returning {}-byte {} response",
+                        body.size(),
+                        body.empty() ? "text"
+                        : bt_encoded ? "bt-encoded"
+                                     : "json");
+            else
+                err = fmt::format(
+                        "OMQ RPC request failed, replying with [{}, {}]", res.status.first, body);
+
+            log::debug(logcat, err);
+            msg.respond(body, not(res.status == http::OK));
+        };
+
+        omq->inject_task("storage", name, m.body_str(), std::function<void()> callback);
 
         try {
             itr->second.omq(

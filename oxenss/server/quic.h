@@ -112,7 +112,9 @@ struct Endpoint {
 
     void register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s);
 
-    void handle_request(std::string name, oxen::quic::message m, bool forwarded = false);
+    void handle_storage_request(std::string name, oxen::quic::message m, bool forwarded = false);
+
+    void handle_onion_request();
 
     void handle_monitor_message(oxen::quic::message m);
 
