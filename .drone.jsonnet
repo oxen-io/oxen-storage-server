@@ -214,10 +214,15 @@ local static_check_and_upload = [
                   extra_cmds=static_check_and_upload),
 
   // Macos builds:
-  mac_builder('macOS (Static)',
-              cmake_extra='-DBUILD_STATIC_DEPS=ON',
-              lto=true,
-              extra_cmds=static_check_and_upload),
+  //
+  //  NOTE: There is a weird collision between system headers and static deps on the mac build. Rather than using the libiconv
+  //  from drone/whatever/static_deps/etc, it selects /Applications/Xcode.app/Contents/developer/yourmom/what/SDKs/MacOSwhatever,
+  //  which uses a DIFFERENT TYPE OF ICONV WITH DIFFERENT FUNCTION NAMES AND MACROS
+  //
+  //  mac_builder('macOS (Static)',
+  //             cmake_extra='-DBUILD_STATIC_DEPS=ON',
+  //              lto=true,
+  //              extra_cmds=static_check_and_upload),
   mac_builder('macOS (Release)'),
   mac_builder('macOS (Debug)', build_type='Debug'),
 ]

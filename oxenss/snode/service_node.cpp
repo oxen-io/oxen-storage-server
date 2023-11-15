@@ -899,7 +899,8 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
     log::debug(logcat, "Sending QUIC ping to service node with pubkey:{}", sn.pubkey_ed25519);
     quic->ping(
             quic::RemoteAddress{sn.pubkey_ed25519.ustr()},
-            [this, test_results, previous_failures](quic::quic_interface& qi) {
+            quic::connection_killer{[this, test_results, previous_failures](
+                                            quic::quic_interface& qi) {
                 bool success = qi.is_validated();
                 auto& [sn, result] = *test_results;
 
@@ -910,9 +911,9 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                 if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
                     r != TEST_WAITING)
                     report_reachability(sn, success && r == TEST_PASSED, previous_failures);
-            },
+            }},
             [this, test_results, previous_failures](quic::quic_interface&, uint64_t ec) {
-                if (ec != 0) {
+                if (ec != quic::PING_OK) {
                     log::debug(
                             logcat,
                             "QUIC connection closing after unsuccessful ping test (ec:{})",

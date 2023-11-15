@@ -29,29 +29,24 @@ using connection_established_callback = oxen::quic::connection_established_callb
 using connection_closed_callback = oxen::quic::connection_closed_callback;
 using quic_interface = oxen::quic::connection_interface;
 
-enum class message_type { REQUEST = 0, DATAGRAM = 1 };
+inline constexpr uint64_t PING_OK{0};
 
-struct PendingMessage {
-    std::optional<std::string> name = std::nullopt;
-    std::string body;
-    message_type type;
-    quic_callback func = nullptr;
+/// This object wraps callbacks to execute logic at connection open, after which the
+/// connection is immediately closed. This is useful in reachability testing, as we
+/// want to connect, check if the pubkey was validated during the handshake, and close
+/// after reporting the results.
+struct connection_killer {
+    connection_established_callback cb;
 
-    // Constructors for datagrams
-    PendingMessage(std::string _b) : body{std::move(_b)}, type{message_type::DATAGRAM} {}
-    PendingMessage(std::string_view _b) : body{_b}, type{message_type::DATAGRAM} {}
+    explicit connection_killer(connection_established_callback f) : cb{std::move(f)} {}
 
-    // Constructors for requests
-    PendingMessage(std::string _n, std::string _b, quic_callback _f) :
-            name{std::move(_n)},
-            body{std::move(_b)},
-            type{message_type::REQUEST},
-            func{std::move(_f)} {}
-    PendingMessage(std::string_view _n, std::string_view _b, quic_callback _f) :
-            name{_n}, body{_b}, type{message_type::REQUEST}, func{std::move(_f)} {}
+    void operator()(quic_interface& qi) {
+        cb(qi);
+        qi.close_connection(PING_OK);
+    }
 };
 
-using MessageQueue = std::deque<PendingMessage>;
+enum class message_type { REQUEST = 0, DATAGRAM = 1 };
 
 struct Connection {
     friend struct Endpoint;
@@ -65,13 +60,9 @@ struct Connection {
   private:
     std::shared_ptr<oxen::quic::connection_interface> conn;
     std::shared_ptr<oxen::quic::BTRequestStream> control_stream;
-
-  public:
-    //
 };
 
 struct Endpoint {
-
     static std::shared_ptr<Endpoint> make(
             rpc::RequestHandler& rh,
             server::OMQ& q,
