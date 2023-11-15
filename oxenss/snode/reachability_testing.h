@@ -34,7 +34,7 @@ namespace detail {
 
 class Swarm;
 
-enum class ReachType { HTTPS, OMQ };
+enum class ReachType { HTTPS, OMQ, QUIC };
 
 class reachability_testing {
   public:
@@ -102,6 +102,7 @@ class reachability_testing {
     // warn about possible network issues.
     detail::incoming_test_state last_https;
     detail::incoming_test_state last_omq;
+    detail::incoming_test_state last_quic;
 
   public:
     // If it is time to perform another random test, this returns the next node to test from the

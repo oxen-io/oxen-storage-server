@@ -59,15 +59,11 @@ void Connection::send(std::string method, std::string body, quic_callback f) {
     control_stream->command(std::move(method), std::move(body), std::move(f));
 }
 
-bool Endpoint::send(
-        oxen::quic::ConnectionID cid, std::string method, std::string body, quic_callback func) {
-
-    if (auto conn = get_conn(cid)) {
-        conn->control_stream->command(std::move(method), std::move(body), std::move(func));
-        return true;
-    }
-
-    return false;
+void Endpoint::ping(
+        const RemoteAddress& remote,
+        connection_established_callback on_open,
+        connection_closed_callback on_close) {
+    establish_connection(remote, std::move(on_open), std::move(on_close));
 }
 
 void Endpoint::on_conn_closed(oxen::quic::connection_interface& conn_interface, uint64_t ec) {
@@ -89,23 +85,94 @@ void Endpoint::on_conn_closed(oxen::quic::connection_interface& conn_interface, 
 }
 
 void Endpoint::register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s) {
-    // register storage.{endpoint} commands
     for (const auto& [n, cb] : rpc::RequestHandler::client_rpc_endpoints) {
         std::string name{n};
 
         s->register_command(name, [this, name](oxen::quic::message m) {
-            std::invoke(&Endpoint::handle_storage_request, this, name, std::move(m), false);
+            handle_storage_request(name, std::move(m), false);
         });
     }
 
-    s->register_command("monitor", [this](oxen::quic::message m) {
-        std::invoke(&Endpoint::handle_monitor_message, this, std::move(m));
-    });
+    s->register_command(
+            "monitor", [this](oxen::quic::message m) { handle_monitor_message(std::move(m)); });
 
-    // register onion
+    s->register_command("onion_request", [this](oxen::quic::message m) {
+        handle_monitor_message(std::move(m));
+    });
 }
 
-void Endpoint::handle_onion_request() {}
+void Endpoint::process_rpc(rpc::Response response, oxen::quic::message msg, bool bt_encoded) {
+    std::string body;
+
+    if (auto* j = std::get_if<nlohmann::json>(&response.body)) {
+        nlohmann::json resp;
+
+        if (response.status != http::OK)
+            resp = nlohmann::json::array({response.status.first, std::move(*j)});
+        else
+            resp = std::move(*j);
+
+        if (bt_encoded)
+            body = bt_serialize(json_to_bt(std::move(resp)));
+        else
+            body = resp.dump();
+    } else
+        body = view_body(response);
+
+    std::string output;
+
+    if (response.status == http::OK)
+        output = fmt::format(
+                "OMQ RPC request successful, returning {}-byte {} response",
+                body.size(),
+                body.empty() ? "text"
+                : bt_encoded ? "bt-encoded"
+                             : "json");
+    else
+        output = fmt::format(
+                "OMQ RPC request failed, replying with [{}, {}]", response.status.first, body);
+
+    log::debug(logcat, output);
+    msg.respond(body, not(response.status == http::OK));
+}
+
+void Endpoint::handle_onion_request(oxen::quic::message m) {
+    if (m.timed_out) {
+        log::info(logcat, "Request (method:{}) timed out!");
+        return;
+    }
+
+    std::string params{m.body()};
+    auto bt_encoded = !params.empty() && params.front() == 'd';
+
+    std::pair<std::string_view, rpc::OnionRequestMetadata> decoded;
+
+    try {
+        decoded = decode_onion_data(m.body());
+    } catch (const std::exception& e) {
+        auto err = "Invalid internal onion request: "s + e.what();
+        log::error(logcat, err);
+        m.respond(err, true);
+        return;
+    }
+
+    auto& data = decoded.second;
+
+    data.cb = [this, msg = std::move(m), bt_encoded](rpc::Response response) mutable {
+        process_rpc(std::move(response), std::move(msg), bt_encoded);
+    };
+
+    if (data.hop_no > rpc::MAX_ONION_HOPS)
+        return data.cb({http::BAD_REQUEST, "onion request max path length exceeded"sv});
+
+    omq->inject_task(
+            "sn",
+            "onion_request",
+            m.stream()->remote().to_string(),
+            [this, payload = decoded.first, meta = std::move(data)]() mutable {
+                request_handler.process_onion_req(payload, std::move(meta));
+            });
+}
 
 void Endpoint::handle_monitor_message(oxen::quic::message m) {
     if (m.timed_out) {
@@ -113,35 +180,38 @@ void Endpoint::handle_monitor_message(oxen::quic::message m) {
         return;
     }
 
-    std::string body{m.body()};
-    const auto& front = body.front();
-    std::string result;
-    std::vector<sub_info> subs;
+    omq->inject_task("monitor", "messages", m.stream()->remote().to_string(), [&]() mutable {
+        std::string body{m.body()};
+        const auto& front = body.front();
+        std::string result;
+        std::vector<sub_info> subs;
 
-    try {
-        if (front == 'd') {
-            oxenc::bt_dict_producer out;
-            handle_monitor_message_single(oxenc::bt_dict_consumer{body}, out, subs);
-            result = std::move(out).str();
-        } else {
-            oxenc::bt_list_producer out;
-            oxenc::bt_list_consumer l{body};
-            while (!l.is_finished())
-                handle_monitor_message_single(l.consume_dict_consumer(), out.append_dict(), subs);
-            result = std::move(out).str();
+        try {
+            if (front == 'd') {
+                oxenc::bt_dict_producer out;
+                handle_monitor_message_single(oxenc::bt_dict_consumer{body}, out, subs);
+                result = std::move(out).str();
+            } else {
+                oxenc::bt_list_producer out;
+                oxenc::bt_list_consumer l{body};
+                while (!l.is_finished())
+                    handle_monitor_message_single(
+                            l.consume_dict_consumer(), out.append_dict(), subs);
+                result = std::move(out).str();
+            }
+        } catch (const std::exception& e) {
+            result = oxenc::bt_serialize(oxenc::bt_dict{
+                    {"errcode", static_cast<int>(MonitorResponse::BAD_ARGS)},
+                    {"error", "Invalid arguments: Failed to parse monitor.messages data value"}});
+            m.respond(std::move(result), true);
+            return;
         }
-    } catch (const std::exception& e) {
-        result = oxenc::bt_serialize(oxenc::bt_dict{
-                {"errcode", static_cast<int>(MonitorResponse::BAD_ARGS)},
-                {"error", "Invalid arguments: Failed to parse monitor.messages data value"}});
-        m.respond(std::move(result), true);
-        return;
-    }
 
-    if (not subs.empty())
-        omq.update_monitors(subs, get_conn(m.scid()));
+        if (not subs.empty())
+            omq.update_monitors(subs, get_conn(m.scid()));
 
-    m.respond(result);
+        m.respond(result);
+    });
 }
 
 void Endpoint::handle_storage_request(std::string name, oxen::quic::message m, bool forwarded) {
@@ -161,97 +231,31 @@ void Endpoint::handle_storage_request(std::string name, oxen::quic::message m, b
         // This endpoint shouldn't have been registered if it isn't in here:
         assert(itr != rpc::RequestHandler::client_rpc_endpoints.end());
 
-        auto func = [msg = std::move(m), bt_encoded](rpc::Response res) mutable {
-            std::string body;
-
-            if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
-                nlohmann::json resp;
-
-                if (res.status != http::OK)
-                    resp = nlohmann::json::array({res.status.first, std::move(*j)});
-                else
-                    resp = std::move(*j);
-
-                if (bt_encoded)
-                    body = bt_serialize(json_to_bt(std::move(resp)));
-                else
-                    body = resp.dump();
-            } else
-                body = view_body(res);
-
-            std::string err;
-
-            if (res.status == http::OK)
-                err = fmt::format(
-                        "OMQ RPC request successful, returning {}-byte {} response",
-                        body.size(),
-                        body.empty() ? "text"
-                        : bt_encoded ? "bt-encoded"
-                                     : "json");
-            else
-                err = fmt::format(
-                        "OMQ RPC request failed, replying with [{}, {}]", res.status.first, body);
-
-            log::debug(logcat, err);
-            msg.respond(body, not(res.status == http::OK));
+        auto handler = [this, msg = std::move(m), bt_encoded](rpc::Response response) mutable {
+            process_rpc(std::move(response), std::move(msg), bt_encoded);
         };
 
-        omq->inject_task("storage", name, m.body_str(), std::function<void()> callback);
+        omq->inject_task("storage", name, m.stream()->remote().to_string(), [&]() mutable {
+            std::string err;
 
-        try {
-            itr->second.omq(
-                    request_handler,
-                    params,
-                    forwarded,
-                    [msg = std::move(m), bt_encoded](rpc::Response res) mutable {
-                        std::string body;
+            try {
+                itr->second.omq(request_handler, params, forwarded, handler);
+                return;
+            } catch (const rpc::parse_error& p) {
+                err = "Invalid request: {}"_format(p.what());
+                log::info(logcat, err);
+                err = serialize_error(BAD_REQUEST, std::move(err), bt_encoded);
+            } catch (const std::exception& e) {
+                err = "Client request raised an exception: {}"_format(e.what());
+                log::info(logcat, err);
+                err = serialize_error(INTERNAL_SERVER_ERROR, std::move(err), bt_encoded);
+            }
 
-                        if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
-                            nlohmann::json resp;
-
-                            if (res.status != http::OK)
-                                resp = nlohmann::json::array({res.status.first, std::move(*j)});
-                            else
-                                resp = std::move(*j);
-
-                            if (bt_encoded)
-                                body = bt_serialize(json_to_bt(std::move(resp)));
-                            else
-                                body = resp.dump();
-                        } else
-                            body = view_body(res);
-
-                        std::string err;
-
-                        if (res.status == http::OK)
-                            err = fmt::format(
-                                    "OMQ RPC request successful, returning {}-byte {} response",
-                                    body.size(),
-                                    body.empty() ? "text"
-                                    : bt_encoded ? "bt-encoded"
-                                                 : "json");
-                        else
-                            err = fmt::format(
-                                    "OMQ RPC request failed, replying with [{}, {}]",
-                                    res.status.first,
-                                    body);
-
-                        log::debug(logcat, err);
-                        msg.respond(body, not(res.status == http::OK));
-                    });
-            return;
-        } catch (const rpc::parse_error& p) {
-            err = "Invalid request: {}"_format(p.what());
-            log::info(logcat, err);
-            err = serialize_error(BAD_REQUEST, std::move(err), bt_encoded);
-        } catch (const std::exception& e) {
-            err = "Client request raised an exception: {}"_format(e.what());
-            log::info(logcat, err);
-            err = serialize_error(INTERNAL_SERVER_ERROR, std::move(err), bt_encoded);
-        }
-
-        m.respond(err, true);
-    }
+            m.respond(err, true);
+        });
+    } else
+        throw std::runtime_error{
+                "Quic endpoint unable to match storage request to request handler"};
 }
 
 }  // namespace oxenss::quic

@@ -206,8 +206,9 @@ static block_update parse_swarm_update(const std::string& response_body) {
     return bu;
 }
 
-void ServiceNode::connect_quic(std::shared_ptr<oxenss::quic::Endpoint>& q) {
+void ServiceNode::link_start_quic(const std::shared_ptr<oxenss::quic::Endpoint>& q) {
     quic = q;
+    quic->startup_endpoint();
 }
 
 void ServiceNode::bootstrap_data() {
@@ -378,7 +379,7 @@ void ServiceNode::send_onion_to_sn(
             "sn.onion_request",
             std::move(cb),
             oxenmq::send_option::request_timeout{30s},
-            omq_server_.encode_onion_data(payload, data));
+            encode_onion_data(payload, data));
 }
 
 void ServiceNode::relay_data_reliable(const std::string& blob, const sn_record& sn) const {
@@ -824,7 +825,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
 
     log::debug(logcat, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url.str());
     outstanding_https_reqs_.emplace_front(cpr::PostCallback(
-            [this, &omq = *omq_server(), test_results, previous_failures](cpr::Response r) {
+            [this, test_results, previous_failures](cpr::Response r) {
                 auto& [sn, result] = *test_results;
                 auto& pk = sn.pubkey_legacy;
                 bool success = false;
@@ -873,11 +874,11 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
             std::move(body)));
 
     // test omq port:
+    log::debug(logcat, "Sending OMQ ping to service node with pubkey:{}", sn.pubkey_x25519);
     omq_server_->request(
             sn.pubkey_x25519.view(),
             "sn.ping",
-            [this, test_results = std::move(test_results), previous_failures](
-                    bool success, const auto&) {
+            [this, test_results, previous_failures](bool success, const auto&) {
                 auto& [sn, result] = *test_results;
 
                 log::debug(
@@ -893,6 +894,36 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
             // Only use an existing (or new) outgoing connection:
             oxenmq::send_option::outgoing{},
             oxenmq::send_option::request_timeout{SN_PING_TIMEOUT});
+
+    // test quic:
+    log::debug(logcat, "Sending QUIC ping to service node with pubkey:{}", sn.pubkey_ed25519);
+    quic->ping(
+            quic::RemoteAddress{sn.pubkey_ed25519.ustr()},
+            [this, test_results, previous_failures](quic::quic_interface& qi) {
+                bool success = qi.is_validated();
+                auto& [sn, result] = *test_results;
+
+                if (success)
+                    log::debug(logcat, "QUIC connection ping test successfully validated remote!");
+                else
+                    log::debug(logcat, "QUIC connection ping test failed to validate remote!");
+                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
+                    r != TEST_WAITING)
+                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
+            },
+            [this, test_results, previous_failures](quic::quic_interface&, uint64_t ec) {
+                if (ec != 0) {
+                    log::debug(
+                            logcat,
+                            "QUIC connection closing after unsuccessful ping test (ec:{})",
+                            ec);
+
+                    auto& [sn, result] = *test_results;
+
+                    if (auto r = result.exchange(TEST_FAILED); r != TEST_WAITING)
+                        report_reachability(sn, false, previous_failures);
+                }
+            });
 }
 
 void ServiceNode::oxend_ping() {

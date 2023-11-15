@@ -9,6 +9,7 @@
 #include <utility>
 
 #include <oxenss/common/formattable.h>
+#include <oxenss/utils/string_utils.hpp>
 
 namespace oxenss::crypto {
 
@@ -32,6 +33,7 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
         return {reinterpret_cast<const char*>(this->data()), KeyLength};
     }
     std::string str() const { return {reinterpret_cast<const char*>(this->data()), KeyLength}; }
+    ustring ustr() const { return {this->data(), KeyLength}; }
     std::string hex() const { return detail::to_hex(this->data(), KeyLength); }
     explicit operator bool() const { return *this != detail::null_bytes<KeyLength>; }
 

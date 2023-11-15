@@ -85,6 +85,8 @@ class ServiceNode {
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
+
+    // Accessor to the quic endpoint to make requests through
     std::shared_ptr<oxenss::quic::Endpoint> quic;
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
@@ -183,7 +185,7 @@ class ServiceNode {
     Database& get_db() { return *db_; }
     const Database& get_db() const { return *db_; }
 
-    void connect_quic(std::shared_ptr<oxenss::quic::Endpoint>&);
+    void link_start_quic(const std::shared_ptr<oxenss::quic::Endpoint>&);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }

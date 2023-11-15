@@ -15,10 +15,10 @@
 #include <oxenc/bt.h>
 
 namespace oxenss {
-using ustring = std::basic_string<uint8_t>;
-using ustring_view = std::basic_string_view<uint8_t>;
-using bstring = std::basic_string<std::byte>;
-using bstring_view = std::basic_string_view<std::byte>;
+
+namespace rpc {
+    struct OnionRequestMetadata;
+}  // namespace rpc
 
 // place this here so we can use it in oxenss::*
 using namespace std::literals;
@@ -37,6 +37,10 @@ void handle_monitor_message_single(
 
 void handle_monitor_message_single(
         oxenc::bt_dict_consumer d, oxenc::bt_dict_producer&& out, std::vector<sub_info>& subs);
+
+std::string encode_onion_data(std::string_view payload, const rpc::OnionRequestMetadata& data);
+
+std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(std::string_view data);
 
 inline std::string serialize_response(oxenc::bt_dict supplement = {}) {
     return oxenc::bt_serialize(supplement);

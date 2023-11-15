@@ -159,8 +159,7 @@ int main(int argc, char* argv[]) {
                 oxenmq_server,
                 oxen::quic::Address{options.ip, options.omq_port},
                 private_key_ed25519);
-        service_node.connect_quic(quic);
-        quic->startup_endpoint();
+        service_node.link_start_quic(quic);
 
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 

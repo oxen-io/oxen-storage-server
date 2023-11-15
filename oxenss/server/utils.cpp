@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <oxenss/crypto/subaccount.h>
+#include <oxenss/rpc/request_handler.h>
 
 #include <oxenc/hex.h>
 #include <sodium/crypto_sign.h>
@@ -234,6 +235,43 @@ void handle_monitor_message_single(
 void handle_monitor_message_single(
         oxenc::bt_dict_consumer d, oxenc::bt_dict_producer&& out, std::vector<sub_info>& subs) {
     handle_monitor_message_single(d, out, subs);
+}
+
+std::string encode_onion_data(std::string_view payload, const rpc::OnionRequestMetadata& data) {
+    return oxenc::bt_serialize<oxenc::bt_dict>({
+            {"data", payload},
+            {"enc_type", to_string(data.enc_type)},
+            {"ephemeral_key", data.ephem_key.view()},
+            {"hop_no", data.hop_no},
+    });
+}
+
+std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(std::string_view data) {
+    // NB: stream parsing here is alphabetical (that's also why these keys *aren't* constexprs:
+    // that would potentially be error-prone if someone changed them without noticing the sort
+    // order requirements).
+    std::pair<std::string_view, rpc::OnionRequestMetadata> result;
+    auto& [payload, meta] = result;
+    oxenc::bt_dict_consumer d{data};
+    if (!d.skip_until("data"))
+        throw std::runtime_error{"required data payload not found"};
+    payload = d.consume_string_view();
+
+    if (d.skip_until("enc_type"))
+        meta.enc_type = crypto::parse_enc_type(d.consume_string_view());
+    else
+        meta.enc_type = crypto::EncryptType::aes_gcm;
+
+    if (!d.skip_until("ephemeral_key"))
+        throw std::runtime_error{"ephemeral key not found"};
+    meta.ephem_key = crypto::x25519_pubkey::from_bytes(d.consume_string_view());
+
+    if (d.skip_until("hop_no"))
+        meta.hop_no = d.consume_integer<int>();
+    if (meta.hop_no < 1)
+        meta.hop_no = 1;
+
+    return result;
 }
 
 }  // namespace oxenss

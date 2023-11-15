@@ -9,6 +9,7 @@
 
 namespace oxenss::rpc {
 class RequestHandler;
+struct Response;
 }  // namespace oxenss::rpc
 
 namespace oxenss::server {
@@ -23,6 +24,10 @@ struct Endpoint;
 
 using quic_callback = std::function<void(oxen::quic::message)>;
 using Address = oxen::quic::Address;
+using RemoteAddress = oxen::quic::RemoteAddress;
+using connection_established_callback = oxen::quic::connection_established_callback;
+using connection_closed_callback = oxen::quic::connection_closed_callback;
+using quic_interface = oxen::quic::connection_interface;
 
 enum class message_type { REQUEST = 0, DATAGRAM = 1 };
 
@@ -73,11 +78,10 @@ struct Endpoint {
             const Address& bind,
             const crypto::ed25519_seckey& sk);
 
-    bool send(
-            oxen::quic::ConnectionID cid,
-            std::string method,
-            std::string body,
-            quic_callback func = nullptr);  // may not need this default values
+    void ping(
+            const RemoteAddress&,
+            connection_established_callback = nullptr,
+            connection_closed_callback = nullptr);
 
     std::shared_ptr<quic::Connection> get_conn(const oxen::quic::ConnectionID& cid) {
         if (auto itr = conns.find(cid); itr != conns.end())
@@ -112,15 +116,17 @@ struct Endpoint {
 
     void register_commands(std::shared_ptr<oxen::quic::BTRequestStream>& s);
 
+    void process_rpc(rpc::Response resp, oxen::quic::message m, bool bt_encoded);
+
     void handle_storage_request(std::string name, oxen::quic::message m, bool forwarded = false);
 
-    void handle_onion_request();
+    void handle_onion_request(oxen::quic::message m);
 
     void handle_monitor_message(oxen::quic::message m);
 
   public:
     template <typename... Opt>
-    bool establish_connection(const Address& addr, Opt&&... opts) {
+    void establish_connection(const RemoteAddress& addr, Opt&&... opts) {
         try {
             auto conn_interface = ep->connect(addr, tls_creds, std::forward<Opt>(opts)...);
 
@@ -130,11 +136,9 @@ struct Endpoint {
             auto control_stream =
                     conn_interface->template get_new_stream<oxen::quic::BTRequestStream>();
             itr->second = std::make_shared<quic::Connection>(conn_interface, control_stream);
-
-            return true;
         } catch (...) {
             log::error(logcat, "Error: failed to establish connection to {}", addr);
-            return false;
+            throw;
         }
     }
 };

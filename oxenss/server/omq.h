@@ -265,14 +265,6 @@ class OMQ {
         assert(oxend_conn_);
         omq_.send(oxend_conn(), std::forward<Args>(args)...);
     }
-
-    // Encodes the onion request data that we send for internal SN-to-SN onion requests starting
-    // at HF18.
-    static std::string encode_onion_data(
-            std::string_view payload, const rpc::OnionRequestMetadata& data);
-    // Decodes onion request data; throws if invalid formatted or missing required fields.
-    static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
-            std::string_view data);
 };
 
 }  // namespace oxenss::server

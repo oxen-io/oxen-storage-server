@@ -67,14 +67,6 @@ HTTPS::HTTPS(
         request_handler_{rh},
         rate_limiter_{rl},
         legacy_keys_{std::move(legacy_keys)} {
-    // Add a category for handling incoming https requests
-    omq_.add_category(
-            "https",
-            oxenmq::AuthLevel::basic,
-            2,    // minimum # of threads reserved threads for this category
-            1000  // max queued requests
-    );
-
     // uWS is designed to work from a single thread, which is good (we pull off the requests and
     // then stick them into the LMQ job queue to be scheduled along with other jobs).  But as a
     // consequence, we need to create everything inside that thread.  We *also* need to get the
