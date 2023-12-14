@@ -3,11 +3,11 @@
 # This gets used both in the full StaticBuild code *and* in the general build code when the system
 # sqlite3 version is too old.
 
-set(SQLITE3_VERSION "3390200" CACHE STRING "sqlite3 version")
-set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2022
+set(SQLITE3_VERSION "3440200" CACHE STRING "sqlite3 version")
+set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2023
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=c16b50ade3c182d5473014ac0a51e2bb8a5cfc46e532c2bda77ae4d530336e2b57aa4f12dccb6aa2148d60e9289305bf20842ac95dc52f2d31df8eb5f0599de6
+set(SQLITE3_HASH SHA512=59ad55df15eb84430f5286db2e5ceddd6ca1fc207a6343546a365c0c1baf20258e96c53d2ad48b50385608d03de09a692ae834cb78a39d1a48cb36a05722e402
     CACHE STRING "sqlite3 source hash")
 
 if(SQLITE3_VERSION MATCHES "^([0-9]+)(0([0-9])|([1-9][0-9]))(0([0-9])|([1-9][0-9]))[0-9][0-9]$")
