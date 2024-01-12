@@ -5,6 +5,7 @@
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
 #include <oxenss/rpc/request_handler.h>
+#include <oxenss/server/base.h>
 #include <oxenss/server/omq.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
@@ -790,16 +791,19 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
         // hasn't sent an uptime proof; we could treat it as a failure, but that seems
         // unnecessary since oxend will already fail the service node for not sending uptime
         // proofs.
-        log::debug(logcat, "Skipping HTTPS test of {}: no public IP received yet");
+        log::debug(logcat, "Skipping testing of {}: no public IP received yet");
         return;
     }
 
-    static constexpr uint8_t TEST_WAITING = 0, TEST_FAILED = 1, TEST_PASSED = 2;
+    auto test = std::make_shared<sn_test>(
+            sn,
+            1 + mq_servers_.size(),
+            [this, previous_failures](const sn_record& sn, bool passed) {
+                report_reachability(sn, passed, previous_failures);
+            });
 
-    // We start off two separate tests below; they share this pair and use the atomic int here
-    // to figure out whether they were called first (in which case they do nothing) or second
-    // (in which case they have to report the final result to oxend).
-    auto test_results = std::make_shared<std::pair<const sn_record, std::atomic<uint8_t>>>(sn, 0);
+    for (auto* mq : mq_servers_)
+        mq->reachability_test(test);
 
     cpr::Url url{fmt::format("https://{}:{}/ping_test/v1", sn.ip, sn.port)};
     cpr::Body body{""};
@@ -813,8 +817,8 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
 
     log::debug(logcat, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url.str());
     outstanding_https_reqs_.emplace_front(cpr::PostCallback(
-            [this, &omq = *omq_server(), test_results, previous_failures](cpr::Response r) {
-                auto& [sn, result] = *test_results;
+            [test](cpr::Response r) {
+                auto& sn = test->sn;
                 auto& pk = sn.pubkey_legacy;
                 bool success = false;
                 if (r.error.code != cpr::ErrorCode::OK) {
@@ -846,9 +850,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                 if (success)
                     log::debug(logcat, "Successful HTTPS ping test of {}", pk);
 
-                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
-                    r != TEST_WAITING)
-                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
+                test->add_result(success);
             },
             std::move(url),
             cpr::Timeout{SN_PING_TIMEOUT},
@@ -860,28 +862,6 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
             cpr::Redirect{0L},
             std::move(headers),
             std::move(body)));
-
-    // test omq port:
-    omq_server_->request(
-            sn.pubkey_x25519.view(),
-            "sn.ping",
-            [this, test_results = std::move(test_results), previous_failures](
-                    bool success, const auto&) {
-                auto& [sn, result] = *test_results;
-
-                log::debug(
-                        logcat,
-                        "{} response for OxenMQ ping test of {}",
-                        success ? "Successful" : "FAILED",
-                        sn.pubkey_legacy);
-
-                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
-                    r != TEST_WAITING)
-                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
-            },
-            // Only use an existing (or new) outgoing connection:
-            oxenmq::send_option::outgoing{},
-            oxenmq::send_option::request_timeout{SN_PING_TIMEOUT});
 }
 
 void ServiceNode::oxend_ping() {
@@ -892,7 +872,7 @@ void ServiceNode::oxend_ping() {
             {"pubkey_ed25519",
              oxenc::to_hex(our_address_.pubkey_ed25519.begin(), our_address_.pubkey_ed25519.end())},
             {"https_port", our_address_.port},
-            {"omq_port", our_address_.omq_port}};
+            {"omq_port", our_address_.omq_quic_port}};
 
     omq_server_.oxend_request(
             "admin.storage_server_ping",

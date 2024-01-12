@@ -38,9 +38,6 @@ class OMQ : public MQBase {
     oxenmq::OxenMQ omq_;
     oxenmq::ConnectionID oxend_conn_;
 
-    // Has information about current SNs
-    snode::ServiceNode* service_node_ = nullptr;
-
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
 
@@ -232,6 +229,8 @@ class OMQ : public MQBase {
             std::string_view data);
 
     void notify(std::vector<connection_id>&, std::string_view notification) override;
+
+    void reachability_test(std::shared_ptr<snode::sn_test> test) override;
 };
 
 }  // namespace oxenss::server

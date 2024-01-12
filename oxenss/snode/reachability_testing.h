@@ -34,7 +34,7 @@ namespace detail {
 
 class Swarm;
 
-enum class ReachType { HTTPS, OMQ };
+enum class ReachType { HTTPS, OMQ, QUIC };
 
 class reachability_testing {
   public:
@@ -102,6 +102,7 @@ class reachability_testing {
     // warn about possible network issues.
     detail::incoming_test_state last_https;
     detail::incoming_test_state last_omq;
+    detail::incoming_test_state last_quic;
 
   public:
     // If it is time to perform another random test, this returns the next node to test from the
@@ -131,7 +132,7 @@ class reachability_testing {
     // node (e.g. because it is not passing, or because it deregistered).
     void remove_node_from_failing(const crypto::legacy_pubkey& pk);
 
-    // Called when this storage server receives an incoming HTTP or OMQ ping
+    // Called when this storage server receives an incoming HTTP, OMQ or QUIC ping
     void incoming_ping(ReachType type, const clock::time_point& now = clock::now());
 
     // Check whether we received incoming pings recently

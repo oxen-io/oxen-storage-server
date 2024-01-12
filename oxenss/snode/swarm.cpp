@@ -113,7 +113,7 @@ void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInf
 
     for (auto& [swarm_id, snodes] : new_swarms)
         for (auto& snode : snodes)
-            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_port == 0)
+            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_quic_port == 0)
                 missing.emplace(snode.pubkey_legacy, &snode);
 
     if (missing.empty())
@@ -124,10 +124,10 @@ void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInf
             auto it = missing.find(snode.pubkey_legacy);
             if (it == missing.end())
                 continue;
-            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_port != 0) {
+            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_quic_port != 0) {
                 it->second->ip = snode.ip;
                 it->second->port = snode.port;
-                it->second->omq_port = snode.omq_port;
+                it->second->omq_quic_port = snode.omq_quic_port;
             }
             missing.erase(it);
             if (missing.empty())
@@ -285,7 +285,7 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     for (auto& swarm : bu.swarms) {
         for (auto& snode : swarm.snodes) {
             total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_quic_port ||
                 !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
                 missing++;
             }

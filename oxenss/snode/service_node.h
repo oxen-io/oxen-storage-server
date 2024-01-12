@@ -21,7 +21,7 @@
 namespace oxenss::server {
 class OMQ;
 class QUIC;
-}
+}  // namespace oxenss::server
 
 namespace oxenss::rpc {
 struct OnionRequestMetadata;
@@ -50,6 +50,9 @@ using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 3};
+
+// The hardfork at which we start testing QUIC reachability
+inline constexpr hf_revision QUIC_REACHABILITY_TESTING = {19, 4};
 
 class Swarm;
 

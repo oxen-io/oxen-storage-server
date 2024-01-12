@@ -30,12 +30,12 @@ static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expect
 
     auto sn = create_dummy_sn_record();
 
-    std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
+    std::tie(sn.ip, sn.port, sn.omq_quic_port) = old_addr;
 
     oxenss::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
     std::vector<oxenss::snode::SwarmInfo> current{{si}};
 
-    std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
+    std::tie(sn.ip, sn.port, sn.omq_quic_port) = new_addr;
 
     oxenss::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
     std::vector<oxenss::snode::SwarmInfo> incoming{{si2}};
@@ -44,7 +44,7 @@ static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expect
 
     CHECK(incoming[0].snodes[0].ip == std::get<0>(expected));
     CHECK(incoming[0].snodes[0].port == std::get<1>(expected));
-    CHECK(incoming[0].snodes[0].omq_port == std::get<2>(expected));
+    CHECK(incoming[0].snodes[0].omq_quic_port == std::get<2>(expected));
 }
 
 TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {

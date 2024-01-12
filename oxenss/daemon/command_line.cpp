@@ -118,7 +118,7 @@ parse_result parse_cli_args(int argc, char* argv[]) {
     if (testnet) {
         base_dir /= "testnet";
         options.https_port = 38155;
-        options.omq_port = 38154;
+        options.omq_quic_port = 38154;
     }
 
     options.data_dir = base_dir / "storage";
@@ -148,8 +148,8 @@ parse_result parse_cli_args(int argc, char* argv[]) {
             ->capture_default_str();
     cli.add_option(
                "--omq-port,--lmq-port",
-               options.omq_port,
-               "Public port to listen on for OxenMQ connections")
+               options.omq_quic_port,
+               "Public port to listen on for OxenMQ (TCP) and QUIC (UDP) connections")
             ->capture_default_str()
             ->type_name("PORT");
     cli.add_option(

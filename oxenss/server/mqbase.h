@@ -10,6 +10,8 @@
 #include <shared_mutex>
 
 #include "../common/namespace.h"
+#include "../snode/sn_record.h"
+#include "quic/connection_ids.hpp"
 #include "utils.h"
 
 namespace oxenss {
@@ -19,15 +21,17 @@ namespace rpc {
     class RateLimiter;
 }  // namespace rpc
 
+namespace snode {
+    class ServiceNode;
+}
+
 struct message;
 
 }  // namespace oxenss
 
 namespace oxenss::server {
 
-// FIXME: with upcoming quic changes the second type here needs to become a ConnRefID (or whatever
-// it gets called).
-using connection_id = std::variant<oxenmq::ConnectionID, oxen::quic::ConnectionID>;
+using connection_id = std::variant<oxenmq::ConnectionID, oxen::quic::ReferenceID>;
 
 using namespace std::literals;
 
@@ -59,6 +63,7 @@ struct MonitorData {
 
 class MQBase {
   protected:
+    snode::ServiceNode* service_node_ = nullptr;
     rpc::RequestHandler* request_handler_ = nullptr;
     rpc::RateLimiter* rate_limiter_ = nullptr;
 
@@ -102,6 +107,8 @@ class MQBase {
             message& m, std::vector<connection_id>& to, std::vector<connection_id>& with_data);
 
     virtual void notify(std::vector<connection_id>&, std::string_view notification) = 0;
+
+    virtual void reachability_test(std::shared_ptr<snode::sn_test> test) = 0;
 
   private:
     void handle_monitor_message_single(

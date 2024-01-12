@@ -38,7 +38,7 @@ std::string OMQ::peer_lookup(std::string_view pubkey_bin) const {
     std::memcpy(pubkey.data(), pubkey_bin.data(), sizeof(crypto::x25519_pubkey));
 
     if (auto sn = service_node_->find_node(pubkey))
-        return fmt::format("tcp://{}:{}", sn->ip, sn->omq_port);
+        return fmt::format("tcp://{}:{}", sn->ip, sn->omq_quic_port);
 
     log::debug(logcat, "[OMQ] peer node not found via x25519 pubkey {}!", pubkey);
     return "";
@@ -351,7 +351,7 @@ void OMQ::init(
     // Initialization happens in 3 steps:
     // - connect to oxend
     // - get initial block update from oxend
-    // - start OMQ and HTTPS listeners
+    // - start OMQ/QUIC/HTTPS listeners
     assert(!service_node_);
     service_node_ = sn;
     request_handler_ = rh;
@@ -365,11 +365,11 @@ void OMQ::init(
 
     // start omq listener
     const auto& me = service_node_->own_address();
-    log::info(logcat, "Starting listening for OxenMQ connections on port {}", me.omq_port);
+    log::info(logcat, "Starting listening for OxenMQ connections on port {}", me.omq_quic_port);
     auto omq_prom = std::make_shared<std::promise<void>>();
     auto omq_future = omq_prom->get_future();
     omq_.listen_curve(
-            fmt::format("tcp://0.0.0.0:{}", me.omq_port),
+            fmt::format("tcp://0.0.0.0:{}", me.omq_quic_port),
             [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
                 return stats_access_keys_.count(std::string{pk}) ? oxenmq::AuthLevel::admin
                                                                  : oxenmq::AuthLevel::none;
@@ -388,7 +388,7 @@ void OMQ::init(
     try {
         omq_future.get();
     } catch (const std::runtime_error&) {
-        auto msg = fmt::format("OxenMQ server failed to bind to port {}", me.omq_port);
+        auto msg = fmt::format("OxenMQ server failed to bind to port {}", me.omq_quic_port);
         log::critical(logcat, msg);
         throw std::runtime_error{msg};
     }
@@ -450,6 +450,24 @@ void OMQ::notify(std::vector<connection_id>& conns, std::string_view notificatio
     for (const auto& c : conns)
         if (auto* id = std::get_if<oxenmq::ConnectionID>(&c))
             omq_.send(*id, "notify.message", notification);
+}
+
+void OMQ::reachability_test(std::shared_ptr<snode::sn_test> test) {
+    omq_.request(
+            test->sn.pubkey_x25519.view(),
+            "sn.ping",
+            [test = std::move(test)](bool success, const auto&) {
+                log::debug(
+                        logcat,
+                        "{} response for OxenMQ ping test of {}",
+                        success ? "Successful" : "FAILED",
+                        test->sn.pubkey_legacy);
+
+                test->add_result(success);
+            },
+            // Only use an existing (or new) outgoing connection:
+            oxenmq::send_option::outgoing{},
+            oxenmq::send_option::request_timeout{snode::SN_PING_TIMEOUT});
 }
 
 }  // namespace oxenss::server

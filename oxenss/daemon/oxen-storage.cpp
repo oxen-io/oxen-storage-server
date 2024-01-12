@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
         snode::sn_record me{
                 "0.0.0.0",
                 options.https_port,
-                options.omq_port,
+                options.omq_quic_port,
                 private_key.pubkey(),
                 private_key_ed25519.pubkey(),
                 private_key_x25519.pubkey()};
@@ -173,9 +173,10 @@ int main(int argc, char* argv[]) {
                 oxenmq::address{options.oxend_omq_rpc});
 
         auto quic = std::make_shared<server::QUIC>(
+                service_node,
                 request_handler,
                 rate_limiter,
-                oxen::quic::Address{options.ip, options.omq_port},
+                oxen::quic::Address{options.ip, options.omq_quic_port},
                 private_key_ed25519);
 
         service_node.register_mq_server(quic.get());
