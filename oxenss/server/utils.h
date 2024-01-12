@@ -32,12 +32,6 @@ nlohmann::json bt_to_json(oxenc::bt_dict_consumer d);
 
 nlohmann::json bt_to_json(oxenc::bt_list_consumer l);
 
-void handle_monitor_message_single(
-        oxenc::bt_dict_consumer d, oxenc::bt_dict_producer& out, std::vector<sub_info>& subs);
-
-void handle_monitor_message_single(
-        oxenc::bt_dict_consumer d, oxenc::bt_dict_producer&& out, std::vector<sub_info>& subs);
-
 inline std::string serialize_response(oxenc::bt_dict supplement = {}) {
     return oxenc::bt_serialize(supplement);
 }

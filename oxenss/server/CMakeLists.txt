@@ -1,9 +1,9 @@
 
 add_library(server STATIC
     https.cpp
+    mqbase.cpp
     omq.cpp
     omq_logger.cpp
-    omq_monitor.cpp
     quic.cpp
     server_certificates.cpp
     utils.cpp)

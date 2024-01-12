@@ -13,20 +13,18 @@
 #include <cpr/async_wrapper.h>
 #include <oxenss/storage/database.hpp>
 #include <oxenss/crypto/keys.h>
+#include <oxenss/server/mqbase.h>
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
 
-namespace oxenss::quic {
-struct Endpoint;
+namespace oxenss::server {
+class OMQ;
+class QUIC;
 }
 
 namespace oxenss::rpc {
 struct OnionRequestMetadata;
-}
-
-namespace oxenss::server {
-class OMQ;
 }
 
 namespace oxenss::snode {
@@ -85,7 +83,6 @@ class ServiceNode {
     std::string block_hash_;
     std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
-    std::shared_ptr<oxenss::quic::Endpoint> quic;
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
@@ -95,10 +92,8 @@ class ServiceNode {
     /// Cache for block_height/block_hash mapping
     std::map<uint64_t, std::string> block_hashes_cache_;
 
-    // Need to make sure we only use this to get OxenMQ object and
-    // not call any method that would in turn call a method in SN
-    // causing a deadlock
     server::OMQ& omq_server_;
+    std::vector<server::MQBase*> mq_servers_;
 
     std::atomic<int> oxend_pings_ =
             0;  // Consecutive successful pings, used for batching logs about it
@@ -183,7 +178,9 @@ class ServiceNode {
     Database& get_db() { return *db_; }
     const Database& get_db() const { return *db_; }
 
-    void connect_quic(std::shared_ptr<oxenss::quic::Endpoint>&);
+    // Adds a MQ server, i.e. QUIC.  The OMQ server is added automatically during construction and
+    // should not be added.
+    void register_mq_server(server::MQBase* server);
 
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }

@@ -154,14 +154,6 @@ int main(int argc, char* argv[]) {
 
         rpc::RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
 
-        auto quic = quic::Endpoint::make(
-                request_handler,
-                oxenmq_server,
-                oxen::quic::Address{options.ip, options.omq_port},
-                private_key_ed25519);
-        service_node.connect_quic(quic);
-        quic->startup_endpoint();
-
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 
         server::HTTPS https_server{
@@ -179,6 +171,15 @@ int main(int argc, char* argv[]) {
                 &request_handler,
                 &rate_limiter,
                 oxenmq::address{options.oxend_omq_rpc});
+
+        auto quic = std::make_shared<server::QUIC>(
+                request_handler,
+                rate_limiter,
+                oxen::quic::Address{options.ip, options.omq_port},
+                private_key_ed25519);
+
+        service_node.register_mq_server(quic.get());
+        quic->startup_endpoint();
 
         https_server.start();
 
@@ -203,6 +204,8 @@ int main(int argc, char* argv[]) {
         service_node.shutdown();
         log::info(logcat, "Stopping https server");
         https_server.shutdown(true);
+        log::info(logcat, "Stopping quic server");
+        quic.reset();
         log::info(logcat, "Stopping omq server");
         oxenmq_server_ptr.reset();
         log::info(logcat, "Shutting down");

@@ -1,11 +1,11 @@
 #include "service_node.h"
 
 #include "serialization.h"
+#include <oxenmq/connections.h>
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/server/omq.h>
-#include <oxenss/server/quic.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/random.hpp>
@@ -19,7 +19,6 @@
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
-#include <quic.hpp>
 
 #include <algorithm>
 
@@ -49,6 +48,7 @@ ServiceNode::ServiceNode(
         our_seckey_{skey},
         omq_server_{omq_server},
         all_stats_{*omq_server} {
+    mq_servers_.push_back(&omq_server);
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     log::info(logcat, "Requesting initial swarm state");
@@ -206,8 +206,8 @@ static block_update parse_swarm_update(const std::string& response_body) {
     return bu;
 }
 
-void ServiceNode::connect_quic(std::shared_ptr<oxenss::quic::Endpoint>& q) {
-    quic = q;
+void ServiceNode::register_mq_server(server::MQBase* server) {
+    mq_servers_.push_back(server);
 }
 
 void ServiceNode::bootstrap_data() {
@@ -418,9 +418,10 @@ static void write_metadata(
 
 void ServiceNode::send_notifies(message msg) {
     auto pubkey = msg.pubkey.prefixed_raw();
-    std::vector<connection_handle> relay_to, relay_to_with_data;
+    std::vector<server::connection_id> relay_to, relay_to_with_data;
 
-    omq_server_.get_notifiers(msg, relay_to, relay_to_with_data);
+    for (auto* s : mq_servers_)
+        s->get_notifiers(msg, relay_to, relay_to_with_data);
 
     if (relay_to.empty() && relay_to_with_data.empty())
         return;
@@ -451,23 +452,13 @@ void ServiceNode::send_notifies(message msg) {
     write_metadata(d, pubkey, msg);
 
     if (!relay_to.empty())
-        for (const auto& conn : relay_to) {
-            if (auto* c = std::get_if<oxenmq::ConnectionID>(&conn))
-                omq_server_->send(*c, "notify.message", d.view());
-
-            if (auto* c = std::get_if<std::shared_ptr<quic::Connection>>(&conn))
-                c->get()->send("notify", d.str_ref());
-        }
+        for (auto* s : mq_servers_)
+            s->notify(relay_to, d.view());
 
     if (!relay_to_with_data.empty()) {
         d.append("~", msg.data);
-        for (const auto& conn : relay_to_with_data) {
-            if (auto* c = std::get_if<oxenmq::ConnectionID>(&conn))
-                omq_server_->send(*c, "notify.message", d.view());
-
-            if (auto* c = std::get_if<std::shared_ptr<quic::Connection>>(&conn))
-                c->get()->send("notify", d.str_ref());
-        }
+        for (auto* s : mq_servers_)
+            s->notify(relay_to_with_data, d.view());
     }
 }
 

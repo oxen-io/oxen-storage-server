@@ -121,10 +121,10 @@ namespace {
             auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
         };
-        calls.omq = [](rpc::RequestHandler& h,
-                       std::string_view params,
-                       [[maybe_unused]] bool forwarded,
-                       std::function<void(rpc::Response)> cb) {
+        calls.mq = [](rpc::RequestHandler& h,
+                      std::string_view params,
+                      [[maybe_unused]] bool forwarded,
+                      std::function<void(rpc::Response)> cb) {
             RPC req;
             if (params.empty())
                 params = "{}"sv;

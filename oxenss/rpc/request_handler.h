@@ -213,7 +213,7 @@ class RequestHandler {
                 std::string_view params,
                 bool recurse,
                 std::function<void(Response)>)>
-                omq;
+                mq;
     };
 
     using rpc_map = std::unordered_map<std::string_view, rpc_handler>;

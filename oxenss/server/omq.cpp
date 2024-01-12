@@ -3,6 +3,7 @@
 
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenmq/auth.h>
+#include <oxenmq/connections.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/rpc/rate_limiter.h>
@@ -29,7 +30,7 @@ namespace oxenss::server {
 static auto logcat = log::Cat("server");
 
 std::string OMQ::peer_lookup(std::string_view pubkey_bin) const {
-    log::trace(logcat, "[LMQ] Peer Lookup");
+    log::trace(logcat, "[OMQ] Peer Lookup");
 
     if (pubkey_bin.size() != sizeof(crypto::x25519_pubkey))
         return "";
@@ -39,14 +40,14 @@ std::string OMQ::peer_lookup(std::string_view pubkey_bin) const {
     if (auto sn = service_node_->find_node(pubkey))
         return fmt::format("tcp://{}:{}", sn->ip, sn->omq_port);
 
-    log::debug(logcat, "[LMQ] peer node not found via x25519 pubkey {}!", pubkey);
+    log::debug(logcat, "[OMQ] peer node not found via x25519 pubkey {}!", pubkey);
     return "";
 }
 
 void OMQ::handle_sn_data(oxenmq::Message& message) {
-    log::debug(logcat, "[LMQ] handle_sn_data");
-    log::debug(logcat, "[LMQ]   thread id: {}", std::this_thread::get_id());
-    log::debug(logcat, "[LMQ]   from: {}", oxenc::to_hex(message.conn.pubkey()));
+    log::debug(logcat, "[OMQ] handle_sn_data");
+    log::debug(logcat, "[OMQ]   thread id: {}", std::this_thread::get_id());
+    log::debug(logcat, "[OMQ]   from: {}", oxenc::to_hex(message.conn.pubkey()));
 
     std::stringstream ss;
 
@@ -58,7 +59,7 @@ void OMQ::handle_sn_data(oxenmq::Message& message) {
     // TODO: process push batch should move to "Request handler"
     service_node_->process_push_batch(ss.str());
 
-    log::debug(logcat, "[LMQ] send reply");
+    log::debug(logcat, "[OMQ] send reply");
 
     // TODO: Investigate if the above could fail and whether we should report
     // that to the sending SN
@@ -199,7 +200,7 @@ void OMQ::handle_onion_request(oxenmq::Message& message) {
 
 void OMQ::handle_get_stats(oxenmq::Message& message) {
 
-    log::debug(logcat, "Received get_stats request via LMQ");
+    log::debug(logcat, "Received get_stats request via OMQ");
 
     auto payload = service_node_->get_stats();
 
@@ -208,10 +209,6 @@ void OMQ::handle_get_stats(oxenmq::Message& message) {
 
 void OMQ::handle_client_request(std::string_view method, oxenmq::Message& message, bool forwarded) {
     log::debug(logcat, "Handling OMQ RPC request for {}", method);
-    auto it = rpc::RequestHandler::client_rpc_endpoints.find(method);
-
-    // This endpoint shouldn't have been registered if it isn't in here:
-    assert(it != rpc::RequestHandler::client_rpc_endpoints.end());
 
     const size_t full_size = forwarded ? 2 : 1;
     const size_t empty_body = full_size - 1;
@@ -231,63 +228,20 @@ void OMQ::handle_client_request(std::string_view method, oxenmq::Message& messag
         return;
     }
 
-    if (!forwarded && rate_limiter_->should_rate_limit_client(message.remote)) {
-        log::debug(logcat, "Rate limiting client request from {}", message.remote);
-        return message.send_reply(
-                std::to_string(http::TOO_MANY_REQUESTS.first),
-                "Too many requests, try again later");
-    }
+    [[maybe_unused]] bool found = handle_client_rpc(
+            method,
+            message.data.size() == full_size ? message.data.back() : ""sv,
+            message.remote,
+            [send = message.send_later()](http::response_code status, std::string_view body) {
+                if (status == http::OK)
+                    send.reply(body);
+                else
+                    send.reply(std::to_string(status.first), body);
+            },
+            forwarded);
 
-    try {
-        std::string_view params = message.data.size() == full_size ? message.data.back() : ""sv;
-        it->second.omq(
-                *request_handler_,
-                params,
-                forwarded,
-                [send = message.send_later(),
-                 bt_encoded = !params.empty() && params.front() == 'd'](rpc::Response res) {
-                    std::string dump;
-                    std::string_view body;
-                    if (auto* j = std::get_if<nlohmann::json>(&res.body)) {
-                        if (bt_encoded)
-                            dump = bt_serialize(json_to_bt(std::move(*j)));
-                        else
-                            dump = j->dump();
-                        body = dump;
-                    } else
-                        body = view_body(res);
-
-                    if (res.status == http::OK) {
-                        log::debug(
-                                logcat,
-                                "OMQ RPC request successful, returning {}-byte {} response",
-                                body.size(),
-                                dump.empty() ? "text"
-                                : bt_encoded ? "bt-encoded"
-                                             : "json");
-                        // Success: return just the body
-                        send.reply(body);
-                    } else {
-                        // On error return [errcode, body]
-                        log::debug(
-                                logcat,
-                                "OMQ RPC request failed, replying with [{}, {}]",
-                                res.status.first,
-                                body);
-                        send.reply(std::to_string(res.status.first), body);
-                    }
-                });
-    } catch (const rpc::parse_error& e) {
-        // These exceptions carry a failure message to send back to the client
-        log::debug(logcat, "Invalid request: {}", e.what());
-        message.send_reply(
-                std::to_string(http::BAD_REQUEST.first), "invalid request: "s + e.what());
-    } catch (const std::exception& e) {
-        // Other exceptions might contain something sensitive or irrelevant so warn about it and
-        // send back a generic message.
-        log::warning(logcat, "Client request raised an exception: {}", e.what());
-        message.send_reply(std::to_string(http::INTERNAL_SERVER_ERROR.first), "request failed");
-    }
+    // This endpoint shouldn't have been registered at all if it isn't found in here
+    assert(found);
 }
 
 OMQ::OMQ(
@@ -479,6 +433,23 @@ std::pair<std::string_view, rpc::OnionRequestMetadata> OMQ::decode_onion_data(
         meta.hop_no = 1;
 
     return result;
+}
+
+void OMQ::handle_monitor_messages(oxenmq::Message& message) {
+    // If not a single part then send an empty string so that the base class fires back an error for
+    // us:
+    std::string_view request = message.data.size() != 1 ? ""sv : message.data[0];
+
+    handle_monitor(
+            request,
+            [&message](std::string body) { message.send_reply(std::move(body)); },
+            message.conn);
+}
+
+void OMQ::notify(std::vector<connection_id>& conns, std::string_view notification) {
+    for (const auto& c : conns)
+        if (auto* id = std::get_if<oxenmq::ConnectionID>(&c))
+            omq_.send(*id, "notify.message", notification);
 }
 
 }  // namespace oxenss::server

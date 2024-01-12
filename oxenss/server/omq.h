@@ -1,5 +1,6 @@
 #pragma once
 #include "utils.h"
+#include "mqbase.h"
 
 #include <cstdint>
 #include <memory>
@@ -16,66 +17,29 @@
 #include "../common/message.h"
 #include "../snode/sn_record.h"
 
-namespace oxenss::quic {
-struct Connection;
-}  // namespace oxenss::quic
-
 namespace oxenss {
-using connection_handle = std::variant<oxenmq::ConnectionID, std::shared_ptr<quic::Connection>>;
+
+namespace rpc {
+    class RequestHandler;
+    class RateLimiter;
+    struct OnionRequestMetadata;
+    struct Response;
+}  // namespace rpc
+
+namespace snode {
+    class ServiceNode;
+}  // namespace snode
+
 }  // namespace oxenss
-
-namespace oxenss::rpc {
-class RequestHandler;
-class RateLimiter;
-struct OnionRequestMetadata;
-struct Response;
-}  // namespace oxenss::rpc
-
-namespace oxenss::snode {
-class ServiceNode;
-}  // namespace oxenss::snode
 
 namespace oxenss::server {
 
-using namespace std::literals;
-
-struct MonitorData {
-    static constexpr auto MONITOR_EXPIRY_TIME = 65min;
-
-    std::chrono::steady_clock::time_point expiry;  // When this notify reg expires
-    std::vector<namespace_id> namespaces;          // sorted namespace_ids
-    connection_handle conn;
-    bool want_data;  // true if the subscriber wants msg data
-
-    MonitorData(
-            std::vector<namespace_id> namespaces,
-            bool data,
-            connection_handle c,
-            std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) :
-            expiry{std::chrono::steady_clock::now() + ttl},
-            namespaces{std::move(namespaces)},
-            conn{c},
-            want_data{data} {}
-
-    void reset_expiry(std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) {
-        expiry = std::chrono::steady_clock::now() + ttl;
-    }
-};
-
-class OMQ {
+class OMQ : public MQBase {
     oxenmq::OxenMQ omq_;
     oxenmq::ConnectionID oxend_conn_;
 
     // Has information about current SNs
     snode::ServiceNode* service_node_ = nullptr;
-
-    rpc::RequestHandler* request_handler_ = nullptr;
-
-    rpc::RateLimiter* rate_limiter_ = nullptr;
-
-    // Tracks accounts we are monitoring for OMQ push notification messages
-    std::unordered_multimap<std::string, MonitorData> monitoring_;
-    mutable std::shared_mutex monitoring_mutex_;
 
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
@@ -228,13 +192,6 @@ class OMQ {
         const crypto::x25519_seckey& privkey,
         const std::vector<crypto::x25519_pubkey>& stats_access_keys_hex);
 
-    void update_monitors(std::vector<sub_info>&, connection_handle);
-
-    void get_notifiers(
-            message& m,
-            std::vector<connection_handle>& to,
-            std::vector<connection_handle>& with_data);
-
     // Initialize oxenmq; return a future that completes once we have connected to and
     // initialized from oxend.
     void init(
@@ -273,6 +230,8 @@ class OMQ {
     // Decodes onion request data; throws if invalid formatted or missing required fields.
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
+
+    void notify(std::vector<connection_id>&, std::string_view notification) override;
 };
 
 }  // namespace oxenss::server
