@@ -986,7 +986,7 @@ std::map<std::string, int64_t> Database::get_expiries(
         auto st = impl->prepared_st(
                 "SELECT hash, expiry FROM messages WHERE hash = ?"
                 " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)");
-        return get_map<std::string, int64_t>(st);
+        return get_map<std::string, int64_t>(st, msg_hashes[0], pubkey);
     }
 
     SQLite::Statement st{

@@ -152,6 +152,32 @@ def test_expire(omq, random_sn, sk, exclude):
             r['messages'][i]['expiration'] == ts if i in (0, 1, 5, 6) else msgs[i]['req']['expiry']
         )
 
+    # Also try with a *single* hash, which reportedly didn't return the right thing
+    hashes = [msgs[4]['hash']]
+    to_sign = ("expire" + str(ts) + hashes[0]).encode()
+    sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
+    params = json.dumps(
+        {"pubkey": my_ss_id, "messages": hashes, "expiry": ts, "signature": sig}
+    ).encode()
+
+    resp = omq.request_future(conns[1], 'storage.expire', [params]).get()
+
+    assert len(resp) == 1
+    r = json.loads(resp[0])
+
+    assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
+
+    # ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
+    expected_signed = "".join((my_ss_id, str(ts), hashes[0], hashes[0])).encode()
+    for k, v in r['swarm'].items():
+        assert v['updated'] == hashes
+        edpk = VerifyKey(k, encoder=HexEncoder)
+        try:
+            edpk.verify(expected_signed, base64.b64decode(v['signature']))
+        except nacl.exceptions.BadSignatureError as e:
+            print("Bad signature from swarm member {}".format(k))
+            raise e
+
 
 def test_expire_extend(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
@@ -410,6 +436,18 @@ def test_expire_shorten_extend(omq, random_sn, sk, exclude):
                                 ).signature.decode(),
                             },
                         },
+                        {
+                            'method': 'get_expiries',
+                            'params': {
+                                "pubkey": my_ss_id,
+                                "messages": [msgs[0]["hash"]],
+                                "timestamp": now,
+                                "signature": sk.sign(
+                                    f"get_expiries{now}{msgs[0]['hash']}".encode(),
+                                    encoder=Base64Encoder,
+                                ).signature.decode(),
+                            },
+                        },
                     ]
                 }
             )
@@ -418,7 +456,7 @@ def test_expire_shorten_extend(omq, random_sn, sk, exclude):
 
     assert len(e) == 1
     e = json.loads(e[0])
-    assert [x['code'] for x in e['results']] == [200] * 10
+    assert [x['code'] for x in e['results']] == [200] * 11
     e = [x['body'] for x in e['results']]
 
     e0_exp = {'expiry': exp_30s, 'updated': sorted(m["hash"] for m in msgs[0:4]), 'unchanged': {}}
@@ -550,4 +588,11 @@ def test_expire_shorten_extend(omq, random_sn, sk, exclude):
             for i in range(len(msgs))
         ],
         "more": False,
+    }
+
+    # Test bug: get_expiries was not working properly when given just one hash
+    assert e[10] == {
+        "expiries": {
+            msgs[0]["hash"]: exp_30s
+        }
     }
