@@ -463,22 +463,8 @@ CREATE VIEW IF NOT EXISTS owned_messages AS
     FROM messages JOIN owners ON messages.owner = owners.id;
 
 DROP TRIGGER IF EXISTS owned_messages_insert;
-CREATE TRIGGER IF NOT EXISTS owned_messages_upsert
-    INSTEAD OF INSERT ON owned_messages FOR EACH ROW WHEN NEW.oid IS NULL
-    BEGIN
-        INSERT INTO owners (type, pubkey) VALUES (NEW.type, NEW.pubkey) ON CONFLICT DO NOTHING;
-        INSERT INTO messages (id, hash, owner, namespace, timestamp, expiry, data) VALUES (
-            NEW.mid,
-            NEW.hash,
-            (SELECT id FROM owners WHERE type = NEW.type AND pubkey = NEW.pubkey),
-            NEW.namespace,
-            NEW.timestamp,
-            NEW.expiry,
-            NEW.data
-        ) ON CONFLICT(hash) WHERE expiry > messages.expiry
-            DO UPDATE SET expiry = excluded.expiry;
-    END;
-        )");
+DROP TRIGGER IF EXISTS owned_messages_upsert;
+)");
 
         transaction.commit();
     }
@@ -592,50 +578,71 @@ std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
     return get_message(*impl, st);
 }
 
-std::optional<bool> Database::store(const message& msg) {
+StoreResult Database::store(const message& msg) {
 
-    // When storing to a public namespace we clear anything there (except for a duplicate, to avoid
-    // unnecessary storage churn).
-    if (is_public_outbox_namespace(msg.msg_namespace)) {
-        auto st = impl->prepared_st(
-                "DELETE FROM messages"
-                " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
-                " AND namespace = ? AND hash != ?");
-        try {
-            exec_query(st, msg.pubkey, msg.msg_namespace, msg.hash);
-        } catch (const SQLite::Exception& e) {
-            log::error(
-                    logcat, "Failed to clear existing public outbox messages: {}", e.getErrorStr());
-            throw;
-        }
-    }
-
-    auto st = impl->prepared_st(
-            "INSERT INTO owned_messages (pubkey, type, hash, namespace, timestamp, expiry, data)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)");
-
+    StoreResult ret;
     try {
-        exec_query(
-                st,
-                msg.pubkey,
-                msg.hash,
-                msg.msg_namespace,
-                to_epoch_ms(msg.timestamp),
-                to_epoch_ms(msg.expiry),
-                blob_binder{msg.data});
+
+        SQLite::Transaction transaction{impl->db};
+
+        int64_t owner_id;
+        if (auto maybe = exec_and_maybe_get<int64_t>(
+                    impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?"),
+                    msg.pubkey))
+            owner_id = *maybe;
+        else
+            owner_id = impl->prepared_get<int64_t>(
+                    "INSERT INTO owners (pubkey, type) VALUES (?, ?) RETURNING id", msg.pubkey);
+
+        // When storing to a public namespace we clear anything there (except for a duplicate, to
+        // avoid unnecessary storage churn).
+        if (is_public_outbox_namespace(msg.msg_namespace)) {
+            impl->prepared_exec(
+                    "DELETE FROM messages"
+                    " WHERE owner = ? AND namespace = ? AND hash != ?",
+                    owner_id,
+                    msg.msg_namespace,
+                    msg.hash);
+        }
+
+        auto new_exp = to_epoch_ms(msg.expiry);
+
+        if (auto existing = exec_and_maybe_get<int64_t, int64_t>(
+                    impl->prepared_st("SELECT id, expiry FROM messages WHERE hash = ?"),
+                    msg.hash)) {
+            const auto& [id, exp] = *existing;
+            if (exp < new_exp) {
+                impl->prepared_exec("UPDATE messages SET expiry = ? WHERE id = ?", new_exp, id);
+                ret = StoreResult::Extended;
+            } else {
+                ret = StoreResult::Exists;
+            }
+        } else {
+            impl->prepared_exec(
+                    "INSERT INTO messages (owner, hash, namespace, timestamp, expiry, data)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    owner_id,
+                    msg.hash,
+                    msg.msg_namespace,
+                    to_epoch_ms(msg.timestamp),
+                    to_epoch_ms(msg.expiry),
+                    blob_binder{msg.data});
+            ret = StoreResult::New;
+        }
+
+        transaction.commit();
+
     } catch (const SQLite::Exception& e) {
-        if (int rc = e.getErrorCode(); rc == SQLITE_CONSTRAINT)
-            return false;
-        else if (rc == SQLITE_FULL) {
+        if (e.getErrorCode() == SQLITE_FULL) {
             if (impl->db_full_counter++ % DB_FULL_FREQUENCY == 0)
                 log::error(logcat, "Failed to store message: database is full");
-            return std::nullopt;
+            return StoreResult::Full;
         } else {
-            log::error(logcat, "Failed to store message: {}", e.getErrorStr());
+            log::critical(logcat, "Failed to store message: {}", e.getErrorStr());
             throw;
         }
     }
-    return true;
+    return ret;
 }
 
 void Database::bulk_store(const std::vector<message>& items) {

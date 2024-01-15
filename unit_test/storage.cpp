@@ -38,7 +38,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
     const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}));
+        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}) == StoreResult::New);
 
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
@@ -75,7 +75,7 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
     const auto now = std::chrono::system_clock::now();
     {
         Database storage{"."};
-        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}));
+        CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}) == StoreResult::New);
 
         CHECK(storage.get_owner_count() == 1);
         CHECK(storage.get_message_count() == 1);
@@ -100,26 +100,34 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
     }
 }
 
-TEST_CASE("storage - returns false when storing existing hash", "[storage]") {
+TEST_CASE("storage - re-storing existing hash", "[storage]") {
     StorageDeleter fixture;
 
     user_pubkey pubkey;
     REQUIRE(pubkey.load("050123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     const auto hash = "myhash";
     const auto bytes = "bytesasstring";
-    const auto ttl = 123456ms;
+    const auto ttl1 = 200s;
     const auto timestamp = std::chrono::system_clock::now();
 
     Database storage{"."};
 
-    auto ins =
-            storage.store({pubkey, hash, namespace_id::Default, timestamp, timestamp + ttl, bytes});
-    REQUIRE(ins);
-    CHECK(*ins);
-    // store using the same hash, will fail
-    ins = storage.store({pubkey, hash, namespace_id::Default, timestamp, timestamp + ttl, bytes});
-    REQUIRE(ins);
-    CHECK_FALSE(*ins);
+    auto ins = storage.store(
+            {pubkey, hash, namespace_id::Default, timestamp, timestamp + ttl1, bytes});
+    CHECK(ins == StoreResult::New);
+
+    std::chrono::seconds ttl2 = ttl1 - 100s;
+    SECTION("later expiry") {
+        ttl2 = ttl1 + 100s;
+    }
+    SECTION("earlier expiry") {
+        ttl2 = ttl1 - 100s;
+    }
+    ins = storage.store({pubkey, hash, namespace_id::Default, timestamp, timestamp + ttl2, bytes});
+    if (ttl2 > ttl1)
+        CHECK(ins == StoreResult::Extended);
+    else
+        CHECK(ins == StoreResult::Exists);
 
     CHECK(storage.get_owner_count() == 1);
     CHECK(storage.get_message_count() == 1);
@@ -136,9 +144,11 @@ TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
 
     auto now = std::chrono::system_clock::now();
     CHECK(storage.store(
-            {pubkey1, "hash0", namespace_id::Default, now, now + 100s, "bytesasstring0"}));
+                  {pubkey1, "hash0", namespace_id::Default, now, now + 100s, "bytesasstring0"}) ==
+          StoreResult::New);
     CHECK(storage.store(
-            {pubkey2, "hash1", namespace_id::Default, now, now + 100s, "bytesasstring1"}));
+                  {pubkey2, "hash1", namespace_id::Default, now, now + 100s, "bytesasstring1"}) ==
+          StoreResult::New);
 
     CHECK(storage.get_owner_count() == 2);
     CHECK(storage.get_message_count() == 2);
@@ -202,13 +212,19 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
 
     auto now = std::chrono::system_clock::now();
     CHECK(storage.store(
-            {pubkey1, "hash0", namespace_id::Default, now, now + 1s, "bytesasstring0"}));
-    CHECK(storage.store({pubkey1, "hash1", namespace_id::Default, now, now, "bytesasstring0"}));
+                  {pubkey1, "hash0", namespace_id::Default, now, now + 1s, "bytesasstring0"}) ==
+          StoreResult::New);
+    CHECK(storage.store({pubkey1, "hash1", namespace_id::Default, now, now, "bytesasstring0"}) ==
+          StoreResult::New);
     CHECK(storage.store(
-            {pubkey2, "hash2", namespace_id::Default, now, now + 1s, "bytesasstring0"}));
-    CHECK(storage.store({pubkey3, "hash3", namespace_id::Default, now, now, "bytesasstring0"}));
-    CHECK(storage.store({pubkey3, "hash4", namespace_id::Default, now, now, "bytesasstring0"}));
-    CHECK(storage.store({pubkey3, "hash5", namespace_id::Default, now, now, "bytesasstring0"}));
+                  {pubkey2, "hash2", namespace_id::Default, now, now + 1s, "bytesasstring0"}) ==
+          StoreResult::New);
+    CHECK(storage.store({pubkey3, "hash3", namespace_id::Default, now, now, "bytesasstring0"}) ==
+          StoreResult::New);
+    CHECK(storage.store({pubkey3, "hash4", namespace_id::Default, now, now, "bytesasstring0"}) ==
+          StoreResult::New);
+    CHECK(storage.store({pubkey3, "hash5", namespace_id::Default, now, now, "bytesasstring0"}) ==
+          StoreResult::New);
 
     CHECK(storage.get_owner_count() == 3);
     CHECK(storage.get_message_count() == 6);
@@ -284,8 +300,10 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
     Database storage{"."};
 
     // insert existing; the bulk store shouldn't fail when these conflicts already exist
-    CHECK(storage.store({pubkey, "0", namespace_id::Default, timestamp, timestamp + ttl, bytes}));
-    CHECK(storage.store({pubkey, "5", namespace_id::Default, timestamp, timestamp + ttl, bytes}));
+    CHECK(storage.store({pubkey, "0", namespace_id::Default, timestamp, timestamp + ttl, bytes}) ==
+          StoreResult::New);
+    CHECK(storage.store({pubkey, "5", namespace_id::Default, timestamp, timestamp + ttl, bytes}) ==
+          StoreResult::New);
 
     CHECK(storage.get_owner_count() == 1);
     CHECK(storage.get_message_count() == 2);

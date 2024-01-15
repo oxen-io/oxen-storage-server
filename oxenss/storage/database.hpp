@@ -19,6 +19,14 @@ using namespace std::literals;
 
 class DatabaseImpl;
 
+/// Possible return values of a `store()`:
+enum class StoreResult {
+    New,       // Message did not exist and was inserted.
+    Extended,  // Message existed, but the expiry was extended to match the stored timestamp.
+    Exists,    // Message exists and already has an expiry >= the stored one.
+    Full,      // Can't insert right now because the database is full.
+};
+
 // Storage database class.
 class Database {
     std::unique_ptr<DatabaseImpl> impl;
@@ -39,13 +47,9 @@ class Database {
     // if the database is full then print an error only once ever N errors
     static constexpr int DB_FULL_FREQUENCY = 100;
 
-    // Attempts to store a message in the database.  Returns true if inserted, false on failure
-    // due to the message already existing, and nullopt if the insertion failed because the
-    // database is full.  For other query failures, throws.
-    //
-    // This means `if (db.store(...))` will be true if inserted *or* already present; to check
-    // only for insertion use `ins && *ins`.
-    std::optional<bool> store(const message& msg);
+    // Stores a message in the database.  Returns an enum value indicating the result -- see
+    // StoreResult for a description.
+    StoreResult store(const message& msg);
 
     void bulk_store(const std::vector<message>& items);
 

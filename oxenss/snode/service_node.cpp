@@ -414,14 +414,12 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     all_stats_.bump_store_requests();
 
     /// store in the database (if not already present)
-    auto stored = db_->store(msg);
-    if (stored) {
-        log::trace(logcat, *stored ? "saved message: {}" : "message already exists: {}", msg.data);
-        if (*stored)
-            omq_server_.send_notifies(std::move(msg));
-    }
-    if (new_msg)
-        *new_msg = stored.value_or(false);
+    if (db_->store(msg) == StoreResult::New) {
+        omq_server_.send_notifies(std::move(msg));
+        if (new_msg)
+            *new_msg = true;
+    } else if (new_msg)
+        *new_msg = false;
 
     return true;
 }
