@@ -8,7 +8,7 @@
 
 namespace oxen::snode {
 
-all_stats_t::all_stats_t(oxenmq::OxenMQ& omq) {
+all_stats::all_stats(oxenmq::OxenMQ& omq) {
     omq.add_timer([this] { cleanup(); }, STATS_CLEANUP_INTERVAL);
 }
 
@@ -20,7 +20,7 @@ static void cleanup_old(
 
 static constexpr auto ROLLING_WINDOW = 120min;
 
-void all_stats_t::cleanup() {
+void all_stats::cleanup() {
     {
         // rotate historic period counters
         std::lock_guard lock{prev_stats_mutex};
@@ -46,7 +46,7 @@ void all_stats_t::cleanup() {
     }
 }
 
-std::pair<std::chrono::steady_clock::duration, period_stats> all_stats_t::get_recent_requests()
+std::pair<std::chrono::steady_clock::duration, period_stats> all_stats::get_recent_requests()
         const {
     std::pair<std::chrono::steady_clock::duration, period_stats> result;
     auto& [window, stats] = result;

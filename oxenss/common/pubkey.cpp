@@ -6,7 +6,7 @@
 
 namespace oxen {
 
-user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
+user_pubkey& user_pubkey::load(std::string_view pk) {
     if (pk.size() == USER_PUBKEY_SIZE_HEX && oxenc::is_hex(pk)) {
         uint8_t netid;
         oxenc::from_hex(pk.begin(), pk.begin() + 2, &netid);
@@ -28,11 +28,11 @@ user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
     return *this;
 }
 
-std::string user_pubkey_t::hex() const {
+std::string user_pubkey::hex() const {
     return oxenc::to_hex(pubkey_);
 }
 
-std::string user_pubkey_t::prefixed_hex() const {
+std::string user_pubkey::prefixed_hex() const {
     std::string hex;
     if (pubkey_.empty())
         return hex;
@@ -44,7 +44,7 @@ std::string user_pubkey_t::prefixed_hex() const {
     return hex;
 }
 
-std::string user_pubkey_t::prefixed_raw() const {
+std::string user_pubkey::prefixed_raw() const {
     std::string bytes;
     if (pubkey_.empty())
         return bytes;

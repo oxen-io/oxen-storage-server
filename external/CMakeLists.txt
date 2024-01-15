@@ -60,7 +60,7 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.0.4 oxenc)
+system_or_submodule(OXENC oxenc liboxenc>=1.0.9 oxenc)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
@@ -233,3 +233,5 @@ set(SQLITECPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(SQLiteCpp EXCLUDE_FROM_ALL)
+
+file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/ignored/sqlite3.h")

@@ -66,16 +66,28 @@ namespace {
                         : std::is_integral_v<T> || std::is_same_v<T, namespace_id>
                                 ? it->is_number_integer()
                         : is_namespace_var<T> ? it->is_number_integer() || it->is_string()
-                        : is_str_array<T> || is_int_array<T> ? it->is_array()
-                                                             : it->is_string();
-        if (is_str_array<T> && right_type) {
-            for (auto& x : *it)
-                if (!x.is_string())
-                    right_type = false;
-        } else if (is_int_array<T> && right_type) {
-            for (auto& x : *it)
-                if (!x.is_number_integer())
-                    right_type = false;
+                        : is_str_array<T>     ? it->is_array() || it->is_string()
+                        : is_int_array<T>     ? it->is_array() || it->is_number_integer()
+                                              : it->is_string();
+
+        if (right_type) {
+            // For vectors of string or ints we allow the value as either a list of strings/ints, or
+            // a single string/int (which becomes the single element of the returned vector).  The
+            // check here is to make sure, when given an array, that each array element has the
+            // right type (if not given an array then we already checked the singleton type above).
+            if (is_str_array<T> && it->is_array()) {
+                for (auto& x : *it)
+                    if (!x.is_string()) {
+                        right_type = false;
+                        break;
+                    }
+            } else if (is_int_array<T> && it->is_array()) {
+                for (auto& x : *it)
+                    if (!x.is_number_integer()) {
+                        right_type = false;
+                        break;
+                    }
+            }
         }
 
         if (!right_type)
@@ -104,6 +116,15 @@ namespace {
                     return namespace_all;
             throw parse_error{
                     fmt::format("Invalid value given for '{}': expected integer or \"all\"", name)};
+        } else if constexpr (is_str_array<T> || is_int_array<T>) {
+            if (it->is_array())
+                return it->template get<T>();
+            auto vals = std::make_optional<T>();
+            if constexpr (is_str_array<T>)
+                vals->push_back(it->get<std::string>());
+            else
+                vals->push_back(it->get<int>());
+            return vals;
         } else {
             return it->template get<T>();
         }
@@ -129,11 +150,20 @@ namespace {
                 return from_epoch_ms(params.consume_integer<int64_t>());
             else if constexpr (is_str_array<T> || is_int_array<T>) {
                 auto elems = std::make_optional<T>();
-                for (auto l = params.consume_list_consumer(); !l.is_finished();)
-                    if constexpr (is_str_array<T>)
-                        elems->push_back(l.consume_string());
-                    else
-                        elems->push_back(l.consume_integer<int>());
+                if constexpr (is_str_array<T>) {
+                    if (params.is_string())
+                        elems->push_back(params.consume_string());
+                } else if constexpr (is_int_array<T>) {
+                    if (params.is_integer())
+                        elems->push_back(params.consume_integer<int>());
+                }
+                if (elems->empty()) {
+                    for (auto l = params.consume_list_consumer(); !l.is_finished();)
+                        if constexpr (is_str_array<T>)
+                            elems->push_back(l.consume_string());
+                        else
+                            elems->push_back(l.consume_integer<int>());
+                }
                 return elems;
             } else if constexpr (is_namespace_var<T> || std::is_same_v<T, namespace_id>) {
                 if (params.is_integer())
@@ -286,22 +316,40 @@ namespace {
     }
 
     template <typename RPC, typename Dict>
-    void load_subkey(RPC& rpc, const Dict&, const std::optional<std::string_view>& subkey) {
-        if (!subkey || subkey->empty())
+    void load_subaccount(
+            RPC& rpc,
+            const Dict&,
+            const std::optional<std::string_view>& subacc,
+            const std::optional<std::string_view> subacc_sig) {
+        if (!subacc || subacc->empty())
             return;
-        const auto& sk = *subkey;
+        if (!subacc_sig)
+            throw parse_error{
+                    "invalid subaccount: subaccount_sig is required when using subaccount"};
+        const auto& sa = *subacc;
+        const auto& sa_sig = *subacc_sig;
+        auto& signed_subacc = rpc.subaccount.emplace();
         if constexpr (std::is_same_v<json, Dict>) {
-            if (oxenc::is_base64(sk) && (sk.size() == 43 || (sk.size() == 44 && sk.back() == '=')))
-                oxenc::from_base64(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
-            else if (oxenc::is_hex(sk) && sk.size() == 64)
-                oxenc::from_hex(sk.begin(), sk.end(), rpc.subkey.emplace().begin());
+            if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 4 / 3)
+                oxenc::from_base64(sa.begin(), sa.end(), signed_subacc.token.token.begin());
+            else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 2)
+                oxenc::from_hex(sa.begin(), sa.end(), signed_subacc.token.token.begin());
             else
                 throw parse_error{
-                        "invalid subkey: expected base64 or hex-encoded 32-byte subkey index"};
+                        "invalid subaccount: expected base64 or hex-encoded subaccount token"};
+
+            if (!oxenc::is_base64(sa_sig) ||
+                !(sa_sig.size() == 86 || (sa_sig.size() == 88 && sa_sig.substr(86) == "==")))
+                throw parse_error{
+                        "invalid subaccount signature: expected base64 encoded Ed25519 signature"};
+            oxenc::from_base64(sa_sig.begin(), sa_sig.end(), signed_subacc.signature.begin());
         } else {
-            if (sk.size() != 32)
-                throw parse_error{"invalid subkey: expected 32-byte subkey index"};
-            std::memcpy(rpc.subkey.emplace().data(), sk.data(), 32);
+            if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+                throw parse_error{"invalid subaccount token: invalid token length"};
+            std::memcpy(signed_subacc.token.token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
+            if (sa_sig.size() != 64)
+                throw parse_error{"invalid signature: expected 64-byte Ed25519 signature"};
+            std::memcpy(signed_subacc.signature.data(), sa_sig.data(), 64);
         }
     }
 
@@ -312,6 +360,42 @@ namespace {
             assert(std::holds_alternative<namespace_all_t>(ns));
             dict[key] = "all";
         }
+    }
+
+    template <typename T, typename = void>
+    inline constexpr bool has_subaccount = false;
+    template <typename T>
+    inline constexpr bool has_subaccount<T, std::void_t<decltype(T::subaccount)>> = true;
+    template <typename T>
+    inline constexpr bool is_optional = false;
+    template <typename T>
+    inline constexpr bool is_optional<std::optional<T>> = true;
+    template <typename T>
+    inline constexpr bool is_optional<const std::optional<T>&> = true;
+
+    template <typename T>
+    bt_dict to_bt_common(const T& req) {
+        bt_dict d{
+                {"pubkey", req.pubkey.prefixed_raw()},
+        };
+        if constexpr (is_optional<decltype(req.signature)>) {
+            if (req.signature)
+                d["signature"] = util::view_guts(*req.signature);
+        } else {
+            d["signature"] = util::view_guts(req.signature);
+        }
+        if constexpr (has_subaccount<T>) {
+            if (req.subaccount) {
+                d["subaccount"] = req.subaccount->token.sview();
+                d["subaccount_sig"] = util::view_guts(req.subaccount->signature);
+            }
+        }
+        if (req.pubkey_ed25519)
+            d["pubkey_ed25519"] = std::string_view{
+                    reinterpret_cast<const char*>(req.pubkey_ed25519->data()),
+                    req.pubkey_ed25519->size()};
+
+        return d;
     }
 
 }  // namespace
@@ -325,8 +409,8 @@ using Vec = std::vector<T>;
 
 template <typename Dict>
 static void load(store& s, Dict& d) {
-    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subkey] =
-            load_fields<SV, TP, namespace_id, Str, Str, SV, TP, SV, SV>(
+    auto [data, expiry, msg_ns, pubkey_alt, pubkey, pk_ed25519, sig_ts, sig, subacc, subacc_sig] =
+            load_fields<SV, TP, namespace_id, Str, Str, SV, TP, SV, SV, SV>(
                     d,
                     "data",
                     "expiry",
@@ -336,7 +420,8 @@ static void load(store& s, Dict& d) {
                     "pubkey_ed25519",
                     "sig_timestamp",
                     "signature",
-                    "subkey");
+                    "subaccount",
+                    "subaccount_sig");
 
     // timestamp and ttl are special snowflakes: for backwards compat reasons, they can
     // be passed as strings when loading from json.
@@ -364,7 +449,7 @@ static void load(store& s, Dict& d) {
 
     if (sig) {
         load_pk_signature(s, d, pk, pk_ed25519, sig);
-        load_subkey(s, d, subkey);
+        load_subaccount(s, d, subacc, subacc_sig);
         s.sig_ts = sig_ts.value_or(s.timestamp);
     } else
         load_pk(s, pk);
@@ -399,20 +484,14 @@ void store::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value store::to_bt() const {
-    bt_dict d{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"timestamp", to_epoch_ms(timestamp)},
-            {"expiry", to_epoch_ms(expiry)},
-            {"data", std::string_view{data}}};
+    bt_dict d = to_bt_common(*this);
+    d["timestamp"] = to_epoch_ms(timestamp);
+    d["expiry"] = to_epoch_ms(expiry);
+    d["data"] = std::string_view{data};
+    if (sig_ts)
+        d["sig_timestamp"] = to_epoch_ms(*sig_ts);
     if (msg_namespace != namespace_id::Default)
         d["namespace"] = static_cast<std::underlying_type_t<namespace_id>>(msg_namespace);
-    if (subkey)
-        d["subkey"] = util::view_guts(*subkey);
-    if (signature)
-        d["signature"] = util::view_guts(*signature);
-    if (pubkey_ed25519)
-        d["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
     return d;
 }
 
@@ -427,9 +506,10 @@ static void load(retrieve& r, Dict& d) {
           pubkey,
           pk_ed25519,
           sig,
-          subkey,
+          subacc,
+          subacc_sig,
           ts] =
-            load_fields<Str, Str, int, int, namespace_id, Str, Str, SV, SV, SV, TP>(
+            load_fields<Str, Str, int, int, namespace_id, Str, Str, SV, SV, SV, SV, TP>(
                     d,
                     "lastHash",
                     "last_hash",
@@ -440,15 +520,16 @@ static void load(retrieve& r, Dict& d) {
                     "pubkey",
                     "pubkey_ed25519",
                     "signature",
-                    "subkey",
+                    "subaccount",
+                    "subaccount_sig",
                     "timestamp");
 
     require_exactly_one_of("pubkey", pubkey, "pubKey", pubKey, true);
     auto& pk = pubkey ? pubkey : pubKey;
 
-    if (pk_ed25519 || sig || ts || (msg_ns && *msg_ns != namespace_id::LegacyClosed)) {
+    if (pk_ed25519 || sig || ts || (msg_ns && !is_noauth_retrieve_namespace(*msg_ns))) {
         load_pk_signature(r, d, pk, pk_ed25519, sig);
-        load_subkey(r, d, subkey);
+        load_subaccount(r, d, subacc, subacc_sig);
         r.timestamp = std::move(*ts);
         r.check_signature = true;
     } else {
@@ -488,11 +569,19 @@ static bool is_valid_message_hash(std::string_view hash) {
 
 template <typename Dict>
 static void load(delete_msgs& dm, Dict& d) {
-    auto [messages, pubkey, pubkey_ed25519, required, signature] =
-            load_fields<Vec<Str>, Str, SV, bool, SV>(
-                    d, "messages", "pubkey", "pubkey_ed25519", "required", "signature");
+    auto [messages, pubkey, pubkey_ed25519, required, signature, subacc, subacc_sig] =
+            load_fields<Vec<Str>, Str, SV, bool, SV, SV, SV>(
+                    d,
+                    "messages",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "required",
+                    "signature",
+                    "subaccount",
+                    "subaccount_sig");
 
     load_pk_signature(dm, d, pubkey, pubkey_ed25519, signature);
+    load_subaccount(dm, d, subacc, subacc_sig);
     require("messages", messages);
     dm.messages = std::move(*messages);
     if (dm.messages.empty())
@@ -509,64 +598,119 @@ void delete_msgs::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value delete_msgs::to_bt() const {
+    bt_dict ret = to_bt_common(*this);
     bt_list msgs;
     for (auto& m : messages)
         msgs.emplace_back(std::string_view{m});
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"messages", std::move(msgs)},
-            {"signature", util::view_guts(signature)},
-    };
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    ret["messages"] = std::move(msgs);
     return ret;
 }
 
 template <typename Dict>
-static void load(revoke_subkey& rs, Dict& d) {
-    auto [pubkey, pubkey_ed25519, revoke_subkey, signature] = load_fields<Str, SV, SV, SV>(
-            d, "pubkey", "pubkey_ed25519", "revoke_subkey", "signature");
+static void load(revoke_subaccount& rs, Dict& d) {
+    auto [pubkey, pubkey_ed25519, revoke, signature, timestamp] =
+            load_fields<Str, SV, Vec<Str>, SV, TP>(
+                    d, "pubkey", "pubkey_ed25519", "revoke", "signature", "timestamp");
     load_pk_signature(rs, d, pubkey, pubkey_ed25519, signature);
-    require("revoke_subkey", revoke_subkey);
-    const auto& sk = *revoke_subkey;
-    if constexpr (std::is_same_v<json, Dict>) {
-        if (oxenc::is_base64(sk) && (sk.size() == 43 || (sk.size() == 44 && sk.back() == '=')))
-            oxenc::from_base64(sk.begin(), sk.end(), rs.revoke_subkey.begin());
-        else if (oxenc::is_hex(sk) && sk.size() == 64)
-            oxenc::from_hex(sk.begin(), sk.end(), rs.revoke_subkey.begin());
-        else
-            throw parse_error{"invalid subkey: expected base64 or hex-encoded 32-byte subkey tag"};
-    } else {
-        if (sk.size() != 32)
-            throw parse_error{"invalid subkey: expected 32-byte subkey tag"};
-        std::memcpy(rs.revoke_subkey.data(), sk.data(), 32);
+    require("revoke", revoke);
+    if (revoke->size() > MAX_SUBACCOUNT_TOKENS)
+        throw parse_error{fmt::format(
+                "invalid revoke: cannot revoke more than {} subaccounts at once",
+                MAX_SUBACCOUNT_TOKENS)};
+    for (const auto& sa : *revoke) {
+        if constexpr (std::is_same_v<json, Dict>) {
+            if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 4 / 3)
+                oxenc::from_base64(sa.begin(), sa.end(), rs.revoke.emplace_back().token.begin());
+            else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 2)
+                oxenc::from_hex(sa.begin(), sa.end(), rs.revoke.emplace_back().token.begin());
+            else
+                throw parse_error{"invalid revoke: expected base64 or hex-encoded subaccount tag"};
+        } else {
+            if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+                throw parse_error{"invalid revoke subaccount: invalid subaccount tag length"};
+            std::memcpy(rs.revoke.emplace_back().token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
+        }
+    }
+    require("timestamp", timestamp);
+    rs.timestamp = *timestamp;
+}
+void revoke_subaccount::load_from(json params) {
+    load(*this, params);
+}
+void revoke_subaccount::load_from(bt_dict_consumer params) {
+    load(*this, params);
+}
+bt_value revoke_subaccount::to_bt() const {
+    auto ret = to_bt_common(*this);
+
+    oxenc::bt_list revoke_list{};
+    for (auto& sa : revoke)
+        revoke_list.push_back(sa.sview());
+    ret["revoke"] = std::move(revoke_list);
+
+    ret["timestamp"] = to_epoch_ms(timestamp);
+    return ret;
+}
+
+template <typename Dict>
+static void load(unrevoke_subaccount& us, Dict& d) {
+    auto [pubkey, pubkey_ed25519, signature, timestamp, unrevoke] =
+            load_fields<Str, SV, SV, TP, Vec<Str>>(
+                    d, "pubkey", "pubkey_ed25519", "signature", "timestamp", "unrevoke");
+    load_pk_signature(us, d, pubkey, pubkey_ed25519, signature);
+    require("timestamp", timestamp);
+    us.timestamp = *timestamp;
+    require("unrevoke", unrevoke);
+    for (const auto& sa : *unrevoke) {
+        if constexpr (std::is_same_v<json, Dict>) {
+            if (oxenc::is_base64(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 4 / 3)
+                oxenc::from_base64(sa.begin(), sa.end(), us.unrevoke.emplace_back().token.begin());
+            else if (oxenc::is_hex(sa) && sa.size() == SUBACCOUNT_TOKEN_LENGTH * 2)
+                oxenc::from_hex(sa.begin(), sa.end(), us.unrevoke.emplace_back().token.begin());
+            else
+                throw parse_error{
+                        "invalid unrevoke: expected base64 or hex-encoded subaccount tag"};
+        } else {
+            if (sa.size() != SUBACCOUNT_TOKEN_LENGTH)
+                throw parse_error{"invalid unrevoke subaccount: invalid subaccount tag length"};
+            std::memcpy(
+                    us.unrevoke.emplace_back().token.data(), sa.data(), SUBACCOUNT_TOKEN_LENGTH);
+        }
     }
 }
-void revoke_subkey::load_from(json params) {
+void unrevoke_subaccount::load_from(json params) {
     load(*this, params);
 }
-void revoke_subkey::load_from(bt_dict_consumer params) {
+void unrevoke_subaccount::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
-bt_value revoke_subkey::to_bt() const {
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"revoke_subkey", util::view_guts(revoke_subkey)},
-            {"signature", util::view_guts(signature)}};
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+bt_value unrevoke_subaccount::to_bt() const {
+    auto ret = to_bt_common(*this);
+    ret["timestamp"] = to_epoch_ms(timestamp);
+
+    oxenc::bt_list unrevoke_list{};
+    for (auto& sa : unrevoke)
+        unrevoke_list.push_back(sa.sview());
+    ret["unrevoke"] = std::move(unrevoke_list);
+
     return ret;
 }
 
 template <typename Dict>
 static void load(delete_all& da, Dict& d) {
-    auto [msgs_ns, pubkey, pubkey_ed25519, signature, timestamp] =
-            load_fields<namespace_var, Str, SV, SV, TP>(
-                    d, "namespace", "pubkey", "pubkey_ed25519", "signature", "timestamp");
+    auto [msgs_ns, pubkey, pubkey_ed25519, signature, subacc, subacc_sig, timestamp] =
+            load_fields<namespace_var, Str, SV, SV, SV, SV, TP>(
+                    d,
+                    "namespace",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "signature",
+                    "subaccount",
+                    "subaccount_sig",
+                    "timestamp");
 
     load_pk_signature(da, d, pubkey, pubkey_ed25519, signature);
+    load_subaccount(da, d, subacc, subacc_sig);
     require("timestamp", timestamp);
     da.msg_namespace = msgs_ns.value_or(namespace_id::Default);
     da.timestamp = std::move(*timestamp);
@@ -578,24 +722,27 @@ void delete_all::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value delete_all::to_bt() const {
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"signature", util::view_guts(signature)},
-            {"timestamp", to_epoch_ms(timestamp)}};
+    auto ret = to_bt_common(*this);
+    ret["timestamp"] = to_epoch_ms(timestamp);
     set_variant(ret, "namespace", msg_namespace);
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
     return ret;
 }
 
 template <typename Dict>
 static void load(delete_before& db, Dict& d) {
-    auto [before, msgs_ns, pubkey, pubkey_ed25519, signature] =
-            load_fields<TP, namespace_var, Str, SV, SV>(
-                    d, "before", "namespace", "pubkey", "pubkey_ed25519", "signature");
+    auto [before, msgs_ns, pubkey, pubkey_ed25519, signature, subacc, subacc_sig] =
+            load_fields<TP, namespace_var, Str, SV, SV, SV, SV>(
+                    d,
+                    "before",
+                    "namespace",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "signature",
+                    "subaccount",
+                    "subaccount_sig");
 
     load_pk_signature(db, d, pubkey, pubkey_ed25519, signature);
+    load_subaccount(db, d, subacc, subacc_sig);
     require("before", before);
     db.before = std::move(*before);
     db.msg_namespace = msgs_ns.value_or(namespace_id::Default);
@@ -607,24 +754,27 @@ void delete_before::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value delete_before::to_bt() const {
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"signature", util::view_guts(signature)},
-            {"before", to_epoch_ms(before)}};
+    auto ret = to_bt_common(*this);
+    ret["before"] = to_epoch_ms(before);
     set_variant(ret, "namespace", msg_namespace);
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
     return ret;
 }
 
 template <typename Dict>
 static void load(expire_all& e, Dict& d) {
-    auto [expiry, msgs_ns, pubkey, pubkey_ed25519, signature] =
-            load_fields<TP, namespace_var, Str, SV, SV>(
-                    d, "expiry", "namespace", "pubkey", "pubkey_ed25519", "signature");
+    auto [expiry, msgs_ns, pubkey, pubkey_ed25519, signature, subacc, subacc_sig] =
+            load_fields<TP, namespace_var, Str, SV, SV, SV, SV>(
+                    d,
+                    "expiry",
+                    "namespace",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "signature",
+                    "subaccount",
+                    "subaccount_sig");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
+    load_subaccount(e, d, subacc, subacc_sig);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     e.msg_namespace = msgs_ns.value_or(namespace_id::Default);
@@ -636,21 +786,24 @@ void expire_all::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value expire_all::to_bt() const {
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"signature", util::view_guts(signature)},
-            {"expiry", to_epoch_ms(expiry)}};
+    auto ret = to_bt_common(*this);
+    ret["expiry"] = to_epoch_ms(expiry);
     set_variant(ret, "namespace", msg_namespace);
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
     return ret;
 }
 
 template <typename Dict>
 static void load(expire_msgs& e, Dict& d) {
-    auto [expiry, extend, messages, pubkey, pubkey_ed25519, shorten, signature, subkey] =
-            load_fields<TP, bool, Vec<Str>, Str, SV, bool, SV, SV>(
+    auto [expiry,
+          extend,
+          messages,
+          pubkey,
+          pubkey_ed25519,
+          shorten,
+          signature,
+          subacc,
+          subacc_sig] =
+            load_fields<TP, bool, Vec<Str>, Str, SV, bool, SV, SV, SV>(
                     d,
                     "expiry",
                     "extend",
@@ -659,10 +812,11 @@ static void load(expire_msgs& e, Dict& d) {
                     "pubkey_ed25519",
                     "shorten",
                     "signature",
-                    "subkey");
+                    "subaccount",
+                    "subaccount_sig");
 
     load_pk_signature(e, d, pubkey, pubkey_ed25519, signature);
-    load_subkey(e, d, subkey);
+    load_subaccount(e, d, subacc, subacc_sig);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
     e.shorten = shorten.value_or(false);
@@ -684,36 +838,34 @@ void expire_msgs::load_from(bt_dict_consumer params) {
     load(*this, params);
 }
 bt_value expire_msgs::to_bt() const {
-    bt_list msgs;
-    for (const auto& m : messages)
-        msgs.emplace_back(std::string_view{m});
-    bt_dict ret{
-            {"pubkey", pubkey.prefixed_raw()},
-            {"signature", util::view_guts(signature)},
-            {"expiry", to_epoch_ms(expiry)},
-            {"messages", std::move(msgs)},
-    };
-    if (pubkey_ed25519)
-        ret["pubkey_ed25519"] = std::string_view{
-                reinterpret_cast<const char*>(pubkey_ed25519->data()), pubkey_ed25519->size()};
+    auto ret = to_bt_common(*this);
+    ret["expiry"] = to_epoch_ms(expiry);
     if (shorten)
         ret["shorten"] = 1;
     if (extend)
         ret["extend"] = 1;
-    if (subkey)
-        ret["subkey"] =
-                std::string_view{reinterpret_cast<const char*>(subkey->data()), subkey->size()};
+    bt_list msgs;
+    for (const auto& m : messages)
+        msgs.emplace_back(std::string_view{m});
+    ret["messages"] = std::move(msgs);
     return ret;
 }
 
 template <typename Dict>
 static void load(get_expiries& ge, Dict& d) {
-    auto [messages, pubkey, pk_ed25519, sig, subkey, timestamp] =
-            load_fields<Vec<Str>, Str, SV, SV, SV, TP>(
-                    d, "messages", "pubkey", "pubkey_ed25519", "signature", "subkey", "timestamp");
+    auto [messages, pubkey, pk_ed25519, sig, subacc, subacc_sig, timestamp] =
+            load_fields<Vec<Str>, Str, SV, SV, SV, SV, TP>(
+                    d,
+                    "messages",
+                    "pubkey",
+                    "pubkey_ed25519",
+                    "signature",
+                    "subaccount",
+                    "subaccount_sig",
+                    "timestamp");
 
     load_pk_signature(ge, d, pubkey, pk_ed25519, sig);
-    load_subkey(ge, d, subkey);
+    load_subaccount(ge, d, subacc, subacc_sig);
     require("timestamp", timestamp);
     ge.sig_ts = *timestamp;
     require("messages", messages);

@@ -10,7 +10,7 @@
 using namespace oxen::snode;
 
 TEST_CASE("v1 serialization - basic values", "[serialization]") {
-    oxen::user_pubkey_t pub_key;
+    oxen::user_pubkey pub_key;
     REQUIRE(pub_key.load("054368520005786b249bcd461d28f75e560ea794014eeb17fcf6003f37d876783e"s));
     const auto data = "da\x00ta"s;
     const auto hash = "hash\x00\x01\x02\x03"s;
@@ -48,7 +48,7 @@ TEST_CASE("v1 serialization - basic values", "[serialization]") {
 }
 
 TEST_CASE("v1 serialization - batch serialization", "[serialization]") {
-    oxen::user_pubkey_t pub_key;
+    oxen::user_pubkey pub_key;
     REQUIRE(pub_key.load("054368520005786b249bcd461d28f75e560ea794014eeb17fcf6003f37d876783e"s));
     std::string data(100000, 'x');
     const auto hash = "hash";

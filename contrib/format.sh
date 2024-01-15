@@ -19,12 +19,22 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
+BLACK=$(command -v black 2>/dev/null)
+if [ $? -ne 0 ]; then
+    echo "Please install the 'black' python3 package and make sure it is available in your path"
+    exit 1
+fi
+
+
+black_args=()
+
 cd "$(dirname $0)/../"
 sources=$(find oxenss unit_test | grep -E '\.[hc](pp)?$' | grep -v '\#\|Catch2')
 if [ "$1" = "verify" ] ; then
     if [ $($binary --output-replacements-xml $sources | grep '</replacement>' | wc -l) -ne 0 ] ; then
         exit 2
     fi
+    black_args=(--check)
 else
     $binary -i $sources &> /dev/null
 fi
@@ -38,4 +48,8 @@ if [ $? -eq 0 ]; then
     else
         $jsonnet_format --in-place .drone.jsonnet
     fi
+fi
+
+if ! black "${black_args[@]}" network-tests/*.py; then
+    exit 5
 fi

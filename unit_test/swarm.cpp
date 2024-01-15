@@ -13,7 +13,7 @@ using namespace std::literals;
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
 TEST_CASE("swarm - pubkey to swarm space", "[swarm]") {
-    oxen::user_pubkey_t pk;
+    oxen::user_pubkey pk;
     REQUIRE(pk.load("053506f4a71324b7dd114eddbf4e311f39dde243e1f2cb97c40db1961f70ebaae8"));
     CHECK(oxen::snode::pubkey_to_swarm_space(pk) == 17589930838143112648ULL);
     REQUIRE(pk.load("05cf27da303a50ac8c4b2d43d27259505c9bcd73fc21cf2a57902c3d050730b604"));
@@ -42,7 +42,7 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     std::vector<oxen::snode::SwarmInfo> swarms{
             {100, {}}, {200, {}}, {300, {}}, {399, {}}, {498, {}}, {596, {}}, {694, {}}};
 
-    oxen::user_pubkey_t pk;
+    oxen::user_pubkey pk;
 
     // Exact matches:
     // 0x64 = 100, 0xc8 = 200, 0x1f2 = 498
