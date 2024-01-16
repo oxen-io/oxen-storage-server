@@ -373,12 +373,12 @@ struct revoke_subaccount final : recursive {
 ///   be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
 ///   hex characters or 32 bytes).  *This* pubkey should be used for signing, but must also convert
 ///   to the given `pubkey` value (without the `05` prefix).
-/// - `unrevoke` -- the subaccount token which is to be removed from the revocation list; see
-///   `store` for details of subaccount tag format.  Base64 or hex encoded.
+/// - `unrevoke` -- the subaccount token (or array of tokens) which should be removed from the
+///   revocation list; see `store` for details of subaccount tag format.  Base64 or hex encoded.
 /// - timestamp -- the timestamp at which this request was initiated, in milliseconds since unix
 ///   epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
 ///   timestamp via `info` first, to avoid client time sync issues).
-/// - signature -- Ed25519 signature of ("unrevoke_subaccount" || timestamp || subaccount_token);
+/// - signature -- Ed25519 signature of ("unrevoke_subaccount" || timestamp || subaccount_token...);
 ///   this must be verifiable using `pubkey`.  Must be base64 encoded for json requests; binary for
 ///   OMQ requests.
 ///
@@ -388,9 +388,9 @@ struct revoke_subaccount final : recursive {
 ///     - "count": number of subaccounts tagged actually removed; does not count requested removals
 ///       that did not exist.
 ///     - "signature": signature of:
-///             ( PUBKEY_HEX || timestamp || SUBACCOUNT_TAG_BYTES )
-///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tag for revocation removal and
-///       `timestamp` is the timestamp as given in the request.
+///             ( PUBKEY_HEX || timestamp || SUBACCOUNT_TAG_BYTES... )
+///       where SUBACCOUNT_TAG_BYTES is the requested subaccount tags (concatenated together, if
+///       multiple) for revocation removal and `timestamp` is the timestamp as given in the request.
 struct unrevoke_subaccount final : recursive {
     static constexpr auto names() { return NAMES("unrevoke_subaccount"); }
 
