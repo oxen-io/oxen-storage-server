@@ -144,15 +144,18 @@ class Database {
     bool subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount);
 
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
-    // hashes of updated messages (i.e. hashes that don't exist, or were not updated, are not
-    // returned).
+    // pairs of hashes of updated messages to the new expiry of the messages.  Hashes that don't
+    // exist, or were not updated, are not returned.
     //
     // extend_only and shorten_only allow message expiries to only be adjusted in one way or the
     // other.  They are mutually exclusive.
-    std::vector<std::string> update_expiry(
+    //
+    // new_exp can be length one to apply the same timestamp to all messages, or the same length as
+    // msg_hashes to apply a different timestamp to each.
+    std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> update_expiry(
             const user_pubkey& pubkey,
             const std::vector<std::string>& msg_hashes,
-            std::chrono::system_clock::time_point new_exp,
+            const std::vector<std::chrono::system_clock::time_point> new_exp,
             bool extend_only = false,
             bool shorten_only = false);
 

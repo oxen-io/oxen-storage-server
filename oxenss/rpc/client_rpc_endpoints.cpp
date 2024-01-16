@@ -31,6 +31,8 @@ namespace {
     template <typename T>
     constexpr bool is_int_array = std::is_same_v<T, std::vector<int>>;
     template <typename T>
+    constexpr bool is_timestamp_array = std::is_same_v<T, std::vector<system_clock::time_point>>;
+    template <typename T>
     constexpr bool is_namespace_var = std::is_same_v<T, namespace_var>;
 
     template <typename T>
@@ -42,13 +44,15 @@ namespace {
                                          : is_timestamp<T> ? "integer timestamp (in milliseconds)"sv
                                          : is_str_array<T> ? "string array"sv
                                          : is_int_array<T> ? "integer array"sv
-                                                           : "string"sv;
+                                         : is_timestamp_array<T> ? "timestamp array"sv
+                                                                 : "string"sv;
 
     template <typename T>
     constexpr bool is_parseable_v =
             std::is_unsigned_v<T> || std::is_integral_v<T> || is_timestamp<T> || is_str_array<T> ||
-            is_int_array<T> || is_namespace_var<T> || std::is_same_v<T, std::string_view> ||
-            std::is_same_v<T, std::string> || std::is_same_v<T, namespace_id>;
+            is_int_array<T> || is_timestamp_array<T> || is_namespace_var<T> ||
+            std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string> ||
+            std::is_same_v<T, namespace_id>;
 
     // Extracts a field suitable for a `T` value from the given json with name `name`.  Takes
     // the json params and the name.  Throws if it encounters an invalid value (i.e. expecting a
@@ -65,10 +69,11 @@ namespace {
                         : std::is_unsigned_v<T> || is_timestamp<T> ? it->is_number_unsigned()
                         : std::is_integral_v<T> || std::is_same_v<T, namespace_id>
                                 ? it->is_number_integer()
-                        : is_namespace_var<T> ? it->is_number_integer() || it->is_string()
-                        : is_str_array<T>     ? it->is_array() || it->is_string()
-                        : is_int_array<T>     ? it->is_array() || it->is_number_integer()
-                                              : it->is_string();
+                        : is_namespace_var<T>   ? it->is_number_integer() || it->is_string()
+                        : is_str_array<T>       ? it->is_array() || it->is_string()
+                        : is_int_array<T>       ? it->is_array() || it->is_number_integer()
+                        : is_timestamp_array<T> ? it->is_array() || it->is_number_unsigned()
+                                                : it->is_string();
 
         if (right_type) {
             // For vectors of string or ints we allow the value as either a list of strings/ints, or
@@ -84,6 +89,12 @@ namespace {
             } else if (is_int_array<T> && it->is_array()) {
                 for (auto& x : *it)
                     if (!x.is_number_integer()) {
+                        right_type = false;
+                        break;
+                    }
+            } else if (is_timestamp_array<T> && it->is_array()) {
+                for (auto& x : *it)
+                    if (!x.is_number_unsigned()) {
                         right_type = false;
                         break;
                     }
@@ -124,6 +135,16 @@ namespace {
                 vals->push_back(it->get<std::string>());
             else
                 vals->push_back(it->get<int>());
+            return vals;
+        } else if constexpr (is_timestamp_array<T>) {
+            auto vals = std::make_optional<T>();
+            if (it->is_number_unsigned())
+                vals->push_back(from_epoch_ms(it->get<int64_t>()));
+            else {
+                vals->reserve(it->size());
+                for (const auto& ms : *it)
+                    vals->push_back(from_epoch_ms(ms.get<int64_t>()));
+            }
             return vals;
         } else {
             return it->template get<T>();
@@ -803,7 +824,7 @@ static void load(expire_msgs& e, Dict& d) {
           signature,
           subacc,
           subacc_sig] =
-            load_fields<TP, bool, Vec<Str>, Str, SV, bool, SV, SV, SV>(
+            load_fields<Vec<TP>, bool, Vec<Str>, Str, SV, bool, SV, SV, SV>(
                     d,
                     "expiry",
                     "extend",
@@ -819,6 +840,8 @@ static void load(expire_msgs& e, Dict& d) {
     load_subaccount(e, d, subacc, subacc_sig);
     require("expiry", expiry);
     e.expiry = std::move(*expiry);
+    if (e.expiry.empty())
+        throw parse_error{"'expiry' does not contain any expiration timestamps"};
     e.shorten = shorten.value_or(false);
     e.extend = extend.value_or(false);
     if (e.shorten && e.extend)
@@ -827,6 +850,8 @@ static void load(expire_msgs& e, Dict& d) {
     e.messages = std::move(*messages);
     if (e.messages.empty())
         throw parse_error{"messages does not contain any message hashes"};
+    if (e.expiry.size() > 1 && e.expiry.size() != e.messages.size())
+        throw parse_error{"'expiry' must be a single expiry, or the same length as 'messages'"};
     for (const auto& m : e.messages)
         if (!is_valid_message_hash(m))
             throw parse_error{"invalid message hash: " + m};
@@ -839,7 +864,14 @@ void expire_msgs::load_from(bt_dict_consumer params) {
 }
 bt_value expire_msgs::to_bt() const {
     auto ret = to_bt_common(*this);
-    ret["expiry"] = to_epoch_ms(expiry);
+    if (expiry.size() == 1)
+        ret["expiry"] = to_epoch_ms(expiry.front());
+    else {
+        bt_list expiries;
+        for (const auto& exp : expiry)
+            expiries.push_back(to_epoch_ms(exp));
+        ret["expiry"] = std::move(expiries);
+    }
     if (shorten)
         ret["shorten"] = 1;
     if (extend)

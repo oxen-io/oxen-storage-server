@@ -949,40 +949,70 @@ bool Database::subaccount_revoked(const user_pubkey& pubkey, const subaccount_to
     return count > 0;
 }
 
-std::vector<std::string> Database::update_expiry(
+std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> Database::update_expiry(
         const user_pubkey& pubkey,
         const std::vector<std::string>& msg_hashes,
-        std::chrono::system_clock::time_point new_exp,
+        const std::vector<std::chrono::system_clock::time_point> new_exp,
         bool extend_only,
         bool shorten_only) {
-    auto new_exp_ms = to_epoch_ms(new_exp);
+
+    if (new_exp.size() != 1 && new_exp.size() != msg_hashes.size())
+        throw std::logic_error{"update_expiry: new_exp must be 1 or N"};
+
+    std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> result;
+
+    if (msg_hashes.empty())
+        return result;
 
     auto expiry_constraint = extend_only  ? " AND expiry < ?1"s
                            : shorten_only ? " AND expiry > ?1"s
                                           : ""s;
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
+        if (impl->prepared_exec(
+                    "UPDATE messages SET expiry = ? WHERE hash = ?"s + expiry_constraint +
+                            " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)",
+                    to_epoch_ms(new_exp[0]),
+                    msg_hashes[0],
+                    pubkey) > 0)
+            result.emplace_back(msg_hashes[0], new_exp[0]);
+
+    } else if (new_exp.size() == 1) {
+        SQLite::Statement st{
+                impl->db,
+                multi_in_query(
+                        "UPDATE messages SET expiry = ?"
+                        " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"s +
+                                expiry_constraint + " AND hash IN (",  // ?,?,?,...,?
+                        msg_hashes.size(),
+                        ") RETURNING hash"sv)};
+        st.bind(1, to_epoch_ms(new_exp[0]));
+        bind_pubkey(st, 2, 3, pubkey);
+        for (size_t i = 0; i < msg_hashes.size(); i++)
+            st.bindNoCopy(4 + i, msg_hashes[i]);
+
+        for (auto& hash : get_all<std::string>(st))
+            result.emplace_back(hash, new_exp[0]);
+    } else {
+        int64_t owner;
+        if (auto maybe = exec_and_maybe_get<int64_t>(
+                    impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?"),
+                    pubkey))
+            owner = *maybe;
+        else
+            return result;
+
         auto st = impl->prepared_st(
                 "UPDATE messages SET expiry = ? WHERE hash = ?"s + expiry_constraint +
-                " AND owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"
-                " RETURNING hash");
-        return get_all<std::string>(st, new_exp_ms, msg_hashes[0], pubkey);
+                " AND owner = ?");
+        for (size_t i = 0; i < msg_hashes.size(); i++) {
+            if (i > 0)
+                st->tryReset();
+            if (exec_query(st, to_epoch_ms(new_exp[i]), msg_hashes[i], owner) > 0)
+                result.emplace_back(msg_hashes[i], new_exp[i]);
+        }
     }
-
-    SQLite::Statement st{
-            impl->db,
-            multi_in_query(
-                    "UPDATE messages SET expiry = ?"
-                    " WHERE owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)"s +
-                            expiry_constraint + " AND hash IN (",  // ?,?,?,...,?
-                    msg_hashes.size(),
-                    ") RETURNING hash"sv)};
-    st.bind(1, new_exp_ms);
-    bind_pubkey(st, 2, 3, pubkey);
-    for (size_t i = 0; i < msg_hashes.size(); i++)
-        st.bindNoCopy(4 + i, msg_hashes[i]);
-
-    return get_all<std::string>(st);
+    return result;
 }
 
 std::map<std::string, int64_t> Database::get_expiries(
