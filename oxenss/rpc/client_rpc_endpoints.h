@@ -595,21 +595,24 @@ struct expire_all final : recursive {
 ///   expiries, as if `"extend": true` had been specified).
 /// - messages -- array of message hash strings (as provided by the storage server) to update.
 ///   Messages can be from any namespace(s).
-/// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.  The
-///   new expiry can be anywhere from current time up to the maximum TTL (30 days) from now;
-///   specifying a later timestamp will be truncated to the maximum.
+/// - expiry -- the new expiry timestamp (milliseconds since unix epoch) or an array of timestamps.
+///   Timestamps must be >= 60s ago.  The new expiry can be anywhere from current time up to the
+///   maximum TTL (30 days) from now; specifying a later timestamp will be truncated to the maximum.
+///   If providing an array of timestamps then the array must have exactly the same length as
+///   `messages`: `expiry[i]` will be applied to `messages[i]`.
 /// - shorten -- if provided and set to true then the expiry is only shortened, but not extended.
 ///   If the expiry of a given message is already at or before the given `expiry` timestamp then the
 ///   expiry of that message will not be changed.
 /// - extend -- if provided and set to true then the expiry is only extended, but not shortened.  If
 ///   the expiry of a given message is already at or beyond the given `expiry` timestamp then its
 ///   expiry will not be changed.  This option is mutually exclusive of "shorten".
-/// - signature -- Ed25519 signature of:
+/// - signature -- When passing a single expiry this is an Ed25519 signature of:
 ///       ("expire" || ShortenOrExtend || expiry || messages[0] || ... || messages[N])
-///   where `expiry` is the expiry timestamp expressed as a string.  `ShortenOrExtend` is string
-///   "shorten" if the shorten option is given (and true), "extend" if `extend` is true, and empty
-///   otherwise. The signature must be base64 encoded (json) or bytes (bt).
-///
+///   where `expiry` is the expiry timestamp expressed as a string, for a single expiry, or the
+///   expiries concatenated together (expiry[0] || expiry[1] || ...) for multiple expiries.
+///   `ShortenOrExtend` is string "shorten" if the shorten option is given (and true), "extend" if
+///   `extend` is true, and empty otherwise. The signature must be base64 encoded (json) or bytes
+///   (bt).
 ///
 /// Returns dict of:
 /// - "swarm" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -620,12 +623,18 @@ struct expire_all final : recursive {
 ///       updated expiries due a given "shorten"/"extend" constraint in the request.  This field is
 ///       only included when the "shorten" or "extend" parameter is explicitly given.
 ///     - "expiry": the expiry timestamp that was applied (which might be different from the request
-///       expiry, e.g. if the requested value exceeded the permitted TTL).
-///     - "signature": signature of:
+///       expiry, e.g. if the requested value exceeded the permitted TTL).  If the request provided
+///       multiple expiries then this field will be an array of expiries corresponding to the
+///       elements in `"updated"`.
+///     - "signature": for single expiry mode, this is a signature of:
 ///             ( PUBKEY_HEX || EXPIRY || RMSGs... || UMSGs... || CMSG_EXPs... )
 ///       where RMSGs are the requested expiry hashes, UMSGs are the actual updated hashes, and
 ///       CMSG_EXPs are (HASH || EXPIRY) values, ascii-sorted by hash, for the unchanged message
 ///       hashes included in the "unchanged" field.  The signature uses the node's ed25519 pubkey.
+///
+///       When `expiry` in the request was an array of multiple per-message expiries, the `EXPIRY`
+///       field in the returned signature is the list of expiry values in the `expiry` response
+///       field, concatenated together.
 struct expire_msgs final : recursive {
     static constexpr auto names() { return NAMES("expire"); }
 
@@ -633,7 +642,7 @@ struct expire_msgs final : recursive {
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
     std::optional<signed_subaccount_token> subaccount;
     std::vector<std::string> messages;
-    std::chrono::system_clock::time_point expiry;
+    std::vector<std::chrono::system_clock::time_point> expiry;
     bool shorten = false;
     bool extend = false;
     std::array<unsigned char, 64> signature;
