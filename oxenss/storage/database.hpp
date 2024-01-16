@@ -48,8 +48,9 @@ class Database {
     static constexpr int DB_FULL_FREQUENCY = 100;
 
     // Stores a message in the database.  Returns an enum value indicating the result -- see
-    // StoreResult for a description.
-    StoreResult store(const message& msg);
+    // StoreResult for a description.  `expiry` can be set to a pointer into which the message's
+    // expiry (existing, if longer; otherwise the one from `msg`) will be copied.
+    StoreResult store(const message& msg, std::chrono::system_clock::time_point* expiry = nullptr);
 
     void bulk_store(const std::vector<message>& items);
 

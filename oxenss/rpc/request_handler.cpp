@@ -563,6 +563,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
     std::string message_hash = computeMessageHash(req.pubkey, req.msg_namespace, req.data);
 
     bool new_msg;
+    std::chrono::system_clock::time_point expiry;
     bool success = false;
     try {
         success = service_node_.process_store(
@@ -572,7 +573,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                         req.timestamp,
                         req.expiry,
                         std::move(req.data)},
-                &new_msg);
+                &new_msg,
+                &expiry);
     } catch (const std::exception& e) {
         log::error(
                 logcat,
@@ -588,6 +590,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                 req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg)
             mine["already"] = true;
+        mine["expiry"] = to_epoch_ms(expiry);
+
         if (entry_router)
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
             res->result["hash"] = message_hash;

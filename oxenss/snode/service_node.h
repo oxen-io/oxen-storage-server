@@ -220,9 +220,15 @@ class ServiceNode {
     // Returns true if the storage server is currently shutting down.
     bool shutting_down() const { return shutting_down_; }
 
-    /// Process message received from a client, return false if not in a swarm.  If new_msg is
-    /// not nullptr, sets it to true if we stored as a new message, false if we already had it.
-    bool process_store(message msg, bool* new_msg = nullptr);
+    /// Process message received from a client, return false if not in a swarm.  If new_msg is not
+    /// nullptr, sets it to true if we stored as a new message, false if we already had it.  If
+    /// `expiry` is non-null it will be set to the message's expiry: for a new message this is the
+    /// given expiry; for existing messages this is the message's new expiry (which might have been
+    /// extended to match the one in `msg`, if later).
+    bool process_store(
+            message msg,
+            bool* new_msg = nullptr,
+            std::chrono::system_clock::time_point* expiry = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
