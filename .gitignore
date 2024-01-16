@@ -34,6 +34,7 @@
 # Custom
 build
 deps
+__pycache__
 
 # Vscode settings
 .vscode

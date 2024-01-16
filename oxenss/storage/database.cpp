@@ -622,7 +622,7 @@ std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
     return get_message(*impl, st);
 }
 
-StoreResult Database::store(const message& msg) {
+StoreResult Database::store(const message& msg, std::chrono::system_clock::time_point* expiry) {
 
     auto impl = get_impl();
 
@@ -656,13 +656,16 @@ StoreResult Database::store(const message& msg) {
         if (auto existing = exec_and_maybe_get<int64_t, int64_t>(
                     impl->prepared_st("SELECT id, expiry FROM messages WHERE hash = ?"),
                     msg.hash)) {
-            const auto& [id, exp] = *existing;
+            auto& [id, exp] = *existing;
             if (exp < new_exp) {
                 impl->prepared_exec("UPDATE messages SET expiry = ? WHERE id = ?", new_exp, id);
                 ret = StoreResult::Extended;
+                exp = new_exp;
             } else {
                 ret = StoreResult::Exists;
             }
+            if (expiry)
+                *expiry = from_epoch_ms(exp);
         } else {
             impl->prepared_exec(
                     "INSERT INTO messages (owner, hash, namespace, timestamp, expiry, data)"
@@ -674,6 +677,9 @@ StoreResult Database::store(const message& msg) {
                     to_epoch_ms(msg.expiry),
                     blob_binder{msg.data});
             ret = StoreResult::New;
+
+            if (expiry)
+                *expiry = msg.expiry;
         }
 
         transaction.commit();
