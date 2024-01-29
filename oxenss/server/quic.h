@@ -8,7 +8,7 @@
 #include <oxenss/rpc/rate_limiter.h>
 #include <oxenss/snode/service_node.h>
 
-#include <quic.hpp>
+#include <oxen/quic.hpp>
 
 namespace oxenss::rpc {
 class RequestHandler;

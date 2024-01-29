@@ -5,13 +5,13 @@
 #include <variant>
 #include <vector>
 #include <nlohmann/json_fwd.hpp>
-#include <quic/connection.hpp>
+#include <oxen/quic/connection.hpp>
+#include <oxen/quic/connection_ids.hpp>
 #include <oxenmq/connections.h>
 #include <shared_mutex>
 
 #include "../common/namespace.h"
 #include "../snode/sn_record.h"
-#include "quic/connection_ids.hpp"
 #include "utils.h"
 
 namespace oxenss {
@@ -31,7 +31,7 @@ struct message;
 
 namespace oxenss::server {
 
-using connection_id = std::variant<oxenmq::ConnectionID, oxen::quic::ReferenceID>;
+using connection_id = std::variant<oxenmq::ConnectionID, oxen::quic::ConnectionID>;
 
 using namespace std::literals;
 

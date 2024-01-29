@@ -34,7 +34,7 @@ void QUIC::handle_monitor_message(oxen::quic::message m) {
     handle_monitor(
             m.body(),
             [&m](std::string response) { m.respond(std::move(response)); },
-            m.stream()->rid());
+            m.stream()->reference_id);
 }
 
 void QUIC::handle_ping(oxen::quic::message m) {
@@ -78,7 +78,7 @@ nlohmann::json QUIC::wrap_response(
 
 void QUIC::notify(std::vector<connection_id>& conns, std::string_view notification) {
     for (const auto& c : conns)
-        if (auto* cid = std::get_if<oxen::quic::ReferenceID>(&c))
+        if (auto* cid = std::get_if<oxen::quic::ConnectionID>(&c))
             if (auto conn = ep->get_conn(*cid))
                 if (auto str = conn->get_stream<oxen::quic::BTRequestStream>(0))
                     str->command("notify", notification);
