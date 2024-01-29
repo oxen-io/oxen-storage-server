@@ -4,12 +4,15 @@
 #include <oxenss/common/message.h>
 #include <oxenss/common/pubkey.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -18,6 +21,7 @@ namespace oxen {
 using namespace std::literals;
 
 class DatabaseImpl;
+class LockedDBImpl;
 
 /// Possible return values of a `store()`:
 enum class StoreResult {
@@ -29,8 +33,19 @@ enum class StoreResult {
 
 // Storage database class.
 class Database {
-    std::unique_ptr<DatabaseImpl> impl;
+    std::stack<std::unique_ptr<DatabaseImpl>> impl_pool_;
     friend class DatabaseImpl;
+    friend class LockedDBImpl;
+    std::mutex impl_lock_;
+    LockedDBImpl get_impl();
+
+    const std::filesystem::path db_path_;
+
+    friend class TestSuiteHacks;
+    void test_suite_block_for(std::chrono::milliseconds duration);
+
+    // keep track of db full errors so we don't print them on every store
+    std::atomic<int> db_full_counter = 0;
 
   public:
     // Recommended period for calling clean_expired()
@@ -40,7 +55,7 @@ class Database {
 
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
-    explicit Database(const std::filesystem::path& db_path);
+    explicit Database(std::filesystem::path db_path);
 
     ~Database();
 
