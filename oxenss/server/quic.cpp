@@ -90,14 +90,21 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
 
     auto& sn = test->sn;
     auto reported = std::make_shared<bool>(false);
-    auto conn_established = [reported, test](quic::connection_interface&) {
+    auto conn_established = [reported, test](quic::connection_interface& conn) {
         *reported = true;
         test->add_result(true);
 
         log::debug(logcat, "QUIC reachability test successful for {}", test->sn.pubkey_legacy);
+
+        conn.close_connection();
     };
     auto conn_closed = [reported = std::move(reported), test = std::move(test)](
                                quic::connection_interface&, uint64_t ec) {
+        log::debug(
+                logcat,
+                "QUIC reachability testing connection to {} closed ({})",
+                test->sn.pubkey_ed25519,
+                ec);
         if (!*reported) {
             // If we get called without established having been called then the connection failed.
             test->add_result(false);
@@ -112,7 +119,8 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
             {sn.pubkey_ed25519.view(), sn.ip, sn.omq_quic_port},
             tls_creds,
             std::move(conn_established),
-            std::move(conn_closed));
+            std::move(conn_closed),
+            oxen::quic::opt::handshake_timeout{5s});
 }
 
 }  // namespace oxenss::server
