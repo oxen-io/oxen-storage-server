@@ -453,8 +453,9 @@ void OMQ::notify(std::vector<connection_id>& conns, std::string_view notificatio
 }
 
 void OMQ::reachability_test(std::shared_ptr<snode::sn_test> test) {
+    auto xpk = test->sn.pubkey_x25519.view();
     omq_.request(
-            test->sn.pubkey_x25519.view(),
+            xpk,
             "sn.ping",
             [test = std::move(test)](bool success, const auto&) {
                 log::debug(
