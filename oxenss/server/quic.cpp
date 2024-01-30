@@ -110,6 +110,7 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
     };
     ep->connect(
             {sn.pubkey_ed25519.view(), sn.ip, sn.omq_quic_port},
+            tls_creds,
             std::move(conn_established),
             std::move(conn_closed));
 }
