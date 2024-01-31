@@ -110,6 +110,8 @@ class MQBase {
 
     virtual void reachability_test(std::shared_ptr<snode::sn_test> test) = 0;
 
+    virtual ~MQBase() = default;
+
   private:
     void handle_monitor_message_single(
             oxenc::bt_dict_consumer d, oxenc::bt_dict_producer& out, std::vector<sub_info>& subs);
