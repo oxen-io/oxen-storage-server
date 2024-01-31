@@ -102,6 +102,10 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
                     m.timed_out ? "timeout" : "unexpected response");
             test->add_result(false);
         } else {
+            log::debug(
+                    logcat,
+                    "Successful response to QUIC reachability ping test of {}",
+                    test->sn.pubkey_legacy);
             test->add_result(true);
         }
         if (auto conn = m.stream()->endpoint.get_conn(m.conn_rid()))
