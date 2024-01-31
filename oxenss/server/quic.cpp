@@ -49,19 +49,19 @@ void QUIC::handle_ping(oxen::quic::message m) {
 void QUIC::handle_request(oxen::quic::message m) {
     auto name = m.endpoint();
 
-    auto body = m.body();
-    auto remote_host = m.stream()->remote().host();
-    auto responder = [m = std::move(m)](http::response_code status, std::string_view body) {
-        m.respond(body);
-    };
-    if (handle_client_rpc(name, body, remote_host, std::move(responder)))
-        return;
+    if (name == "snode_ping")
+        return handle_ping(std::move(m));
 
     if (name == "monitor")
         return handle_monitor_message(std::move(m));
 
-    if (name == "snode_ping")
-        return handle_ping(std::move(m));
+    auto body = m.body();
+    auto remote_host = m.stream()->remote().host();
+    auto responder = [m = std::move(m)](http::response_code, std::string_view body) {
+        m.respond(body);
+    };
+    if (handle_client_rpc(name, body, remote_host, std::move(responder)))
+        return;
 
     throw quic::no_such_endpoint{};
 }
