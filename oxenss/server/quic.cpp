@@ -31,10 +31,13 @@ void QUIC::startup_endpoint() {
 }
 
 void QUIC::handle_monitor_message(oxen::quic::message m) {
+
+    auto body = m.body();
+    auto refid = m.stream()->reference_id;
     handle_monitor(
-            m.body(),
-            [&m](std::string response) { m.respond(std::move(response)); },
-            m.stream()->reference_id);
+            body,
+            [m=std::move(m)](std::string response) { m.respond(std::move(response)); },
+            refid);
 }
 
 void QUIC::handle_ping(oxen::quic::message m) {
