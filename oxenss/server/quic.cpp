@@ -46,13 +46,12 @@ void QUIC::handle_ping(oxen::quic::message m) {
 void QUIC::handle_request(oxen::quic::message m) {
     auto name = m.endpoint();
 
-    if (handle_client_rpc(
-                name,
-                m.body(),
-                m.stream()->remote().host(),
-                [m = std::move(m)](http::response_code status, std::string_view body) {
-                    m.respond(body);
-                }))
+    auto body = m.body();
+    auto remote_host = m.stream()->remote().host();
+    auto responder = [m = std::move(m)](http::response_code status, std::string_view body) {
+        m.respond(body);
+    };
+    if (handle_client_rpc(name, body, remote_host, std::move(responder)))
         return;
 
     if (name == "monitor")
