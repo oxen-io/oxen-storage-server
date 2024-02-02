@@ -1,4 +1,5 @@
 #include "quic.h"
+#include <sodium/crypto_generichash_blake2b.h>
 #include "../rpc/rate_limiter.h"
 #include "../rpc/request_handler.h"
 #include "../snode/service_node.h"
@@ -6,6 +7,20 @@
 namespace oxenss::server {
 
 static auto logcat = log::Cat("ssquic");
+
+static constexpr std::string_view static_secret_key = "Storage Server QUIC shared secret hash key";
+static oxen::quic::opt::static_secret make_endpoint_static_secret(const crypto::ed25519_seckey& sk) {
+    ustring secret;
+    secret.resize(32);
+
+    crypto_generichash_blake2b_state st;
+    crypto_generichash_blake2b_init(&st, reinterpret_cast<const unsigned char*>(static_secret_key.data()),
+            static_secret_key.size(), secret.size());
+    crypto_generichash_blake2b_update(&st, sk.data(), sk.size());
+    crypto_generichash_blake2b_final(&st, reinterpret_cast<unsigned char*>(secret.data()), secret.size());
+
+    return oxen::quic::opt::static_secret{std::move(secret)};
+}
 
 QUIC::QUIC(
         snode::ServiceNode& snode,
@@ -16,7 +31,7 @@ QUIC::QUIC(
         local{bind},
         network{std::make_unique<oxen::quic::Network>()},
         tls_creds{oxen::quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
-        ep{network->endpoint(local)},
+        ep{network->endpoint(local, make_endpoint_static_secret(sk))},
         request_handler{rh},
         command_handler{[this](quic::message m) { handle_request(std::move(m)); }} {
     service_node_ = &snode;
