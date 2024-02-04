@@ -1282,8 +1282,8 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     std::map<std::string, int64_t> unchanged;
     if (req.extend || req.shorten) {
         std::unordered_set<std::string_view> updated_hashes;
-        for (const auto& u : updated)
-            updated_hashes.emplace(u);
+        for (auto& [hash, exp] : updated)
+            updated_hashes.emplace(hash);
         std::vector<std::string> unchanged_hashes;
         for (const auto& m : req.messages)
             if (!updated_hashes.count(m))
