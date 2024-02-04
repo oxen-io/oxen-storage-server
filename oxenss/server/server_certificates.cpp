@@ -14,7 +14,7 @@ extern "C" {
 
 #include <cstddef>
 
-namespace oxen {
+namespace oxenss {
 
 namespace {
 
@@ -199,4 +199,4 @@ err:
     BIO_free(bio_err);
 }
 
-}  // namespace oxen
+}  // namespace oxenss

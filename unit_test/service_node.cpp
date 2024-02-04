@@ -9,9 +9,9 @@
 #include <oxenc/base64.h>
 
 using namespace std::literals;
-using namespace oxen::crypto;
+using namespace oxenss::crypto;
 
-static oxen::snode::sn_record create_dummy_sn_record() {
+static oxenss::snode::sn_record create_dummy_sn_record() {
     const auto pk = legacy_pubkey::from_hex(
             "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
     const auto pk_x25519 = x25519_pubkey::from_hex(
@@ -26,25 +26,25 @@ static oxen::snode::sn_record create_dummy_sn_record() {
 using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
 
 static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) {
-    using oxen::snode::sn_record;
+    using oxenss::snode::sn_record;
 
     auto sn = create_dummy_sn_record();
 
-    std::tie(sn.ip, sn.port, sn.omq_port) = old_addr;
+    std::tie(sn.ip, sn.port, sn.omq_quic_port) = old_addr;
 
-    oxen::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
-    std::vector<oxen::snode::SwarmInfo> current{{si}};
+    oxenss::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
+    std::vector<oxenss::snode::SwarmInfo> current{{si}};
 
-    std::tie(sn.ip, sn.port, sn.omq_port) = new_addr;
+    std::tie(sn.ip, sn.port, sn.omq_quic_port) = new_addr;
 
-    oxen::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
-    std::vector<oxen::snode::SwarmInfo> incoming{{si2}};
+    oxenss::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
+    std::vector<oxenss::snode::SwarmInfo> incoming{{si2}};
 
     preserve_ips(incoming, current);
 
     CHECK(incoming[0].snodes[0].ip == std::get<0>(expected));
     CHECK(incoming[0].snodes[0].port == std::get<1>(expected));
-    CHECK(incoming[0].snodes[0].omq_port == std::get<2>(expected));
+    CHECK(incoming[0].snodes[0].omq_quic_port == std::get<2>(expected));
 }
 
 TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
@@ -68,7 +68,7 @@ TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
     const std::chrono::system_clock::time_point timestamp{1616650862026ms};
     const auto expiry = timestamp + 48h;
-    oxen::user_pubkey pk;
+    oxenss::user_pubkey pk;
     REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
     const auto data = oxenc::from_base64(
             "CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSag"
@@ -79,6 +79,6 @@ TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
             "q/wZyYFKFKKD+q+zh704dYBILvs5yXUA96pIAA=");
 
     auto expected = "4sMyAuaZlMwww3oFvfhazfw7ASx/7TDtO+TVc8aAjHs";
-    CHECK(oxen::rpc::computeMessageHash(pk, oxen::namespace_id::Default, data) == expected);
-    CHECK(oxen::rpc::compute_hash_blake2b_b64({pk.prefixed_raw() + data}) == expected);
+    CHECK(oxenss::rpc::computeMessageHash(pk, oxenss::namespace_id::Default, data) == expected);
+    CHECK(oxenss::rpc::compute_hash_blake2b_b64({pk.prefixed_raw() + data}) == expected);
 }

@@ -10,7 +10,7 @@
 
 #include <oxenss/common/formattable.h>
 
-namespace oxen::crypto {
+namespace oxenss::crypto {
 
 using namespace std::literals;
 
@@ -31,6 +31,7 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
     std::string_view view() const {
         return {reinterpret_cast<const char*>(this->data()), KeyLength};
     }
+    std::string str() const { return {reinterpret_cast<const char*>(this->data()), KeyLength}; }
     std::string hex() const { return detail::to_hex(this->data(), KeyLength); }
     explicit operator bool() const { return *this != detail::null_bytes<KeyLength>; }
 
@@ -93,20 +94,20 @@ legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in);
 ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
 
-}  // namespace oxen::crypto
+}  // namespace oxenss::crypto
 
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::crypto::legacy_pubkey> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::crypto::legacy_pubkey> = true;
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::crypto::ed25519_pubkey> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::crypto::ed25519_pubkey> = true;
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::crypto::x25519_pubkey> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::crypto::x25519_pubkey> = true;
 
 namespace std {
 
 template <typename Derived, size_t N>
-struct hash<oxen::crypto::pubkey_base<Derived, N>> {
-    size_t operator()(const oxen::crypto::pubkey_base<Derived, N>& pk) const {
+struct hash<oxenss::crypto::pubkey_base<Derived, N>> {
+    size_t operator()(const oxenss::crypto::pubkey_base<Derived, N>& pk) const {
         // pubkeys are already random enough to use the first bytes directly as a good (and
         // fast) hash value
         static_assert(alignof(decltype(pk)) >= alignof(size_t));
@@ -115,10 +116,10 @@ struct hash<oxen::crypto::pubkey_base<Derived, N>> {
 };
 
 template <>
-struct hash<oxen::crypto::legacy_pubkey> : hash<oxen::crypto::legacy_pubkey::PubKeyBase> {};
+struct hash<oxenss::crypto::legacy_pubkey> : hash<oxenss::crypto::legacy_pubkey::PubKeyBase> {};
 template <>
-struct hash<oxen::crypto::x25519_pubkey> : hash<oxen::crypto::x25519_pubkey::PubKeyBase> {};
+struct hash<oxenss::crypto::x25519_pubkey> : hash<oxenss::crypto::x25519_pubkey::PubKeyBase> {};
 template <>
-struct hash<oxen::crypto::ed25519_pubkey> : hash<oxen::crypto::ed25519_pubkey::PubKeyBase> {};
+struct hash<oxenss::crypto::ed25519_pubkey> : hash<oxenss::crypto::ed25519_pubkey::PubKeyBase> {};
 
 }  // namespace std

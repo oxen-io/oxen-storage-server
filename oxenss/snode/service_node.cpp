@@ -1,9 +1,11 @@
 #include "service_node.h"
 
 #include "serialization.h"
+#include <oxenmq/connections.h>
 #include <oxenss/version.h>
 #include <oxenss/common/mainnet.h>
 #include <oxenss/rpc/request_handler.h>
+#include <oxenss/server/base.h>
 #include <oxenss/server/omq.h>
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
@@ -23,7 +25,7 @@
 
 using json = nlohmann::json;
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -47,6 +49,7 @@ ServiceNode::ServiceNode(
         our_seckey_{skey},
         omq_server_{omq_server},
         all_stats_{*omq_server} {
+    mq_servers_.push_back(&omq_server);
     swarm_ = std::make_unique<Swarm>(our_address_);
 
     log::info(logcat, "Requesting initial swarm state");
@@ -204,6 +207,10 @@ static block_update parse_swarm_update(const std::string& response_body) {
     return bu;
 }
 
+void ServiceNode::register_mq_server(server::MQBase* server) {
+    mq_servers_.push_back(server);
+}
+
 void ServiceNode::bootstrap_data() {
     std::lock_guard guard(sn_mutex_);
 
@@ -225,7 +232,7 @@ void ServiceNode::bootstrap_data() {
                                  .dump();
 
     std::vector<oxenmq::address> seed_nodes;
-    if (oxen::is_mainnet) {
+    if (oxenss::is_mainnet) {
         seed_nodes.emplace_back(
                 "curve://public.loki.foundation:22027/"
                 "3c157ed3c675f56280dc5d8b2f00b327b5865c127bf2c6c42becc3ca73d9132b");
@@ -401,7 +408,63 @@ void ServiceNode::record_retrieve_request() {
     all_stats_.bump_retrieve_requests();
 }
 
-bool ServiceNode::process_store(message msg, bool* new_msg) {
+static void write_metadata(
+        oxenc::bt_dict_producer& d, std::string_view pubkey, const message& msg) {
+    d.append("@", pubkey);
+    d.append("h", msg.hash);
+    d.append("n", to_int(msg.msg_namespace));
+    d.append("t", to_epoch_ms(msg.timestamp));
+    d.append("z", to_epoch_ms(msg.expiry));
+}
+
+void ServiceNode::send_notifies(message msg) {
+    auto pubkey = msg.pubkey.prefixed_raw();
+    std::vector<server::connection_id> relay_to, relay_to_with_data;
+
+    for (auto* s : mq_servers_)
+        s->get_notifiers(msg, relay_to, relay_to_with_data);
+
+    if (relay_to.empty() && relay_to_with_data.empty())
+        return;
+
+    // We output a dict with keys (in order):
+    // - @ pubkey
+    // - h msg hash
+    // - n msg namespace
+    // - t msg timestamp
+    // - z msg expiry
+    // - ~ msg data (optional)
+    constexpr size_t metadata_size = 2       // d...e
+                                   + 3 + 36  // 1:@ and 33:[33-byte pubkey]
+                                   + 3 + 46  // 1:h and 43:[43-byte base64 unpadded hash]
+                                   + 3 + 8   // 1:n and i-32768e
+                                   + 3 + 16  // 1:t and i1658784776010e plus a byte to grow
+                                   + 3 + 16  // 1:z and i1658784776010e plus a byte to grow
+                                   + 10;     // safety margin
+
+    oxenc::bt_dict_producer d;
+    d.reserve(
+            relay_to_with_data.empty() ? metadata_size
+                                       : metadata_size  // all the metadata above
+                                                 + 3    // 1:~
+                                                 + 8    // 76800: plus a couple bytes to grow
+                                                 + msg.data.size());
+
+    write_metadata(d, pubkey, msg);
+
+    if (!relay_to.empty())
+        for (auto* s : mq_servers_)
+            s->notify(relay_to, d.view());
+
+    if (!relay_to_with_data.empty()) {
+        d.append("~", msg.data);
+        for (auto* s : mq_servers_)
+            s->notify(relay_to_with_data, d.view());
+    }
+}
+
+bool ServiceNode::process_store(
+        message msg, bool* new_msg, std::chrono::system_clock::time_point* expiry) {
     std::lock_guard guard{sn_mutex_};
 
     /// only accept a message if we are in a swarm
@@ -414,14 +477,14 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     all_stats_.bump_store_requests();
 
     /// store in the database (if not already present)
-    if (db_->store(msg) == StoreResult::New) {
-        omq_server_.send_notifies(std::move(msg));
-        if (new_msg)
-            *new_msg = true;
-    } else if (new_msg)
-        *new_msg = false;
+    const auto result = db_->store(msg, expiry);
+    if (new_msg)
+        *new_msg = result == StoreResult::New;
 
-    return true;
+    if (result == StoreResult::New)
+        send_notifies(std::move(msg));
+
+    return result != StoreResult::Full;
 }
 
 void ServiceNode::save_bulk(const std::vector<message>& msgs) {
@@ -648,7 +711,7 @@ void ServiceNode::update_swarms() {
                         // nodes: but currently we still need this to deal with the lag).
 
                         auto [missing, total] = count_missing_data(bu);
-                        if (total >= (oxen::is_mainnet ? 100 : 10) &&
+                        if (total >= (oxenss::is_mainnet ? 100 : 10) &&
                             missing <= MISSING_PUBKEY_THRESHOLD::num * total /
                                                MISSING_PUBKEY_THRESHOLD::den) {
                             log::info(
@@ -729,16 +792,19 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
         // hasn't sent an uptime proof; we could treat it as a failure, but that seems
         // unnecessary since oxend will already fail the service node for not sending uptime
         // proofs.
-        log::debug(logcat, "Skipping HTTPS test of {}: no public IP received yet");
+        log::debug(logcat, "Skipping testing of {}: no public IP received yet");
         return;
     }
 
-    static constexpr uint8_t TEST_WAITING = 0, TEST_FAILED = 1, TEST_PASSED = 2;
+    auto test = std::make_shared<sn_test>(
+            sn,
+            1 + mq_servers_.size(),
+            [this, previous_failures](const sn_record& sn, bool passed) {
+                report_reachability(sn, passed, previous_failures);
+            });
 
-    // We start off two separate tests below; they share this pair and use the atomic int here
-    // to figure out whether they were called first (in which case they do nothing) or second
-    // (in which case they have to report the final result to oxend).
-    auto test_results = std::make_shared<std::pair<const sn_record, std::atomic<uint8_t>>>(sn, 0);
+    for (auto* mq : mq_servers_)
+        mq->reachability_test(test);
 
     cpr::Url url{fmt::format("https://{}:{}/ping_test/v1", sn.ip, sn.port)};
     cpr::Body body{""};
@@ -752,8 +818,8 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
 
     log::debug(logcat, "Sending HTTPS ping to {} @ {}", sn.pubkey_legacy, url.str());
     outstanding_https_reqs_.emplace_front(cpr::PostCallback(
-            [this, &omq = *omq_server(), test_results, previous_failures](cpr::Response r) {
-                auto& [sn, result] = *test_results;
+            [test](cpr::Response r) {
+                auto& sn = test->sn;
                 auto& pk = sn.pubkey_legacy;
                 bool success = false;
                 if (r.error.code != cpr::ErrorCode::OK) {
@@ -785,9 +851,7 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
                 if (success)
                     log::debug(logcat, "Successful HTTPS ping test of {}", pk);
 
-                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
-                    r != TEST_WAITING)
-                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
+                test->add_result(success);
             },
             std::move(url),
             cpr::Timeout{SN_PING_TIMEOUT},
@@ -799,28 +863,6 @@ void ServiceNode::test_reachability(const sn_record& sn, int previous_failures) 
             cpr::Redirect{0L},
             std::move(headers),
             std::move(body)));
-
-    // test omq port:
-    omq_server_->request(
-            sn.pubkey_x25519.view(),
-            "sn.ping",
-            [this, test_results = std::move(test_results), previous_failures](
-                    bool success, const auto&) {
-                auto& [sn, result] = *test_results;
-
-                log::debug(
-                        logcat,
-                        "{} response for OxenMQ ping test of {}",
-                        success ? "Successful" : "FAILED",
-                        sn.pubkey_legacy);
-
-                if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED);
-                    r != TEST_WAITING)
-                    report_reachability(sn, success && r == TEST_PASSED, previous_failures);
-            },
-            // Only use an existing (or new) outgoing connection:
-            oxenmq::send_option::outgoing{},
-            oxenmq::send_option::request_timeout{SN_PING_TIMEOUT});
 }
 
 void ServiceNode::oxend_ping() {
@@ -831,7 +873,7 @@ void ServiceNode::oxend_ping() {
             {"pubkey_ed25519",
              oxenc::to_hex(our_address_.pubkey_ed25519.begin(), our_address_.pubkey_ed25519.end())},
             {"https_port", our_address_.port},
-            {"omq_port", our_address_.omq_port}};
+            {"omq_port", our_address_.omq_quic_port}};
 
     omq_server_.oxend_request(
             "admin.storage_server_ping",
@@ -1265,7 +1307,7 @@ std::string ServiceNode::get_status_line() const {
     // 123/456/789/1011 (last 62.3min)
     std::ostringstream s;
     s << 'v' << STORAGE_SERVER_VERSION_STRING;
-    if (!oxen::is_mainnet)
+    if (!oxenss::is_mainnet)
         s << " (TESTNET)";
 
     if (syncing_)
@@ -1350,4 +1392,4 @@ std::vector<sn_record> ServiceNode::get_swarm_peers() const {
     return swarm_->other_nodes();
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

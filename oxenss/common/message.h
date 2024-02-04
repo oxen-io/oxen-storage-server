@@ -5,7 +5,7 @@
 
 #include <chrono>
 
-namespace oxen {
+namespace oxenss {
 
 /// message received from a client
 struct message {
@@ -43,4 +43,4 @@ struct message {
             data{std::move(data)} {}
 };
 
-}  // namespace oxen
+}  // namespace oxenss

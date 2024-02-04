@@ -1,4 +1,6 @@
 #pragma once
+#include "utils.h"
+#include "mqbase.h"
 
 #include <cstdint>
 #include <memory>
@@ -15,63 +17,26 @@
 #include "../common/message.h"
 #include "../snode/sn_record.h"
 
-namespace oxen::rpc {
-class RequestHandler;
-class RateLimiter;
-struct OnionRequestMetadata;
-struct Response;
-}  // namespace oxen::rpc
+namespace oxenss {
 
-namespace oxen::snode {
-class ServiceNode;
-}
+namespace rpc {
+    class RequestHandler;
+    class RateLimiter;
+    struct OnionRequestMetadata;
+    struct Response;
+}  // namespace rpc
 
-namespace oxen::server {
+namespace snode {
+    class ServiceNode;
+}  // namespace snode
 
-using namespace std::literals;
+}  // namespace oxenss
 
-oxenc::bt_value json_to_bt(nlohmann::json j);
+namespace oxenss::server {
 
-nlohmann::json bt_to_json(oxenc::bt_dict_consumer d);
-nlohmann::json bt_to_json(oxenc::bt_list_consumer l);
-
-struct MonitorData {
-    static constexpr auto MONITOR_EXPIRY_TIME = 65min;
-
-    std::chrono::steady_clock::time_point expiry;  // When this notify reg expires
-    std::vector<namespace_id> namespaces;          // sorted namespace_ids
-    oxenmq::ConnectionID push_conn;                // ConnectionID to push notifications to
-    bool want_data;                                // true if the subscriber wants msg data
-
-    MonitorData(
-            std::vector<namespace_id> namespaces,
-            oxenmq::ConnectionID conn,
-            bool data,
-            std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) :
-            expiry{std::chrono::steady_clock::now() + ttl},
-            namespaces{std::move(namespaces)},
-            push_conn{std::move(conn)},
-            want_data{data} {}
-
-    void reset_expiry(std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) {
-        expiry = std::chrono::steady_clock::now() + ttl;
-    }
-};
-
-class OMQ {
+class OMQ : public MQBase {
     oxenmq::OxenMQ omq_;
     oxenmq::ConnectionID oxend_conn_;
-
-    // Has information about current SNs
-    snode::ServiceNode* service_node_ = nullptr;
-
-    rpc::RequestHandler* request_handler_ = nullptr;
-
-    rpc::RateLimiter* rate_limiter_ = nullptr;
-
-    // Tracks accounts we are monitoring for OMQ push notification messages
-    std::unordered_multimap<std::string, MonitorData> monitoring_;
-    mutable std::shared_mutex monitoring_mutex_;
 
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
@@ -263,8 +228,9 @@ class OMQ {
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
 
-    // Called during message submission to send notifications to anyone subscribed to them.
-    void send_notifies(message msg);
+    void notify(std::vector<connection_id>&, std::string_view notification) override;
+
+    void reachability_test(std::shared_ptr<snode::sn_test> test) override;
 };
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

@@ -21,7 +21,7 @@
 #include <cpr/async_wrapper.h>
 #include <variant>
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 // When a storage test returns a "retry" response, we retry again after this interval:
 inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
@@ -213,7 +213,7 @@ class RequestHandler {
                 std::string_view params,
                 bool recurse,
                 std::function<void(Response)>)>
-                omq;
+                mq;
     };
 
     using rpc_map = std::unordered_map<std::string_view, rpc_handler>;
@@ -265,4 +265,4 @@ class RequestHandler {
     void process_onion_req(ProcessCiphertextError&& res, OnionRequestMetadata&& data);
 };
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

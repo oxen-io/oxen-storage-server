@@ -5,13 +5,24 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <filesystem>
 
-namespace oxen::logging {
+namespace oxenss::logging {
 
 static auto logcat = oxen::log::Cat("logging");
 
 void init(const std::filesystem::path& data_dir, oxen::log::Level log_level) {
 
     log::reset_level(log_level);
+
+    // QUIC is a bit chatty, and we probably care more about storage server than quic logging, so if
+    // we're above trace and below critical, set the log level for the libquic categories to one
+    // higher than the general oxenss log level.
+    if (log_level > oxen::log::Level::trace && log_level < oxen::log::Level::critical) {
+        auto quic_level = static_cast<oxen::log::Level>(
+                static_cast<std::underlying_type_t<oxen::log::Level>>(log_level) + 1);
+        for (const auto& cat : {"quic", "libevent", "bparser"})
+            log::set_level(cat, quic_level);
+    }
+
     log::add_sink(log::Type::Print, "stdout");
 
     auto log_location = data_dir / "storage.logs";
@@ -39,4 +50,4 @@ void init(const std::filesystem::path& data_dir, oxen::log::Level log_level) {
     log::info(logcat, "Writing logs to {}", log_location);
 }
 
-}  // namespace oxen::logging
+}  // namespace oxenss::logging

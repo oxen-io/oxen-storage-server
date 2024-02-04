@@ -13,19 +13,21 @@
 #include <cpr/async_wrapper.h>
 #include <oxenss/storage/database.hpp>
 #include <oxenss/crypto/keys.h>
+#include <oxenss/server/mqbase.h>
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
 
-namespace oxen::rpc {
+namespace oxenss::server {
+class OMQ;
+class QUIC;
+}  // namespace oxenss::server
+
+namespace oxenss::rpc {
 struct OnionRequestMetadata;
 }
 
-namespace oxen::server {
-class OMQ;
-}
-
-namespace oxen::snode {
+namespace oxenss::snode {
 
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 
@@ -48,6 +50,12 @@ using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 3};
+
+// The hardfork at which multiple-timestamp `expiry` requests start being accepted:
+inline constexpr hf_revision MULTI_EXPIRY_HARDFORK = {19, 4};
+
+// The hardfork at which we start testing QUIC reachability
+inline constexpr hf_revision QUIC_REACHABILITY_TESTING = {19, 4};
 
 class Swarm;
 
@@ -90,10 +98,8 @@ class ServiceNode {
     /// Cache for block_height/block_hash mapping
     std::map<uint64_t, std::string> block_hashes_cache_;
 
-    // Need to make sure we only use this to get OxenMQ object and
-    // not call any method that would in turn call a method in SN
-    // causing a deadlock
     server::OMQ& omq_server_;
+    std::vector<server::MQBase*> mq_servers_;
 
     std::atomic<int> oxend_pings_ =
             0;  // Consecutive successful pings, used for batching logs about it
@@ -110,6 +116,8 @@ class ServiceNode {
     mutable std::recursive_mutex sn_mutex_;
 
     std::forward_list<cpr::AsyncWrapper<void>> outstanding_https_reqs_;
+
+    void send_notifies(message m);
 
     // Save multiple messages to the database at once (i.e. in a single transaction)
     void save_bulk(const std::vector<message>& msgs);
@@ -176,6 +184,10 @@ class ServiceNode {
     Database& get_db() { return *db_; }
     const Database& get_db() const { return *db_; }
 
+    // Adds a MQ server, i.e. QUIC.  The OMQ server is added automatically during construction and
+    // should not be added.
+    void register_mq_server(server::MQBase* server);
+
     // Return info about this node as it is advertised to other nodes
     const sn_record& own_address() { return our_address_; }
 
@@ -220,9 +232,15 @@ class ServiceNode {
     // Returns true if the storage server is currently shutting down.
     bool shutting_down() const { return shutting_down_; }
 
-    /// Process message received from a client, return false if not in a swarm.  If new_msg is
-    /// not nullptr, sets it to true if we stored as a new message, false if we already had it.
-    bool process_store(message msg, bool* new_msg = nullptr);
+    /// Process message received from a client, return false if not in a swarm.  If new_msg is not
+    /// nullptr, sets it to true if we stored as a new message, false if we already had it.  If
+    /// `expiry` is non-null it will be set to the message's expiry: for a new message this is the
+    /// given expiry; for existing messages this is the message's new expiry (which might have been
+    /// extended to match the one in `msg`, if later).
+    bool process_store(
+            message msg,
+            bool* new_msg = nullptr,
+            std::chrono::system_clock::time_point* expiry = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
     void process_push_batch(const std::string& blob);
@@ -265,7 +283,7 @@ class ServiceNode {
     server::OMQ& omq_server() { return omq_server_; }
 };
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode
 
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::snode::SnodeStatus> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::snode::SnodeStatus> = true;

@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace oxen {
+namespace oxenss {
 
 // Network byte + Ed25519 pubkey, encoded in bytes or hex.  On testnet we allow the network byte
 // to be missing (and treat it as an implicit 00).
@@ -57,12 +57,12 @@ class user_pubkey {
     std::string prefixed_raw() const;
 };
 
-}  // namespace oxen
+}  // namespace oxenss
 
 namespace std {
 template <>
-struct hash<oxen::user_pubkey> {
-    size_t operator()(const oxen::user_pubkey& pk) const {
+struct hash<oxenss::user_pubkey> {
+    size_t operator()(const oxenss::user_pubkey& pk) const {
         return static_cast<size_t>(pk.type()) ^ hash<std::string>{}(pk.raw());
     }
 };

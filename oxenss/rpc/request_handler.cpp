@@ -34,7 +34,7 @@
 using nlohmann::json;
 using namespace std::chrono;
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 static auto logcat = log::Cat("rpc");
 
@@ -72,7 +72,8 @@ namespace {
                          {"port",  // Deprecated string port for backwards compat; prefer https_port
                           std::to_string(sn.port)},
                          {"port_https", sn.port},
-                         {"port_omq", sn.omq_port},
+                         {"port_omq", sn.omq_quic_port},
+                         {"port_quic", sn.omq_quic_port},
                          {"ip", sn.ip}});
         }
 
@@ -121,10 +122,10 @@ namespace {
             auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
         };
-        calls.omq = [](rpc::RequestHandler& h,
-                       std::string_view params,
-                       [[maybe_unused]] bool forwarded,
-                       std::function<void(rpc::Response)> cb) {
+        calls.mq = [](rpc::RequestHandler& h,
+                      std::string_view params,
+                      [[maybe_unused]] bool forwarded,
+                      std::function<void(rpc::Response)> cb) {
             RPC req;
             if (params.empty())
                 params = "{}"sv;
@@ -196,6 +197,8 @@ namespace {
             }
         } else if constexpr (std::is_same_v<T, std::vector<subaccount_token>>) {
             s += val.size() * SUBACCOUNT_TOKEN_LENGTH;
+        } else if constexpr (std::is_same_v<T, std::vector<system_clock::time_point>>) {
+            s += val.size() * 13;  // See comment above
         } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
@@ -229,6 +232,9 @@ namespace {
         } else if constexpr (std::is_same_v<T, std::vector<subaccount_token>>) {
             for (const auto& sa : val)
                 result += sa.sview();
+        } else if constexpr (std::is_same_v<T, std::vector<system_clock::time_point>>) {
+            for (auto& t : val)
+                "{}"_format_to(result, to_epoch_ms(t));
         } else {
             static_assert(
                     std::is_same_v<T, std::vector<std::string>> ||
@@ -265,7 +271,7 @@ namespace {
 
     template <typename... T>
     bool verify_signature(
-            oxen::Database& db,
+            oxenss::Database& db,
             const user_pubkey& pubkey,
             const std::optional<std::array<unsigned char, 32>>& pk_ed25519,
             const std::optional<signed_subaccount_token>& subaccount,
@@ -432,7 +438,7 @@ static void distribute_command(
                     bool good_result = success && parts.size() == 1;
                     if (good_result) {
                         try {
-                            peer_result = server::bt_to_json(oxenc::bt_dict_consumer{parts[0]});
+                            peer_result = bt_to_json(oxenc::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
                             log::warning(
                                     logcat,
@@ -563,6 +569,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
     std::string message_hash = computeMessageHash(req.pubkey, req.msg_namespace, req.data);
 
     bool new_msg;
+    std::chrono::system_clock::time_point expiry;
     bool success = false;
     try {
         success = service_node_.process_store(
@@ -572,7 +579,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                         req.timestamp,
                         req.expiry,
                         std::move(req.data)},
-                &new_msg);
+                &new_msg,
+                &expiry);
     } catch (const std::exception& e) {
         log::error(
                 logcat,
@@ -588,6 +596,8 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
                 req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg)
             mine["already"] = true;
+        mine["expiry"] = to_epoch_ms(expiry);
+
         if (entry_router)
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
             res->result["hash"] = message_hash;
@@ -1182,20 +1192,38 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
 }
+
 void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing expire {} request", req.recurse ? "direct" : "forwarded");
 
     if (!service_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
+    // Should already be guaranteed by client_rpc_endpoints.cpp request parser:
+    assert(req.expiry.size() == 1 || req.expiry.size() == req.messages.size());
+
+    // What we actually use for expiries (but we can't change `req.expiry` or we'll break the
+    // signature of the forwarded requests):
+    std::vector<system_clock::time_point> expiry;
+
     auto now = system_clock::now();
-    if (req.expiry < now - 1min) {
-        log::debug(
-                logcat,
-                "expire: invalid timestamp ({}s ago)",
-                duration_cast<seconds>(now - req.expiry).count());
-        return cb(Response{http::UNAUTHORIZED, "expire: timestamp should be >= current time"sv});
+    for (const auto& exp : req.expiry) {
+        if (exp < now - 1min) {
+            log::debug(
+                    logcat,
+                    "expire: invalid timestamp ({}s ago)",
+                    duration_cast<seconds>(now - exp).count());
+            return cb(
+                    Response{http::UNAUTHORIZED, "expire: timestamp should be >= current time"sv});
+        }
+
+        expiry.push_back(std::min(now + TTL_MAXIMUM_PRIVATE, exp));
     }
+
+    if (req.expiry.size() > 1 && !service_node_.hf_at_least(snode::MULTI_EXPIRY_HARDFORK))
+        return cb(Response{
+                http::FORBIDDEN,
+                "expire: multi-expiry requests are not yet active on the network"sv});
 
     if (!verify_signature(
                 service_node_.get_db(),
@@ -1241,29 +1269,66 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    auto expiry = std::min(std::chrono::system_clock::now() + TTL_MAXIMUM_PRIVATE, req.expiry);
     auto updated = service_node_.get_db().update_expiry(
             req.pubkey,
             req.messages,
             expiry,
             extend_only,
             /*shorten_only=*/req.shorten);
-    std::sort(updated.begin(), updated.end());
+
+    std::sort(updated.begin(), updated.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
 
     std::map<std::string, int64_t> unchanged;
     if (req.extend || req.shorten) {
+        std::unordered_set<std::string_view> updated_hashes;
+        for (auto& [hash, exp] : updated)
+            updated_hashes.emplace(hash);
         std::vector<std::string> unchanged_hashes;
         for (const auto& m : req.messages)
-            if (!std::binary_search(updated.begin(), updated.end(), m))
+            if (!updated_hashes.count(m))
                 unchanged_hashes.push_back(m);
         if (!unchanged_hashes.empty())
             unchanged = service_node_.get_db().get_expiries(req.pubkey, unchanged_hashes);
     }
 
+    std::vector<std::string> updated_hash;
+    updated_hash.reserve(updated.size());
+    for (auto& [hash, exp] : updated)
+        updated_hash.push_back(std::move(hash));
+
+    // The signature is a little complex: if given a single expiry in the request then we always
+    // include the expiry we attempted to use in the signature, and as a single value in the
+    // returned dict, even if we updated nothing.  If given *multiple* expiries, on the other hand,
+    // then "expiry" becomes the ones that actually got applied (corresponding to the same element
+    // in the "updated" hashes), and our *signature* over expiries is those returned expiry values
+    // concatenated together.
+    std::vector<system_clock::time_point> updated_exp;
+    if (req.expiry.size() > 1) {
+        updated_exp.reserve(updated.size());
+        for (auto& [hash, exp] : updated)
+            updated_exp.push_back(exp);
+    } else {
+        updated_exp.push_back(expiry[0]);
+    }
+
     auto sig = create_signature(
-            ed25519_sk_, req.pubkey.prefixed_hex(), expiry, req.messages, updated, unchanged);
-    mine["expiry"] = to_epoch_ms(expiry);
-    mine["updated"] = std::move(updated);
+            ed25519_sk_,
+            req.pubkey.prefixed_hex(),
+            updated_exp,
+            req.messages,
+            updated_hash,
+            unchanged);
+
+    if (req.expiry.size() > 1) {
+        auto json_exp = json::array();
+        for (auto& e : updated_exp)
+            json_exp.push_back(to_epoch_ms(e));
+        mine["expiry"] = std::move(json_exp);
+    } else
+        mine["expiry"] = to_epoch_ms(expiry[0]);
+    mine["updated"] = std::move(updated_hash);
     if (req.shorten || req.extend)
         mine["unchanged"] = std::move(unchanged);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
@@ -1736,4 +1801,4 @@ void RequestHandler::process_onion_req(
     }
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

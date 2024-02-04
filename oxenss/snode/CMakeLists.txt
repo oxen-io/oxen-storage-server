@@ -13,6 +13,7 @@ target_link_libraries(snode
     PRIVATE
     crypto
     utils
+    quic
     server
     logging
     rpc

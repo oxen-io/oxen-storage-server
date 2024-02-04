@@ -14,7 +14,7 @@
 #include <sodium/crypto_scalarmult_ed25519.h>
 #include <sodium/crypto_sign_ed25519.h>
 
-namespace oxen::crypto {
+namespace oxenss::crypto {
 
 static auto logcat = oxen::log::Cat("crypto");
 
@@ -100,4 +100,4 @@ x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in) {
     return parse_pubkey<x25519_pubkey>(pubkey_in);
 }
 
-}  // namespace oxen::crypto
+}  // namespace oxenss::crypto
