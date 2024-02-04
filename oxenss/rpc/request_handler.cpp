@@ -295,7 +295,7 @@ namespace {
         if (subaccount) {
             // Make sure the token isn't revoked
             if (!skip_revoke_check && db.subaccount_revoked(pubkey, subaccount->token)) {
-                log::warning(logcat, "Signature verification failed: subaccount is revoked");
+                log::debug(logcat, "Signature verification failed: subaccount is revoked");
                 return false;
             }
 
@@ -1625,7 +1625,7 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info, OnionRequestMetad
     auto dest_node = service_node_.find_node(dest);
     if (!dest_node) {
         auto msg = fmt::format("Next node not found: {}", dest);
-        log::warning(logcat, "{}", msg);
+        log::debug(logcat, "{}", msg);
         return data.cb({http::BAD_GATEWAY, std::move(msg)});
     }
 
