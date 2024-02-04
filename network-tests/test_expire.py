@@ -591,8 +591,4 @@ def test_expire_shorten_extend(omq, random_sn, sk, exclude):
     }
 
     # Test bug: get_expiries was not working properly when given just one hash
-    assert e[10] == {
-        "expiries": {
-            msgs[0]["hash"]: exp_30s
-        }
-    }
+    assert e[10] == {"expiries": {msgs[0]["hash"]: exp_30s}}
