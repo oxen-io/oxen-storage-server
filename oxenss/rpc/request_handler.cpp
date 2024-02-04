@@ -1192,6 +1192,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
     if (--res->pending == 0)
         reply_or_fail(std::move(res));
 }
+
 void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing expire {} request", req.recurse ? "direct" : "forwarded");
 

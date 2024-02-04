@@ -463,7 +463,8 @@ void ServiceNode::send_notifies(message msg) {
     }
 }
 
-bool ServiceNode::process_store(message msg, bool* new_msg) {
+bool ServiceNode::process_store(
+        message msg, bool* new_msg, std::chrono::system_clock::time_point* expiry) {
     std::lock_guard guard{sn_mutex_};
 
     /// only accept a message if we are in a swarm
@@ -476,15 +477,12 @@ bool ServiceNode::process_store(message msg, bool* new_msg) {
     all_stats_.bump_store_requests();
 
     /// store in the database (if not already present)
-    if (db_->store(msg) == StoreResult::New) {
-        send_notifies(std::move(msg));
-        if (new_msg)
-            *new_msg = true;
-    } else if (new_msg)
-        *new_msg = false;
+    const auto result = db_->store(msg, expiry);
+    if (new_msg)
+        *new_msg = result == StoreResult::New;
 
     if (result == StoreResult::New)
-        omq_server_.send_notifies(std::move(msg));
+        send_notifies(std::move(msg));
 
     return result != StoreResult::Full;
 }
