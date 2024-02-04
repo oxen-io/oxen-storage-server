@@ -22,6 +22,9 @@ static oxen::quic::opt::static_secret make_endpoint_static_secret(const crypto::
     return oxen::quic::opt::static_secret{std::move(secret)};
 }
 
+static constexpr auto ALPN = "oxenstorage"sv;
+static const ustring uALPN{reinterpret_cast<const unsigned char*>(ALPN.data()), ALPN.size()};
+
 QUIC::QUIC(
         snode::ServiceNode& snode,
         rpc::RequestHandler& rh,
@@ -31,7 +34,11 @@ QUIC::QUIC(
         local{bind},
         network{std::make_unique<oxen::quic::Network>()},
         tls_creds{oxen::quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
-        ep{network->endpoint(local, make_endpoint_static_secret(sk))},
+        ep{network->endpoint(
+                local,
+                make_endpoint_static_secret(sk),
+                oxen::quic::opt::inbound_alpns{{uALPN}},
+                oxen::quic::opt::outbound_alpns{{uALPN}})},
         request_handler{rh},
         command_handler{[this](quic::message m) { handle_request(std::move(m)); }} {
     service_node_ = &snode;
