@@ -60,6 +60,8 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
+set(OXEN_LOGGING_SOURCE_ROOT "${OXEN_LOGGING_SOURCE_ROOT};${PROJECT_SOURCE_DIR}" CACHE INTERNAL "")
+
 set(LIBQUIC_BUILD_TESTS OFF CACHE BOOL "")
 add_subdirectory(oxen-libquic)
 
@@ -67,8 +69,6 @@ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
 system_or_submodule(CLI11 CLI11 CLI11>=2.2.0 CLI11)
-
-set(OXEN_LOGGING_SOURCE_ROOT "${OXEN_LOGGING_SOURCE_ROOT};${PROJECT_SOURCE_DIR}" CACHE INTERNAL "")
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
