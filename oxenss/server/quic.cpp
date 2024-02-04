@@ -9,15 +9,20 @@ namespace oxenss::server {
 static auto logcat = log::Cat("ssquic");
 
 static constexpr std::string_view static_secret_key = "Storage Server QUIC shared secret hash key";
-static oxen::quic::opt::static_secret make_endpoint_static_secret(const crypto::ed25519_seckey& sk) {
+static oxen::quic::opt::static_secret make_endpoint_static_secret(
+        const crypto::ed25519_seckey& sk) {
     ustring secret;
     secret.resize(32);
 
     crypto_generichash_blake2b_state st;
-    crypto_generichash_blake2b_init(&st, reinterpret_cast<const unsigned char*>(static_secret_key.data()),
-            static_secret_key.size(), secret.size());
+    crypto_generichash_blake2b_init(
+            &st,
+            reinterpret_cast<const unsigned char*>(static_secret_key.data()),
+            static_secret_key.size(),
+            secret.size());
     crypto_generichash_blake2b_update(&st, sk.data(), sk.size());
-    crypto_generichash_blake2b_final(&st, reinterpret_cast<unsigned char*>(secret.data()), secret.size());
+    crypto_generichash_blake2b_final(
+            &st, reinterpret_cast<unsigned char*>(secret.data()), secret.size());
 
     return oxen::quic::opt::static_secret{std::move(secret)};
 }
@@ -58,7 +63,7 @@ void QUIC::handle_monitor_message(oxen::quic::message m) {
     auto refid = m.stream()->reference_id;
     handle_monitor(
             body,
-            [m=std::move(m)](std::string response) { m.respond(std::move(response)); },
+            [m = std::move(m)](std::string response) { m.respond(std::move(response)); },
             refid);
 }
 

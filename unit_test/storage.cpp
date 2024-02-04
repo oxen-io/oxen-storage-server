@@ -381,7 +381,7 @@ class TestSuiteHacks {
         return db.impl_pool_.size();
     }
 };
-}  // namespace oxen
+}  // namespace oxenss
 
 TEST_CASE("storage - connection pool", "[storage][pool]") {
     StorageDeleter fixture;
