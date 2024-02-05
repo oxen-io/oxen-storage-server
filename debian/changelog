@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.0-1~ubuntu2310) mantic; urgency=medium
+
+  * mantic deb
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 00:15:47 -0400
+
 oxen-storage-server (2.6.0-1~ubuntu2304) lunar; urgency=medium
 
   [ mdPlusPlus ]
