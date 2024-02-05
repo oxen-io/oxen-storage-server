@@ -14,14 +14,14 @@ extern "C" {
 
 #include <cstddef>
 
-namespace oxen {
+namespace oxenss {
 
 namespace {
 
     auto logcat = log::Cat("server");
 
     /* Add extension using V3 code: we can set the config file as NULL
-     * because we wont reference any other sections.
+     * because we won't reference any other sections.
      */
 
     int add_ext(X509* cert, int nid, char* value) {
@@ -199,4 +199,4 @@ err:
     BIO_free(bio_err);
 }
 
-}  // namespace oxen
+}  // namespace oxenss
