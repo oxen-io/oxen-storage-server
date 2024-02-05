@@ -1,4 +1,1 @@
 0003-Old-cmake-sqlite-include-dir-workaround.patch
-0002-Enhance-account-message-counts-admin-stats.patch
-0003-Fix-get_used_bytes-to-subtract-free-pages.patch
-0004-Don-t-count-single-message-boxes-as-accounts.patch
