@@ -6,51 +6,86 @@ from nacl.signing import SigningKey
 from nacl.hash import blake2b
 import random
 
+
 def expire_all(sk, *, delta=120, timestamp=None):
     ts = timestamp if timestamp else int((time.time() + delta) * 1000)
-    return json.dumps({
-        "pubkey": sk.verify_key.encode().hex(),
-        "expiry": ts,
-        "signature": base64.b64encode(sk.sign(b"expire_all" + str(ts).encode()).signature).decode()},
-        separators=(',',':'))
+    return json.dumps(
+        {
+            "pubkey": sk.verify_key.encode().hex(),
+            "expiry": ts,
+            "signature": base64.b64encode(
+                sk.sign(b"expire_all" + str(ts).encode()).signature
+            ).decode(),
+        },
+        separators=(',', ':'),
+    )
+
 
 def expire_msgs(sk, messages, *, delta=120, timestamp=None):
     ts = timestamp if timestamp else int((time.time() + delta) * 1000)
-    return json.dumps({
-        "pubkey": sk.verify_key.encode().hex(),
-        "expiry": ts,
-        "messages": messages,
-        "signature": base64.b64encode(sk.sign(b"expire" + ("".join(messages) + str(ts)).encode()).signature).decode()},
-        separators=(',',':'))
+    return json.dumps(
+        {
+            "pubkey": sk.verify_key.encode().hex(),
+            "expiry": ts,
+            "messages": messages,
+            "signature": base64.b64encode(
+                sk.sign(b"expire" + ("".join(messages) + str(ts)).encode()).signature
+            ).decode(),
+        },
+        separators=(',', ':'),
+    )
+
 
 def delete_all(sk):
     ts = int(time.time() * 1000)
-    return json.dumps({
-        "pubkey": sk.verify_key.encode().hex(),
-        "expiry": ts,
-        "signature": base64.b64encode(sk.sign(b"delete_all" + str(ts).encode()).signature).decode()},
-        separators=(',',':'))
+    return json.dumps(
+        {
+            "pubkey": sk.verify_key.encode().hex(),
+            "expiry": ts,
+            "signature": base64.b64encode(
+                sk.sign(b"delete_all" + str(ts).encode()).signature
+            ).decode(),
+        },
+        separators=(',', ':'),
+    )
+
 
 def delete_msgs(sk, messages):
-    return json.dumps({
-        "pubkey": sk.verify_key.encode().hex(),
-        "messages": messages,
-        "signature": base64.b64encode(sk.sign(b"delete" + "".join(messages).encode()).signature).decode()},
-        separators=(',',':'))
+    return json.dumps(
+        {
+            "pubkey": sk.verify_key.encode().hex(),
+            "messages": messages,
+            "signature": base64.b64encode(
+                sk.sign(b"delete" + "".join(messages).encode()).signature
+            ).decode(),
+        },
+        separators=(',', ':'),
+    )
+
 
 def delete_before(sk, *, ago=120, timestamp=None):
     before = timestamp if timestamp else int((time.time() - ago) * 1000)
-    return json.dumps({
-        "pubkey": sk.verify_key.encode().hex(),
-        "before": before,
-        "signature": base64.b64encode(sk.sign(b"delete_before" + str(before).encode()).signature).decode()},
-        separators=(',',':'))
+    return json.dumps(
+        {
+            "pubkey": sk.verify_key.encode().hex(),
+            "before": before,
+            "signature": base64.b64encode(
+                sk.sign(b"delete_before" + str(before).encode()).signature
+            ).decode(),
+        },
+        separators=(',', ':'),
+    )
 
 
 def get_swarm(omq, conn, sk, netid=5):
-    pubkey = "{:02x}".format(netid) + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode().hex()
-    r = omq.request_future(conn, "storage.get_swarm", [json.dumps({"pubkey": pubkey}).encode()]).get()
-    assert(len(r) == 1)
+    pubkey = (
+        "{:02x}".format(netid)
+        + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode().hex()
+    )
+    r = omq.request_future(
+        conn, "storage.get_swarm", [json.dumps({"pubkey": pubkey}).encode()]
+    ).get()
+    assert len(r) == 1
     return json.loads(r[0])
 
 
@@ -60,21 +95,31 @@ def random_swarm_members(swarm, n, exclude={}):
 
 def store_n(omq, conn, sk, basemsg, n, *, offset=0, netid=5, now=time.time(), ttl=30):
     msgs = []
-    pubkey = chr(netid).encode() + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode()
+    pubkey = (
+        chr(netid).encode()
+        + (sk.verify_key if isinstance(sk, SigningKey) else sk.public_key).encode()
+    )
     for i in range(n):
         data = basemsg + f"{i}".encode()
         ts = int((now - i) * 1000)
         exp = int((now - i + ttl) * 1000)
-        msgs.append({
+        msgs.append(
+            {
                 "data": data,
                 "req": {
                     "pubkey": pubkey.hex(),
                     "timestamp": ts,
                     "expiry": exp,
-                    "data": base64.b64encode(data).decode()}
-                })
-        msgs[-1]['future'] = omq.request_future(conn, "storage.store", [json.dumps(msgs[-1]['req']).encode()])
-        msgs[-1]['hash'] = blake2b(pubkey + msgs[-1]['data'], encoder=Base64Encoder).decode().rstrip('=')
+                    "data": base64.b64encode(data).decode(),
+                },
+            }
+        )
+        msgs[-1]['future'] = omq.request_future(
+            conn, "storage.store", [json.dumps(msgs[-1]['req']).encode()]
+        )
+        msgs[-1]['hash'] = (
+            blake2b(pubkey + msgs[-1]['data'], encoder=Base64Encoder).decode().rstrip('=')
+        )
 
     assert len({m['hash'] for m in msgs}) == len(msgs)
 

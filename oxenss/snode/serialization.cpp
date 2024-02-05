@@ -10,7 +10,7 @@
 
 #include <chrono>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -103,4 +103,4 @@ std::vector<message> deserialize_messages(std::string_view slice) {
     return result;
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

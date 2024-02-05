@@ -9,7 +9,7 @@
 
 using nlohmann::json;
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 static auto logcat = log::Cat("rpc");
 
@@ -200,4 +200,4 @@ bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
            std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc
