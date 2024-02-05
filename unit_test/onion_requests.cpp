@@ -4,8 +4,8 @@
 
 #include <oxenss/rpc/onion_processing.h>
 
-using namespace oxen::rpc;
-using namespace oxen::crypto;
+using namespace oxenss::rpc;
+using namespace oxenss::crypto;
 using namespace std::literals;
 
 constexpr const char* ciphertext = "ciphertext";
@@ -27,7 +27,7 @@ TEST_CASE("onion request - final destination", "[onion][final]") {
 }
 
 // Provided "host", so the request should go
-// to an extrenal server. Default values will
+// to an external server. Default values will
 // be used for port and protocol.
 TEST_CASE("onion request - relay to server (legacy)", "[onion][relay]") {
     auto data = prefix + R"#({

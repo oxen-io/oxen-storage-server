@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <oxenmq/oxenmq.h>
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 static auto logcat = log::Cat("rpc");
 
@@ -90,4 +90,4 @@ oxend_seckeys get_sn_privkeys(
     }
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

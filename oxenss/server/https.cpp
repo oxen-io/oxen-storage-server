@@ -19,7 +19,7 @@
 
 #include <uWebSockets/App.h>
 
-namespace oxen::server {
+namespace oxenss::server {
 
 static auto logcat = log::Cat("server");
 
@@ -634,4 +634,4 @@ HTTPS::~HTTPS() {
     shutdown(true);
 }
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

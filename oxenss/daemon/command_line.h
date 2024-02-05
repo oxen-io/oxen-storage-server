@@ -5,12 +5,12 @@
 #include <variant>
 #include <vector>
 
-namespace oxen::cli {
+namespace oxenss::cli {
 
 struct command_line_options {
     std::string ip = "0.0.0.0";
     uint16_t https_port = 22021;
-    uint16_t omq_port = 22020;
+    uint16_t omq_quic_port = 22020;
     std::string oxend_omq_rpc;  // Defaults to ipc://$HOME/.oxen/[testnet/]oxend.sock
     bool force_start = false;
     bool testnet = false;
@@ -28,4 +28,4 @@ using parse_result = std::variant<command_line_options, int>;
 parse_result parse_cli_args(std::vector<const char*> args);
 parse_result parse_cli_args(int argc, char* argv[]);
 
-}  // namespace oxen::cli
+}  // namespace oxenss::cli

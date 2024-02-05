@@ -22,7 +22,6 @@ add_subdirectory(snode)
 add_subdirectory(storage)
 add_subdirectory(utils)
 
-
 # Build Info
 if(OXENSS_VERSIONTAG)
     set(VERSIONTAG "${OXENSS_VERSIONTAG}")

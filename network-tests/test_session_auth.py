@@ -9,6 +9,7 @@ from nacl.signing import VerifyKey, SigningKey
 from nacl.public import PrivateKey
 import nacl.exceptions
 
+
 def test_session_auth(omq, random_sn, sk, exclude):
     """
     Session key handling is a bit convoluted because it follows Signal's messy approach of exposing
@@ -30,11 +31,7 @@ def test_session_auth(omq, random_sn, sk, exclude):
     ts = int(time.time() * 1000)
     to_sign = "delete_all{}".format(ts).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = {
-            "pubkey": my_ss_id,
-            "timestamp": ts,
-            "signature": sig
-    }
+    params = {"pubkey": my_ss_id, "timestamp": ts, "signature": sig}
 
     resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
@@ -42,14 +39,22 @@ def test_session_auth(omq, random_sn, sk, exclude):
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "pubkey_ed25519": sk.verify_key.encode().hex(),
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "pubkey_ed25519": sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 5
@@ -65,14 +70,22 @@ def test_session_auth(omq, random_sn, sk, exclude):
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "pubkey_ed25519": sk.verify_key.encode().hex(),
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "pubkey_ed25519": sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert len(r['messages']) == 5
@@ -93,16 +106,23 @@ def test_session_auth(omq, random_sn, sk, exclude):
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(expected_signed, base64.b64decode(v['signature']))
 
-
     # Verify deletion
-    r = omq.request_future(conn, 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "pubkey_ed25519": sk.verify_key.encode().hex(),
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conn,
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "pubkey_ed25519": sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert not r['messages']
@@ -129,12 +149,15 @@ def test_non_session_no_ed25519(omq, random_sn, sk, exclude):
     to_sign = "delete_all{}".format(ts).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     params = {
-            "pubkey": my_ss_id,
-            "pubkey_ed25519": sk.verify_key.encode().hex(),
-            "timestamp": ts,
-            "signature": sig
+        "pubkey": my_ss_id,
+        "pubkey_ed25519": sk.verify_key.encode().hex(),
+        "timestamp": ts,
+        "signature": sig,
     }
 
     resp = omq.request_future(conn, 'storage.delete_all', [json.dumps(params).encode()]).get()
 
-    assert resp == [b'400', b'invalid request: pubkey_ed25519 is only permitted for 05[...] pubkeys']
+    assert resp == [
+        b'400',
+        b'invalid request: pubkey_ed25519 is only permitted for 05[...] pubkeys',
+    ]
