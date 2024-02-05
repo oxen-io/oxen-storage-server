@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.0-2~deb11) bullseye; urgency=medium
+
+  * rebuild
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 01:18:25 -0400
+
 oxen-storage-server (2.6.0-1~deb11) bullseye; urgency=medium
 
   [ mdPlusPlus ]
