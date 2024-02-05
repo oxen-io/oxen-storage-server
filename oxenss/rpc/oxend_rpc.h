@@ -5,7 +5,7 @@
 #include <functional>
 #include <string_view>
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 using oxend_seckeys =
         std::tuple<crypto::legacy_seckey, crypto::ed25519_seckey, crypto::x25519_seckey>;
@@ -25,4 +25,4 @@ using oxend_seckeys =
 oxend_seckeys get_sn_privkeys(
         std::string_view oxend_rpc_address, std::function<bool()> keep_trying = nullptr);
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc
