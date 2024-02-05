@@ -1,3 +1,10 @@
+oxen-storage-server (2.6.0-3~deb12) bookworm; urgency=medium
+
+  * Use libquic from system, if available
+  * oxen dependency updates
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 17:34:12 -0400
+
 oxen-storage-server (2.6.0-2~deb12) bookworm; urgency=medium
 
   * rebuild
