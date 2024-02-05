@@ -3,7 +3,7 @@
 #include <fmt/format.h>
 #include <type_traits>
 
-namespace oxen {
+namespace oxenss {
 
 // Types can opt-in to being fmt-formattable by defining a `to_string()` const member function
 // that returns something string-like.  For scoped enums we instead look for a `to_string(Type
@@ -29,15 +29,15 @@ template <typename T>
 constexpr bool is_scoped_enum_v = is_scoped_enum<T>::value;
 #endif
 
-}  // namespace oxen
+}  // namespace oxenss
 
 namespace fmt {
 template <typename T>
-struct formatter<T, char, std::enable_if_t<oxen::to_string_formattable<T>>>
+struct formatter<T, char, std::enable_if_t<oxenss::to_string_formattable<T>>>
         : formatter<std::string_view> {
     template <typename FormatContext>
     auto format(const T& val, FormatContext& ctx) const {
-        if constexpr (oxen::is_scoped_enum_v<T>)
+        if constexpr (oxenss::is_scoped_enum_v<T>)
             return formatter<std::string_view>::format(to_string(val), ctx);
         else
             return formatter<std::string_view>::format(val.to_string(), ctx);

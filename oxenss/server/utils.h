@@ -5,12 +5,66 @@
 #include <unordered_map>
 #include <utility>
 
+#include <oxenss/common/format.h>
+#include <oxenss/common/namespace.h>
+#include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/string_utils.hpp>
 
-/// Namespace for http constants/types
-namespace oxen::http {
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+#include <oxenc/bt.h>
 
+namespace oxenss {
+using ustring = std::basic_string<uint8_t>;
+using ustring_view = std::basic_string_view<uint8_t>;
+using bstring = std::basic_string<std::byte>;
+using bstring_view = std::basic_string_view<std::byte>;
+
+// place this here so we can use it in oxenss::*
 using namespace std::literals;
+
+// {pubkey (bytes), pubkey (hex), namespaces, want_data}
+using sub_info = std::tuple<std::string, std::string, std::vector<namespace_id>, bool>;
+
+oxenc::bt_value json_to_bt(nlohmann::json j);
+
+nlohmann::json bt_to_json(oxenc::bt_dict_consumer d);
+
+nlohmann::json bt_to_json(oxenc::bt_list_consumer l);
+
+inline std::string serialize_response(oxenc::bt_dict supplement = {}) {
+    return oxenc::bt_serialize(supplement);
+}
+
+inline std::string serialize_error(int ec, std::string msg, bool bt_encoded) {
+    auto resp = nlohmann::json::array({ec, std::move(msg)});
+    return bt_encoded ? oxenc::bt_serialize(json_to_bt(std::move(resp))) : resp.dump();
+}
+
+enum class MonitorResponse {
+    BAD_ARGS = 1,
+    BAD_PUBKEY = 2,
+    BAD_NS = 3,
+    BAD_TS = 4,
+    BAD_SIG = 5,
+    WRONG_SWARM = 6,
+};
+
+inline void monitor_error(oxenc::bt_dict_producer& out, MonitorResponse r, std::string message) {
+    out.append("errcode", static_cast<std::underlying_type_t<MonitorResponse>>(r));
+    out.append("error", std::move(message));
+}
+
+// Quic request errors and codes
+namespace quic {
+    inline constexpr auto BAD_REQUEST{400};
+    inline constexpr auto INTERNAL_SERVER_ERROR{500};
+}  // namespace quic
+
+}  // namespace oxenss
+
+/// Namespace for http constants/types
+namespace oxenss::http {
 
 // HTTP response status code
 using response_code = std::pair<int, std::string_view>;
@@ -62,6 +116,6 @@ using headers =
         std::unordered_map<std::string, std::string, detail::ascii_lc_hash, detail::ascii_lc_equal>;
 
 // Returned in a HF19+ ping_test to include the remote's pubkey in the response
-constexpr auto SNODE_PUBKEY_HEADER = "X-Oxen-Snode-Pubkey";
+inline constexpr auto SNODE_PUBKEY_HEADER = "X-Oxen-Snode-Pubkey";
 
-}  // namespace oxen::http
+}  // namespace oxenss::http

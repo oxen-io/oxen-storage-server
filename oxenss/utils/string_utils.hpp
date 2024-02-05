@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace oxen::util {
+namespace oxenss::util {
 
 using namespace std::literals;
 
@@ -166,4 +166,4 @@ std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) 
     return std::string_view{*it}.substr(prefix.size());
 }
 
-}  // namespace oxen::util
+}  // namespace oxenss::util

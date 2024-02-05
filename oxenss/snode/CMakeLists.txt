@@ -9,13 +9,13 @@ add_library(snode STATIC
 target_link_libraries(snode
     PUBLIC
     oxenmq::oxenmq
+    cpr::cpr
     PRIVATE
     crypto
     utils
+    quic
     server
     logging
     rpc
     oxenc::oxenc
-
-    cpr::cpr
     sodium)

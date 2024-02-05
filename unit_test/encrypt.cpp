@@ -6,7 +6,7 @@
 #include <oxenss/crypto/keys.h>
 
 using namespace std::literals;
-using namespace oxen::crypto;
+using namespace oxenss::crypto;
 
 constexpr auto plaintext_data = "Grumpy cat says no!"sv;
 
