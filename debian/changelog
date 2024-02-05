@@ -1,3 +1,89 @@
+oxen-storage-server (2.6.0-1~ubuntu2004) focal; urgency=medium
+
+  [ mdPlusPlus ]
+  * Fix typo
+  * Fix more typos
+
+  [ Jason Rhinelander ]
+  * RPC doc fixes
+  * Remove TIMESTAMP||EXPIRY|| from store endpoint docs
+  * Fix comment about the hash in use
+  * Bump oxen-mq to latest release
+  * Remove misleading _t suffix from non-typedefs
+  * Remove obsolete hardfork code
+  * Add common fields to `info` endpoint
+  * Fix store.sig_timestamp
+  * Remove old no-prefix-testnet legacy code
+  * Update deps to latest versions
+  * Simplify bt_dict production
+  * Allow single string/int values for array fields
+  * Replace subkeys with subaccounts
+  * Add "outbox" & unrevocable-retrieval namespaces
+  * Make store and revoke update timestamps on conflict
+  * Add black formatting for network-tests
+  * sqlite3 version bump
+  * sqlite3 version bump
+  * Redo db.store() to better handle expiry updates
+  * Fix get_expiries when called with a single hash
+  * Add delete_all-from-all-nses test
+  * Fix unrevoke comment to reflect that it can take an array
+  * Implement SQLite connection pool
+  * Downgrade some warnings
+
+  [ dr7ana ]
+  * Add oxen-libquic as external dep, clang-format 14->15
+  * re-namespacing
+  * WIP on new Connection/Quic classes
+  * oxenss quic layout
+  * CI fix
+  * More layout
+  * Refactor code for dual omq/quic
+  * variant for oxenmq cid and libquic cid
+
+  [ Jason Rhinelander ]
+  * Remove repos and checks that come via oxen-libquic now
+  * Abstract common OMQ/QUIC functionality
+  * Add QUIC reachability testing
+  * SQLite bump to latest
+  * Update zlib static bundle version
+  * Move libquic above oxenmq
+  * Updates for libquic changes
+  * Add missing header
+  * Fix use after move
+  * Add missing creds to connect call
+  * Version bump
+  * Close connection after verifying that it works
+  * Use command response to detect success/failure
+  * Downgrade quic log level by one
+  * fix namespace in unit tests
+  * Fix bug from use-after-move
+  * Debug log quic ping successes
+  * Fix dangling reference capture in handle_monitor_message
+  * Fix use-after-move
+  * Add virtual destructor to MQBase
+  * Provide a deterministic static_secret to libquic
+  * Fix source root stripping
+  * Set ALPN for storage server
+  * Formatting
+  * libquic bump
+  * Add "expiry" into store response
+  * Add multi-expiry support to `expire`
+
+  [ dr7ana ]
+  * clang-format 14->15
+  * emplace hash compile fix
+  * rebased onto quic-conns
+  * network testing rpc 'expire' w/ timestamp array
+  * libquic is stable
+
+  [ Jason Rhinelander ]
+  * Enhance account/message counts admin stats
+  * Add libquic dependency
+  * Static dependency version bumps
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 04 Feb 2024 23:54:30 -0400
+
 oxen-storage-server (2.5.0-4~ubuntu2004) focal; urgency=medium
 
   * Don't count single-message boxes as accounts
