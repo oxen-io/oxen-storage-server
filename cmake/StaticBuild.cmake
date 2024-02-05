@@ -5,10 +5,10 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 3.0.12 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.13 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=f93c9e8edde5e9166119de31755fc87b4aa34863662f67ddfcba14d0b6b69b61
+set(OPENSSL_HASH SHA256=88525753f79d3bec27d2fa7c66aa0b92b3aa9498dafd93d7cfa4b3780cdae313
     CACHE STRING "openssl source hash")
 
 set(SODIUM_VERSION 1.0.19 CACHE STRING "libsodium version")
@@ -43,11 +43,11 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 8.4.0 CACHE STRING "curl version")
+set(CURL_VERSION 8.6.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=7027dbf3b759b39d6ec9c4da58fadd254e84bb93bff599541b3bc3135bad4c2955c6237d7ddd60973f9f1a6948bc32d7e312985fb50658bc958b9f22fee74f2b
+set(CURL_HASH SHA512=359c08d88a5dec441255b36afe1a821730eca0ca8800ba52f57132b9e7d21f32457623907b4ae4876904b5e505eb1a59652372bb7de8dbd8db429dae9785e036
     CACHE STRING "curl source hash")
 
 
@@ -280,7 +280,7 @@ build_external(curl
   --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
   --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
   --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
-  --without-zsh-functions-dir --without-fish-functions-dir --without-zstd
+  --without-zsh-functions-dir --without-fish-functions-dir --without-zstd --without-libpsl
   --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
   "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
   BUILD_COMMAND true
