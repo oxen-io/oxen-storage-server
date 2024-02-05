@@ -1,0 +1,51 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 5 Feb 2024 12:10:06 -0400
+Subject: Revert new cpr code for 1.8.3 compatibility
+
+---
+ oxenss/rpc/request_handler.h | 3 +--
+ oxenss/snode/service_node.h  | 3 +--
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/oxenss/rpc/request_handler.h b/oxenss/rpc/request_handler.h
+index 8897eaf..d2178f6 100644
+--- a/oxenss/rpc/request_handler.h
++++ b/oxenss/rpc/request_handler.h
+@@ -18,7 +18,6 @@
+ #include <type_traits>
+ 
+ #include <nlohmann/json_fwd.hpp>
+-#include <cpr/async_wrapper.h>
+ #include <variant>
+ 
+ namespace oxenss::rpc {
+@@ -152,7 +151,7 @@ class RequestHandler {
+     const crypto::ChannelEncryption& channel_cipher_;
+     const crypto::ed25519_seckey ed25519_sk_;
+ 
+-    std::forward_list<cpr::AsyncWrapper<void>> pending_proxy_requests_;
++    std::forward_list<std::future<void>> pending_proxy_requests_;
+ 
+     // Wrap response `res` to an intermediate node
+     Response wrap_proxy_response(
+diff --git a/oxenss/snode/service_node.h b/oxenss/snode/service_node.h
+index e0c6ab2..66498da 100644
+--- a/oxenss/snode/service_node.h
++++ b/oxenss/snode/service_node.h
+@@ -10,7 +10,6 @@
+ #include <string>
+ #include <string_view>
+ 
+-#include <cpr/async_wrapper.h>
+ #include <oxenss/storage/database.hpp>
+ #include <oxenss/crypto/keys.h>
+ #include <oxenss/server/mqbase.h>
+@@ -115,7 +114,7 @@ class ServiceNode {
+ 
+     mutable std::recursive_mutex sn_mutex_;
+ 
+-    std::forward_list<cpr::AsyncWrapper<void>> outstanding_https_reqs_;
++    std::forward_list<std::future<void>> outstanding_https_reqs_;
+ 
+     void send_notifies(message m);
+ 
