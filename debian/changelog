@@ -1,3 +1,13 @@
+oxen-storage-server (2.6.0-3~ubuntu1804) bionic; urgency=medium
+
+  * Downgrade cpr to 1.8.3
+  * Revert new cpr code for 1.8.3 compatibility
+  * Use libquic from system, if available
+  * oxen dependency updates
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 17:34:30 -0400
+
 oxen-storage-server (2.6.0-2~ubuntu1804) bionic; urgency=medium
 
   * Rediff patches
