@@ -45,5 +45,4 @@ local deb_pipeline(image, buildarch='amd64', debarch='amd64', jobs=6) = {
 
 [
   deb_pipeline(distro_docker),
-  deb_pipeline(distro_docker + '/i386', buildarch='amd64', debarch='i386'),
 ]
