@@ -2,7 +2,7 @@
 
 #include <variant>
 
-namespace oxen {
+namespace oxenss {
 
 /// Helper types for storing/managing a compile-time list of types.
 template <typename...>
@@ -39,4 +39,4 @@ struct type_list_variant<type_list<T...>> {
 template <typename... T>
 using type_list_variant_t = typename type_list_variant<T...>::type;
 
-}  // namespace oxen
+}  // namespace oxenss

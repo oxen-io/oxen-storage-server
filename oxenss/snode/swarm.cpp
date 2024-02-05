@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <oxenc/endian.h>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -113,7 +113,7 @@ void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInf
 
     for (auto& [swarm_id, snodes] : new_swarms)
         for (auto& snode : snodes)
-            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_port == 0)
+            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_quic_port == 0)
                 missing.emplace(snode.pubkey_legacy, &snode);
 
     if (missing.empty())
@@ -124,10 +124,10 @@ void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInf
             auto it = missing.find(snode.pubkey_legacy);
             if (it == missing.end())
                 continue;
-            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_port != 0) {
+            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_quic_port != 0) {
                 it->second->ip = snode.ip;
                 it->second->port = snode.port;
-                it->second->omq_port = snode.omq_port;
+                it->second->omq_quic_port = snode.omq_quic_port;
             }
             missing.erase(it);
             if (missing.empty())
@@ -220,7 +220,7 @@ std::optional<sn_record> Swarm::find_node(const crypto::x25519_pubkey& pk) const
     return std::nullopt;
 }
 
-uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
+uint64_t pubkey_to_swarm_space(const user_pubkey& pk) {
     const auto bytes = pk.raw();
     assert(bytes.size() == 32);
 
@@ -235,13 +235,12 @@ uint64_t pubkey_to_swarm_space(const user_pubkey_t& pk) {
     return res;
 }
 
-bool Swarm::is_pubkey_for_us(const user_pubkey_t& pk) const {
+bool Swarm::is_pubkey_for_us(const user_pubkey& pk) const {
     auto* swarm = get_swarm_by_pk(all_valid_swarms_, pk);
     return swarm && cur_swarm_id_ == swarm->swarm_id;
 }
 
-const SwarmInfo* get_swarm_by_pk(
-        const std::vector<SwarmInfo>& all_swarms, const user_pubkey_t& pk) {
+const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk) {
 
     if (all_swarms.empty())
         return nullptr;
@@ -254,7 +253,7 @@ const SwarmInfo* get_swarm_by_pk(
 
     const uint64_t res = pubkey_to_swarm_space(pk);
 
-    // NB: this code used to be far more convoluted by trying to accomodate the INVALID_SWARM_ID
+    // NB: this code used to be far more convoluted by trying to accommodate the INVALID_SWARM_ID
     // value, but that was wrong (because pubkeys map to the *full* uint64_t range, including
     // INVALID_SWARM_ID), more complicated, and didn't calculate distances properly when wrapping
     // around (in generally, but catastrophically for the INVALID_SWARM_ID value).
@@ -286,7 +285,7 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     for (auto& swarm : bu.swarms) {
         for (auto& snode : swarm.snodes) {
             total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_port ||
+            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_quic_port ||
                 !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
                 missing++;
             }
@@ -295,4 +294,4 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     return result;
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

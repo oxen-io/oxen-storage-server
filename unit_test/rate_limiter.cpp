@@ -6,8 +6,8 @@
 
 #include <chrono>
 
-using oxen::rpc::RateLimiter;
-using namespace oxen::crypto;
+using oxenss::rpc::RateLimiter;
+using namespace oxenss::crypto;
 using namespace std::literals;
 
 TEST_CASE("rate limiter - snode - empty bucket", "[ratelim][snode]") {

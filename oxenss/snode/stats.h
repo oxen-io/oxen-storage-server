@@ -12,7 +12,7 @@ namespace oxenmq {
 class OxenMQ;
 }
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 using namespace std::literals;
 
@@ -42,7 +42,7 @@ inline constexpr const char* to_str(ResultType result) {
 }
 
 // Stats per peer
-struct peer_stats_t {
+struct peer_stats {
     // how many times a single request failed
     uint64_t requests_failed = 0;
     // how many times a series of push requests failed
@@ -57,7 +57,7 @@ struct period_stats {
              onion_requests = 0;
 };
 
-class all_stats_t {
+class all_stats {
     // ===== This node's stats =====
     std::atomic<uint64_t> total_client_store_requests{0}, current_client_store_requests{0},
             total_client_retrieve_requests{0}, current_client_retrieve_requests{0},
@@ -73,14 +73,14 @@ class all_stats_t {
     mutable std::mutex prev_stats_mutex;
 
     // stats per every peer in our swarm (including former peers)
-    std::unordered_map<crypto::legacy_pubkey, peer_stats_t> peer_report_;
+    std::unordered_map<crypto::legacy_pubkey, peer_stats> peer_report_;
     mutable std::mutex peer_report_mutex;
 
     // remove old test entries and reset counters, update reset time
     void cleanup();
 
   public:
-    explicit all_stats_t(oxenmq::OxenMQ& omq);
+    explicit all_stats(oxenmq::OxenMQ& omq);
 
     // Returns the number of failed requests for the given pubkey over the last ROLLING_WINDOW
     void record_request_failed(const crypto::legacy_pubkey& sn) {
@@ -101,7 +101,7 @@ class all_stats_t {
     }
 
     // Returns a copy of the current peer report
-    std::unordered_map<crypto::legacy_pubkey, peer_stats_t> peer_report() const {
+    std::unordered_map<crypto::legacy_pubkey, peer_stats> peer_report() const {
         std::lock_guard lock{peer_report_mutex};
         return peer_report_;
     }
@@ -134,4 +134,4 @@ class all_stats_t {
     std::pair<std::chrono::steady_clock::duration, period_stats> get_recent_requests() const;
 };
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode

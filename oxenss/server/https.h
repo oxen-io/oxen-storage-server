@@ -12,11 +12,11 @@
 
 #include <uWebSockets/App.h>
 
-namespace oxenmq {
+namespace oxenssmq {
 class OxenMQ;
 }
 
-namespace oxen::server {
+namespace oxenss::server {
 using namespace std::literals;
 
 // Maximum incoming HTTPS request size, in bytes.
@@ -139,4 +139,4 @@ class HTTPS {
             HTTPS& https, HttpResponse& r, rpc::Response res, bool force_close);
 };
 
-}  // namespace oxen::server
+}  // namespace oxenss::server
