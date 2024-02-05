@@ -74,12 +74,12 @@ else()
   message(STATUS "Checking submodules")
   check_submodule(external/oxenc)
   check_submodule(external/oxen-mq cppzmq)
+  check_submodule(external/oxen-logging fmt spdlog)
   check_submodule(external/oxen-libquic)
   check_submodule(external/nlohmann_json)
   check_submodule(external/uWebSockets uSockets)
   check_submodule(external/cpr)
   check_submodule(external/CLI11)
-  check_submodule(external/oxen-libquic)
   if(BUILD_TESTS)
     check_submodule(unit_test/Catch2)
   endif()
@@ -98,6 +98,8 @@ endif()
 
 include(cmake/check_atomic.cmake)
 link_libatomic()
+
+include(cmake/check_for_std_filesystem.cmake)
 
 add_subdirectory(external)
 
