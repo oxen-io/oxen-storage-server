@@ -101,10 +101,23 @@ class Database {
     // Return the total number of messages stored
     int64_t get_message_count();
 
+    // Returns the per-owner counts of stored messages, for storage statistics purposes.
+    std::vector<int> get_message_counts();
+
     // Returns the number of distinct owner pubkeys with stored messages
     int64_t get_owner_count();
 
-    // Returns the number of used bytes (i.e. used pages * page size) of the database
+    // Returns the number of messages grouped by namespace id
+    std::vector<std::pair<namespace_id, int64_t>> get_namespace_counts();
+
+    // Returns the number of allocated bytes used on disk (i.e. used pages * page size).  This
+    // includes both used and unused storage (i.e. allocated on disk, currently currently unused
+    // that will likely be reused by sqlite when needed).
+    int64_t get_total_bytes();
+
+    // Returns the number of used bytes on disk; that is, total pages (as returned by
+    // `get_total_bytes`) minus unused pages in the database file.  Note that this is still an upper
+    // bound on actual stored size as there may be partially filled pages.
     int64_t get_used_bytes();
 
     // Get random message. Returns nullopt if there are no messages.

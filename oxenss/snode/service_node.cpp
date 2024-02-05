@@ -8,6 +8,7 @@
 #include <oxenss/server/base.h>
 #include <oxenss/server/omq.h>
 #include <oxenss/logging/oxen_logger.h>
+#include <numeric>
 #include <oxenss/utils/string_utils.hpp>
 #include <oxenss/utils/random.hpp>
 
@@ -1288,8 +1289,62 @@ std::string ServiceNode::get_stats() const {
     val["height"] = block_height_;
     val["target_height"] = target_height_;
 
-    val["total_stored"] = db_->get_message_count();
+    std::vector<int> counts = db_->get_message_counts();
+    int64_t total = std::accumulate(counts.begin(), counts.end(), int64_t{0});
+
+    counts.erase(
+            std::remove_if(counts.begin(), counts.end(), [](int c) { return c < 2; }),
+            counts.end());
+
+    // If less than 5 our iterators below could end up at the same position, so just require at
+    // least 5 rather than worrying about that case:
+    if (counts.size() >= 5) {
+        // We're going to calculate a few numbers here from the list of stored account sizes:
+        // - minimum
+        // - 5th percentile
+        // - 25th percentile
+        // - median (i.e. 50th percentile)
+        // - 75th percentile
+        // - 95th percentile
+        // - maximum
+        // - total
+        // - mean
+        //
+        // To get a percentile we partially sort the data via nth_element; we don't muck around with
+        // averaging the middle two elements or anything like that (because that's of limited actual
+        // real world use) and instead just use the upper value by rounding up.  These look a little
+        // weird as `size-1+n` values but that's because we to divide the top index, not the size.
+        auto pct_5th = std::next(counts.begin(), (counts.size() - 1 + 19) / 20 - 1);
+        auto pct_25th = std::next(counts.begin(), (counts.size() - 1 + 3) / 4 - 1);
+        auto pct_50th = std::next(counts.begin(), (counts.size() - 1) / 2 - 1);
+        auto pct_75th = std::next(counts.begin(), (3 * counts.size() - 1 + 3) / 4 - 1);
+        auto pct_95th = std::next(counts.begin(), (19 * counts.size() - 1 + 19) / 20);
+        std::nth_element(counts.begin(), pct_5th, counts.end());
+        std::nth_element(std::next(pct_5th), pct_25th, counts.end());
+        std::nth_element(std::next(pct_25th), pct_50th, counts.end());
+        std::nth_element(std::next(pct_50th), pct_75th, counts.end());
+        std::nth_element(std::next(pct_75th), pct_95th, counts.end());
+
+        val["account_msg_count_min"] = *std::min_element(counts.begin(), pct_5th);
+        val["account_msg_count_max"] = *std::max_element(pct_95th, counts.end());
+        val["account_msg_count_5th"] = *pct_5th;
+        val["account_msg_count_25th"] = *pct_25th;
+        val["account_msg_count_median"] = *pct_50th;
+        val["account_msg_count_75th"] = *pct_75th;
+        val["account_msg_count_95th"] = *pct_95th;
+    }
+
+    val["accounts"] = counts.size();
+    val["total_stored"] = total;
+    if (counts.size() > 0)
+        val["account_msg_mean"] = total / (double)counts.size();
+
+    auto& ns_stats = (val["namespace_messages"] = nlohmann::json::object());
+    for (auto& [ns, count] : db_->get_namespace_counts())
+        ns_stats[fmt::format("{}", ns)] = count;
+
     val["db_used"] = db_->get_used_bytes();
+    val["db_total"] = db_->get_total_bytes();
     val["db_max"] = Database::SIZE_LIMIT;
 
     return val.dump();
