@@ -6,7 +6,7 @@
 
 #include "keys.h"
 
-namespace oxen::crypto {
+namespace oxenss::crypto {
 
 enum class EncryptType {
     aes_cbc,
@@ -28,7 +28,7 @@ inline constexpr std::string_view to_string(EncryptType type) {
     return ""sv;
 }
 
-// Encryption/decription class for encryption/decrypting outgoing/incoming messages.
+// Encryption/decryption class for encryption/decrypting outgoing/incoming messages.
 class ChannelEncryption {
   public:
     ChannelEncryption(x25519_seckey private_key, x25519_pubkey public_key, bool server = true) :
@@ -70,7 +70,7 @@ class ChannelEncryption {
     bool server_;  // True if we are the server (i.e. the snode).
 };
 
-}  // namespace oxen::crypto
+}  // namespace oxenss::crypto
 
 template <>
-inline constexpr bool oxen::to_string_formattable<oxen::crypto::EncryptType> = true;
+inline constexpr bool oxenss::to_string_formattable<oxenss::crypto::EncryptType> = true;

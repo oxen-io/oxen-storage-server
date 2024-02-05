@@ -9,7 +9,7 @@ extern "C" {
 #include <arpa/inet.h>
 }
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 namespace {
 
@@ -39,7 +39,7 @@ static bool fill_bucket(
         TokenBucket& bucket, steady_clock::time_point now, bool service_node = false) {
     auto elapsed_us = duration_cast<microseconds>(now - bucket.last_time_point);
     // clamp elapsed time to how long it takes to fill up the whole bucket
-    // (simplifies overlow checking)
+    // (simplifies overflow checking)
     elapsed_us = std::min(elapsed_us, FILL_EMPTY_BUCKET_US);
 
     const auto token_period = service_node ? TOKEN_PERIOD_SN_US : TOKEN_PERIOD_US;
@@ -110,4 +110,4 @@ void RateLimiter::clean_buckets(steady_clock::time_point now) {
     }
 }
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc
