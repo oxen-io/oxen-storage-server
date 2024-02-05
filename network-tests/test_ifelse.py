@@ -10,6 +10,7 @@ b64_m_yes = 'Yes='
 m_no = b'\x36\x8a\x5e'
 b64_m_no = 'Nope'
 
+
 def test_ifelse(omq, random_sn, sk, exclude):
     swarm = ss.get_swarm(omq, random_sn, sk)
 
@@ -23,113 +24,184 @@ def test_ifelse(omq, random_sn, sk, exclude):
 
     def store_action(msg, ts):
         return {
-                'method': 'store',
-                'params': {
-                    'pubkey': my_ss_id,
-                    'timestamp': ts,
-                    'ttl': ttl,
-                    'data': msg
-                    }
-                }
+            'method': 'store',
+            'params': {'pubkey': my_ss_id, 'timestamp': ts, 'ttl': ttl, 'data': msg},
+        }
 
     r = []
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [2000000] },
-                'then': store_action(b64_m_yes, ts),
-                'else': store_action(b64_m_no, ts),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19], 'height_before': 1234 },
-                'then': store_action(b64_m_yes, ts+1),
-                'else': store_action(b64_m_no, ts+1),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19], 'height_before': 123456789 },
-                'then': store_action(b64_m_yes, ts+2),
-                'else': store_action(b64_m_no, ts+2),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19] },
-                'then': store_action(b64_m_yes, ts+3),
-                'else': store_action(b64_m_no, ts+3),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19, 1] },
-                'then': store_action(b64_m_yes, ts+4),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_before': [19] },
-                'then': store_action(b64_m_yes, ts+5),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19] },
-                'else': store_action(b64_m_yes, ts+6),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_before': [19] },
-                'else': store_action(b64_m_no, ts+7),
-            })]))
-
-    r.append(omq.request_future(conn, 'storage.ifelse',
-            [json.dumps({
-                'if': { 'hf_at_least': [19] },
-                'then': {
-                    'method': 'ifelse',
-                    'params': { 'if': { 'hf_at_least': [19] }, 'then': {
-                        'method': 'ifelse',
-                        'params': { 'if': { 'height_at_least': 100 }, 'then': {
-                            'method': 'ifelse',
-                            'params': { 'if': { 'v_at_least': [2, 2] }, 'then': {
-                                'method': 'ifelse',
-                                'params': {
-                                    'if': { 'hf_before': [99999, 99] },
-                                    'then': {
-                                        'method': 'batch',
-                                        'params': {
-                                            'requests': [
-                                                store_action(b64_m_yes, ts+8),
-                                                store_action(b64_m_yes, ts+9),
-                                                store_action(b64_m_yes, ts+10)
-                                            ]
-                                        }
-                                    }
-                                }
-                            }}
-                        }}
-                    }}
-                }
-            })]))
-
-    bad = omq.request_future(conn, 'storage.batch',
-            [json.dumps({
-                'requests': [{
-                    'method': 'ifelse',
-                    'params': {
-                        'if': { 'hf_at_least': [19] },
-                        'then': { 'method': 'info', 'params': {} },
-                        'else': { 'method': 'info', 'params': {} }
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [
+                json.dumps(
+                    {
+                        'if': {'hf_at_least': [2000000]},
+                        'then': store_action(b64_m_yes, ts),
+                        'else': store_action(b64_m_no, ts),
                     }
-                }]
-            })])
+                )
+            ],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [
+                json.dumps(
+                    {
+                        'if': {'hf_at_least': [19], 'height_before': 1234},
+                        'then': store_action(b64_m_yes, ts + 1),
+                        'else': store_action(b64_m_no, ts + 1),
+                    }
+                )
+            ],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [
+                json.dumps(
+                    {
+                        'if': {'hf_at_least': [19], 'height_before': 123456789},
+                        'then': store_action(b64_m_yes, ts + 2),
+                        'else': store_action(b64_m_no, ts + 2),
+                    }
+                )
+            ],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [
+                json.dumps(
+                    {
+                        'if': {'hf_at_least': [19]},
+                        'then': store_action(b64_m_yes, ts + 3),
+                        'else': store_action(b64_m_no, ts + 3),
+                    }
+                )
+            ],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [json.dumps({'if': {'hf_at_least': [19, 1]}, 'then': store_action(b64_m_yes, ts + 4)})],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [json.dumps({'if': {'hf_before': [19]}, 'then': store_action(b64_m_yes, ts + 5)})],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [json.dumps({'if': {'hf_at_least': [19]}, 'else': store_action(b64_m_yes, ts + 6)})],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [json.dumps({'if': {'hf_before': [19]}, 'else': store_action(b64_m_no, ts + 7)})],
+        )
+    )
+
+    r.append(
+        omq.request_future(
+            conn,
+            'storage.ifelse',
+            [
+                json.dumps(
+                    {
+                        'if': {'hf_at_least': [19]},
+                        'then': {
+                            'method': 'ifelse',
+                            'params': {
+                                'if': {'hf_at_least': [19]},
+                                'then': {
+                                    'method': 'ifelse',
+                                    'params': {
+                                        'if': {'height_at_least': 100},
+                                        'then': {
+                                            'method': 'ifelse',
+                                            'params': {
+                                                'if': {'v_at_least': [2, 2]},
+                                                'then': {
+                                                    'method': 'ifelse',
+                                                    'params': {
+                                                        'if': {'hf_before': [99999, 99]},
+                                                        'then': {
+                                                            'method': 'batch',
+                                                            'params': {
+                                                                'requests': [
+                                                                    store_action(b64_m_yes, ts + 8),
+                                                                    store_action(b64_m_yes, ts + 9),
+                                                                    store_action(
+                                                                        b64_m_yes, ts + 10
+                                                                    ),
+                                                                ]
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }
+                )
+            ],
+        )
+    )
+
+    bad = omq.request_future(
+        conn,
+        'storage.batch',
+        [
+            json.dumps(
+                {
+                    'requests': [
+                        {
+                            'method': 'ifelse',
+                            'params': {
+                                'if': {'hf_at_least': [19]},
+                                'then': {'method': 'info', 'params': {}},
+                                'else': {'method': 'info', 'params': {}},
+                            },
+                        }
+                    ]
+                }
+            )
+        ],
+    )
 
     def hash(body, ts):
-        return blake2b(b'\x05' + sk.verify_key.encode() + body,
-            encoder=Base64Encoder).decode().rstrip('=')
+        return (
+            blake2b(b'\x05' + sk.verify_key.encode() + body, encoder=Base64Encoder)
+            .decode()
+            .rstrip('=')
+        )
 
     for i in range(len(r)):
         r[i] = r[i].get()
@@ -143,16 +215,16 @@ def test_ifelse(omq, random_sn, sk, exclude):
     assert r[0]['result']['body']['hash'] == hash(m_no, ts)
 
     assert not r[1]['condition']
-    assert r[1]['result']['body']['hash'] == hash(m_no, ts+1)
+    assert r[1]['result']['body']['hash'] == hash(m_no, ts + 1)
 
     assert r[2]['condition']
-    assert r[2]['result']['body']['hash'] == hash(m_yes, ts+2)
+    assert r[2]['result']['body']['hash'] == hash(m_yes, ts + 2)
 
     assert r[3]['condition']
-    assert r[3]['result']['body']['hash'] == hash(m_yes, ts+3)
+    assert r[3]['result']['body']['hash'] == hash(m_yes, ts + 3)
 
     assert r[4]['condition']
-    assert r[4]['result']['body']['hash'] == hash(m_yes, ts+4)
+    assert r[4]['result']['body']['hash'] == hash(m_yes, ts + 4)
 
     assert not r[5]['condition']
     assert 'result' not in r[5]
@@ -161,7 +233,7 @@ def test_ifelse(omq, random_sn, sk, exclude):
     assert 'result' not in r[6]
 
     assert not r[7]['condition']
-    assert r[7]['result']['body']['hash'] == hash(m_no, ts+7)
+    assert r[7]['result']['body']['hash'] == hash(m_no, ts + 7)
 
     x = r[8]
     assert x['condition']  # hf >= 19
@@ -182,6 +254,6 @@ def test_ifelse(omq, random_sn, sk, exclude):
     x = x['results']
     assert len(x) == 3
     assert [y['code'] for y in x] == [200, 200, 200]
-    assert x[0]['body']['hash'] == hash(m_yes, ts+8)
-    assert x[1]['body']['hash'] == hash(m_yes, ts+9)
-    assert x[2]['body']['hash'] == hash(m_yes, ts+10)
+    assert x[0]['body']['hash'] == hash(m_yes, ts + 8)
+    assert x[1]['body']['hash'] == hash(m_yes, ts + 9)
+    assert x[2]['body']['hash'] == hash(m_yes, ts + 10)

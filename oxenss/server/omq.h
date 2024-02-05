@@ -1,4 +1,6 @@
 #pragma once
+#include "utils.h"
+#include "mqbase.h"
 
 #include <cstdint>
 #include <memory>
@@ -15,63 +17,26 @@
 #include "../common/message.h"
 #include "../snode/sn_record.h"
 
-namespace oxen::rpc {
-class RequestHandler;
-class RateLimiter;
-struct OnionRequestMetadata;
-struct Response;
-}  // namespace oxen::rpc
+namespace oxenss {
 
-namespace oxen::snode {
-class ServiceNode;
-}
+namespace rpc {
+    class RequestHandler;
+    class RateLimiter;
+    struct OnionRequestMetadata;
+    struct Response;
+}  // namespace rpc
 
-namespace oxen::server {
+namespace snode {
+    class ServiceNode;
+}  // namespace snode
 
-using namespace std::literals;
+}  // namespace oxenss
 
-oxenc::bt_value json_to_bt(nlohmann::json j);
+namespace oxenss::server {
 
-nlohmann::json bt_to_json(oxenc::bt_dict_consumer d);
-nlohmann::json bt_to_json(oxenc::bt_list_consumer l);
-
-struct MonitorData {
-    static constexpr auto MONITOR_EXPIRY_TIME = 65min;
-
-    std::chrono::steady_clock::time_point expiry;  // When this notify reg expires
-    std::vector<namespace_id> namespaces;          // sorted namespace_ids
-    oxenmq::ConnectionID push_conn;                // ConnectionID to push notifications to
-    bool want_data;                                // true if the subscriber wants msg data
-
-    MonitorData(
-            std::vector<namespace_id> namespaces,
-            oxenmq::ConnectionID conn,
-            bool data,
-            std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) :
-            expiry{std::chrono::steady_clock::now() + ttl},
-            namespaces{std::move(namespaces)},
-            push_conn{std::move(conn)},
-            want_data{data} {}
-
-    void reset_expiry(std::chrono::seconds ttl = MONITOR_EXPIRY_TIME) {
-        expiry = std::chrono::steady_clock::now() + ttl;
-    }
-};
-
-class OMQ {
+class OMQ : public MQBase {
     oxenmq::OxenMQ omq_;
     oxenmq::ConnectionID oxend_conn_;
-
-    // Has information about current SNs
-    snode::ServiceNode* service_node_ = nullptr;
-
-    rpc::RequestHandler* request_handler_ = nullptr;
-
-    rpc::RateLimiter* rate_limiter_ = nullptr;
-
-    // Tracks accounts we are monitoring for OMQ push notification messages
-    std::unordered_multimap<std::string, MonitorData> monitoring_;
-    mutable std::shared_mutex monitoring_mutex_;
 
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
@@ -130,9 +95,10 @@ class OMQ {
     ///   - P -- an ed25519 pubkey underlying a session ID, in bytes (32 bytes).  The account
     ///     will be derived by converting to an x25519 pubkey and prepending the 0x05 byte.  The
     ///     signature uses *this* key, not the derived x25519 key.
-    /// - S -- (optional) a 32-byte authentication subkey tag to use for authentication.  The
-    ///   signature with such a subkey tag uses a derived subkey (as described in the RPC endpoint
-    ///   documentation).
+    /// - S, T -- (optional) - subaccount signature (S) and token (T) for subaccount authentication:
+    ///   T is the 36-byte subaccount token, and S is the 64-byte main account signature authorizing
+    ///   that token.  See the subaccount description in the "store" RPC endpoint documentation for
+    ///   more details.  Both keys must be given when doing subaccount auth, neither key otherwise.
     /// - n -- list of namespace ids to monitor for new messages; the ids must be valid (i.e. -32768
     ///   through 32767), must be sorted in numeric order, and must contain no duplicates.
     /// - d -- set to 1 if the caller wants the full message data, 0 (or omitted) will omit the data
@@ -143,7 +109,7 @@ class OMQ {
     /// - s -- the signature associated with this message.  This is an Ed25519 signature of the
     ///   value:
     ///       ( "MONITOR" || ACCOUNT || TS || D || NS[0] || "," || ... || "," || NS[n] )
-    ///   signed by the account Ed25519 key or derived subkey (if using a subkey tag):
+    ///   signed by the account Ed25519 key or subaccount key (if using subaccount auth):
     ///   - ACCOUNT is the full account ID, expressed in hex (e.g. "0512345...").
     ///   - TS is the signature timestamp value, expressed as a base-10 string
     ///   - D is "0" or "1" depending on whether data is wanted (i.e. the "d" request parameter)
@@ -190,7 +156,7 @@ class OMQ {
     ///
     /// - The caller only receives one notification on the connection for a matching message from
     ///   any of the matching subscription requests on that same connection.
-    /// - All pubkey/subkey/ed25519 pubkeys that access the same account are treated as the same
+    /// - All pubkey/subaccount/ed25519 pubkeys that access the same account are treated as the same
     ///   subscription.
     /// - The data key (`~`) will be present in a notification if *any* subscription request for the
     ///   same account on the same connection requested data.  Same a flag only expires when the
@@ -262,8 +228,9 @@ class OMQ {
     static std::pair<std::string_view, rpc::OnionRequestMetadata> decode_onion_data(
             std::string_view data);
 
-    // Called during message submission to send notifications to anyone subscribed to them.
-    void send_notifies(message msg);
+    void notify(std::vector<connection_id>&, std::string_view notification) override;
+
+    void reachability_test(std::shared_ptr<snode::sn_test> test) override;
 };
 
-}  // namespace oxen::server
+}  // namespace oxenss::server

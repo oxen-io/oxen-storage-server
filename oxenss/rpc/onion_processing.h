@@ -6,7 +6,7 @@
 #include <string>
 #include <variant>
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 // Maximum onion request hops we'll accept before we return an error; this is deliberately
 // larger than we actually use so that the client can choose to obscure hop positioning by
@@ -99,4 +99,4 @@ ParsedInfo process_inner_request(std::string plaintext);
 // contain a query string.
 bool is_onion_url_target_allowed(std::string_view uri);
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc
