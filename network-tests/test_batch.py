@@ -22,32 +22,44 @@ def test_batch_json(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # Store two messages for myself
-    s = omq.request_future(conn, 'storage.batch', [json.dumps({
-        "requests": [
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '03' + sk.verify_key.encode().hex(),
-                    'namespace': 42,
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": base64.b64encode(b"abc 123").decode(),
-                    "signature": sk.sign(f"store42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-                },
-            },
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '03' + sk.verify_key.encode().hex(),
-                    'namespace': 42,
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": base64.b64encode(b"xyz 123").decode(),
-                    "signature": sk.sign(f"store42{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-                },
-            },
+    s = omq.request_future(
+        conn,
+        'storage.batch',
+        [
+            json.dumps(
+                {
+                    "requests": [
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '03' + sk.verify_key.encode().hex(),
+                                'namespace': 42,
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": base64.b64encode(b"abc 123").decode(),
+                                "signature": sk.sign(
+                                    f"store42{ts}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '03' + sk.verify_key.encode().hex(),
+                                'namespace': 42,
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": base64.b64encode(b"xyz 123").decode(),
+                                "signature": sk.sign(
+                                    f"store42{ts}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                    ]
+                }
+            ).encode()
         ],
-        }).encode()]).get()
+    ).get()
     assert len(s) == 1
     s = json.loads(s[0])
     assert "results" in s
@@ -55,10 +67,16 @@ def test_batch_json(omq, random_sn, sk, exclude):
     assert s["results"][0]["code"] == 200
     assert s["results"][1]["code"] == 200
 
-    hash0 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
-    hash1 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    hash0 = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
+    hash1 = (
+        blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     assert s["results"][0]["body"]["hash"] == hash0
     assert s["results"][1]["body"]["hash"] == hash1
 
@@ -74,32 +92,40 @@ def test_batch_bt(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # Store two messages for myself
-    s = omq.request_future(conn, 'storage.batch', [bt_serialize({
-        "requests": [
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '03' + sk.verify_key.encode().hex(),
-                    'namespace': 42,
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": b"abc 123",
-                    "signature": sk.sign(f"store42{ts}".encode()).signature,
-                },
-            },
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '03' + sk.verify_key.encode().hex(),
-                    'namespace': 42,
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": b"xyz 123",
-                    "signature": sk.sign(f"store42{ts}".encode()).signature,
-                },
-            },
+    s = omq.request_future(
+        conn,
+        'storage.batch',
+        [
+            bt_serialize(
+                {
+                    "requests": [
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '03' + sk.verify_key.encode().hex(),
+                                'namespace': 42,
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": b"abc 123",
+                                "signature": sk.sign(f"store42{ts}".encode()).signature,
+                            },
+                        },
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '03' + sk.verify_key.encode().hex(),
+                                'namespace': 42,
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": b"xyz 123",
+                                "signature": sk.sign(f"store42{ts}".encode()).signature,
+                            },
+                        },
+                    ]
+                }
+            )
         ],
-        })]).get()
+    ).get()
     assert len(s) == 1
     s = bt_deserialize(s[0])
     assert b"results" in s
@@ -107,10 +133,12 @@ def test_batch_bt(omq, random_sn, sk, exclude):
     assert s[b"results"][0][b"code"] == 200
     assert s[b"results"][1][b"code"] == 200
 
-    hash0 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123',
-            encoder=Base64Encoder).rstrip(b'=')
-    hash1 = blake2b(b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123',
-            encoder=Base64Encoder).rstrip(b'=')
+    hash0 = blake2b(
+        b'\x03' + sk.verify_key.encode() + b'42' + b'abc 123', encoder=Base64Encoder
+    ).rstrip(b'=')
+    hash1 = blake2b(
+        b'\x03' + sk.verify_key.encode() + b'42' + b'xyz 123', encoder=Base64Encoder
+    ).rstrip(b'=')
     assert s[b"results"][0][b"body"][b"hash"] == hash0
     assert s[b"results"][1][b"body"][b"hash"] == hash1
 
@@ -126,63 +154,85 @@ def test_sequence(omq, random_sn, sk, exclude):
     exp = ts + ttl
 
     # Sequence some commands:
-    s = omq.request_future(conn, 'storage.sequence', [json.dumps({
-        "requests": [
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": base64.b64encode(b"abc 123").decode(),
-                },
-            },
-            {
-                "method": "retrieve",
-                "params": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
-                    "timestamp": ts,
-                    "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-                },
-            },
-            {
-                "method": "store",
-                "params": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
-                    "timestamp": ts,
-                    "ttl": ttl,
-                    "data": base64.b64encode(b"xyz 123").decode(),
-                },
-            },
-            {
-                "method": "delete_all",
-                "params": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
-                    "timestamp": ts,
-                    "signature": sk.sign(f"delete_all{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-                },
-            },
-            {
-                "method": "retrieve",
-                "params": {
-                    "pubkey": '05' + sk.verify_key.encode().hex(),
-                    "timestamp": ts,
-                    "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
-                },
-            },
+    s = omq.request_future(
+        conn,
+        'storage.sequence',
+        [
+            json.dumps(
+                {
+                    "requests": [
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '05' + sk.verify_key.encode().hex(),
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": base64.b64encode(b"abc 123").decode(),
+                            },
+                        },
+                        {
+                            "method": "retrieve",
+                            "params": {
+                                "pubkey": '05' + sk.verify_key.encode().hex(),
+                                "timestamp": ts,
+                                "signature": sk.sign(
+                                    f"retrieve{ts}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            "method": "store",
+                            "params": {
+                                "pubkey": '05' + sk.verify_key.encode().hex(),
+                                "timestamp": ts,
+                                "ttl": ttl,
+                                "data": base64.b64encode(b"xyz 123").decode(),
+                            },
+                        },
+                        {
+                            "method": "delete_all",
+                            "params": {
+                                "pubkey": '05' + sk.verify_key.encode().hex(),
+                                "timestamp": ts,
+                                "signature": sk.sign(
+                                    f"delete_all{ts}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                        {
+                            "method": "retrieve",
+                            "params": {
+                                "pubkey": '05' + sk.verify_key.encode().hex(),
+                                "timestamp": ts,
+                                "signature": sk.sign(
+                                    f"retrieve{ts}".encode(), encoder=Base64Encoder
+                                ).signature.decode(),
+                            },
+                        },
+                    ]
+                }
+            ).encode()
         ],
-        }).encode()]).get()
+    ).get()
 
     assert len(s) == 1
     s = json.loads(s[0])
     assert "results" in s
     assert len(s["results"]) == 5
-    h0 = blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123',
-            encoder=Base64Encoder).decode().rstrip('=')
-    h1 = blake2b(b'\x05' + sk.verify_key.encode() + b'xyz 123',
-            encoder=Base64Encoder).decode().rstrip('=')
+    h0 = (
+        blake2b(b'\x05' + sk.verify_key.encode() + b'abc 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
+    h1 = (
+        blake2b(b'\x05' + sk.verify_key.encode() + b'xyz 123', encoder=Base64Encoder)
+        .decode()
+        .rstrip('=')
+    )
     assert s["results"][0]["body"]["hash"] == h0
-    assert s["results"][1]["body"]["messages"] == [{"data": "YWJjIDEyMw==", "expiration": ts + ttl, "hash": h0, "timestamp": ts}]
+    assert s["results"][1]["body"]["messages"] == [
+        {"data": "YWJjIDEyMw==", "expiration": ts + ttl, "hash": h0, "timestamp": ts}
+    ]
     assert s["results"][2]["body"]["hash"] == h1
     assert len(s["results"][3]["body"]["swarm"]) > 0
     for sw in s["results"][3]["body"]["swarm"].values():
@@ -207,7 +257,7 @@ def test_failing_sequence(omq, random_sn, sk, exclude):
                 "params": {
                     "pubkey": '05' + sk.verify_key.encode().hex(),
                     "timestamp": ts,
-                    "namespace": 33, # will fail because no auth
+                    "namespace": 33,  # will fail because no auth
                     "ttl": ttl,
                     "data": base64.b64encode(b"abc 123").decode(),
                 },
@@ -217,10 +267,12 @@ def test_failing_sequence(omq, random_sn, sk, exclude):
                 "params": {
                     "pubkey": '05' + sk.verify_key.encode().hex(),
                     "timestamp": ts,
-                    "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode(),
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
                 },
             },
-        ],
+        ]
     }
 
     # Sequence some commands:

@@ -13,7 +13,7 @@ class OxenMQ;
 
 /// https://en.wikipedia.org/wiki/Token_bucket
 
-namespace oxen::rpc {
+namespace oxenss::rpc {
 
 class RateLimiter {
   public:
@@ -55,4 +55,4 @@ class RateLimiter {
     void clean_buckets(std::chrono::steady_clock::time_point now);
 };
 
-}  // namespace oxen::rpc
+}  // namespace oxenss::rpc

@@ -1,7 +1,7 @@
 #include <oxenmq/oxenmq.h>
 #include <oxenss/logging/oxen_logger.h>
 
-namespace oxen {
+namespace oxenss {
 
 static auto logcat = log::Cat("omq");
 
@@ -17,4 +17,4 @@ void omq_logger(oxenmq::LogLevel level, const char* file, int line, std::string 
     }
 }
 
-}  // namespace oxen
+}  // namespace oxenss

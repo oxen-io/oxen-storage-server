@@ -6,7 +6,7 @@
 
 #include <chrono>
 
-namespace oxen::snode {
+namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
 
@@ -52,10 +52,14 @@ static void check_incoming_tests_impl(
 void reachability_testing::check_incoming_tests(const clock::time_point& now) {
     check_incoming_tests_impl("HTTP", now, startup, last_https);
     check_incoming_tests_impl("OxenMQ", now, startup, last_omq);
+    check_incoming_tests_impl("QUIC", now, startup, last_quic);
 }
 
 void reachability_testing::incoming_ping(ReachType type, const clock::time_point& now) {
-    (type == ReachType::OMQ ? last_omq : last_https).last_test = now;
+    (type == ReachType::OMQ    ? last_omq
+     : type == ReachType::QUIC ? last_quic
+                               : last_https)
+            .last_test = now;
 }
 
 std::optional<sn_record> reachability_testing::next_random(
@@ -136,4 +140,4 @@ void reachability_testing::remove_node_from_failing(const crypto::legacy_pubkey&
     failing.erase(pk);
 }
 
-}  // namespace oxen::snode
+}  // namespace oxenss::snode
