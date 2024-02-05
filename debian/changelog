@@ -1,3 +1,13 @@
+oxen-storage-server (2.6.0-3~deb10) buster; urgency=medium
+
+  * Downgrade cpr to 1.8
+  * Revert new cpr code for 1.8.3 compatibility
+  * cpr 1.8.3
+  * Use libquic from system, if available
+  * oxen dependency updates
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 17:34:20 -0400
+
 oxen-storage-server (2.6.0-2~deb10) buster; urgency=medium
 
   * rebuild
