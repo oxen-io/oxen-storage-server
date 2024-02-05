@@ -1,3 +1,10 @@
+oxen-storage-server (2.6.0-3) unstable; urgency=medium
+
+  * Use libquic from system, if available
+  * oxen dependency updates
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 05 Feb 2024 17:34:06 -0400
+
 oxen-storage-server (2.6.0-2) unstable; urgency=medium
 
   * rebuild
