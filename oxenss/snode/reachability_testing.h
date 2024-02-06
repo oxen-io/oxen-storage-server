@@ -136,7 +136,7 @@ class reachability_testing {
     void incoming_ping(ReachType type, const clock::time_point& now = clock::now());
 
     // Check whether we received incoming pings recently
-    void check_incoming_tests(const clock::time_point& now = clock::now());
+    void check_incoming_tests(const clock::time_point& now, bool quic);
 };
 
 }  // namespace oxenss::snode
