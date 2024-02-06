@@ -26,7 +26,7 @@ namespace oxenss {
 
 static auto logcat = log::Cat("db");
 
-constexpr std::chrono::milliseconds SQLite_busy_timeout = 3s;
+constexpr std::chrono::milliseconds SQLite_busy_timeout = 15s;
 
 namespace {
     template <typename T>
