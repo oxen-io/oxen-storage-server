@@ -1,3 +1,12 @@
+oxen-storage-server (2.6.1-1~ubuntu2204) jammy; urgency=medium
+
+  * Make oxen-logging subdir conditional
+  * Increase busy timeout
+  * Disable complaining about the QUIC port before the upgrade height
+  * Fix `filesystem` target conflict with oxen-libquic
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 06 Feb 2024 19:08:56 -0400
+
 oxen-storage-server (2.6.0-3~ubuntu2204) jammy; urgency=medium
 
   * Use libquic from system, if available
