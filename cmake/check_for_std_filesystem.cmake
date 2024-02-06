@@ -4,7 +4,7 @@
 # complicated than just using the compiler, because clang on linux by default uses libstdc++, so
 # we'll just give up and see what works.
 
-add_library(filesystem INTERFACE)
+add_library(oxenss_filesystem INTERFACE)
 
 set(filesystem_code [[
 #include <filesystem>
@@ -33,7 +33,7 @@ else()
     check_cxx_source_compiles("${filesystem_code}" filesystem_compiled_${fslib})
     if (filesystem_compiled_${fslib})
       message(STATUS "Using -l${fslib} for std::filesystem support")
-      target_link_libraries(filesystem INTERFACE ${fslib})
+      target_link_libraries(oxenss_filesystem INTERFACE ${fslib})
       set(filesystem_is_good ON)
       break()
     endif()
