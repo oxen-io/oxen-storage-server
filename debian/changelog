@@ -1,3 +1,13 @@
+oxen-storage-server (2.6.1-1~deb10) buster; urgency=medium
+
+  * Drop non-amd64 buster builds
+  * Make oxen-logging subdir conditional
+  * Increase busy timeout
+  * Disable complaining about the QUIC port before the upgrade height
+  * Fix `filesystem` target conflict with oxen-libquic
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 06 Feb 2024 19:08:36 -0400
+
 oxen-storage-server (2.6.0-3~deb10) buster; urgency=medium
 
   * Downgrade cpr to 1.8
