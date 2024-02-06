@@ -78,7 +78,9 @@ system_or_submodule(CLI11 CLI11 CLI11>=2.2.0 CLI11)
 if (STATIC OR FORCE_SPDLOG_SUBMODULE OR FORCE_FMT_SUBMODULE)
     set(OXEN_LOGGING_FORCE_SUBMODULES ON CACHE INTERNAL "")
 endif()
-add_subdirectory(oxen-logging)
+if(NOT TARGET oxen::logging)
+    add_subdirectory(oxen-logging)
+endif()
 
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
