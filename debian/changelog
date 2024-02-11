@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.1-2~ubuntu1804) bionic; urgency=medium
+
+  * Bump version
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 11 Feb 2024 12:38:15 -0400
+
 oxen-storage-server (2.6.1-1~ubuntu1804) bionic; urgency=medium
 
   * Remove bionic i386 build
