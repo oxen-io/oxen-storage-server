@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.1-2~deb11) bullseye; urgency=medium
+
+  * Bump version
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 11 Feb 2024 12:37:52 -0400
+
 oxen-storage-server (2.6.1-1~deb11) bullseye; urgency=medium
 
   * Drop non-amd64
