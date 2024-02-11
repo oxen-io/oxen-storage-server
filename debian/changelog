@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.1-2~ubuntu2304) lunar; urgency=medium
+
+  * Bump version
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 11 Feb 2024 12:38:45 -0400
+
 oxen-storage-server (2.6.1-1~ubuntu2304) lunar; urgency=medium
 
   * Make oxen-logging subdir conditional
