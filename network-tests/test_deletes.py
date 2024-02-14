@@ -69,25 +69,32 @@ def test_delete_all_all(omq, random_sn, sk, exclude):
     my_ss_id = '05' + sk.verify_key.encode().hex()
     ts = int(time.time() * 1000)
 
-    h42 = omq.request_future(conns[0], 'storage.store', [json.dumps({
-        "pubkey": my_ss_id,
-        "timestamp": ts,
-        "ttl": 30000,
-        "namespace": -42,
-        "data": base64.b64encode("abc 123".encode()).decode(),
-        "signature": sk.sign(f"store-42{ts}".encode(), encoder=Base64Encoder).signature.decode()}).encode()]).get()
+    h42 = omq.request_future(
+        conns[0],
+        'storage.store',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "timestamp": ts,
+                    "ttl": 30000,
+                    "namespace": -42,
+                    "data": base64.b64encode("abc 123".encode()).decode(),
+                    "signature": sk.sign(
+                        f"store-42{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(h42) == 1
     h42 = json.loads(h42[0].decode())["hash"]
 
     to_sign = "delete_allall{}".format(ts).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = json.dumps({
-            "pubkey": my_ss_id,
-            "timestamp": ts,
-            "signature": sig,
-            "namespace": "all"
-    }).encode()
-
+    params = json.dumps(
+        {"pubkey": my_ss_id, "timestamp": ts, "signature": sig, "namespace": "all"}
+    ).encode()
 
     resp = omq.request_future(conns[1], 'storage.delete_all', [params]).get()
 
@@ -96,9 +103,7 @@ def test_delete_all_all(omq, random_sn, sk, exclude):
 
     assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
 
-    msg_hashes = {
-            '-42': [h42],
-            '0': sorted(m['hash'] for m in msgs)}
+    msg_hashes = {'-42': [h42], '0': sorted(m['hash'] for m in msgs)}
     msg_hashes_all = sorted(h for hashes in msg_hashes.values() for h in hashes)
 
     # signature of ( PUBKEY_HEX || TIMESTAMP || DELETEDHASH[0] || ... || DELETEDHASH[N] )
@@ -108,17 +113,24 @@ def test_delete_all_all(omq, random_sn, sk, exclude):
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(expected_signed, base64.b64decode(v['signature']))
 
-    r = omq.request_future(conns[0], 'storage.retrieve',
-        [json.dumps({
-            "pubkey": my_ss_id,
-            "timestamp": ts,
-            "signature": sk.sign(f"retrieve{ts}".encode(), encoder=Base64Encoder).signature.decode()
-            }).encode()]
-        ).get()
+    r = omq.request_future(
+        conns[0],
+        'storage.retrieve',
+        [
+            json.dumps(
+                {
+                    "pubkey": my_ss_id,
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode()
+        ],
+    ).get()
     assert len(r) == 1
     r = json.loads(r[0])
     assert not r['messages']
-
 
 
 def test_stale_delete_all(omq, random_sn, sk, exclude):

@@ -166,20 +166,20 @@ int main(int argc, char* argv[]) {
                 ssl_dh,
                 {me.pubkey_legacy, private_key}};
 
-        oxenmq_server.init(
-                &service_node,
-                &request_handler,
-                &rate_limiter,
-                oxenmq::address{options.oxend_omq_rpc});
-
         auto quic = std::make_shared<server::QUIC>(
                 service_node,
                 request_handler,
                 rate_limiter,
                 oxen::quic::Address{options.ip, options.omq_quic_port},
                 private_key_ed25519);
-
         service_node.register_mq_server(quic.get());
+
+        oxenmq_server.init(
+                &service_node,
+                &request_handler,
+                &rate_limiter,
+                oxenmq::address{options.oxend_omq_rpc});
+
         quic->startup_endpoint();
 
         https_server.start();

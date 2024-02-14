@@ -99,4 +99,7 @@ ParsedInfo process_inner_request(std::string plaintext);
 // contain a query string.
 bool is_onion_url_target_allowed(std::string_view uri);
 
+// Extracts a x25519 pubkey from a hex string. Warns and throws on invalid input.
+crypto::x25519_pubkey extract_x25519_from_hex(std::string_view hex);
+
 }  // namespace oxenss::rpc

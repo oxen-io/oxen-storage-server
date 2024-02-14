@@ -1,5 +1,5 @@
 import ss
-from util import sn_address
+from util import sn_address, random_time_delta_ms
 import time
 import base64
 import json
@@ -604,25 +604,30 @@ def test_expire_multi(omq, random_sn, sk, exclude):
     my_ss_id = '05' + sk.verify_key.encode().hex()
 
     target_indices = [0, 1, 3, 6, 7, 9]
-    ts = [
-        msgs[i]['req']['expiry'] + random_time_delta_ms(5)
-        if i in target_indices
-        else msgs[i]['req']['expiry']
-        for i in range(10)
+    ts_delta = [random_time_delta_ms(5) if i in target_indices else 0 for i in range(10)]
+    ts = [msgs[i]['req']['expiry'] + ts_delta[i] for i in target_indices] + [
+        int(time.time() * 1000) + 12345
     ]
 
     hashes = [msgs[i]['hash'] for i in target_indices] + [
         'bepQtTaYrzcuCXO3fZkmk/h3xkMQ3vCh94i5HzLmj3I'
     ]
 
+    assert len(hashes) == len(target_indices) + 1
+    assert len(ts) == len(target_indices) + 1
+
     # Make sure `hashes` input isn't provided in sorted order:
     if hashes[0] < hashes[1]:
         hashes[0], hashes[1] = hashes[1], hashes[0]
-    actual_update_msgs = sorted(msgs[i]['hash'] for i in target_indices)
+        ts[0], ts[1] = ts[1], ts[0]
+    h_ts = [[hashes[i], ts[i]] for i in range(len(hashes) - 1)]
+    h_ts.sort(key=lambda x: x[0])
+    actual_update_msgs = [x[0] for x in h_ts]
+    actual_update_exps = [x[1] for x in h_ts]
+
     assert hashes[0:2] != actual_update_msgs[0:2]
 
-    hashes = sorted(hashes, reverse=True)
-    to_sign = ("expire" + str(ts) + "".join(hashes)).encode()
+    to_sign = ("expire" + "".join(str(t) for t in ts) + "".join(hashes)).encode()
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     params = json.dumps(
         {"pubkey": my_ss_id, "messages": hashes, "expiry": ts, "signature": sig}
@@ -635,10 +640,15 @@ def test_expire_multi(omq, random_sn, sk, exclude):
 
     assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
 
-    # ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
-    expected_signed = "".join((my_ss_id, str(ts), *hashes, *actual_update_msgs)).encode()
+    # ( PUBKEY_HEX || EXPIRY[0] || ... || EXPIRY[M] || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
+    expected_signed = "".join(
+        (my_ss_id, "".join(str(t) for t in actual_update_exps), *hashes, *actual_update_msgs)
+    ).encode()
     for k, v in r['swarm'].items():
-        assert v['updated'] == actual_update_msgs
+        assert {kk: vv for kk, vv in v.items() if kk != 'signature'} == {
+            'updated': actual_update_msgs,
+            'expiry': actual_update_exps,
+        }
         edpk = VerifyKey(k, encoder=HexEncoder)
         try:
             edpk.verify(expected_signed, base64.b64decode(v['signature']))
@@ -646,6 +656,7 @@ def test_expire_multi(omq, random_sn, sk, exclude):
             print("Bad signature from swarm member {}".format(k))
             raise e
 
+    now = int(time.time() * 1000)
     r = omq.request_future(
         conns[0],
         'storage.retrieve',
@@ -653,43 +664,24 @@ def test_expire_multi(omq, random_sn, sk, exclude):
             json.dumps(
                 {
                     "pubkey": my_ss_id,
-                    "timestamp": ts,
+                    "timestamp": now,
                     "signature": sk.sign(
-                        f"retrieve{ts}".encode(), encoder=Base64Encoder
+                        f"retrieve{now}".encode(), encoder=Base64Encoder
                     ).signature.decode(),
                 }
             ).encode()
         ],
     ).get()
+    expected_msgs = [
+        {
+            'data': base64.b64encode(msgs[i]['data']).decode(),
+            'hash': msgs[i]['hash'],
+            'timestamp': msgs[i]['req']['timestamp'],
+            'expiration': msgs[i]['req']['expiry'] + ts_delta[i],
+        }
+        for i in range(10)
+    ]
+
     assert len(r) == 1
     r = json.loads(r[0])
-    assert len(r['messages']) == 10
-
-    for i in range(10):
-        assert r['messages'][i]['expiration'] == ts[i]
-
-    # Also try with a *single* hash, which reportedly didn't return the right thing
-    hashes = [msgs[4]['hash']]
-    to_sign = ("expire" + str(ts) + hashes[0]).encode()
-    sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
-    params = json.dumps(
-        {"pubkey": my_ss_id, "messages": hashes, "expiry": ts, "signature": sig}
-    ).encode()
-
-    resp = omq.request_future(conns[1], 'storage.expire', [params]).get()
-
-    assert len(resp) == 1
-    r = json.loads(resp[0])
-
-    assert set(r['swarm'].keys()) == {x['pubkey_ed25519'] for x in swarm['snodes']}
-
-    # ( PUBKEY_HEX || EXPIRY || RMSG[0] || ... || RMSG[N] || UMSG[0] || ... || UMSG[M] )
-    expected_signed = "".join((my_ss_id, str(ts), hashes[0], hashes[0])).encode()
-    for k, v in r['swarm'].items():
-        assert v['updated'] == hashes
-        edpk = VerifyKey(k, encoder=HexEncoder)
-        try:
-            edpk.verify(expected_signed, base64.b64decode(v['signature']))
-        except nacl.exceptions.BadSignatureError as e:
-            print("Bad signature from swarm member {}".format(k))
-            raise e
+    assert r['messages'] == expected_msgs
