@@ -3,6 +3,8 @@
 #include "../rpc/rate_limiter.h"
 #include "../rpc/request_handler.h"
 #include "../snode/service_node.h"
+#include "omq.h"
+#include "utils.h"
 
 namespace oxenss::server {
 
@@ -49,6 +51,14 @@ QUIC::QUIC(
     service_node_ = &snode;
     request_handler_ = &rh;
     rate_limiter_ = &rl;
+
+    // Add a category to OMQ for handling incoming quic request jobs
+    service_node_->omq_server()->add_category(
+            "quic",
+            oxenmq::AuthLevel::basic,
+            2,    // minimum # of threads reserved threads for this category
+            1000  // max queued requests
+    );
 }
 
 void QUIC::startup_endpoint() {
@@ -82,15 +92,95 @@ void QUIC::handle_request(oxen::quic::message m) {
     if (name == "monitor")
         return handle_monitor_message(std::move(m));
 
+    if (name == "onion_req")
+        return handle_onion_request(std::move(m));
+
     auto body = m.body();
     auto remote_host = m.stream()->remote().host();
-    auto responder = [m = std::move(m)](http::response_code, std::string_view body) {
-        m.respond(body);
+    auto responder = [m = std::move(m)](http::response_code code, std::string_view body) {
+        if (code.first == http::OK.first)
+            m.respond(body);
+        else
+            m.respond("{} {}\n\n{}"_format(code.first, code.second, body), true);
     };
     if (handle_client_rpc(name, body, remote_host, std::move(responder)))
         return;
 
     throw quic::no_such_endpoint{};
+}
+
+void QUIC::handle_onion_request(oxen::quic::message m) {
+
+    auto& omq = *service_node_->omq_server();
+    auto remote = m.stream()->remote().host();
+    omq.inject_task(
+            "quic",
+            "quic:onion_req",
+            std::move(remote),
+            [this,
+             msg = std::make_shared<oxen::quic::message>(std::move(m)),
+             started = std::chrono::steady_clock::now()]() mutable {
+                try {
+                    rpc::OnionRequestMetadata onion{
+                            crypto::x25519_pubkey{},
+                            [msg, started](rpc::Response res) {
+                                log::debug(
+                                        logcat,
+                                        "Got an onion response ({} {}) as edge node (after {})",
+                                        res.status.first,
+                                        res.status.second,
+                                        util::friendly_duration(
+                                                std::chrono::steady_clock::now() - started));
+
+                                const bool is_json =
+                                        std::holds_alternative<nlohmann::json>(res.body);
+                                std::string json_body;
+                                std::string_view body;
+                                if (is_json) {
+                                    json_body = std::get<nlohmann::json>(res.body).dump();
+                                    body = json_body;
+                                } else {
+                                    body = rpc::view_body(res);
+                                }
+
+                                if (res.status.first != http::OK.first)
+                                    msg->respond(
+                                            "{} {}\n\n{}"_format(
+                                                    res.status.first, res.status.second, body),
+                                            true);
+                                else
+                                    msg->respond(body);
+                            },
+                            0,  // hopno
+                            crypto::EncryptType::aes_gcm,
+                    };
+
+                    auto [ciphertext, json_req] = rpc::parse_combined_payload(msg->body());
+
+                    onion.ephem_key = rpc::extract_x25519_from_hex(
+                            json_req.at("ephemeral_key").get_ref<const std::string&>());
+
+                    if (auto it = json_req.find("enc_type"); it != json_req.end())
+                        onion.enc_type = crypto::parse_enc_type(it->get_ref<const std::string&>());
+                    // Otherwise stay at default aes-gcm
+
+                    // Allows a fake starting hop number (to make it harder for
+                    // intermediate hops to know where they are).  If omitted, defaults
+                    // to 0.
+                    if (auto it = json_req.find("hop_no"); it != json_req.end())
+                        onion.hop_no = std::max(0, it->get<int>());
+
+                    request_handler_->process_onion_req(ciphertext, std::move(onion));
+
+                } catch (const std::exception& e) {
+                    auto err = fmt::format("Error parsing onion request: {}", e.what());
+                    log::error(logcat, "{}", err);
+                    msg->respond(
+                            "{} {}\n\n{}"_format(
+                                    http::BAD_REQUEST.first, http::BAD_REQUEST.second, err),
+                            true);
+                }
+            });
 }
 
 nlohmann::json QUIC::wrap_response(
