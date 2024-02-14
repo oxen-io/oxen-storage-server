@@ -522,83 +522,101 @@ Database::~Database() = default;
 /// implementation methods shall do:
 ///
 ///     {
-///       auto impl = get_impl();
+///       auto impl = get_impl(/*write=*/ true);
 ///       impl->whatever();
 ///       // ...
 ///     }
 ///
-/// where the "..." code shall be as minimal as possible (any sort of recursion or calling
-/// externally provided lambdas or whatnot could lead to an excessive number of database
-/// connections).
+/// if it needs to write to the database (INSERT/UPDATE/DELETE/etc.), and passing `false` as the
+/// get_impl argument if it only needs to read.  Internally a shared_mutex is used to ensure that a
+/// writer is exclusive; readers may run queries parallel.  (Not using such a mutex invokes sqlite's
+/// painful limitations around being busy/locked when reads and writes happen on different
+/// connections at the same time).
+///
+/// The "..." code must be as minimal as possible (any sort of recursion will very likely deadlock).
 class LockedDBImpl {
   private:
     std::unique_ptr<DatabaseImpl> impl_;
     Database& parent_;
+    bool write_;
 
-    friend LockedDBImpl Database::get_impl();
-    LockedDBImpl(std::unique_ptr<DatabaseImpl> impl, Database& parent) :
-            impl_{std::move(impl)}, parent_{parent} {}
+    friend LockedDBImpl Database::get_impl(bool);
+    LockedDBImpl(std::unique_ptr<DatabaseImpl> impl, Database& parent, bool write) :
+            impl_{std::move(impl)}, parent_{parent}, write_{write} {
+        if (write_)
+            parent_.access_lock_.lock();
+        else
+            parent_.access_lock_.lock_shared();
+    }
 
   public:
     DatabaseImpl& operator*() noexcept { return *impl_; }
     DatabaseImpl* operator->() noexcept { return impl_.get(); }
 
     ~LockedDBImpl() {
-        std::unique_lock lock{parent_.impl_lock_};
-        parent_.impl_pool_.push(std::move(impl_));
+        {
+            std::lock_guard lock{parent_.impl_lock_};
+            parent_.impl_pool_.push(std::move(impl_));
+        }
+        if (write_)
+            parent_.access_lock_.unlock();
+        else
+            parent_.access_lock_.unlock_shared();
     }
 };
 
-LockedDBImpl Database::get_impl() {
+LockedDBImpl Database::get_impl(bool write) {
     // First see if we can find an idle impl connection in the pool, and if so remove it from the
     // pool and return it.
+    std::unique_ptr<DatabaseImpl> impl;
     {
-        std::unique_lock lock{impl_lock_};
+        std::lock_guard lock{impl_lock_};
+        // We found one in the pool, so extract and use it
         if (!impl_pool_.empty()) {
-            auto impl = std::move(impl_pool_.top());
+            impl = std::move(impl_pool_.top());
             impl_pool_.pop();
-            return LockedDBImpl{std::move(impl), *this};
         }
     }
-    // The idle pool was empty, so create a new connection (it'll get added to the pool on
-    // destruction).
-    return LockedDBImpl{
-            std::make_unique<DatabaseImpl>(*this, db_path_, /*initialize=*/false), *this};
+    if (!impl)
+        // Otherwise construct a new one
+        impl = std::make_unique<DatabaseImpl>(*this, db_path_, /*initialize=*/false);
+
+    return LockedDBImpl{std::move(impl), *this, write};
 }
 
 void Database::clean_expired() {
-    get_impl()->prepared_exec(
+    get_impl(true)->prepared_exec(
             "DELETE FROM messages WHERE expiry <= ?",
             to_epoch_ms(std::chrono::system_clock::now()));
 }
 
 int64_t Database::get_message_count() {
-    return get_impl()->prepared_get<int64_t>("SELECT COUNT(*) FROM messages");
+    return get_impl(false)->prepared_get<int64_t>("SELECT COUNT(*) FROM messages");
 }
 
 int64_t Database::get_owner_count() {
-    return get_impl()->prepared_get<int64_t>("SELECT COUNT(*) FROM owners");
+    return get_impl(false)->prepared_get<int64_t>("SELECT COUNT(*) FROM owners");
 }
 
 std::vector<int> Database::get_message_counts() {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     auto st = impl->prepared_st("SELECT COUNT(*) FROM messages GROUP BY owner");
     return get_all<int>(st);
 }
 
 std::vector<std::pair<namespace_id, int64_t>> Database::get_namespace_counts() {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     auto st = impl->prepared_st("SELECT namespace, COUNT(*) FROM messages GROUP BY namespace");
     return get_all<namespace_id, int64_t>(st);
 }
 
 int64_t Database::get_total_bytes() {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     return impl->prepared_get<int64_t>("PRAGMA page_count") * impl->page_size;
 }
 
 int64_t Database::get_used_bytes() {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     return get_total_bytes() -
            impl->prepared_get<int64_t>("PRAGMA freelist_count") * impl->page_size;
 }
@@ -622,8 +640,9 @@ static std::optional<message> get_message(DatabaseImpl& impl, SQLite::Statement&
 }
 
 std::optional<message> Database::retrieve_random() {
-    clean_expired();
-    auto impl = get_impl();
+    clean_expired();  // *Must* be before the below get_impl because otherwise the read-only impl
+                      // would deadlock with the clean_expired write=true get_impl().
+    auto impl = get_impl(false);
     auto st = impl->prepared_st(
             "SELECT hash, type, pubkey, namespace, timestamp, expiry, data"
             " FROM owned_messages "
@@ -632,7 +651,7 @@ std::optional<message> Database::retrieve_random() {
 }
 
 std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     auto st = impl->prepared_st(
             "SELECT hash, type, pubkey, namespace, timestamp, expiry, data"
             " FROM owned_messages WHERE hash = ?");
@@ -642,7 +661,7 @@ std::optional<message> Database::retrieve_by_hash(const std::string& msg_hash) {
 
 StoreResult Database::store(const message& msg, std::chrono::system_clock::time_point* expiry) {
 
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     StoreResult ret;
     try {
@@ -716,7 +735,7 @@ StoreResult Database::store(const message& msg, std::chrono::system_clock::time_
 }
 
 void Database::bulk_store(const std::vector<message>& items) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
     SQLite::Transaction t{impl->db};
     auto get_owner = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto insert_owner = impl->prepared_st(
@@ -779,7 +798,7 @@ std::pair<std::vector<message>, bool> Database::retrieve(
         const bool size_b64,
         const size_t per_message_overhead) {
 
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     auto owner_st = impl->prepared_st("SELECT id FROM owners WHERE pubkey = ? AND type = ?");
     auto ownerid = exec_and_maybe_get<int64_t>(owner_st, pubkey);
     if (!ownerid)
@@ -836,7 +855,7 @@ std::pair<std::vector<message>, bool> Database::retrieve(
 }
 
 std::vector<message> Database::retrieve_all() {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
 
     std::vector<message> results;
     auto st = impl->prepared_st(
@@ -860,7 +879,7 @@ std::vector<message> Database::retrieve_all() {
 }
 
 std::vector<std::pair<namespace_id, std::string>> Database::delete_all(const user_pubkey& pubkey) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto st = impl->prepared_st(
             "DELETE FROM messages"
@@ -870,7 +889,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::delete_all(const use
 }
 
 std::vector<std::string> Database::delete_all(const user_pubkey& pubkey, namespace_id ns) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto st = impl->prepared_st(
             "DELETE FROM messages"
@@ -898,7 +917,7 @@ namespace {
 std::vector<std::string> Database::delete_by_hash(
         const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes) {
 
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     if (msg_hashes.size() == 1) {
         // Use an optimized prepared statement for very common single-hash deletions
@@ -927,7 +946,7 @@ std::vector<std::string> Database::delete_by_hash(
 
 std::vector<std::pair<namespace_id, std::string>> Database::delete_by_timestamp(
         const user_pubkey& pubkey, std::chrono::system_clock::time_point timestamp) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto st = impl->prepared_st(
             "DELETE FROM messages"
@@ -941,7 +960,7 @@ std::vector<std::string> Database::delete_by_timestamp(
         const user_pubkey& pubkey,
         namespace_id ns,
         std::chrono::system_clock::time_point timestamp) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto st = impl->prepared_st(
             "DELETE FROM messages"
@@ -961,7 +980,7 @@ void Database::revoke_subaccounts(
     if (subaccounts.empty())
         return;
 
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     if (subaccounts.size() == 1) {
         auto insert_token = impl->prepared_st(fmt::format(
@@ -995,7 +1014,7 @@ int Database::unrevoke_subaccounts(
     if (subaccounts.empty())
         return 0;
 
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     if (subaccounts.size() == 1) {
         auto remove_token = impl->prepared_st(
@@ -1024,7 +1043,7 @@ int Database::unrevoke_subaccounts(
 }
 
 bool Database::subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount) {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
 
     auto count = exec_and_get<int64_t>(
             impl->prepared_st("SELECT COUNT(*) FROM revoked_subaccounts WHERE token = ? AND "
@@ -1053,7 +1072,7 @@ std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> Datab
                            : shorten_only ? " AND expiry > ?1"s
                                           : ""s;
 
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
@@ -1105,7 +1124,7 @@ std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> Datab
 
 std::map<std::string, int64_t> Database::get_expiries(
         const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes) {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
 
     if (msg_hashes.size() == 1) {
         // Pre-prepared version for the common single hash case
@@ -1132,7 +1151,7 @@ std::map<std::string, int64_t> Database::get_expiries(
 
 std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(
         const user_pubkey& pubkey, std::chrono::system_clock::time_point new_exp) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto new_exp_ms = to_epoch_ms(new_exp);
     auto st = impl->prepared_st(
@@ -1144,7 +1163,7 @@ std::vector<std::pair<namespace_id, std::string>> Database::update_all_expiries(
 
 std::vector<std::string> Database::update_all_expiries(
         const user_pubkey& pubkey, namespace_id ns, std::chrono::system_clock::time_point new_exp) {
-    auto impl = get_impl();
+    auto impl = get_impl(true);
 
     auto new_exp_ms = to_epoch_ms(new_exp);
     auto st = impl->prepared_st(
@@ -1157,7 +1176,7 @@ std::vector<std::string> Database::update_all_expiries(
 
 // Hack used by the test suite to simulate a blocking/busy thread:
 void oxenss::Database::test_suite_block_for(std::chrono::milliseconds duration) {
-    auto impl = get_impl();
+    auto impl = get_impl(false);
     std::this_thread::sleep_for(duration);
 }
 
