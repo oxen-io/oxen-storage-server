@@ -111,7 +111,7 @@ endif ()
 
 add_executable(onion-request EXCLUDE_FROM_ALL contrib/onion-request.cpp)
 set_target_properties(onion-request PROPERTIES RUNTIME_OUTPUT_DIRECTORY contrib)
-target_link_libraries(onion-request common crypto cpr::cpr oxenmq::oxenmq)
+target_link_libraries(onion-request common crypto cpr::cpr oxenmq::oxenmq quic)
 target_include_directories(onion-request PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 include(cmake/archive.cmake)
