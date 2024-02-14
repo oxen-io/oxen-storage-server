@@ -2,13 +2,7 @@
 //
 // This makes onion requests via storage servers.
 //
-// It has a whole bunch of deps (cpr, oxenmq, sodium, ssl, nlohmann); I compiled with the following,
-// using static cpr from an oxen-core build, SS assets built in ../build, and system-installed
-// libsodium/libssl/nlohmann/oxenmq:
-//
-//     g++ -std=c++17 -O2 onion-request.cpp -o onion-request ../../oxen-core/build/external/libcpr.a \
-//          -I../../oxen-core/external/cpr/include ../build/crypto/libcrypto.a -loxenmq -lsodium -lcurl -lcrypto
-//
+// Build via the `onion-request` target from a build directory (it is not built by default).
 
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenss/crypto/keys.h>
@@ -22,6 +16,7 @@
 #include <oxenc/base64.h>
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
+#include <oxen/quic.hpp>
 
 extern "C" {
 #include <sys/param.h>
@@ -29,18 +24,27 @@ extern "C" {
 
 using namespace std::literals;
 
-using namespace oxen;
-using namespace oxen::crypto;
+using namespace oxenss;
+using namespace oxenss::crypto;
 
 int usage(std::string_view argv0, std::string_view err = "") {
     if (!err.empty())
         std::cerr << "\x1b[31;1mError: " << err << "\x1b[0m\n\n";
-    std::cerr << "Usage: " << argv0 << R"( [--mainnet] [--xchacha20|--aes-gcm|--aes-cbc|--random] SNODE_PK [SNODE_PK ...] PAYLOAD CONTROL
+    std::cerr
+            << "Usage: " << argv0
+            << R"( [--mainnet] [--quic] [--xchacha20|--aes-gcm|--aes-cbc|--random] SNODE_PK [SNODE_PK ...] PAYLOAD CONTROL
 
 Sends an onion request via the given path
 
 SNODE_PK should be primary (legacy) pubkey(s) on test (or mainnet if --mainnet is given).
 
+--mainnet makes the onion requests over mainnet service nodes (SNODE_PK values should be mainnet
+          pubkeys).  If omitted then requests go over testnet, and pubkeys should be testnet
+          pubkeys.
+
+--quic makes the first hop request via QUIC instead of HTTPS.
+
+The encryption to use at each hop is controlled by the following:
 --xchacha20 uses xchacha20+poly1305 encryption (which is the default);
 --aes-gcm and --aes-cbc use aes-gcm and aes-cbc, respectively, instead.
 --random uses a random encryption type for each hop.
@@ -74,8 +78,14 @@ Both PAYLOAD and CONTROL may be passed filenames to read prefixed with `@` (for 
 const oxenmq::address TESTNET_OMQ{"tcp://public.loki.foundation:9999"};
 const oxenmq::address MAINNET_OMQ{"tcp://public.loki.foundation:22029"};
 
-void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
-        std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control);
+void onion_request(
+        std::string ip,
+        uint16_t port,
+        std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
+        std::optional<EncryptType> enc_type,
+        std::string_view payload,
+        std::string_view control,
+        bool quic);
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> pubkeys_hex;
@@ -83,6 +93,7 @@ int main(int argc, char** argv) {
     auto omq_addr = TESTNET_OMQ;
     std::optional<EncryptType> enc_type = EncryptType::xchacha20;
     std::string payload, control;
+    bool quic = false;
     for (int i = 1; i < argc; i++) {
         std::string_view arg{argv[i]};
         if (arg == "--mainnet"sv) { omq_addr = MAINNET_OMQ; continue; }
@@ -91,6 +102,7 @@ int main(int argc, char** argv) {
         if (arg == "--aes-gcm"sv) { enc_type = EncryptType::aes_gcm; continue; }
         if (arg == "--aes-cbc"sv) { enc_type = EncryptType::aes_cbc; continue; }
         if (arg == "--random"sv) { enc_type = std::nullopt; continue; }
+        if (arg == "--quic"sv) { quic = true; continue; }
 
         bool hex = arg.size() > 0 && oxenc::is_hex(arg);
         if (i >= argc - 2) {
@@ -147,7 +159,7 @@ int main(int argc, char** argv) {
                         std::make_pair(ed25519_pubkey::from_hex(e), x25519_pubkey::from_hex(x)));
                 if (pk == pubkeys_hex.front()) {
                     first_ip = sn.at("public_ip").get<std::string>();
-                    first_port = sn.at("storage_port").get<uint16_t>();
+                    first_port = sn.at(quic ? "storage_lmq_port" : "storage_port").get<uint16_t>();
                 }
             }
             got.set_value();
@@ -161,6 +173,7 @@ int main(int argc, char** argv) {
                {"pubkey_ed25519", true},
                {"public_ip", true},
                {"storage_port", true},
+               {"storage_lmq_port", true},
             }},
             {"active_only", true},
         }.dump()
@@ -181,7 +194,7 @@ int main(int argc, char** argv) {
         if (first_ip.empty() || !first_port)
             throw std::runtime_error{"Missing IP/port of first hop"};
 
-        onion_request(first_ip, first_port, std::move(chain), enc_type, payload, control);
+        onion_request(first_ip, first_port, std::move(chain), enc_type, payload, control, quic);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
@@ -210,7 +223,7 @@ EncryptType random_etype() {
 }
 
 void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
-        std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control) {
+        std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control, bool quic) {
     std::string blob;
 
     std::cerr << "Building " << (keys.size()-1) << "-hop onion request\n";
@@ -304,20 +317,66 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     blob = encode_size(blob.size()) + blob + nlohmann::json{
         {"ephemeral_key", A.hex()}, {"enc_type", to_string(last_etype)}}.dump();
 
-    cpr::Url target{"https://" + ip + ":" + std::to_string(port) + "/onion_req/v2"};
-    std::cerr << "Posting " << blob.size() << " onion blob to " << target.str() << " for entry node\n";
     auto started = std::chrono::steady_clock::now();
-    auto res = cpr::Post(target,
-            cpr::Body{blob},
-            cpr::VerifySsl{false});
-    auto finished = std::chrono::steady_clock::now();
+    std::string body;
 
-    std::cerr << "Got '" << res.status_line << "' onion request response in " <<
-        std::chrono::duration<double>(finished - started).count() << "s\n";
-    for (auto& [k, v] : res.header)
-        std::cerr << "- " << k << ": " << v << "\n";
+    if (quic) {
+        using namespace oxen::quic;
+        Network net;
 
-    if (res.text.empty()) {
+        static constexpr auto ALPN = "oxenstorage"sv;
+        static const ustring uALPN{reinterpret_cast<const unsigned char*>(ALPN.data()), ALPN.size()};
+
+        auto ep = net.endpoint(Address{}, opt::outbound_alpns{{uALPN}});
+        std::string sk;
+        sk.resize(64);
+        std::array<unsigned char, 32> pk;
+        crypto_sign_ed25519_keypair(pk.data(), reinterpret_cast<unsigned char*>(sk.data()));
+        auto ci = ep->connect(
+                RemoteAddress{keys.front().first.view(), ip, port},
+                GNUTLSCreds::make_from_ed_seckey(std::move(sk)));
+        auto btr = ci->open_stream<BTRequestStream>();
+        std::cerr << "Sending " << blob.size() << " onion blob to QUIC server " << ip << ":" << port
+                  << " for entry node\n";
+        std::promise<std::string> body_prom;
+        btr->command("onion_req", blob, [&](message msg) {
+            if (!msg) {
+                std::cerr << "Request failed: " << (msg.timed_out ? "timeout" : msg.body()) << "\n";
+                try {
+                    throw std::runtime_error{"QUIC request failed"};
+                } catch (...) {
+                    body_prom.set_exception(std::current_exception());
+                }
+            } else {
+                auto finished = std::chrono::steady_clock::now();
+                std::cerr << "Got QUIC onion request response in "
+                          << std::chrono::duration<double>(finished - started).count() << "s\n";
+                body_prom.set_value(msg.body_str());
+            }
+        });
+
+        try {
+            body = body_prom.get_future().get();
+        } catch (...) {
+            return;
+        }
+
+    } else {
+        cpr::Url target{"https://" + ip + ":" + std::to_string(port) + "/onion_req/v2"};
+        std::cerr << "Posting " << blob.size() << " onion blob to " << target.str()
+                  << " for entry node\n";
+        auto res = cpr::Post(target, cpr::Body{blob}, cpr::VerifySsl{false});
+
+        body = std::move(res.text);
+
+        auto finished = std::chrono::steady_clock::now();
+        std::cerr << "Got '" << res.status_line << "' onion request response in "
+                  << std::chrono::duration<double>(finished - started).count() << "s\n";
+        for (auto& [k, v] : res.header)
+            std::cerr << "- " << k << ": " << v << "\n";
+    }
+
+    if (body.empty()) {
         std::cerr << "Request returned empty body\n";
         return;
     }
@@ -327,7 +386,6 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // parse and guess what we should do, so we'll just guess.
     ChannelEncryption d{final_seckey, final_pubkey, false};
     bool decrypted = false;
-    auto body = std::move(res.text);
     auto orig_size = body.size();
     try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
     catch (...) {}
