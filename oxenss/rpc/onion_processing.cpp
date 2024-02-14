@@ -200,4 +200,13 @@ bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
            std::tie(b.ciphertext, b.ephemeral_key, b.enc_type, b.next_node);
 }
 
+crypto::x25519_pubkey extract_x25519_from_hex(std::string_view hex) {
+    try {
+        return crypto::x25519_pubkey::from_hex(hex);
+    } catch (const std::exception& e) {
+        log::warning(logcat, "Failed to decode ephemeral key in onion request: {}", e.what());
+        throw;
+    }
+}
+
 }  // namespace oxenss::rpc

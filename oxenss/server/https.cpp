@@ -337,16 +337,6 @@ namespace {
         return result.str();
     }
 
-    // Extracts a x25519 pubkey from a hex string. Warns and throws on invalid input.
-    crypto::x25519_pubkey extract_x25519_from_hex(std::string_view hex) {
-        try {
-            return crypto::x25519_pubkey::from_hex(hex);
-        } catch (const std::exception& e) {
-            log::warning(logcat, "Failed to decode ephemeral key in onion request: {}", e.what());
-            throw;
-        }
-    }
-
     // Sets up a request handler that processes the initial incoming requests, sets up the
     // appropriate handlers for incoming data, and invokes the `ready` callback once all data
     // has been received (i.e. when the request is complete).  Can optionally call `prevalidate`
@@ -569,7 +559,7 @@ void HTTPS::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
                                 auto [ciphertext, json_req] =
                                         rpc::parse_combined_payload(data->request.body);
 
-                                onion.ephem_key = extract_x25519_from_hex(
+                                onion.ephem_key = rpc::extract_x25519_from_hex(
                                         json_req.at("ephemeral_key").get_ref<const std::string&>());
 
                                 if (auto it = json_req.find("enc_type"); it != json_req.end())
