@@ -62,6 +62,8 @@ class QUIC : public MQBase {
 
     void handle_request(quic::message m);
 
+    void handle_onion_request(quic::message m);
+
     void handle_monitor_message(quic::message m);
 
     void handle_ping(quic::message m);

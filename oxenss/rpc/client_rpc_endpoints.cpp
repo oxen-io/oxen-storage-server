@@ -169,7 +169,7 @@ namespace {
                 return params.consume_integer<T>();
             else if constexpr (is_timestamp<T>)
                 return from_epoch_ms(params.consume_integer<int64_t>());
-            else if constexpr (is_str_array<T> || is_int_array<T>) {
+            else if constexpr (is_str_array<T> || is_int_array<T> || is_timestamp_array<T>) {
                 auto elems = std::make_optional<T>();
                 if constexpr (is_str_array<T>) {
                     if (params.is_string())
@@ -177,13 +177,18 @@ namespace {
                 } else if constexpr (is_int_array<T>) {
                     if (params.is_integer())
                         elems->push_back(params.consume_integer<int>());
+                } else if constexpr (is_timestamp_array<T>) {
+                    if (params.is_integer())
+                        elems->push_back(from_epoch_ms(params.consume_integer<int64_t>()));
                 }
                 if (elems->empty()) {
                     for (auto l = params.consume_list_consumer(); !l.is_finished();)
                         if constexpr (is_str_array<T>)
                             elems->push_back(l.consume_string());
-                        else
+                        else if constexpr (is_int_array<T>)
                             elems->push_back(l.consume_integer<int>());
+                        else
+                            elems->push_back(from_epoch_ms(l.consume_integer<int64_t>()));
                 }
                 return elems;
             } else if constexpr (is_namespace_var<T> || std::is_same_v<T, namespace_id>) {
