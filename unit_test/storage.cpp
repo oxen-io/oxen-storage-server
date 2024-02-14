@@ -395,23 +395,29 @@ TEST_CASE("storage - connection pool", "[storage][pool]") {
 
     CHECK(oxenss::TestSuiteHacks::db_pool_size(storage) == 1);
 
+    auto now = std::chrono::system_clock::now();
+    CHECK(storage.store(
+                  {pubkey1, "hash0", namespace_id::Default, now, now + 1s, "bytesasstring0"}) ==
+          StoreResult::New);
+
+    CHECK(oxenss::TestSuiteHacks::db_pool_size(storage) == 1);
+
     constexpr auto blocking_time =
 #ifdef __APPLE__
             1s;  // Way to go making a nice fast filesystem, apple!
 #else
             100ms;
 #endif
+
     std::vector<std::thread> busy;
     for (int i = 0; i < n_blocked_threads; i++)
         busy.emplace_back([&] { oxenss::TestSuiteHacks::db_block(storage, blocking_time); });
 
     std::this_thread::sleep_for(20ms);
+
     CHECK(oxenss::TestSuiteHacks::db_pool_size(storage) == 0);
-    auto now = std::chrono::system_clock::now();
-    CHECK(storage.store(
-                  {pubkey1, "hash0", namespace_id::Default, now, now + 1s, "bytesasstring0"}) ==
-          StoreResult::New);
-    // The blocking threads are still there, so our store should have created a new one then
+    CHECK(storage.retrieve_by_hash("hash0"));
+    // The blocking threads are still there, so our retrieve should have created a new one then
     // returned it the pool:
     CHECK(oxenss::TestSuiteHacks::db_pool_size(storage) == 1);
     for (auto& b : busy)
