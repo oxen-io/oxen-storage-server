@@ -11,8 +11,7 @@ namespace oxenss::server {
 static auto logcat = log::Cat("ssquic");
 
 static constexpr std::string_view static_secret_key = "Storage Server QUIC shared secret hash key";
-static oxen::quic::opt::static_secret make_endpoint_static_secret(
-        const crypto::ed25519_seckey& sk) {
+static quic::opt::static_secret make_endpoint_static_secret(const crypto::ed25519_seckey& sk) {
     ustring secret;
     secret.resize(32);
 
@@ -26,7 +25,7 @@ static oxen::quic::opt::static_secret make_endpoint_static_secret(
     crypto_generichash_blake2b_final(
             &st, reinterpret_cast<unsigned char*>(secret.data()), secret.size());
 
-    return oxen::quic::opt::static_secret{std::move(secret)};
+    return quic::opt::static_secret{std::move(secret)};
 }
 
 static constexpr auto ALPN = "oxenstorage"sv;
@@ -39,15 +38,17 @@ QUIC::QUIC(
         const Address& bind,
         const crypto::ed25519_seckey& sk) :
         local{bind},
-        network{std::make_unique<oxen::quic::Network>()},
-        tls_creds{oxen::quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
+        network{std::make_unique<quic::Network>()},
+        tls_creds{quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
         ep{network->endpoint(
                 local,
                 make_endpoint_static_secret(sk),
-                oxen::quic::opt::inbound_alpns{{uALPN}},
-                oxen::quic::opt::outbound_alpns{{uALPN}})},
+                quic::opt::inbound_alpns{{uALPN}},
+                quic::opt::outbound_alpns{{uALPN}})},
         request_handler{rh},
-        command_handler{[this](quic::message m) { handle_request(std::move(m)); }} {
+        command_handler{[this](quic::message m) {
+            handle_request(std::make_shared<quic::message>(std::move(m)));
+        }} {
     service_node_ = &snode;
     request_handler_ = &rh;
     rate_limiter_ = &rl;
@@ -62,125 +63,125 @@ QUIC::QUIC(
 }
 
 void QUIC::startup_endpoint() {
-    ep->listen(tls_creds, [&](oxen::quic::connection_interface& c) {
-        c.queue_incoming_stream<oxen::quic::BTRequestStream>(command_handler);
+    ep->listen(tls_creds, [&](quic::connection_interface& c) {
+        c.queue_incoming_stream<quic::BTRequestStream>(command_handler);
     });
 }
 
-void QUIC::handle_monitor_message(oxen::quic::message m) {
+void QUIC::handle_monitor_message(std::shared_ptr<quic::message> msg) {
 
-    auto body = m.body();
-    auto refid = m.stream()->reference_id;
+    auto body = msg->body();
+    auto refid = msg->stream()->reference_id;
     handle_monitor(
             body,
-            [m = std::move(m)](std::string response) { m.respond(std::move(response)); },
+            [msg = std::move(msg)](std::string response) { msg->respond(std::move(response)); },
             refid);
 }
 
-void QUIC::handle_ping(oxen::quic::message m) {
+void QUIC::handle_ping(std::shared_ptr<quic::message> msg) {
     log::debug(logcat, "Remote pinged me");
     service_node_->update_last_ping(snode::ReachType::QUIC);
-    m.respond("pong");
+    msg->respond("pong");
 }
 
-void QUIC::handle_request(oxen::quic::message m) {
-    auto name = m.endpoint();
-
-    if (name == "snode_ping")
-        return handle_ping(std::move(m));
-
-    if (name == "monitor")
-        return handle_monitor_message(std::move(m));
-
-    if (name == "onion_req")
-        return handle_onion_request(std::move(m));
-
-    auto body = m.body();
-    auto remote_host = m.stream()->remote().host();
-    auto responder = [m = std::move(m)](http::response_code code, std::string_view body) {
-        if (code.first == http::OK.first)
-            m.respond(body);
-        else
-            m.respond("{} {}\n\n{}"_format(code.first, code.second, body), true);
-    };
-    if (handle_client_rpc(name, body, remote_host, std::move(responder)))
-        return;
-
-    throw quic::no_such_endpoint{};
-}
-
-void QUIC::handle_onion_request(oxen::quic::message m) {
-
+void QUIC::handle_request(std::shared_ptr<quic::message> msg) {
     auto& omq = *service_node_->omq_server();
-    auto remote = m.stream()->remote().host();
+    auto remote_host = msg->stream()->remote().host();
+
+    auto name = msg->endpoint();
+    if (!(name == "snode_ping" || name == "monitor" || name == "onion_req" ||
+          rpc::RequestHandler::client_rpc_endpoints.count(name)))
+        throw quic::no_such_endpoint{};
+
+    // We handle everything inside an inject task because if we do *anything* that requires
+    // `sn_mutex_` we could deadlock (because the `open_stream` we do in reachability testing is
+    // synchronous, but is also called with the `sn_mutex_` held).
     omq.inject_task(
-            "quic",
-            "quic:onion_req",
-            std::move(remote),
-            [this,
-             msg = std::make_shared<oxen::quic::message>(std::move(m)),
-             started = std::chrono::steady_clock::now()]() mutable {
-                try {
-                    rpc::OnionRequestMetadata onion{
-                            crypto::x25519_pubkey{},
-                            [msg, started](rpc::Response res) {
-                                log::debug(
-                                        logcat,
-                                        "Got an onion response ({} {}) as edge node (after {})",
-                                        res.status.first,
-                                        res.status.second,
-                                        util::friendly_duration(
-                                                std::chrono::steady_clock::now() - started));
+            "quic", "quic:{}"_format(msg->endpoint()), remote_host, [this, msg, remote_host] {
+                auto name = msg->endpoint();
 
-                                const bool is_json =
-                                        std::holds_alternative<nlohmann::json>(res.body);
-                                std::string json_body;
-                                std::string_view body;
-                                if (is_json) {
-                                    json_body = std::get<nlohmann::json>(res.body).dump();
-                                    body = json_body;
-                                } else {
-                                    body = rpc::view_body(res);
-                                }
+                if (name == "snode_ping")
+                    handle_ping(std::move(msg));
 
-                                if (res.status.first != http::OK.first)
-                                    msg->respond(
-                                            "{} {}\n\n{}"_format(
-                                                    res.status.first, res.status.second, body),
-                                            true);
-                                else
-                                    msg->respond(body);
-                            },
-                            0,  // hopno
-                            crypto::EncryptType::aes_gcm,
-                    };
+                if (name == "monitor")
+                    handle_monitor_message(std::move(msg));
 
-                    auto [ciphertext, json_req] = rpc::parse_combined_payload(msg->body());
+                if (name == "onion_req")
+                    handle_onion_request(std::move(msg));
 
-                    onion.ephem_key = rpc::extract_x25519_from_hex(
-                            json_req.at("ephemeral_key").get_ref<const std::string&>());
-
-                    if (auto it = json_req.find("enc_type"); it != json_req.end())
-                        onion.enc_type = crypto::parse_enc_type(it->get_ref<const std::string&>());
-                    // Otherwise stay at default aes-gcm
-
-                    // Allows a fake starting hop number (to make it harder for
-                    // intermediate hops to know where they are).  If omitted, defaults
-                    // to 0.
-                    if (auto it = json_req.find("hop_no"); it != json_req.end())
-                        onion.hop_no = std::max(0, it->get<int>());
-
-                    request_handler_->process_onion_req(ciphertext, std::move(onion));
-
-                } catch (const std::exception& e) {
-                    auto err = fmt::format("Error parsing onion request: {}", e.what());
-                    log::error(logcat, "{}", err);
-                    msg->respond(
-                            "{} {}\n\n{}"_format(
-                                    http::BAD_REQUEST.first, http::BAD_REQUEST.second, err),
-                            true);
-                }
+                handle_client_rpc(
+                        name,
+                        msg->body(),
+                        remote_host,
+                        [msg](http::response_code code, std::string_view res_body) {
+                            if (code.first == http::OK.first)
+                                msg->respond(res_body);
+                            else
+                                msg->respond(
+                                        "{} {}\n\n{}"_format(code.first, code.second, res_body),
+                                        true);
+                        });
             });
+}
+
+void QUIC::handle_onion_request(std::shared_ptr<quic::message> msg) {
+
+    auto started = std::chrono::steady_clock::now();
+    try {
+        rpc::OnionRequestMetadata onion{
+                crypto::x25519_pubkey{},
+                [msg, started](rpc::Response res) {
+                    log::debug(
+                            logcat,
+                            "Got an onion response ({} {}) as edge node (after {})",
+                            res.status.first,
+                            res.status.second,
+                            util::friendly_duration(std::chrono::steady_clock::now() - started));
+
+                    const bool is_json = std::holds_alternative<nlohmann::json>(res.body);
+                    std::string json_body;
+                    std::string_view body;
+                    if (is_json) {
+                        json_body = std::get<nlohmann::json>(res.body).dump();
+                        body = json_body;
+                    } else {
+                        body = rpc::view_body(res);
+                    }
+
+                    if (res.status.first != http::OK.first)
+                        msg->respond(
+                                "{} {}\n\n{}"_format(res.status.first, res.status.second, body),
+                                true);
+                    else
+                        msg->respond(body);
+                },
+                0,  // hopno
+                crypto::EncryptType::aes_gcm,
+        };
+
+        auto [ciphertext, json_req] = rpc::parse_combined_payload(msg->body());
+
+        onion.ephem_key = rpc::extract_x25519_from_hex(
+                json_req.at("ephemeral_key").get_ref<const std::string&>());
+
+        if (auto it = json_req.find("enc_type"); it != json_req.end())
+            onion.enc_type = crypto::parse_enc_type(it->get_ref<const std::string&>());
+        // Otherwise stay at default aes-gcm
+
+        // Allows a fake starting hop number (to make it harder for
+        // intermediate hops to know where they are).  If omitted, defaults
+        // to 0.
+        if (auto it = json_req.find("hop_no"); it != json_req.end())
+            onion.hop_no = std::max(0, it->get<int>());
+
+        request_handler_->process_onion_req(ciphertext, std::move(onion));
+
+    } catch (const std::exception& e) {
+        auto err = fmt::format("Error parsing onion request: {}", e.what());
+        log::error(logcat, "{}", err);
+        msg->respond(
+                "{} {}\n\n{}"_format(http::BAD_REQUEST.first, http::BAD_REQUEST.second, err), true);
+    }
 }
 
 nlohmann::json QUIC::wrap_response(
@@ -197,9 +198,9 @@ nlohmann::json QUIC::wrap_response(
 
 void QUIC::notify(std::vector<connection_id>& conns, std::string_view notification) {
     for (const auto& c : conns)
-        if (auto* cid = std::get_if<oxen::quic::ConnectionID>(&c))
+        if (auto* cid = std::get_if<quic::ConnectionID>(&c))
             if (auto conn = ep->get_conn(*cid))
-                if (auto str = conn->get_stream<oxen::quic::BTRequestStream>(0))
+                if (auto str = conn->get_stream<quic::BTRequestStream>(0))
                     str->command("notify", notification);
 }
 
@@ -211,25 +212,33 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
     auto conn = ep->connect(
             {sn.pubkey_ed25519.view(), sn.ip, sn.omq_quic_port},
             tls_creds,
-            oxen::quic::opt::handshake_timeout{5s});
-    auto s = conn->open_stream<oxen::quic::BTRequestStream>();
-    s->command("snode_ping", ""s, [test = std::move(test)](const oxen::quic::message& m) {
+            quic::opt::handshake_timeout{5s});
+    auto s = conn->open_stream<quic::BTRequestStream>();
+    s->command("snode_ping", ""s, [test = std::move(test), this](const quic::message& m) mutable {
+        bool passed;
         if (m.timed_out || m.body() != "pong"sv) {
             log::debug(
                     logcat,
                     "QUIC reachability test failed for {}: {}",
                     test->sn.pubkey_legacy,
                     m.timed_out ? "timeout" : "unexpected response");
-            test->add_result(false);
+            passed = false;
         } else {
             log::debug(
                     logcat,
                     "Successful response to QUIC reachability ping test of {}",
                     test->sn.pubkey_legacy);
-            test->add_result(true);
+            passed = true;
         }
         if (auto conn = m.stream()->endpoint.get_conn(m.conn_rid()))
             conn->close_connection();
+
+        // Defer this to an omq task; the same deadlock-avoidance logic described in
+        // handle_request applies here.
+        service_node_->omq_server()->inject_task(
+                "quic", "quic:(reach_report)", "", [test = std::move(test), passed]() {
+                    test->add_result(passed);
+                });
     });
 }
 
