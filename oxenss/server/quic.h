@@ -60,13 +60,13 @@ class QUIC : public MQBase {
 
     std::shared_ptr<quic::Endpoint> create_endpoint();
 
-    void handle_request(quic::message m);
+    void handle_request(std::shared_ptr<quic::message> msg);
 
-    void handle_onion_request(quic::message m);
+    void handle_onion_request(std::shared_ptr<quic::message> msg);
 
-    void handle_monitor_message(quic::message m);
+    void handle_monitor_message(std::shared_ptr<quic::message> msg);
 
-    void handle_ping(quic::message m);
+    void handle_ping(std::shared_ptr<quic::message> msg);
 
     nlohmann::json wrap_response(
             [[maybe_unused]] const http::response_code& status,
