@@ -1,3 +1,12 @@
+oxen-storage-server (2.6.2-2~ubuntu1804) bionic; urgency=medium
+
+  * Bump oxen-mq to latest version
+  * Bump oxen-mq to latest version
+  * Rediff patches
+  * Bump oxen-mq
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 20 Feb 2024 17:12:12 -0400
+
 oxen-storage-server (2.6.2-1~ubuntu1804) bionic; urgency=medium
 
   * Fix potential deadlock in libquic handling
