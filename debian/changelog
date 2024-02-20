@@ -1,3 +1,11 @@
+oxen-storage-server (2.6.2-2~ubuntu2004) focal; urgency=medium
+
+  * Bump oxen-mq to latest version
+  * Bump oxen-mq to latest version
+  * Bump oxen-mq
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 20 Feb 2024 17:12:24 -0400
+
 oxen-storage-server (2.6.2-1~ubuntu2004) focal; urgency=medium
 
   * Fix potential deadlock in libquic handling
