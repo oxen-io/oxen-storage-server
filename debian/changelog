@@ -1,3 +1,9 @@
+oxen-storage-server (2.6.2-1~deb11) bullseye; urgency=medium
+
+  * Fix potential deadlock in libquic handling
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 20 Feb 2024 14:19:49 -0400
+
 oxen-storage-server (2.6.1-4~deb11) bullseye; urgency=medium
 
   * Add quic onion request endpoint
