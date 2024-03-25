@@ -114,4 +114,8 @@ set_target_properties(onion-request PROPERTIES RUNTIME_OUTPUT_DIRECTORY contrib)
 target_link_libraries(onion-request common crypto cpr::cpr oxenmq::oxenmq quic)
 target_include_directories(onion-request PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_executable(quic-reach-test EXCLUDE_FROM_ALL contrib/quic-reach-test.cpp)
+set_target_properties(quic-reach-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY contrib)
+target_link_libraries(quic-reach-test quic sodium fmt::fmt)
+
 include(cmake/archive.cmake)
