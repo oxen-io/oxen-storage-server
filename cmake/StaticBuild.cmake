@@ -5,19 +5,19 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(OPENSSL_VERSION 3.0.13 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.16 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://www.openssl.org/source CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=88525753f79d3bec27d2fa7c66aa0b92b3aa9498dafd93d7cfa4b3780cdae313
+set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
     CACHE STRING "openssl source hash")
 
-set(SODIUM_VERSION 1.0.19 CACHE STRING "libsodium version")
+set(SODIUM_VERSION 1.0.20 CACHE STRING "libsodium version")
 set(SODIUM_MIRROR ${LOCAL_MIRROR}
   https://download.libsodium.org/libsodium/releases
   https://github.com/jedisct1/libsodium/releases/download/${SODIUM_VERSION}-RELEASE
   CACHE STRING "libsodium mirror(s)")
 set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
-set(SODIUM_HASH SHA512=8e9b6d796f6330e00921ce37f1b43545966094250938626ae227deef5fd1279f2fc18b5cd55e23484732a27df4d919cf0d2f07b9c2f1aa0c0ef689e668b0d439
+set(SODIUM_HASH SHA512=7ea165f3c1b1609790e30a16348b9dfdc5731302da00c07c65e125c8ab115c75419a5631876973600f8a4b560ca2c8267001770b68f2eb3eebc9ba095d312702
   CACHE STRING "libsodium source hash")
 
 include(sqlite3_source)
@@ -29,11 +29,11 @@ set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=a71d48aa977ad8941c1609947d8db2679fc7a951e4cd0c3a1127ae026d883c11bd4203cf315de87f95f5031aec459a731aec34e5ce5b667b8d0559b157952541
     CACHE STRING "libzmq source hash")
 
-set(LIBUV_VERSION 1.46.0 CACHE STRING "libuv version")
+set(LIBUV_VERSION 1.50.0 CACHE STRING "libuv version")
 set(LIBUV_MIRROR ${LOCAL_MIRROR} https://dist.libuv.org/dist/v${LIBUV_VERSION}
     CACHE STRING "libuv mirror(s)")
 set(LIBUV_SOURCE libuv-v${LIBUV_VERSION}.tar.gz)
-set(LIBUV_HASH SHA512=41b5606bd4575e1fd1a3a275d00e0bafdef0f43f251c9a032c49ab03134f50fb361e7f355ac0b34dd35959b3b0d29faf1aa7411002f430e3b0d78935a366b3da
+set(LIBUV_HASH SHA512=b153d019c630831819913ccd0615c22737df49125da533f86db27f24a519937ed64113ceb6445d731d133e2d97b43b6949877e6078c4459d50ea90d2af4a9da9
     CACHE STRING "libuv source hash")
 
 set(ZLIB_VERSION 1.3.1 CACHE STRING "zlib version")
@@ -43,11 +43,11 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 8.6.0 CACHE STRING "curl version")
+set(CURL_VERSION 8.12.1 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=359c08d88a5dec441255b36afe1a821730eca0ca8800ba52f57132b9e7d21f32457623907b4ae4876904b5e505eb1a59652372bb7de8dbd8db429dae9785e036
+set(CURL_HASH SHA512=88915468fa1bb7256e3dd6c9d058ada6894faa1e3e7800c7d9bfee3e8be4081ae57e7f2bf260c5342b709499fc4302ddc2d7864e25bfa3300fa07f118a3de603
     CACHE STRING "curl source hash")
 
 
@@ -221,8 +221,10 @@ set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include)
 
 
 build_external(sqlite3
+  CONFIGURE_COMMAND ./configure ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR}
+    "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${cross_extra}
   BUILD_COMMAND true
-  INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES)
+  INSTALL_COMMAND make install-headers install-lib)
 add_static_target(SQLite::SQLite3 sqlite3_external libsqlite3.a)
 
 

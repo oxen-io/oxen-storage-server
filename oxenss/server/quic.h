@@ -51,8 +51,11 @@ class QUIC : public MQBase {
 
     oxen::quic::Network& net() { return network; }
 
+    const std::shared_ptr<quic::Loop>& loop() const { return loop_; }
+
   private:
     const Address local;
+    std::shared_ptr<quic::Loop> loop_;
     quic::Network network;
     std::shared_ptr<quic::GNUTLSCreds> tls_creds;
     std::shared_ptr<quic::Endpoint> ep;
