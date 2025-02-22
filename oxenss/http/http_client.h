@@ -19,7 +19,7 @@ class Client {
     using response_callback = std::function<void(cpr::Response r)>;
 
     // Starts a new client, attaching itself to the event loop and ready for requests.
-    explicit Client(oxen::quic::Network* loop);
+    explicit Client(std::shared_ptr<oxen::quic::Loop> loop);
 
     // Non-copyable, non-movable
     Client(const Client&) = delete;
@@ -42,13 +42,7 @@ class Client {
             bool https_disable_validation = false);
 
   private:
-    // FIXME: in future (dev, as of writing) versions of libquic we should a shared_ptr<Loop>
-    // instead of this raw Network pointer, but currently Network doesn't give us a public interface
-    // to accessing its Loop, so we whole the bigger Network here instead.  (It is still named
-    // "loop", though, because we really only want a loop and Network has proxy functions for all
-    // the Loop functions we use that should work fine without needing other changes when this gets
-    // fixed in the future).
-    oxen::quic::Network* loop;
+    std::shared_ptr<oxen::quic::Loop> loop;
     event* ev_timeout;
     std::shared_ptr<const bool> alive = std::make_shared<bool>(true);
     CURLM* curl_multi;

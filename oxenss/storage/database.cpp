@@ -1055,6 +1055,15 @@ bool Database::subaccount_revoked(const user_pubkey& pubkey, const subaccount_to
     return count > 0;
 }
 
+std::vector<std::string> Database::revoked_subaccounts(const user_pubkey& pubkey) {
+    auto impl = get_impl(false);
+    auto st = impl->prepared_st(
+            "SELECT token FROM revoked_subaccounts WHERE"
+            " owner = (SELECT id FROM owners WHERE pubkey = ? AND type = ?)");
+    return get_all<std::string>(st, pubkey);
+    ;
+}
+
 std::vector<std::pair<std::string, std::chrono::system_clock::time_point>> Database::update_expiry(
         const user_pubkey& pubkey,
         const std::vector<std::string>& msg_hashes,

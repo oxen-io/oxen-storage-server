@@ -723,6 +723,21 @@ bt_value unrevoke_subaccount::to_bt() const {
 }
 
 template <typename Dict>
+static void load(revoked_subaccounts& us, Dict& d) {
+    auto [pubkey, pubkey_ed25519, signature, timestamp] =
+            load_fields<Str, SV, SV, TP>(d, "pubkey", "pubkey_ed25519", "signature", "timestamp");
+    load_pk_signature(us, d, pubkey, pubkey_ed25519, signature);
+    require("timestamp", timestamp);
+    us.timestamp = *timestamp;
+}
+void revoked_subaccounts::load_from(json params) {
+    load(*this, params);
+}
+void revoked_subaccounts::load_from(bt_dict_consumer params) {
+    load(*this, params);
+}
+
+template <typename Dict>
 static void load(delete_all& da, Dict& d) {
     auto [msgs_ns, pubkey, pubkey_ed25519, signature, subacc, subacc_sig, timestamp] =
             load_fields<namespace_var, Str, SV, SV, SV, SV, TP>(

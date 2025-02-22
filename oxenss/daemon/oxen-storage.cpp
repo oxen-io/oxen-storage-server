@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
                 private_key_ed25519);
         service_node.register_mq_server(quic.get());
 
-        auto http_client = std::make_shared<http::Client>(&quic->net());
+        auto http_client = std::make_shared<http::Client>(quic->loop());
         service_node.set_http_client(http_client);
         request_handler.set_http_client(http_client);
 

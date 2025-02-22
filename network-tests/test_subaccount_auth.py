@@ -323,6 +323,26 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     assert len(r["messages"]) == 1
     assert r["messages"][0]["hash"] == hash
 
+    # revoked_subaccounts should not list any token
+    r = omq.request_future(
+        conn,
+        'storage.revoked_subaccounts',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoked_subaccounts{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode(),
+        ],
+    ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r["revoked_subaccounts"]) == 0
+
     # Revoke the subaccount
     r = omq.request_future(
         conn,
@@ -374,6 +394,28 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
         ],
     ).get()
     assert r == [b'401', b'retrieve signature verification failed']
+
+    # revoked_subaccounts should list the corresponding token
+    r = omq.request_future(
+        conn,
+        'storage.revoked_subaccounts',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoked_subaccounts{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode(),
+        ],
+    ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r["revoked_subaccounts"]) == 1
+    assert r["revoked_subaccounts"][0] == b64(dude_token)
+
 
     # But the one in the revoked-keys-allowed namespace should work:
     r = omq.request_future(
@@ -455,6 +497,26 @@ def test_revoke_subaccount(omq, random_sn, sk, exclude):
     assert r["hf"] >= [19, 0]
     assert len(r["messages"]) == 1
     assert r["messages"][0]["hash"] == hash
+
+    # revoked_subaccounts should not list any token
+    r = omq.request_future(
+        conn,
+        'storage.revoked_subaccounts',
+        [
+            json.dumps(
+                {
+                    "pubkey": '03' + sk.verify_key.encode().hex(),
+                    "timestamp": ts,
+                    "signature": sk.sign(
+                        f"revoked_subaccounts{ts}".encode(), encoder=Base64Encoder
+                    ).signature.decode(),
+                }
+            ).encode(),
+        ],
+    ).get()
+    assert len(r) == 1
+    r = json.loads(r[0])
+    assert len(r["revoked_subaccounts"]) == 0
 
     # Revoke the subaccount again:
     r = omq.request_future(
