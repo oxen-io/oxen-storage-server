@@ -12,7 +12,7 @@ static auto logcat = log::Cat("ssquic");
 
 static constexpr std::string_view static_secret_key = "Storage Server QUIC shared secret hash key";
 static quic::opt::static_secret make_endpoint_static_secret(const crypto::ed25519_seckey& sk) {
-    ustring secret;
+    std::vector<unsigned char> secret;
     secret.resize(32);
 
     crypto_generichash_blake2b_state st;
@@ -28,8 +28,7 @@ static quic::opt::static_secret make_endpoint_static_secret(const crypto::ed2551
     return quic::opt::static_secret{std::move(secret)};
 }
 
-static constexpr auto ALPN = "oxenstorage"sv;
-static const ustring uALPN{reinterpret_cast<const unsigned char*>(ALPN.data()), ALPN.size()};
+static constexpr auto ALPN = "oxenstorage";
 
 QUIC::QUIC(
         snode::ServiceNode& snode,
@@ -39,11 +38,6 @@ QUIC::QUIC(
         const crypto::ed25519_seckey& sk) :
         local{bind},
         tls_creds{quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
-        ep{network.endpoint(
-                local,
-                make_endpoint_static_secret(sk),
-                quic::opt::inbound_alpns{{uALPN}},
-                quic::opt::outbound_alpns{{uALPN}})},
         request_handler{rh},
         command_handler{[this](quic::message m) {
             handle_request(std::make_shared<quic::message>(std::move(m)));
@@ -51,6 +45,10 @@ QUIC::QUIC(
     service_node_ = &snode;
     request_handler_ = &rh;
     rate_limiter_ = &rl;
+
+    tls_creds->enable_inbound_0rtt();
+
+    ep = network.endpoint(local, make_endpoint_static_secret(sk), quic::opt::alpns{ALPN});
 
     // Add a category to OMQ for handling incoming quic request jobs
     service_node_->omq_server()->add_category(
