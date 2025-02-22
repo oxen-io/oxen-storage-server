@@ -133,7 +133,6 @@ void Client::check_multi_info() {
             }
             active_reqs.erase(it);
             curl_multi_remove_handle(curl_multi, message->easy_handle);
-            break;
         } else {
             log::warning(
                     logcat,
@@ -143,7 +142,7 @@ void Client::check_multi_info() {
     }
 }
 
-Client::Client(oxen::quic::Network* loop_) :
+Client::Client(std::shared_ptr<oxen::quic::Loop> loop_) :
         loop{std::move(loop_)},
         ev_timeout{evtimer_new(loop->loop().get(), Client::on_timeout_c, this)} {
     assert(loop);

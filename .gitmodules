@@ -18,7 +18,7 @@
 	url = https://github.com/SRombauts/SQLiteCpp.git
 [submodule "vendors/oxenc"]
 	path = external/oxenc
-	url = https://github.com/oxen-io/oxen-encoding.git
+	url = https://github.com/session-foundation/oxen-encoding.git
 [submodule "vendors/CLI11"]
 	path = external/CLI11
 	url = https://github.com/CLIUtils/CLI11

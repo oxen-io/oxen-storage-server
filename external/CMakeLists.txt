@@ -60,10 +60,10 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.0.10 oxenc)
+system_or_submodule(OXENC oxenc liboxenc>=1.3.0 oxenc)
 
 set(LIBQUIC_BUILD_TESTS OFF CACHE BOOL "")
-system_or_submodule(OXENQUIC quic liboxenquic>=1.1.0 oxen-libquic)
+system_or_submodule(OXENQUIC quic liboxenquic>=1.2.0 oxen-libquic)
 
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.17 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
@@ -210,9 +210,9 @@ if(NOT BUILD_STATIC_DEPS) # Under BUILD_STATIC_DEPS the SQLite::SQLite3 target i
       URL ${sqlite_urls}
       URL_HASH ${SQLITE3_HASH}
       DOWNLOAD_NO_PROGRESS ON
-      CONFIGURE_COMMAND ./configure --disable-shared --prefix=${CMAKE_CURRENT_BINARY_DIR}/sqlite3 --with-pic "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}"
+      CONFIGURE_COMMAND ./configure --disable-shared --prefix=${CMAKE_CURRENT_BINARY_DIR}/sqlite3 "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}"
       BUILD_COMMAND true
-      INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES
+      INSTALL_COMMAND make install-headers install-lib
       BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/lib/libsqlite3.a ${CMAKE_CURRENT_BINARY_DIR}/sqlite3/include/sqlite3.h
       )
     add_library(SQLite::SQLite3 STATIC IMPORTED GLOBAL)
