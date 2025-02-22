@@ -1,3 +1,20 @@
+oxen-storage-server (2.9.0-1) unstable; urgency=medium
+
+  [ Audric Ackermann ]
+  * feat: allow admins to retrieve list of revoked_subaccounts
+  * chore: remove lokinet-ci- prefix for docker imgs
+  * fix: return revoked_tokens in b64 if requested
+
+  [ Jason Rhinelander ]
+  * Remove unwanted loop break in http client
+  * 2.8.1 version bump for next release
+  * Update libquic & enable 0-RTT support
+  * Dependency updates
+  * 2.9.0 version bump
+  * Fix sqlite3 build
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Fri, 21 Feb 2025 23:32:14 -0400
+
 oxen-storage-server (2.8.0-1) unstable; urgency=medium
 
   * Fix oxen logging path stripping
