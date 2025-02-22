@@ -405,6 +405,18 @@ struct unrevoke_subaccount final : recursive {
     oxenc::bt_value to_bt() const override;
 };
 
+struct revoked_subaccounts final : endpoint {
+    static constexpr auto names() { return NAMES("revoked_subaccounts"); }
+
+    user_pubkey pubkey;
+    std::optional<std::array<unsigned char, 32>> pubkey_ed25519;  // unused
+    std::chrono::system_clock::time_point timestamp;
+    std::array<unsigned char, 64> signature;
+
+    void load_from(nlohmann::json params) override;
+    void load_from(oxenc::bt_dict_consumer params) override;
+};
+
 struct namespace_all_t {};
 inline constexpr namespace_all_t namespace_all{};
 
@@ -729,6 +741,7 @@ struct oxend_request final : endpoint {
 using client_rpc_subrequests = type_list<
         revoke_subaccount,
         unrevoke_subaccount,
+        revoked_subaccounts,
         store,
         retrieve,
         delete_msgs,
