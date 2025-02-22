@@ -1,4 +1,4 @@
-oxen-storage-server (2.9.0-1~ubuntu2404) noble; urgency=medium
+oxen-storage-server (2.9.0-1~ubuntu2410) oracular; urgency=medium
 
   [ Audric Ackermann ]
   * feat: allow admins to retrieve list of revoked_subaccounts
