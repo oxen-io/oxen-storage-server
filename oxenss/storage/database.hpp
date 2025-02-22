@@ -173,6 +173,9 @@ class Database {
     // subaccount has been revoked, false otherwise.
     bool subaccount_revoked(const user_pubkey& pubkey, const subaccount_token& subaccount);
 
+    // Return the list of currently revoked subaccounts
+    std::vector<std::string> revoked_subaccounts(const user_pubkey& pubkey);
+
     // Updates the expiry time of the given messages owned by the given pubkey.  Returns a vector of
     // pairs of hashes of updated messages to the new expiry of the messages.  Hashes that don't
     // exist, or were not updated, are not returned.
