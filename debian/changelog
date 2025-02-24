@@ -1,3 +1,9 @@
+oxen-storage-server (2.9.0-2~ubuntu2410) oracular; urgency=medium
+
+  * Fix Loop initialization
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 19:15:15 -0400
+
 oxen-storage-server (2.9.0-1~ubuntu2410) oracular; urgency=medium
 
   [ Audric Ackermann ]
