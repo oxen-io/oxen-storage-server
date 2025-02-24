@@ -1,3 +1,10 @@
+oxen-storage-server (2.9.0-2~deb13) trixie; urgency=medium
+
+  * update build deps
+  * Fix Loop initialization
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 19:15:00 -0400
+
 oxen-storage-server (2.9.0-1~deb13) trixie; urgency=medium
 
   [ Audric Ackermann ]
