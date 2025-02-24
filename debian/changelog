@@ -1,3 +1,10 @@
+oxen-storage-server (2.9.0-2~ubuntu2004) focal; urgency=medium
+
+  * update build deps
+  * Fix Loop initialization
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 19:15:27 -0400
+
 oxen-storage-server (2.9.0-1~ubuntu2004) focal; urgency=medium
 
   [ Audric Ackermann ]
