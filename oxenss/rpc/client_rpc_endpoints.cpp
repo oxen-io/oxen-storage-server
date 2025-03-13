@@ -531,11 +531,12 @@ static void load(retrieve& r, Dict& d) {
           pubKey,
           pubkey,
           pk_ed25519,
+          reverse_direction,
           sig,
           subacc,
           subacc_sig,
           ts] =
-            load_fields<Str, Str, int, int, namespace_id, Str, Str, SV, SV, SV, SV, TP>(
+            load_fields<Str, Str, int, int, namespace_id, Str, Str, SV, int, SV, SV, SV, TP>(
                     d,
                     "lastHash",
                     "last_hash",
@@ -545,6 +546,7 @@ static void load(retrieve& r, Dict& d) {
                     "pubKey",
                     "pubkey",
                     "pubkey_ed25519",
+                    "reverse_direction",
                     "signature",
                     "subaccount",
                     "subaccount_sig",
@@ -581,6 +583,7 @@ static void load(retrieve& r, Dict& d) {
 
     r.max_count = max_count;
     r.max_size = max_size;
+    r.reverse_direction = reverse_direction.value_or(false);
 }
 void retrieve::load_from(json params) {
     load(*this, params);
