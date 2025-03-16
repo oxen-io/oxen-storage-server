@@ -77,8 +77,10 @@ class Database {
     constexpr static size_t DEFAULT_MSG_OVERHEAD = 100;
 
     // Retrieves messages owned by pubkey received since `last_hash` stored in namespace `ns`.  If
-    // last_hash is empty or not found then returns all messages (up to the limit). Optionally takes
-    // a maximum number of messages to return or a maximum aggregate size of messages to return.
+    // last_hash is empty or not found then returns all messages (up to the limit). If
+    // `reverse_direction` is true, messages are fetched backwards from `last_hash` if missing or
+    // not found, or from the most recent message up to the limit. Optionally takes a maximum number
+    // of messages to return or a maximum aggregate size of messages.
     //
     // Note that the `pubkey` value of the returned message's will be left default constructed,
     // i.e. *not* filled with the given pubkey.
@@ -91,10 +93,12 @@ class Database {
             const std::string& last_hash,
             std::optional<size_t> num_results = std::nullopt,
             std::optional<size_t> max_size = std::nullopt,
+            bool reverse_direction = false,  // if true, messages will be fetched backwards
             bool size_b64 =
                     true,  // True if the data will get b64-encoded (and thus is 4/3 as large)
             size_t per_message_overhead =
                     DEFAULT_MSG_OVERHEAD  // how much overhead per message to allow for
+
     );
 
     // Retrieves all messages.

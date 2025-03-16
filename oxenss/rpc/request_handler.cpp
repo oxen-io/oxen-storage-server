@@ -736,7 +736,8 @@ void RequestHandler::process_client_req(
                 req.msg_namespace,
                 req.last_hash.value_or(""),
                 req.max_count,
-                req.max_size);
+                req.max_size,
+                req.reverse_direction);
         service_node_.record_retrieve_request();
     } catch (const std::exception& e) {
         auto msg = fmt::format(

@@ -8,6 +8,7 @@
 #include <oxenss/utils/time.hpp>
 #include <oxenss/common/format.h>
 #include <oxenc/hex.h>
+#include "oxenc/base64.h"
 
 #include <array>
 #include <chrono>
@@ -797,6 +798,7 @@ std::pair<std::vector<message>, bool> Database::retrieve(
         const std::string& last_hash,
         std::optional<size_t> max_results,
         std::optional<size_t> max_size,
+        bool reverse_direction,
         const bool size_b64,
         const size_t per_message_overhead) {
 
@@ -817,19 +819,22 @@ std::pair<std::vector<message>, bool> Database::retrieve(
     }
 
     auto st = impl->prepared_st(
-            last_id ? "SELECT hash, namespace, timestamp, expiry, data FROM messages "
-                      "WHERE owner = ? AND namespace = ? AND id > ? ORDER BY id LIMIT ?"
-                    : "SELECT hash, namespace, timestamp, expiry, data FROM messages "
-                      "WHERE owner = ? AND namespace = ? ORDER BY id LIMIT ?");
+            "SELECT hash, namespace, timestamp, expiry, data FROM messages "
+            "WHERE owner = ? AND namespace = ? {} ORDER BY id {} LIMIT ?"_format(
+                    last_id ? "AND id > ?" : "", reverse_direction ? "DESC" : "ASC"));
     int pos = 1;
     st->bind(pos++, *ownerid);
     st->bind(pos++, to_int(ns));
     if (last_id)
         st->bind(pos++, *last_id);
+
     st->bind(pos++, max_results ? static_cast<int>(*max_results) + 1 : -1);
 
     std::pair<std::vector<message>, bool> result{};
-    auto& [results, more] = result;
+    auto& [results, plop] = result;
+    plop = reverse_direction;
+
+    auto more = false;
 
     size_t agg_size = 0;
     while (st->executeStep()) {
@@ -842,7 +847,7 @@ std::pair<std::vector<message>, bool> Database::retrieve(
         if (max_size) {
             agg_size += per_message_overhead;
             agg_size += hash.size();
-            agg_size += size_b64 ? data.size() * 4 / 3 : data.size();
+            agg_size += size_b64 ? oxenc::to_base64_size(data.size()) : data.size();
             if (!results.empty() && agg_size > *max_size) {
                 more = true;
                 break;

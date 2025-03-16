@@ -217,6 +217,10 @@ struct store final : recursive {
 ///   Note that regardless of the two values the response will always include at least one message,
 ///   even if it would exceed the given maximum size.
 ///
+///   When `reverse_direction` is true, messages will be fetched backwards:
+///    - from the last_hash if provided and found
+///    - from the most recent message otherwise
+///
 /// Authentication parameters: these are optional during a transition period, up until Oxen
 /// hard-fork 19, and become required starting there.  During the transition period, *if* provided
 /// then the request will be denied if the signature does not match.  If omitted, during the
@@ -253,6 +257,7 @@ struct retrieve final : endpoint {
     std::optional<std::string> last_hash;
     std::optional<int> max_count;
     std::optional<int> max_size;
+    bool reverse_direction;
 
     bool check_signature = false;  // For transition; delete this once we require sigs always
     std::optional<std::array<unsigned char, 32>> pubkey_ed25519;
