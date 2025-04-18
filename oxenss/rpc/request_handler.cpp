@@ -41,42 +41,50 @@ static auto logcat = log::Cat("rpc");
 inline constexpr auto ONION_URL_TIMEOUT = 25s;
 
 std::string to_string(const Response& res) {
-    std::stringstream ss;
-
     const bool is_json = std::holds_alternative<json>(res.body);
-    ss << "Status: " << res.status.first << " " << res.status.second
-       << ", Content-Type: " << (is_json ? "application/json" : "text/plain") << ", Body: <"
-       << (is_json ? std::get<json>(res.body).dump() : view_body(res)) << ">";
-
-    return ss.str();
+    return "Status: {} {}, Content-Type: {}, Body: <{}>"_format(
+            res.status.first,
+            res.status.second,
+            is_json ? "application/json" : "text/plain",
+            is_json ? std::get<json>(res.body).dump() : view_body(res));
 }
 
 namespace {
-    json swarm_to_json(const std::optional<snode::SwarmInfo>& swarm) {
+    json swarm_to_json(
+            const std::optional<std::pair<snode::swarm_id_t, std::set<crypto::legacy_pubkey>>>&
+                    swarm,
+            const snode::Contacts& contacts) {
         if (!swarm)
             return json{
                     {"snodes", json::array()},
-                    {"swarm", util::int_to_string(snode::INVALID_SWARM_ID, 16)},
+                    {"swarm", "{:x}"_format(snode::INVALID_SWARM_ID)},
             };
         json snodes_json = json::array();
-        for (const auto& sn : swarm->snodes) {
-            snodes_json.push_back(
-                    json{{"address",  // Deprecated, use pubkey_legacy instead
-                          oxenc::to_base32z(sn.pubkey_legacy.view()) + ".snode"},
-                         {"pubkey_legacy", sn.pubkey_legacy.hex()},
-                         {"pubkey_x25519", sn.pubkey_x25519.hex()},
-                         {"pubkey_ed25519", sn.pubkey_ed25519.hex()},
-                         {"port",  // Deprecated string port for backwards compat; prefer https_port
-                          std::to_string(sn.port)},
-                         {"port_https", sn.port},
-                         {"port_omq", sn.omq_quic_port},
-                         {"port_quic", sn.omq_quic_port},
-                         {"ip", sn.ip}});
+        for (const auto& snpk : swarm->second) {
+            auto ct = contacts.find(snpk);
+            if (!ct || !*ct)
+                // Older versions did not even have (and so could not return) any info for
+                // non-contactable nodes, so do the same to avoid potentially breaking session
+                // clients that aren't expecting 0 values for pubkey/IP/ports.
+                continue;
+            snodes_json.push_back(json{
+                    // Deprecated; use pubkey_legacy instead:
+                    {"address", "{}.snode"_format(oxenc::to_base32z(snpk.view()))},
+                    // Deprecated string port for backwards compat; prefer port_https:
+                    {"port", "{}"_format(ct->https_port)},
+
+                    {"pubkey_legacy", snpk.hex()},
+                    {"pubkey_x25519", ct->pubkey_x25519.hex()},
+                    {"pubkey_ed25519", ct->pubkey_ed25519.hex()},
+                    {"port_https", ct->https_port},
+                    {"port_omq", ct->omq_quic_port},
+                    {"port_quic", ct->omq_quic_port},
+                    {"ip", ct->ip.to_string()}});
         }
 
         return json{
                 {"snodes", std::move(snodes_json)},
-                {"swarm", util::int_to_string(swarm->swarm_id, 16)},
+                {"swarm", "{:x}"_format(swarm->first)},
         };
     }
 
@@ -110,11 +118,8 @@ namespace {
     template <typename RPC>
     void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
         RequestHandler::rpc_handler calls;
-        calls.load_req = [](std::variant<json, oxenc::bt_dict_consumer> params) -> client_request {
-            return std::visit(
-                    [](auto&& params) { return load_request<RPC>(std::move(params)); },
-                    std::move(params));
-        };
+        calls.load_json = load_request<RPC, nlohmann::json>;
+        calls.load_bt = load_request<RPC, oxenc::bt_dict_consumer>;
         calls.http_json = [](RequestHandler& h, json params, std::function<void(Response)> cb) {
             auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
@@ -377,7 +382,11 @@ RequestHandler::RequestHandler(
 Response RequestHandler::handle_wrong_swarm(const user_pubkey& pubKey) {
     log::trace(logcat, "Got client request to a wrong swarm");
 
-    json swarm = swarm_to_json(service_node_.get_swarm(pubKey));
+    auto maybe_swarm = network_.get_swarm_for(pubKey);
+    if (!maybe_swarm)
+        return {http::INTERNAL_SERVER_ERROR, "No swarms known!"s};
+
+    json swarm = swarm_to_json(maybe_swarm, contacts_);
     add_misc_response_fields(swarm, service_node_);
     return {http::MISDIRECTED_REQUEST, std::move(swarm)};
 }
@@ -409,20 +418,31 @@ static void distribute_command(
         std::shared_ptr<swarm_response>& res,
         std::string_view cmd,
         const rpc::recursive& req) {
-    auto peers = sn.get_swarm_peers();
+    auto peers = sn.swarm().peers();
     res->pending += peers.size();
 
     for (auto& peer : peers) {
+        auto ct = sn.contacts().find(peer);
+        if (!ct || !*ct) {
+            log::debug(
+                    logcat,
+                    "Not distributing {} to swarm peer {}: SN {}",
+                    cmd,
+                    peer,
+                    ct ? "is non-contactable" : "not found");
+            res->pending--;
+            continue;
+        }
         sn.omq_server()->request(
-                peer.pubkey_x25519.view(),
+                ct->pubkey_x25519.view(),
                 "sn.storage_cc",
-                [res, peer, cmd](bool success, auto parts) {
+                [res, peer, peer_ed = ct->pubkey_ed25519, cmd](bool success, auto parts) {
                     json peer_result;
                     if (!success)
                         log::warning(
                                 logcat,
                                 "Response timeout from {} for forwarded command {}",
-                                peer.pubkey_legacy,
+                                peer,
                                 cmd);
                     bool good_result = success && parts.size() == 1;
                     if (good_result) {
@@ -433,7 +453,7 @@ static void distribute_command(
                                     logcat,
                                     "Received unparsable response to {} from {}: {}",
                                     cmd,
-                                    peer.pubkey_legacy,
+                                    peer,
                                     e.what());
                             good_result = false;
                         }
@@ -459,7 +479,7 @@ static void distribute_command(
                             *it = oxenc::to_base64(it->get_ref<const std::string&>());
                     }
 
-                    res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
+                    res->result["swarm"][peer_ed.hex()] = std::move(peer_result);
 
                     if (send_reply)
                         reply_or_fail(res);
@@ -492,7 +512,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
     log::trace(logcat, "Storing message: {}", oxenc::to_base64(req.data));
 #endif
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     using namespace std::chrono;
@@ -651,16 +671,23 @@ void RequestHandler::process_client_req(
 }
 
 void RequestHandler::process_client_req(
+        rpc::active_nodes_bin&&, std::function<void(rpc::Response)> cb) {
+    auto blobptr = service_node_.network().all_nodes_blob();
+    std::string_view blob{reinterpret_cast<const char*>(blobptr->data()), blobptr->size()};
+    cb({http::OK, blob, std::move(blobptr)});
+}
+
+void RequestHandler::process_client_req(
         rpc::get_swarm&& req, std::function<void(rpc::Response)> cb) {
-    const auto swarm = service_node_.get_swarm(req.pubkey);
+    auto swarm = network_.get_swarm_for(req.pubkey);
 
     log::debug(
             logcat,
             "get swarm for {}, swarm size: {}",
             obfuscate_pubkey(req.pubkey),
-            swarm ? swarm->snodes.size() : 0);
+            swarm ? swarm->second.size() : 0);
 
-    auto body = swarm_to_json(swarm);
+    auto body = swarm_to_json(swarm, contacts_);
     add_misc_response_fields(body, service_node_);
 
 #ifndef NDEBUG
@@ -672,7 +699,7 @@ void RequestHandler::process_client_req(
 
 void RequestHandler::process_client_req(
         rpc::retrieve&& req, std::function<void(rpc::Response)> cb) {
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!service_node_.swarm().is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -817,7 +844,7 @@ void RequestHandler::process_client_req(
         rpc::delete_all&& req, std::function<void(rpc::Response)> cb) {
     log::debug(logcat, "processing delete_all {} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!service_node_.swarm().is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -868,7 +895,7 @@ void RequestHandler::process_client_req(
                 mine,
                 "deleted",
                 service_node_.get_db().delete_all(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace)),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace)),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -885,7 +912,7 @@ void RequestHandler::process_client_req(
 void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing delete_msgs {} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     if (!verify_signature(
@@ -949,7 +976,7 @@ void RequestHandler::process_client_req(
     log::debug(
             logcat, "processing revoke_subaccount{} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1002,7 +1029,7 @@ void RequestHandler::process_client_req(
             "processing unrevoke_subaccount{} request",
             req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1053,7 +1080,7 @@ void RequestHandler::process_client_req(
         rpc::revoked_subaccounts&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing revoked_subaccounts request");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1113,7 +1140,7 @@ void RequestHandler::process_client_req(
         rpc::delete_before&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing delete_before {} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1163,7 +1190,7 @@ void RequestHandler::process_client_req(
                 mine,
                 "deleted",
                 service_node_.get_db().delete_by_timestamp(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.before),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace), req.before),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1179,7 +1206,7 @@ void RequestHandler::process_client_req(
 void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing expire_all {} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1229,7 +1256,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 mine,
                 "updated",
                 service_node_.get_db().update_all_expiries(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.expiry),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace), req.expiry),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1245,7 +1272,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
 void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing expire {} request", req.recurse ? "direct" : "forwarded");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     // Should already be guaranteed by client_rpc_endpoints.cpp request parser:
@@ -1268,11 +1295,6 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
 
         expiry.push_back(std::min(now + TTL_MAXIMUM_PRIVATE, exp));
     }
-
-    if (req.expiry.size() > 1 && !service_node_.hf_at_least(snode::MULTI_EXPIRY_HARDFORK))
-        return cb(Response{
-                http::FORBIDDEN,
-                "expire: multi-expiry requests are not yet active on the network"sv});
 
     if (!verify_signature(
                 service_node_.get_db(),
@@ -1391,7 +1413,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
 void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<void(Response)> cb) {
     log::debug(logcat, "processing get_expiries request");
 
-    if (!service_node_.is_pubkey_for_us(req.pubkey))
+    if (!swarm_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
 
     auto now = system_clock::now();
@@ -1455,7 +1477,7 @@ void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc
             if (done)
                 cb(Response{http::OK, json({{"results", std::move(*subresults)}})});
         };
-        var::visit(
+        std::visit(
                 [this, handler = std::move(handler)](auto&& s) {
                     process_client_req(std::move(s), std::move(handler));
                 },
@@ -1511,7 +1533,7 @@ void RequestHandler::process_client_req(
             cb(Response{http::OK, json({{"results", std::move(manager->subresults)}})});
         } else {
             // subrequest was successful and we're not done, so fire off the next one
-            var::visit(
+            std::visit(
                     [&](auto&& subreq) {
                         process_client_req(std::move(subreq), manager->subresult_callback);
                     },
@@ -1519,7 +1541,7 @@ void RequestHandler::process_client_req(
         }
     };
 
-    var::visit(
+    std::visit(
             [&](auto&& subreq) {
                 process_client_req(std::move(subreq), manager->subresult_callback);
             },
@@ -1549,7 +1571,7 @@ void RequestHandler::process_client_req(rpc::ifelse&& req, std::function<void(rp
         cb(Response{http::OK, std::move(response)});
     };
 
-    var::visit(
+    std::visit(
             [&](auto&& subreq) { process_client_req(std::move(subreq), std::move(wrap_response)); },
             std::move(*subreq));
 }
@@ -1624,56 +1646,6 @@ Response RequestHandler::process_retrieve_all() {
     return {http::OK, json{{"messages", std::move(messages)}}};
 }
 
-void RequestHandler::process_storage_test_req(
-        uint64_t height,
-        crypto::legacy_pubkey tester,
-        std::string msg_hash_hex,
-        std::function<void(snode::MessageTestStatus, std::string, steady_clock::duration)>
-                callback) {
-    /// TODO: we never actually test that `height` is within any reasonable
-    /// time window (or that it is not repeated multiple times), we should do
-    /// that! This is done implicitly to some degree using
-    /// `block_hashes_cache_`, which holds a limited number of recent blocks
-    /// only and fails if an earlier block is requested
-
-    auto started = steady_clock::now();
-    auto [status, answer] = service_node_.process_storage_test_req(height, tester, msg_hash_hex);
-
-    if (status == snode::MessageTestStatus::RETRY) {
-        // Our first attempt returned a RETRY, so set up a timer to keep retrying
-
-        auto timer = std::make_shared<oxenmq::TimerID>();
-        auto& timer_ref = *timer;
-        service_node_.omq_server()->add_timer(
-                timer_ref,
-                [this,
-                 timer = std::move(timer),
-                 height,
-                 tester,
-                 hash = std::move(msg_hash_hex),
-                 started,
-                 callback = std::move(callback)] {
-                    auto elapsed = steady_clock::now() - started;
-
-                    log::trace(
-                            logcat,
-                            "Performing storage test retry, {} since started",
-                            util::friendly_duration(elapsed));
-
-                    auto [status, answer] =
-                            service_node_.process_storage_test_req(height, tester, hash);
-                    if (status == snode::MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD &&
-                        !service_node_.shutting_down())
-                        return;  // Still retrying so wait for the next call
-                    service_node_.omq_server()->cancel_timer(*timer);
-                    callback(status, std::move(answer), elapsed);
-                },
-                TEST_RETRY_INTERVAL);
-    } else {
-        callback(status, std::move(answer), steady_clock::now() - started);
-    }
-}
-
 Response RequestHandler::wrap_proxy_response(
         Response res,
         const crypto::x25519_pubkey& client_key,
@@ -1709,7 +1681,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext, OnionRequest
 
     service_node_.record_onion_request();
 
-    var::visit(
+    std::visit(
             [&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
             process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
 }
@@ -1736,9 +1708,10 @@ void RequestHandler::process_onion_req(FinalDestinationInfo&& info, OnionRequest
 void RequestHandler::process_onion_req(RelayToNodeInfo&& info, OnionRequestMetadata&& data) {
     auto& [payload, ekey, etype, dest] = info;
 
-    auto dest_node = service_node_.find_node(dest);
-    if (!dest_node) {
-        auto msg = fmt::format("Next node not found: {}", dest);
+    auto dest_ct = contacts_.find(dest);
+    if (!dest_ct || !*dest_ct) {
+        auto msg = fmt::format(
+                "Next node {}: {}", dest_ct ? "is currently unreachable" : "not found", dest);
         log::debug(logcat, "{}", msg);
         return data.cb({http::BAD_GATEWAY, std::move(msg)});
     }
@@ -1771,12 +1744,12 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info, OnionRequestMetad
         cb(std::move(res));
     };
 
-    log::debug(logcat, "send_onion_to_sn, sn: {}", dest_node->pubkey_legacy);
+    log::debug(logcat, "send_onion_to_sn, sn: {}", dest);
 
     data.ephem_key = ekey;
     data.enc_type = etype;
     service_node_.send_onion_to_sn(
-            *dest_node, std::move(payload), std::move(data), std::move(on_response));
+            *dest_ct, std::move(payload), std::move(data), std::move(on_response));
 }
 
 void RequestHandler::process_onion_req(RelayToServerInfo&& info, OnionRequestMetadata&& data) {

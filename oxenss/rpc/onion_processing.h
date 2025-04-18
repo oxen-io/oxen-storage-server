@@ -27,8 +27,6 @@ struct RelayToNodeInfo {
     crypto::ed25519_pubkey next_node;
 };
 
-std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& p);
-
 bool operator==(const RelayToNodeInfo& lhs, const RelayToNodeInfo& rhs);
 
 /// The request is to be forwarded to some non-SS server
@@ -45,8 +43,6 @@ struct RelayToServerInfo {
     // Request's target
     std::string target;
 };
-
-std::ostream& operator<<(std::ostream& os, const RelayToServerInfo& p);
 
 bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs);
 
@@ -71,8 +67,6 @@ struct FinalDestinationInfo {
     // response as base64; if false return the encrypted response as-is.
     bool base64 = true;
 };
-
-std::ostream& operator<<(std::ostream& os, const FinalDestinationInfo& p);
 
 bool operator==(const FinalDestinationInfo& lhs, const FinalDestinationInfo& rhs);
 
