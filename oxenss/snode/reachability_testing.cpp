@@ -1,5 +1,6 @@
 
 #include "reachability_testing.h"
+#include "oxenss/crypto/keys.h"
 #include "swarm.h"
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/utils/random.hpp>
@@ -49,11 +50,10 @@ static void check_incoming_tests_impl(
     }
 }
 
-void reachability_testing::check_incoming_tests(const clock::time_point& now, bool quic) {
+void reachability_testing::check_incoming_tests(const clock::time_point& now) {
     check_incoming_tests_impl("HTTP", now, startup, last_https);
     check_incoming_tests_impl("OxenMQ", now, startup, last_omq);
-    if (quic)
-        check_incoming_tests_impl("QUIC", now, startup, last_quic);
+    check_incoming_tests_impl("QUIC", now, startup, last_quic);
 }
 
 void reachability_testing::incoming_ping(ReachType type, const clock::time_point& now) {
@@ -63,7 +63,7 @@ void reachability_testing::incoming_ping(ReachType type, const clock::time_point
             .last_test = now;
 }
 
-std::optional<sn_record> reachability_testing::next_random(
+std::optional<crypto::legacy_pubkey> reachability_testing::next_random(
         const Swarm& swarm, const clock::time_point& now, bool requeue) {
     if (next_general_test > now)
         return std::nullopt;
@@ -72,12 +72,11 @@ std::optional<sn_record> reachability_testing::next_random(
 
     // Pull the next element off the queue, but skip ourself, any that are no longer registered,
     // and any that are currently known to be failing (those are queued for testing separately).
-    auto& my_pk = swarm.our_address().pubkey_legacy;
     while (!testing_queue.empty()) {
         auto& pk = testing_queue.back();
-        std::optional<sn_record> sn;
-        if (pk != my_pk && !failing.count(pk))
-            sn = swarm.find_node(pk);
+        std::optional<crypto::legacy_pubkey> sn;
+        if (pk != swarm.our_pk && !failing.count(pk))
+            sn = pk;
         testing_queue.pop_back();
         if (sn)
             return sn;
@@ -85,38 +84,32 @@ std::optional<sn_record> reachability_testing::next_random(
     if (!requeue)
         return std::nullopt;
 
-    // FIXME: when a *new* node comes online we need to inject it into a random position in the
+    // FIXME: when a *new* node comes online we ought to inject it into a random position in the
     // SN list with probability (L/N) [L = current list size, N = potential list size]
     //
     // (FIXME: put this FIXME in a better place ;-) )
 
     // We exhausted the queue so repopulate it and try again
 
-    auto& all = swarm.all_funded_nodes();
+    auto all = swarm.network.contacts.get_pubkeys();
     testing_queue.reserve(all.size());
-
-    for (const auto& [pk, _sn] : all)
-        testing_queue.push_back(pk);
+    testing_queue.assign(all.begin(), all.end());
 
     std::shuffle(testing_queue.begin(), testing_queue.end(), util::rng());
 
-    // Recurse with the rebuild list, but don't let it try rebuilding again
-    return next_random(swarm, now, false);
+    return next_random(swarm, now, false /*= dont recurse again*/);
 }
 
-std::vector<std::pair<sn_record, int>> reachability_testing::get_failing(
-        const Swarm& swarm, const clock::time_point& now) {
+std::vector<std::pair<crypto::legacy_pubkey, int>> reachability_testing::get_failing(
+        clock::time_point now) {
     // Our failing_queue puts the oldest retest times at the top, so pop them off into our
     // result until the top node should be retested sometime in the future
-    std::vector<std::pair<sn_record, int>> result;
+    std::vector<std::pair<crypto::legacy_pubkey, int>> result;
     while (result.size() < MAX_RETESTS_PER_TICK && !failing_queue.empty()) {
         auto& [pk, retest_time, failures] = failing_queue.top();
         if (retest_time > now)
             break;
-        if (auto sn = swarm.find_node(pk))
-            result.emplace_back(std::move(*sn), failures);
-        else  // Node is apparently no longer active, so stop testing it.
-            remove_node_from_failing(pk);
+        result.emplace_back(pk, failures);
         failing_queue.pop();
     }
     return result;

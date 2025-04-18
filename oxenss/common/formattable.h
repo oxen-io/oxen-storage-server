@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <type_traits>
 
 namespace oxenss {
@@ -13,6 +14,9 @@ namespace oxenss {
 // template <> inline constexpr bool to_string_formattable<MyType> = true;
 template <typename T>
 constexpr bool to_string_formattable = false;
+
+template <typename T>
+concept string_formattable = to_string_formattable<T>;
 
 #ifdef __cpp_lib_is_scoped_enum
 using std::is_scoped_enum;
@@ -32,9 +36,9 @@ constexpr bool is_scoped_enum_v = is_scoped_enum<T>::value;
 }  // namespace oxenss
 
 namespace fmt {
-template <typename T>
-struct formatter<T, char, std::enable_if_t<oxenss::to_string_formattable<T>>>
-        : formatter<std::string_view> {
+
+template <oxenss::string_formattable T>
+struct formatter<T, char> : formatter<std::string_view> {
     template <typename FormatContext>
     auto format(const T& val, FormatContext& ctx) const {
         if constexpr (oxenss::is_scoped_enum_v<T>)
@@ -42,6 +46,13 @@ struct formatter<T, char, std::enable_if_t<oxenss::to_string_formattable<T>>>
         else
             return formatter<std::string_view>::format(val.to_string(), ctx);
     }
+};
+
+// Make sure that fmt doesn't interpret our custom formattable types as range formattable, which
+// results in ambiguous overloads:
+template <oxenss::string_formattable T>
+struct is_range<T, char> {
+    static constexpr bool value = false;
 };
 
 }  // namespace fmt

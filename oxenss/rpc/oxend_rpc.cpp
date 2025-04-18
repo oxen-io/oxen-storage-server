@@ -16,7 +16,7 @@ static auto logcat = log::Cat("rpc");
 
 using namespace std::literals;
 
-oxend_seckeys get_sn_privkeys(
+crypto::snode_keypairs get_sn_keys(
         std::string_view oxend_rpc_address, std::function<bool()> keep_trying) {
     oxenmq::OxenMQ omq{omq_logger, oxenmq::LogLevel::info};
     omq.start();
@@ -34,7 +34,7 @@ oxend_seckeys get_sn_privkeys(
 
         if (keep_trying && !keep_trying())
             return {};
-        std::promise<oxend_seckeys> prom;
+        std::promise<crypto::snode_keypairs> prom;
         auto fut = prom.get_future();
         auto conn = omq.connect_remote(
                 oxenmq::address{oxend_rpc_address},
@@ -51,20 +51,20 @@ oxend_seckeys get_sn_privkeys(
                                                 (data.empty() ? "no data received" : data[0])};
                                     }
                                     auto r = nlohmann::json::parse(data[1]);
-
-                                    auto pk = r.at("service_node_privkey").get<std::string>();
-                                    if (pk.empty())
+                                    auto sk =
+                                            r.value<std::string_view>("service_node_privkey", ""sv);
+                                    if (sk.empty())
                                         throw std::runtime_error{
                                                 "main service node private key is empty (perhaps "
                                                 "oxend is not running in service-node mode?)"};
-                                    prom.set_value(oxend_seckeys{
-                                            crypto::legacy_seckey::from_hex(pk),
-                                            crypto::ed25519_seckey::from_hex(
+                                    prom.set_value(crypto::snode_keypairs{
+                                            crypto::legacy_keypair::from_secret_hex(sk),
+                                            crypto::ed25519_keypair::from_secret_hex(
                                                     r.at("service_node_ed25519_privkey")
-                                                            .get<std::string>()),
-                                            crypto::x25519_seckey::from_hex(
+                                                            .get<std::string_view>()),
+                                            crypto::x25519_keypair::from_secret_hex(
                                                     r.at("service_node_x25519_privkey")
-                                                            .get<std::string>())});
+                                                            .get<std::string_view>())});
                                 } catch (...) {
                                     prom.set_exception(std::current_exception());
                                 }

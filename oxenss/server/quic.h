@@ -57,7 +57,7 @@ class QUIC : public MQBase {
     const Address local;
     std::shared_ptr<quic::Loop> loop_ = std::make_shared<quic::Loop>();
     quic::Network network{loop_};
-    std::shared_ptr<quic::GNUTLSCreds> tls_creds;
+    std::shared_ptr<quic::TLSCreds> tls_creds;
     std::shared_ptr<quic::Endpoint> ep;
 
     rpc::RequestHandler& request_handler;
