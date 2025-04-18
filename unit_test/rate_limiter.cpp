@@ -17,7 +17,7 @@ TEST_CASE("rate limiter - snode - empty bucket", "[ratelim][snode]") {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
         CHECK_FALSE(rate_limiter.should_rate_limit(identifier, now));
     }
     CHECK(rate_limiter.should_rate_limit(identifier, now));
@@ -34,7 +34,7 @@ TEST_CASE("rate limiter - snode - steady bucket fillup", "[ratelim][snode]") {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
         const auto delta = std::chrono::microseconds(i * 1'000'000ul / RateLimiter::TOKEN_RATE);
         CHECK_FALSE(rate_limiter.should_rate_limit(identifier, now + delta));
     }
@@ -47,7 +47,7 @@ TEST_CASE("rate limiter - snode - multiple identifiers", "[ratelim][snode]") {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc000");
     const auto now = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
         CHECK_FALSE(rate_limiter.should_rate_limit(identifier1, now));
     }
     CHECK(rate_limiter.should_rate_limit(identifier1, now));
@@ -64,7 +64,7 @@ TEST_CASE("rate limiter - client - empty bucket", "[ratelim][client]") {
     uint32_t identifier = (10 << 24) + (1 << 16) + (1 << 8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
         CHECK_FALSE(rate_limiter.should_rate_limit_client(identifier, now));
     }
     CHECK(rate_limiter.should_rate_limit_client(identifier, now));
@@ -80,7 +80,7 @@ TEST_CASE("rate limiter - client - steady bucket fillup", "[ratelim][client]") {
     uint32_t identifier = (10 << 24) + (1 << 16) + (1 << 8) + 13;
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
         const auto delta = std::chrono::microseconds(i * 1'000'000ul / RateLimiter::TOKEN_RATE);
         CHECK_FALSE(rate_limiter.should_rate_limit_client(identifier, now + delta));
     }
@@ -92,7 +92,7 @@ TEST_CASE("rate limiter - client - multiple identifiers", "[ratelim][client]") {
     uint32_t identifier1 = (10 << 24) + (1 << 16) + (1 << 8) + 13;
     const auto now = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
+    for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
         CHECK_FALSE(rate_limiter.should_rate_limit_client(identifier1, now));
     }
     CHECK(rate_limiter.should_rate_limit_client(identifier1, now));

@@ -1,12 +1,10 @@
 #pragma once
 
 #include <oxenss/crypto/keys.h>
-#include "sn_record.h"
 
 #include <chrono>
 #include <queue>
 #include <random>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -62,6 +60,9 @@ class reachability_testing {
     // recommissioned).
     inline static constexpr int MAX_RETESTS_PER_TICK = 4;
 
+    // The number of random nodes that we test per tick, in addition to retests (see above).
+    inline static constexpr int RANDOM_TESTS_PER_TICK = 1;
+
     // Maximum time without a ping before we start whining about it.
     //
     // We have a probability of about 0.368* of *not* getting pinged within a ping interval
@@ -114,13 +115,13 @@ class reachability_testing {
     //
     // `requeue` is mainly for internal use: if false it avoids rebuilding the queue if we run
     // out (and instead just return nullopt).
-    std::optional<sn_record> next_random(
+    std::optional<crypto::legacy_pubkey> next_random(
             const Swarm& swarm, const clock::time_point& now = clock::now(), bool requeue = true);
 
     // Removes and returns up to MAX_RETESTS_PER_TICK nodes that are due to be tested (i.e.
     // next-testing-time <= now).  Returns [snrecord, #previous-failures] for each.
-    std::vector<std::pair<sn_record, int>> get_failing(
-            const Swarm& swarm, const clock::time_point& now = clock::now());
+    std::vector<std::pair<crypto::legacy_pubkey, int>> get_failing(
+            clock::time_point now = clock::now());
 
     // Adds a bad node pubkey to the failing list, to be re-tested soon (with a backoff
     // depending on `failures`; see TESTING_BACKOFF).  `previous_failures` should be the number
@@ -136,7 +137,7 @@ class reachability_testing {
     void incoming_ping(ReachType type, const clock::time_point& now = clock::now());
 
     // Check whether we received incoming pings recently
-    void check_incoming_tests(const clock::time_point& now, bool quic);
+    void check_incoming_tests(const clock::time_point& now);
 };
 
 }  // namespace oxenss::snode

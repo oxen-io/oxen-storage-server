@@ -1,6 +1,8 @@
 #include "string_utils.hpp"
 #include <fmt/format.h>
+#include <array>
 #include <cassert>
+#include <iterator>
 
 namespace oxenss::util {
 
@@ -97,39 +99,53 @@ std::string short_duration(std::chrono::duration<double> dur) {
 }
 
 std::string friendly_duration(std::chrono::nanoseconds dur) {
-    std::ostringstream os;
+    std::string friendly;
+    auto append = std::back_inserter(friendly);
     bool some = false;
     if (dur >= 24h) {
-        os << dur / 24h << 'd';
+        fmt::format_to(append, "{}d", dur / 24h);
         dur %= 24h;
         some = true;
     }
     if (dur >= 1h || some) {
-        os << dur / 1h << 'h';
+        fmt::format_to(append, "{}h", dur / 1h);
         dur %= 1h;
         some = true;
     }
     if (dur >= 1min || some) {
-        os << dur / 1min << 'm';
+        fmt::format_to(append, "{}m", dur / 1min);
         dur %= 1min;
         some = true;
     }
-    if (some) {
-        // If we have >= minutes then don't bother with fractional seconds
-        os << dur / 1s << 's';
+    if (some || dur % 1s == 0ns) {
+        // If we have >= minutes or its an integer number of seconds then don't bother with
+        // fractional seconds
+        fmt::format_to(append, "{}s", dur / 1s);
     } else {
         double seconds = std::chrono::duration<double>(dur).count();
-        os.precision(3);
         if (dur >= 1s)
-            os << seconds << "s";
+            fmt::format_to(append, "{:.3f}s", seconds);
         else if (dur >= 1ms)
-            os << seconds * 1000 << "ms";
+            fmt::format_to(append, "{:.3f}ms", seconds * 1000);
         else if (dur >= 1us)
-            os << seconds * 1'000'000 << "µs";
+            fmt::format_to(append, "{:.3f}µs", seconds * 1'000'000);
         else
-            os << seconds * 1'000'000'000 << "ns";
+            fmt::format_to(append, "{:.0f}ns", seconds * 1'000'000'000);
     }
-    return os.str();
+    return friendly;
+}
+
+std::string get_human_readable_bytes(uint64_t bytes) {
+    if (bytes < 1000)
+        return fmt::format("{} B", bytes);
+    constexpr std::array prefixes{'k', 'M', 'G', 'T'};
+    double b = bytes;
+    for (const auto& prefix : prefixes) {
+        b /= 1000.;
+        if (b < 1000.)
+            return fmt::format("{:.{}f} {}B", b, b < 10. ? 2 : b < 100. ? 1 : 0, prefix);
+    }
+    return fmt::format("{:.0f} {}B", b, prefixes.back());
 }
 
 }  // namespace oxenss::util

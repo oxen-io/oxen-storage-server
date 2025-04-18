@@ -163,6 +163,7 @@ void generate_dh_pem(const std::filesystem::path& dh_path) {
     FILE* pFile = NULL;
     pFile = fopen(reinterpret_cast<const char*>(dh_path.u8string().c_str()), "wt");
     PEM_write_DHparams(pFile, dh);
+    DH_free(dh);
     fclose(pFile);
 }
 

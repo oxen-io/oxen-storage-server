@@ -3,6 +3,7 @@
 #include <oxenss/crypto/channel_encryption.hpp>
 #include "client_rpc_endpoints.h"
 #include "onion_processing.h"
+#include "oxenss/snode/contacts.h"
 #include <oxenc/bt_serialize.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/snode/service_node.h>
@@ -60,11 +61,12 @@ inline constexpr int RETRIEVE_MAX_SIZE = 7'800'000;
 // Maximum subrequests that can be stuffed into a single batch request
 inline constexpr size_t BATCH_REQUEST_MAX = 20;
 
-// Simpler wrapper that works for most of our responses
+// Simple wrapper that works for most of our responses
 struct Response {
     http::response_code status = http::OK;
     std::variant<std::string, std::string_view, nlohmann::json> body;
     std::vector<std::pair<std::string, std::string>> headers;
+    std::shared_ptr<void> keepalive;
 
     Response() = default;
     Response(
@@ -72,6 +74,8 @@ struct Response {
             std::variant<std::string, std::string_view, nlohmann::json> body = ""sv,
             std::vector<std::pair<std::string, std::string>> headers = {}) :
             status{status}, body{std::move(body)}, headers{std::move(headers)} {}
+    Response(http::response_code status, std::string_view body, std::shared_ptr<void> keepalive) :
+            status{status}, body{body}, keepalive{keepalive} {}
 };
 
 // Views the string or string_view body inside a Response.  Should only be called when the body
@@ -147,6 +151,9 @@ struct OnionRequestMetadata {
 class RequestHandler {
 
     snode::ServiceNode& service_node_;
+    const snode::Network& network_{service_node_.network()};
+    const snode::Swarm& swarm_{service_node_.swarm()};
+    const snode::Contacts& contacts_{service_node_.contacts()};
     const crypto::ChannelEncryption& channel_cipher_;
     const crypto::ed25519_seckey ed25519_sk_;
     std::weak_ptr<http::Client> http_;
@@ -191,6 +198,7 @@ class RequestHandler {
     void process_client_req(rpc::retrieve&& req, std::function<void(Response)> cb);
     void process_client_req(rpc::get_swarm&& req, std::function<void(Response)> cb);
     void process_client_req(rpc::oxend_request&& req, std::function<void(Response)> cb);
+    void process_client_req(rpc::active_nodes_bin&& req, std::function<void(Response)> cb);
     void process_client_req(rpc::info&&, std::function<void(Response)> cb);
     void process_client_req(rpc::delete_all&&, std::function<void(Response)> cb);
     void process_client_req(rpc::delete_msgs&&, std::function<void(Response)> cb);
@@ -206,8 +214,8 @@ class RequestHandler {
     void process_client_req(rpc::revoked_subaccounts&& req, std::function<void(Response)> cb);
 
     struct rpc_handler {
-        std::function<client_request(std::variant<nlohmann::json, oxenc::bt_dict_consumer> params)>
-                load_req;
+        std::function<client_request(nlohmann::json&& params)> load_json;
+        std::function<client_request(oxenc::bt_dict_consumer&& params)> load_bt;
         std::function<void(RequestHandler&, nlohmann::json, std::function<void(Response)>)>
                 http_json;
         std::function<void(
@@ -231,17 +239,6 @@ class RequestHandler {
     // and the json params object.
     void process_client_req(
             std::string_view method, nlohmann::json params, std::function<void(Response)> cb);
-
-    // Processes a swarm test request; if it succeeds the callback is immediately invoked,
-    // otherwise the test is scheduled for retries for some time until it succeeds, fails, or
-    // times out, at which point the callback is invoked to return the result.
-    void process_storage_test_req(
-            uint64_t height,
-            crypto::legacy_pubkey tester,
-            std::string msg_hash_hex,
-            std::function<void(
-                    snode::MessageTestStatus, std::string, std::chrono::steady_clock::duration)>
-                    callback);
 
     // Forwards a request to oxend RPC. `params` should contain:
     // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and

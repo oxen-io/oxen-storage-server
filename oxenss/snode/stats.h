@@ -1,12 +1,12 @@
 #pragma once
 
-#include "sn_record.h"
-
 #include <atomic>
 #include <chrono>
 #include <deque>
 #include <mutex>
 #include <unordered_map>
+
+#include "../crypto/keys.h"
 
 namespace oxenmq {
 class OxenMQ;
@@ -48,8 +48,6 @@ struct peer_stats {
     // how many times a series of push requests failed
     // causing this node to give up re-transmitting
     uint64_t pushes_failed = 0;
-
-    std::deque<test_result> storage_tests;
 };
 
 struct period_stats {
@@ -92,12 +90,6 @@ class all_stats {
     void record_push_failed(const crypto::legacy_pubkey& sn) {
         std::lock_guard lock{peer_report_mutex};
         peer_report_[sn].pushes_failed++;
-    }
-
-    // Records a storage test result for the given peer
-    void record_storage_test_result(const crypto::legacy_pubkey& sn, ResultType result) {
-        std::lock_guard lock{peer_report_mutex};
-        peer_report_[sn].storage_tests.push_back({std::chrono::system_clock::now(), result});
     }
 
     // Returns a copy of the current peer report
