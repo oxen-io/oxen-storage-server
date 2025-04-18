@@ -1,24 +1,13 @@
 #include "stats.h"
-#include <algorithm>
 #include <chrono>
-#include <iostream>
 
 #include <oxenmq/oxenmq.h>
-#include <unordered_map>
 
 namespace oxenss::snode {
 
 all_stats::all_stats(oxenmq::OxenMQ& omq) {
     omq.add_timer([this] { cleanup(); }, STATS_CLEANUP_INTERVAL);
 }
-
-static void cleanup_old(
-        std::deque<test_result>& tests, std::chrono::system_clock::time_point cutoff_time) {
-    while (!tests.empty() && tests.front().timestamp <= cutoff_time)
-        tests.pop_front();
-}
-
-static constexpr auto ROLLING_WINDOW = 120min;
 
 void all_stats::cleanup() {
     {
@@ -34,15 +23,6 @@ void all_stats::cleanup() {
                         current_proxy_requests.exchange(0),
                         current_onion_requests.exchange(0)});
         last_rotate = std::chrono::steady_clock::now();
-    }
-
-    {
-        // Clean up old peer report stats
-        std::lock_guard lock{peer_report_mutex};
-
-        const auto cutoff = std::chrono::system_clock::now() - ROLLING_WINDOW;
-        for (auto& [kv, stats] : peer_report_)
-            cleanup_old(stats.storage_tests, cutoff);
     }
 }
 

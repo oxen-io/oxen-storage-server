@@ -6,7 +6,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <oxenss/common/formattable.h>
 
@@ -36,24 +35,22 @@ struct alignas(size_t) key_base : std::array<unsigned char, KeyLength> {
     explicit operator bool() const { return *this != detail::null_bytes<KeyLength>; }
 
     // Loads the key from a hex string; throws if the hex is the wrong size or not hex.
-    static Derived from_hex(std::string_view hex) {
+    [[nodiscard]] static Derived from_hex(std::string_view hex) {
         Derived d;
-        detail::load_from_hex(d.data(), d.size(), hex);
+        d.load_from_hex(hex);
         return d;
     }
-    // Same as above, but returns nullopt if invalid instead of throwing
-    static std::optional<Derived> maybe_from_hex(std::string_view hex) {
-        try {
-            return from_hex(hex);
-        } catch (...) {
-        }
-        return std::nullopt;
+    void load_from_hex(std::string_view hex) {
+        detail::load_from_hex(this->data(), this->size(), hex);
     }
     // Loads the key from a byte string; throws if the wrong size.
-    static Derived from_bytes(std::string_view bytes) {
+    [[nodiscard]] static Derived from_bytes(std::string_view bytes) {
         Derived d;
-        detail::load_from_bytes(d.data(), d.size(), bytes);
+        d.load_from_bytes(bytes);
         return d;
+    }
+    void load_from_bytes(std::string_view bytes) {
+        detail::load_from_bytes(this->data(), this->size(), bytes);
     }
 };
 
@@ -83,9 +80,29 @@ struct x25519_seckey : seckey_base<x25519_seckey, 32> {
     x25519_pubkey pubkey() const;
 };
 
-using legacy_keypair = std::pair<legacy_pubkey, legacy_seckey>;
-using ed25519_keypair = std::pair<ed25519_pubkey, ed25519_seckey>;
-using x25519_keypair = std::pair<x25519_pubkey, x25519_seckey>;
+template <typename Pubkey, typename Seckey>
+struct keypair {
+    Pubkey pub;
+    Seckey sec;
+
+    // Populates the keypair by loading from a secret value then computing the pubkey from the
+    // secret.
+    [[nodiscard]] static keypair from_secret_hex(std::string_view hex) {
+        keypair k;
+        k.sec.load_from_hex(hex);
+        k.pub = k.sec.pubkey();
+        return k;
+    }
+    [[nodiscard]] static keypair from_secret_bytes(std::string_view bytes) {
+        keypair k;
+        k.sec.load_from_bytes(bytes);
+        k.pub = k.sec.pubkey();
+        return k;
+    }
+};
+using legacy_keypair = keypair<legacy_pubkey, legacy_seckey>;
+using ed25519_keypair = keypair<ed25519_pubkey, ed25519_seckey>;
+using x25519_keypair = keypair<x25519_pubkey, x25519_seckey>;
 
 /// Parse a pubkey string value encoded in any of base32z, b64, hex, or raw bytes, based on the
 /// length of the value.  Returns a null pk (i.e. operator bool() returns false) and warns on
@@ -93,6 +110,12 @@ using x25519_keypair = std::pair<x25519_pubkey, x25519_seckey>;
 legacy_pubkey parse_legacy_pubkey(std::string_view pubkey_in);
 ed25519_pubkey parse_ed25519_pubkey(std::string_view pubkey_in);
 x25519_pubkey parse_x25519_pubkey(std::string_view pubkey_in);
+
+struct snode_keypairs {
+    legacy_keypair legacy;
+    ed25519_keypair ed25519;
+    x25519_keypair x25519;
+};
 
 }  // namespace oxenss::crypto
 

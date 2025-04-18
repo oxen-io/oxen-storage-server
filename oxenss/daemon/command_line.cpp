@@ -6,9 +6,7 @@
 
 #include <CLI/CLI.hpp>
 #include <CLI/Error.hpp>
-#include <fmt/std.h>
 #include <filesystem>
-#include <iostream>
 #include <optional>
 
 extern "C" {
@@ -145,8 +143,7 @@ parse_result parse_cli_args(int argc, char* argv[]) {
     cli.add_option(
                "--oxend-rpc",
                options.oxend_omq_rpc,
-               "OMQ RPC address on which oxend is available; typically "
-               "ipc:///path/to/oxend.sock or tcp://localhost:22025")
+               "OMQ RPC address on which oxend is available; typically ipc:///path/to/oxend.sock")
             ->type_name("OMQ_URL")
             ->capture_default_str();
     cli.add_option(
@@ -156,7 +153,9 @@ parse_result parse_cli_args(int argc, char* argv[]) {
             ->capture_default_str()
             ->type_name("PORT");
     cli.add_option(
-               "--https-port", options.https_port, "Public port to listen on for HTTPS connections")
+               "--https-port",
+               options.https_port,
+               "Public port to listen on for HTTPS (TCP) connections")
             ->capture_default_str()
             ->type_name("PORT");
     cli.add_option(

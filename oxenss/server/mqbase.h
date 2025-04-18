@@ -11,7 +11,6 @@
 #include <shared_mutex>
 
 #include "../common/namespace.h"
-#include "../snode/sn_record.h"
 #include "utils.h"
 
 namespace oxenss {
@@ -23,7 +22,8 @@ namespace rpc {
 
 namespace snode {
     class ServiceNode;
-}
+    struct sn_test;
+}  // namespace snode
 
 struct message;
 

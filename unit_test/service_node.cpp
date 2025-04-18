@@ -1,73 +1,88 @@
 #include <catch2/catch.hpp>
-#include <iostream>
 
+#include <oxenmq/oxenmq.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/rpc/request_handler.h>
 #include <oxenss/snode/swarm.h>
 #include <oxenss/utils/time.hpp>
+#include <oxenss/utils/random.hpp>
+#include <random>
 
 #include <oxenc/base64.h>
 
 using namespace std::literals;
 using namespace oxenss::crypto;
 
-static oxenss::snode::sn_record create_dummy_sn_record() {
-    const auto pk = legacy_pubkey::from_hex(
-            "330e73449f6656cfe7816fa00d850af1f45884eab9e404026ca51f54b045e385");
+using ip_ports = std::tuple<oxen::quic::ipv4, uint16_t, uint16_t>;
+
+using oxenss::snode::Contacts;
+
+static oxenss::snode::contact create_dummy_contact() {
     const auto pk_x25519 = x25519_pubkey::from_hex(
             "66ab11bed0e6219e1f3aea9b9e33f89cf636d5db203ed4efb9090cdb15902414");
     const auto pk_ed25519 = ed25519_pubkey::from_hex(
             "a38418ae9af2fedb560f400953f91cefb91a7a7efc971edfa31744ce5c4e319a");
-    const std::string ip = "0.0.0.0";
 
-    return {ip, 8080, 8081, pk, pk_ed25519, pk_x25519};
+    return {oxen::quic::ipv4{"0.0.0.0"}, 8080, 8081, {2, 9, 0}, pk_ed25519, pk_x25519};
 }
 
-using ip_ports = std::tuple<const char*, uint16_t, uint16_t>;
+static void test_ip_update(
+        Contacts& contacts, ip_ports old_addr, ip_ports new_addr, ip_ports expected) {
+    auto tmp = create_dummy_contact();
 
-static void test_ip_update(ip_ports old_addr, ip_ports new_addr, ip_ports expected) {
-    using oxenss::snode::sn_record;
+    std::tie(tmp.ip, tmp.https_port, tmp.omq_quic_port) = old_addr;
 
-    auto sn = create_dummy_sn_record();
+    legacy_pubkey pk;
+    for (int i = 0; i < 32; i += 8) {
+        auto x = oxenss::util::rng()();
+        static_assert(sizeof(x) == 8);
+        std::memcpy(pk.data() + i, &x, 8);
+    }
+    contacts.update(pk, tmp);
 
-    std::tie(sn.ip, sn.port, sn.omq_quic_port) = old_addr;
+    auto ct = contacts.find(pk);
+    REQUIRE(ct);
+    bool expect_contactable = std::get<0>(old_addr).addr != 0;
+    CHECK(static_cast<bool>(*ct) == expect_contactable);
+    CHECK(ct->contactable() == expect_contactable);
 
-    oxenss::snode::SwarmInfo si{0, std::vector<sn_record>{sn}};
-    std::vector<oxenss::snode::SwarmInfo> current{{si}};
+    std::tie(tmp.ip, tmp.https_port, tmp.omq_quic_port) = new_addr;
 
-    std::tie(sn.ip, sn.port, sn.omq_quic_port) = new_addr;
+    contacts.update(pk, tmp);
 
-    oxenss::snode::SwarmInfo si2{0, std::vector<sn_record>{sn}};
-    std::vector<oxenss::snode::SwarmInfo> incoming{{si2}};
+    ct = contacts.find(pk);
+    REQUIRE(ct);
+    expect_contactable |= std::get<0>(new_addr).addr != 0;
+    CHECK(static_cast<bool>(*ct) == expect_contactable);
+    CHECK(ct->contactable() == expect_contactable);
 
-    preserve_ips(incoming, current);
-
-    CHECK(incoming[0].snodes[0].ip == std::get<0>(expected));
-    CHECK(incoming[0].snodes[0].port == std::get<1>(expected));
-    CHECK(incoming[0].snodes[0].omq_quic_port == std::get<2>(expected));
+    CHECK(ct->ip == std::get<0>(expected));
+    CHECK(ct->https_port == std::get<1>(expected));
+    CHECK(ct->omq_quic_port == std::get<2>(expected));
 }
 
 TEST_CASE("service nodes - updates IP address", "[service-nodes][updates]") {
-    auto sn = create_dummy_sn_record();
+    const auto fake_pk = oxenss::crypto::legacy_pubkey::from_hex(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    oxenmq::OxenMQ omq;
+    Contacts contacts{omq};
 
     const ip_ports default_ip{"0.0.0.0", 0, 0};
     const ip_ports ip1{"1.1.1.1", 123, 456};
     const ip_ports ip2{"1.2.3.4", 123, 456};
 
     // Should update
-    test_ip_update(ip1, ip2, ip2);
+    test_ip_update(contacts, ip1, ip2, ip2);
 
     // Should update
-    test_ip_update(default_ip, ip2, ip2);
+    test_ip_update(contacts, default_ip, ip2, ip2);
 
     // Should NOT update with default ip
-    test_ip_update(ip1, default_ip, ip1);
+    test_ip_update(contacts, ip1, default_ip, ip1);
 }
 
 /// Check that we don't inadvertently change how we compute message hashes
 TEST_CASE("service nodes - message hashing", "[service-nodes][messages]") {
-    const std::chrono::system_clock::time_point timestamp{1616650862026ms};
-    const auto expiry = timestamp + 48h;
     oxenss::user_pubkey pk;
     REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
     const auto data = oxenc::from_base64(

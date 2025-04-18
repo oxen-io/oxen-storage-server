@@ -11,6 +11,8 @@
 #include <curl/curl.h>
 #include <oxen/quic/network.hpp>
 
+struct event;
+
 namespace oxenss::http {
 
 /// Async client for making outbound storage server HTTP post requests.
@@ -51,7 +53,7 @@ class Client {
     friend struct curl_context;
 
     static void curl_perform_c(int fd, short event, void* cctx);
-    static void on_timeout_c(evutil_socket_t fd, short events, void* arg);
+    void on_timeout();
     static int start_timeout_c(CURLM* multi, long timeout_ms, void* userp);
     static int handle_socket_c(CURL* easy, curl_socket_t s, int action, void* self, void* socketp);
 
