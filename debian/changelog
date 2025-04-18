@@ -1,3 +1,9 @@
+oxen-storage-server (2.9.0-2~ubuntu2504) plucky; urgency=medium
+
+  * plucky deb
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 17 Apr 2025 20:59:42 -0300
+
 oxen-storage-server (2.9.0-2~ubuntu2410) oracular; urgency=medium
 
   * Fix Loop initialization
