@@ -94,10 +94,20 @@ if (STATIC OR FORCE_SPDLOG_SUBMODULE OR FORCE_FMT_SUBMODULE)
     set(OXEN_LOGGING_FORCE_SUBMODULES ON CACHE INTERNAL "")
 endif()
 if(NOT TARGET oxen::logging)
-    add_subdirectory(oxen-logging)
+    if(BUILD_STATIC_DEPS)
+        set(OXEN_LOGGING_FORCE_SUBMODULES ON CACHE INTERNAL "")
+    endif()
+    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.1 oxen-logging)
+    if(OXENLOGGING_FOUND)
+        # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets,
+        # but this script will give us them:
+        include(oxen-logging/cmake/load_fmt_spdlog.cmake)
+
+        add_library(oxen-logging-fmt-spdlog INTERFACE)
+        target_link_libraries(oxen-logging-fmt-spdlog INTERFACE oxen-logging ${OXEN_LOGGING_FMT_TARGET} ${OXEN_LOGGING_SPDLOG_TARGET})
+        add_library(oxen::logging ALIAS oxen-logging-fmt-spdlog)
+    endif()
 endif()
-oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
-oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/oxenss")
 
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
