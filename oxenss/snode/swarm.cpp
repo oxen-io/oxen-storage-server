@@ -1,297 +1,247 @@
 #include "swarm.h"
+#include "oxenss/crypto/keys.h"
 #include "service_node.h"
 #include <oxenss/logging/oxen_logger.h>
+#include <chrono>
 #include <oxenss/utils/string_utils.hpp>
 
+#include <algorithm>
 #include <cstdlib>
-#include <ostream>
-#include <unordered_map>
-#include <oxenc/endian.h>
+#include <ranges>
 
 namespace oxenss::snode {
 
 static auto logcat = log::Cat("snode");
-
-static bool swarm_exists(const std::vector<SwarmInfo>& all_swarms, const swarm_id_t& swarm) {
-    const auto it =
-            std::find_if(all_swarms.begin(), all_swarms.end(), [&swarm](const SwarmInfo& si) {
-                return si.swarm_id == swarm;
-            });
-
-    return it != all_swarms.end();
-}
+static auto logswarm = log::Cat("swarm");
 
 Swarm::~Swarm() = default;
 
-bool Swarm::is_existing_swarm(swarm_id_t sid) const {
-    return std::any_of(
-            all_valid_swarms_.begin(),
-            all_valid_swarms_.end(),
-            [sid](const SwarmInfo& cur_swarm_info) { return cur_swarm_info.swarm_id == sid; });
-}
+SwarmEvents Swarm::derive_swarm_events(const swarms_t& swarms) const {
+    SwarmEvents events{};
 
-SwarmEvents Swarm::derive_swarm_events(const std::vector<SwarmInfo>& swarms) const {
-    SwarmEvents events = {};
-
-    const auto our_swarm_it =
-            std::find_if(swarms.begin(), swarms.end(), [this](const SwarmInfo& swarm_info) {
-                const auto& snodes = swarm_info.snodes;
-                return std::find(snodes.begin(), snodes.end(), our_address_) != snodes.end();
-            });
-
-    if (our_swarm_it == swarms.end()) {
-        // We are not in any swarm, nothing to do
-        events.our_swarm_id = INVALID_SWARM_ID;
-        return events;
+    events.our_swarm_id = INVALID_SWARM_ID;
+    for (auto& [id, members] : swarms) {
+        if (members.count(our_pk)) {
+            events.our_swarm_id = id;
+            events.our_swarm_members = members;
+            break;
+        }
     }
 
-    const auto& new_swarm_snodes = our_swarm_it->snodes;
-    const auto new_swarm_id = our_swarm_it->swarm_id;
+    const auto& new_swarm = events.our_swarm_id;
+    const auto& old_swarm = cur_swarm_id_;
 
-    events.our_swarm_id = new_swarm_id;
-    events.our_swarm_members = new_swarm_snodes;
-
-    if (cur_swarm_id_ == INVALID_SWARM_ID) {
-        // Only started in a swarm, nothing to do at this stage
+    if (new_swarm == INVALID_SWARM_ID)
+        // We are not in any swarm (or have been kicked out); nothing to do
         return events;
-    }
 
-    if (cur_swarm_id_ != new_swarm_id) {
-        // Got moved to a new swarm
-        if (!swarm_exists(swarms, cur_swarm_id_)) {
-            // Dissolved, new to push all our data to new swarms
+    if (old_swarm == INVALID_SWARM_ID)
+        // We were previously not in a swarm, which means we just got assigned to one and so we have
+        // nothing to do (other snodes will also see this and push messages to us).
+        return events;
+
+    if (old_swarm != new_swarm) {
+        // Moved to a new swarm
+
+        if (!network.swarms_.count(old_swarm)) {
+            // The old swarm dissolved, which means we have a responsibility to push messages we are
+            // still holding to whichever swarm(s) should now own them.  E.g. if swarms were
+            // previously distributed:
+            //
+            //          A                B                 C
+            // |.................|###############|!!!!!!!!!!!!!!!!!|
+            //
+            // and B gets dissolved then all the messages in swarm space ### need to get sent to
+            // either A or C (depending on which swarm they land post-dissolution), like this:
+            //
+            //          A                                  C
+            // |.................########|########!!!!!!!!!!!!!!!!!|
             events.dissolved = true;
         }
 
-        // If our old swarm is still alive, there is nothing for us to do
+        // If our old swarm is still alive then that means we got moved out of it, and so there's
+        // nothing for us to do because the remaining swarm members will continue to administer the
+        // old swarm, and whatever swarm we just moved into (possibly a new one) will have messages
+        // pushed to it by other network nodes.
         return events;
     }
 
     /// --- WE are still in the same swarm if we reach here ---
 
-    /// See if anyone joined our swarm
-    for (const auto& sn : new_swarm_snodes) {
-        const auto it = std::find(swarm_peers_.begin(), swarm_peers_.end(), sn);
+    /// See if anyone joined our swarm: if so, we need to push messages to them:
+    std::set_difference(
+            events.our_swarm_members.begin(),
+            events.our_swarm_members.end(),
+            members_.begin(),
+            members_.end(),
+            std::inserter(events.new_swarm_members, events.new_swarm_members.end()));
+    events.new_swarm_members.erase(our_pk);
 
-        if (it == swarm_peers_.end() && sn != our_address_) {
-            events.new_snodes.push_back(sn);
-        }
-    }
-
-    /// See if there are any new swarms
-
-    for (const auto& swarm_info : swarms)
-        if (!is_existing_swarm(swarm_info.swarm_id))
-            events.new_swarms.push_back(swarm_info.swarm_id);
-
-    /// NOTE: need to be careful and make sure we don't miss any
-    /// swarm update (e.g. if we don't update frequently enough)
+    // See if there are any new swarms, because if there are, we might need to push messages to them
+    // if they happened to get set up adjascent to us.  E.g. if we are A (or C) here:
+    //
+    //          A                                  C
+    // |.................########|########!!!!!!!!!!!!!!!!!|
+    //
+    // and B gets created in between us, then we need to push the `#` messages that we currently
+    // hold to the new B swarm, so that the local swarm space ends up looking like this:
+    //
+    //          A                B                 C
+    // |.................|###############|!!!!!!!!!!!!!!!!!|
+    //
+    // FIXME: currently we do this on any new swarm creation, but that seems excessive: we really
+    // only need to worry about this if our boundary on either side changes.  (Most of the time it
+    // won't because, with hundreds of swarms, most new swarms don't affect our swarm space).
+    auto new_swarm_ids = std::views::keys(swarms);
+    auto old_swarm_ids = std::views::keys(network.swarms_);
+    std::set_difference(
+            new_swarm_ids.begin(),
+            new_swarm_ids.end(),
+            old_swarm_ids.begin(),
+            old_swarm_ids.end(),
+            std::inserter(events.new_swarms, events.new_swarms.end()));
 
     return events;
 }
 
-void Swarm::set_swarm_id(swarm_id_t sid) {
-    if (sid == INVALID_SWARM_ID) {
-        log::warning(logcat, "We are not currently an active Service Node");
+SwarmEvents Swarm::update_swarms(
+        swarms_t&& swarms, const std::map<crypto::legacy_pubkey, contact>& new_contacts) {
+
+    std::lock_guard lock{network.mut_};
+
+    auto events = derive_swarm_events(swarms);
+
+    if (events.our_swarm_id == INVALID_SWARM_ID) {
+        if (cur_swarm_id_ != INVALID_SWARM_ID)
+            log::warning(
+                    logswarm,
+                    "Leaving swarm {:#018x}: we are no longer an active Service Node",
+                    cur_swarm_id_);
+        else
+            log::debug(logswarm, "Still not an active Service Node");
     } else {
-        if (cur_swarm_id_ == INVALID_SWARM_ID) {
-            log::info(logcat, "EVENT: started SN in swarm: 0x{}", util::int_to_string(sid, 16));
-        } else if (cur_swarm_id_ != sid) {
+
+        if (cur_swarm_id_ == INVALID_SWARM_ID)
+            log::info(logswarm, "SN now active, joining swarm {:#018x}", events.our_swarm_id);
+        else if (cur_swarm_id_ != events.our_swarm_id)
             log::info(
-                    logcat,
-                    "EVENT: got moved into a new swarm: 0x{}",
-                    util::int_to_string(sid, 16));
-        }
-    }
+                    logswarm,
+                    "SN moving from swarm {:#018x} to swarm {:#018x}",
+                    cur_swarm_id_,
+                    events.our_swarm_id);
 
-    cur_swarm_id_ = sid;
-}
+        // The following only make sense if we are active, i.e. still in a swarm
 
-void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInfo>& old_swarms) {
+        if (events.dissolved)
+            log::info(logswarm, "Our swarm ({:#018x}) got DISSOLVED!", cur_swarm_id_);
 
-    std::unordered_map<crypto::legacy_pubkey, sn_record*> missing;
-
-    for (auto& [swarm_id, snodes] : new_swarms)
-        for (auto& snode : snodes)
-            if (snode.ip == "0.0.0.0" && snode.port == 0 && snode.omq_quic_port == 0)
-                missing.emplace(snode.pubkey_legacy, &snode);
-
-    if (missing.empty())
-        return;
-
-    for (auto& [swarm_id, snodes] : old_swarms) {
-        for (auto& snode : snodes) {
-            auto it = missing.find(snode.pubkey_legacy);
-            if (it == missing.end())
-                continue;
-            if (snode.ip != "0.0.0.0" && snode.port != 0 && snode.omq_quic_port != 0) {
-                it->second->ip = snode.ip;
-                it->second->port = snode.port;
-                it->second->omq_quic_port = snode.omq_quic_port;
-            }
-            missing.erase(it);
-            if (missing.empty())
-                return;
-        }
-    }
-}
-
-void Swarm::apply_swarm_changes(std::vector<SwarmInfo>&& new_swarms) {
-    log::trace(logcat, "Applying swarm changes");
-
-    preserve_ips(new_swarms, all_valid_swarms_);
-    all_valid_swarms_ = std::move(new_swarms);
-}
-
-void Swarm::update_state(
-        std::vector<SwarmInfo>&& swarms,
-        const std::vector<sn_record>& decommissioned,
-        const SwarmEvents& events,
-        bool active) {
-    if (active) {
-        // The following only makes sense for active nodes in a swarm
-
-        if (events.dissolved) {
-            log::info(logcat, "EVENT: our old swarm got DISSOLVED!");
+        for (const auto& pk : events.new_swarm_members) {
+            log::info(logswarm, "New SN joining our swarm: {}", pk);
+            pending_new_members_.emplace(pk, std::chrono::steady_clock::now());
         }
 
-        for (const sn_record& sn : events.new_snodes) {
-            log::info(logcat, "EVENT: detected new SN: {}", sn.pubkey_legacy);
-        }
+        for (auto swarm : events.new_swarms)
+            log::info(logswarm, "New network swarm: {}", swarm);
 
-        for (swarm_id_t swarm : events.new_swarms) {
-            log::info(logcat, "EVENT: detected a new swarm: {}", swarm);
-        }
-
-        apply_swarm_changes(std::move(swarms));
-
-        const auto& members = events.our_swarm_members;
-
-        /// sanity check
-        if (members.empty())
-            return;
-
-        swarm_peers_.clear();
-        swarm_peers_.reserve(members.size() - 1);
-
-        std::copy_if(
-                members.begin(),
-                members.end(),
-                std::back_inserter(swarm_peers_),
-                [this](const sn_record& record) { return record != our_address_; });
+        members_ = events.our_swarm_members;
     }
 
-    // Store a copy of every node in a separate data structure
-    all_funded_nodes_.clear();
-    all_funded_ed25519_.clear();
-    all_funded_x25519_.clear();
+    cur_swarm_id_ = events.our_swarm_id;
 
-    for (const auto& si : all_valid_swarms_) {
-        for (const auto& sn : si.snodes) {
-            all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
-        }
-    }
+    network.update_swarms(std::move(swarms), new_contacts);
 
-    for (const auto& sn : decommissioned) {
-        all_funded_nodes_.emplace(sn.pubkey_legacy, sn);
-    }
-
-    for (const auto& [pk, sn] : all_funded_nodes_) {
-        all_funded_ed25519_.emplace(sn.pubkey_ed25519, pk);
-        all_funded_x25519_.emplace(sn.pubkey_x25519, pk);
-    }
-}
-
-std::optional<sn_record> Swarm::find_node(const crypto::legacy_pubkey& pk) const {
-    if (auto it = all_funded_nodes_.find(pk); it != all_funded_nodes_.end())
-        return it->second;
-    return std::nullopt;
-}
-
-std::optional<sn_record> Swarm::find_node(const crypto::ed25519_pubkey& pk) const {
-    if (auto it = all_funded_ed25519_.find(pk); it != all_funded_ed25519_.end())
-        return find_node(it->second);
-    return std::nullopt;
-}
-
-std::optional<sn_record> Swarm::find_node(const crypto::x25519_pubkey& pk) const {
-    if (auto it = all_funded_x25519_.find(pk); it != all_funded_x25519_.end())
-        return find_node(it->second);
-    return std::nullopt;
-}
-
-uint64_t pubkey_to_swarm_space(const user_pubkey& pk) {
-    const auto bytes = pk.raw();
-    assert(bytes.size() == 32);
-
-    uint64_t res = 0;
-    for (size_t i = 0; i < 4; i++) {
-        uint64_t buf;
-        std::memcpy(&buf, bytes.data() + i * 8, 8);
-        res ^= buf;
-    }
-    oxenc::big_to_host_inplace(res);
-
-    return res;
+    return events;
 }
 
 bool Swarm::is_pubkey_for_us(const user_pubkey& pk) const {
-    auto* swarm = get_swarm_by_pk(all_valid_swarms_, pk);
-    return swarm && cur_swarm_id_ == swarm->swarm_id;
+    auto maybe_swarm = network.get_swarm_id_for(pk);
+    return maybe_swarm && cur_swarm_id_ == *maybe_swarm;
 }
 
-const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk) {
-
-    if (all_swarms.empty())
-        return nullptr;
-
-    assert(std::is_sorted(all_swarms.begin(), all_swarms.end()));
-    assert(all_swarms.back().swarm_id != INVALID_SWARM_ID);
-
-    if (all_swarms.size() == 1)
-        return &all_swarms.front();
-
-    const uint64_t res = pubkey_to_swarm_space(pk);
-
-    // NB: this code used to be far more convoluted by trying to accommodate the INVALID_SWARM_ID
-    // value, but that was wrong (because pubkeys map to the *full* uint64_t range, including
-    // INVALID_SWARM_ID), more complicated, and didn't calculate distances properly when wrapping
-    // around (in generally, but catastrophically for the INVALID_SWARM_ID value).
-
-    // Find the right boundary, i.e. first swarm with swarm_id >= res
-    auto right_it = std::lower_bound(
-            all_swarms.begin(), all_swarms.end(), res, [](const SwarmInfo& s, uint64_t v) {
-                return s.swarm_id < v;
-            });
-
-    if (right_it == all_swarms.end())
-        // res is > the top swarm_id, meaning it is big and in the wrapping space between last and
-        // first elements.
-        right_it = all_swarms.begin();
-
-    // Our "left" is the one just before that (with wraparound, if right is the first swarm)
-    auto left_it = std::prev(right_it == all_swarms.begin() ? all_swarms.end() : right_it);
-
-    uint64_t dright = right_it->swarm_id - res;
-    uint64_t dleft = res - left_it->swarm_id;
-
-    return &*(dright < dleft ? right_it : left_it);
+std::set<crypto::legacy_pubkey> Swarm::members() const {
+    std::shared_lock lock{network.mut_};
+    return members_;
 }
 
-std::pair<int, int> count_missing_data(const block_update& bu) {
-    auto result = std::make_pair(0, 0);
-    auto& [missing, total] = result;
+// Returns a copy of all the other members of this swarm, not including this node.
+std::set<crypto::legacy_pubkey> Swarm::peers() const {
+    auto peers = members();
+    peers.erase(our_pk);
+    return peers;
+}
 
-    for (auto& swarm : bu.swarms) {
-        for (auto& snode : swarm.snodes) {
-            total++;
-            if (snode.ip.empty() || snode.ip == "0.0.0.0" || !snode.port || !snode.omq_quic_port ||
-                !snode.pubkey_ed25519 || !snode.pubkey_x25519) {
-                missing++;
-            }
+bool Swarm::is_member(const crypto::legacy_pubkey& pk) const {
+    std::shared_lock lock{network.mut_};
+    return members_.count(pk);
+}
+
+bool Swarm::is_member(const crypto::x25519_pubkey& pk) const {
+    std::shared_lock lock{network.mut_};
+    if (auto lpk = network.contacts.lookup(pk))
+        return members_.count(*lpk);
+    return false;
+}
+
+bool Swarm::is_member(const crypto::ed25519_pubkey& pk) const {
+    std::shared_lock lock{network.mut_};
+    if (auto lpk = network.contacts.lookup(pk))
+        return members_.count(*lpk);
+    return false;
+}
+
+size_t Swarm::size() const {
+    std::shared_lock lock{network.mut_};
+    return members_.size();
+}
+
+std::set<crypto::legacy_pubkey> Swarm::extract_pending_members() {
+    std::lock_guard lock{network.mut_};
+
+    std::set<crypto::legacy_pubkey> result;
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = pending_new_members_.begin(); it != pending_new_members_.end();) {
+        auto& [pk, when] = *it;
+        if (!members_.count(pk)) {
+            // No longer in our swarm
+            it = pending_new_members_.erase(it);
+            continue;
+        }
+
+        if (when && *when <= now) {
+            *when = now + NEW_SWARM_MEMBER_RETRY;
+            result.insert(pk);
+        }
+        ++it;
+    }
+
+    return result;
+}
+
+std::set<crypto::legacy_pubkey> Swarm::extract_ready_members() {
+    std::lock_guard lock{network.mut_};
+
+    std::set<crypto::legacy_pubkey> result;
+    for (auto it = pending_new_members_.begin(); it != pending_new_members_.end();) {
+        auto& [pk, when] = *it;
+        if (!members_.count(pk)) {
+            // No longer in our swarm
+            it = pending_new_members_.erase(it);
+        } else if (!when) {
+            // Found one that is marked ready, so steal it:
+            result.insert(pk);
+            it = pending_new_members_.erase(it);
+        } else {
+            ++it;
         }
     }
+
     return result;
+}
+
+void Swarm::set_member_ready(const crypto::legacy_pubkey& pk) {
+    std::lock_guard lock{network.mut_};
+    if (auto it = pending_new_members_.find(pk); it != pending_new_members_.end())
+        it->second = std::nullopt;
 }
 
 }  // namespace oxenss::snode

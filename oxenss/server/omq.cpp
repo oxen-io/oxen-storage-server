@@ -8,21 +8,22 @@
 #include <oxenss/logging/oxen_logger.h>
 #include <oxenss/rpc/rate_limiter.h>
 #include <oxenss/rpc/request_handler.h>
+#include <oxenss/snode/contacts.h>
 #include <oxenss/snode/service_node.h>
+#include <oxenss/snode/sn_test.h>
 #include <oxenss/utils/string_utils.hpp>
 
 #include <oxenc/base64.h>
 #include <oxenc/bt_serialize.h>
 #include <oxenc/hex.h>
 #include <oxenc/bt_producer.h>
-#include <fmt/std.h>
+#include <oxen/quic/format.hpp>
 #include <sodium/crypto_sign.h>
 
 #include <chrono>
 #include <exception>
 #include <optional>
 #include <stdexcept>
-#include <type_traits>
 #include <variant>
 
 namespace oxenss::server {
@@ -37,27 +38,38 @@ std::string OMQ::peer_lookup(std::string_view pubkey_bin) const {
     crypto::x25519_pubkey pubkey;
     std::memcpy(pubkey.data(), pubkey_bin.data(), sizeof(crypto::x25519_pubkey));
 
-    if (auto sn = service_node_->find_node(pubkey))
+    if (auto sn = service_node_->contacts().find(pubkey); sn && *sn)
         return fmt::format("tcp://{}:{}", sn->ip, sn->omq_quic_port);
 
     log::debug(logcat, "[OMQ] peer node not found via x25519 pubkey {}!", pubkey);
     return "";
 }
 
+void OMQ::handle_sn_data_ready(oxenmq::Message& message) {
+    log::debug(logcat, "[OMQ] handle sn.data_ready from: {}", message.conn.to_string());
+
+    auto& xpk_str = message.conn.pubkey();
+    if (xpk_str.size() != sizeof(crypto::x25519_pubkey))
+        return message.send_reply("Remote not recognized as SN");
+
+    crypto::x25519_pubkey xpk;
+    std::memcpy(xpk.data(), xpk_str.data(), sizeof(crypto::x25519_pubkey));
+    if (!service_node_->is_swarm_peer(xpk))
+        return message.send_reply("Swarm mismatch");
+
+    message.send_reply("OK");
+}
+
 void OMQ::handle_sn_data(oxenmq::Message& message) {
-    log::debug(logcat, "[OMQ] handle_sn_data");
-    log::debug(logcat, "[OMQ]   thread id: {}", std::this_thread::get_id());
-    log::debug(logcat, "[OMQ]   from: {}", oxenc::to_hex(message.conn.pubkey()));
+    log::debug(logcat, "[OMQ] handle_sn_data from: {}", message.conn.to_string());
 
-    std::stringstream ss;
-
-    // We are only expecting a single part message, so consider removing this
-    for (auto& part : message.data) {
-        ss << part;
+    if (message.data.empty()) {
+        log::warning(logcat, "Received empty data push from {}", message.remote);
+        return;
     }
 
     // TODO: process push batch should move to "Request handler"
-    service_node_->process_push_batch(ss.str());
+    service_node_->process_push_batch(message.data[0], message.conn.to_string());
 
     log::debug(logcat, "[OMQ] send reply");
 
@@ -70,93 +82,6 @@ void OMQ::handle_ping(oxenmq::Message& message) {
     log::debug(logcat, "Remote pinged me");
     service_node_->update_last_ping(snode::ReachType::OMQ);
     message.send_reply("pong");
-}
-
-void OMQ::handle_storage_test(oxenmq::Message& message) {
-    if (message.conn.pubkey().size() != 32) {
-        // This shouldn't happen as this endpoint should have remote-SN-only permissions, so be
-        // noisy
-        log::error(
-                logcat,
-                "bug: invalid sn.storage_test omq request from {} with no pubkey",
-                message.remote);
-        return message.send_reply("invalid parameters");
-    } else if (message.data.size() < 2) {
-        log::warning(
-                logcat,
-                "invalid sn.storage_test omq request from {}: not enough data parts; expected 2, "
-                "received {}",
-                message.remote,
-                message.data.size());
-        return message.send_reply("invalid parameters");
-    }
-    crypto::legacy_pubkey tester_pk;
-    if (auto node = service_node_->find_node(
-                crypto::x25519_pubkey::from_bytes(message.conn.pubkey()))) {
-        tester_pk = node->pubkey_legacy;
-        log::debug(
-                logcat, "incoming sn.storage_test request from {}@{}", tester_pk, message.remote);
-    } else {
-        log::warning(logcat, "invalid sn.storage_test omq request: sender is not an active SN");
-        return message.send_reply("invalid pubkey");
-    }
-
-    uint64_t height;
-    if (!util::parse_int(message.data[0], height) || !height) {
-        log::warning(
-                logcat,
-                "invalid sn.storage_test omq request from {}@{}: '{}' is not a valid height",
-                tester_pk,
-                message.remote,
-                height);
-        return message.send_reply("invalid height");
-    }
-    std::string msg_hash;
-    if (message.data[1].size() == 64)
-        msg_hash = oxenc::to_hex(message.data[1]);
-    else if (message.data[1].size() == 32) {
-        msg_hash = oxenc::to_base64(message.data[1]);
-        assert(msg_hash.back() == '=');
-        msg_hash.pop_back();
-    } else {
-        log::warning(
-                logcat,
-                "invalid sn.storage_test omq request from {}@{}: message hash is {} bytes, "
-                "expected 64 or 32",
-                tester_pk,
-                message.remote,
-                message.data[1].size());
-        return message.send_reply("invalid msg hash");
-    }
-
-    request_handler_->process_storage_test_req(
-            height,
-            tester_pk,
-            msg_hash,
-            [reply = message.send_later()](
-                    snode::MessageTestStatus status,
-                    std::string answer,
-                    std::chrono::steady_clock::duration elapsed) {
-                switch (status) {
-                    case snode::MessageTestStatus::SUCCESS:
-                        log::debug(
-                                logcat,
-                                "Storage test success after {}",
-                                util::friendly_duration(elapsed));
-                        reply.reply("OK", answer);
-                        return;
-                    case snode::MessageTestStatus::WRONG_REQ: reply.reply("wrong request"); return;
-                    case snode::MessageTestStatus::RETRY:
-                        [[fallthrough]];  // If we're getting called then a retry ran out of time
-                    case snode::MessageTestStatus::ERROR:
-                        // Promote this to `error` once we enforce storage testing
-                        log::debug(
-                                logcat,
-                                "Failed storage test, tried for {}",
-                                util::friendly_duration(elapsed));
-                        reply.reply("other");
-                }
-            });
 }
 
 void OMQ::handle_onion_request(
@@ -244,11 +169,10 @@ void OMQ::handle_client_request(std::string_view method, oxenmq::Message& messag
 }
 
 OMQ::OMQ(
-        const snode::sn_record& me,
-        const crypto::x25519_seckey& privkey,
+        const crypto::x25519_keypair& keys,
         const std::vector<crypto::x25519_pubkey>& stats_access_keys) :
-        omq_{std::string{me.pubkey_x25519.view()},
-             std::string{privkey.view()},
+        omq_{std::string{keys.pub.view()},
+             std::string{keys.sec.view()},
              true,                                         // is service node
              [this](auto pk) { return peer_lookup(pk); },  // SN-by-key lookup func
              omq_logger,
@@ -260,9 +184,9 @@ OMQ::OMQ(
 
     // Endpoints invoked by other SNs
     omq_.add_category("sn", oxenmq::Access{oxenmq::AuthLevel::none, true, false}, 2 /*reserved threads*/, 1000 /*max queue*/)
+        .add_request_command("data_ready", [this](auto& m) { handle_sn_data_ready(m); })
         .add_request_command("data", [this](auto& m) { handle_sn_data(m); })
         .add_request_command("ping", [this](auto& m) { handle_ping(m); })
-        .add_request_command("storage_test", [this](auto& m) { handle_storage_test(m); }) // NB: requires a 60s request timeout
         .add_request_command("onion_request", [this](auto& m) { handle_onion_request(m); })
         .add_request_command("storage_cc", [this](auto& m) {
             if (m.data.size() >= 2) return handle_client_request(m.data[0], m, true);
@@ -288,13 +212,38 @@ OMQ::OMQ(
         .add_request_command("get_stats", [this](auto& m) { handle_get_stats(m); })
         ;
 
-    // We send a sub.block to oxend to tell it to push new block notifications to us via this
-    // endpoint:
+    // We send a sub.block and sub.snode_addr to oxend to tell it to push new block notifications
+    // and snode address updates to us via these endpoint:
     omq_.add_category("notify", oxenmq::AuthLevel::admin)
-        .add_request_command("block", [this](auto&&) {
+        .add_command("block", [this](auto&&) {
             log::debug(logcat, "Received new block notification from oxend, updating swarms");
             if (service_node_) service_node_->update_swarms();
-        });
+        })
+    .add_command("snode_addr", [this](oxenmq::Message&m ) {
+        if (m.data.size() < 1)
+            return;
+        try {
+            crypto::legacy_pubkey pk;
+            snode::contact c;
+            oxenc::bt_dict_consumer info{m.data[0]};
+            pk = crypto::legacy_pubkey::from_bytes(info.require<std::string_view>("K"));
+            if (auto edpk_bytes = info.maybe<std::string_view>("Ke"))
+                c.pubkey_ed25519 = crypto::ed25519_pubkey::from_bytes(*edpk_bytes);
+            else
+                std::memcpy(c.pubkey_ed25519.data(), pk.data(), 32);
+            c.pubkey_x25519 = crypto::x25519_pubkey::from_bytes(info.require<std::string_view>("Kx"));
+            c.ip = snode::ipv4{info.require<std::string>("ip")};
+            c.https_port = info.require<uint16_t>("sh");
+            c.omq_quic_port = info.require<uint16_t>("sq");
+            c.version = info.require<std::array<uint16_t, 3>>("vs");
+
+            log::debug(logcat,"Received new snode address info from oxend for {}",
+                    pk.hex());
+            service_node_->contacts().update(pk, c);
+        } catch (const std::exception& e) {
+            log::error(logcat, "Received invalid snode address update from oxend: {}", e.what());
+        }
+    });
 
     // clang-format on
     omq_.set_general_threads(1);
@@ -363,12 +312,12 @@ void OMQ::init(
     service_node_->on_oxend_connected();
 
     // start omq listener
-    const auto& me = service_node_->own_address();
-    log::info(logcat, "Starting listening for OxenMQ connections on port {}", me.omq_quic_port);
+    const auto port = service_node_->own_address().omq_quic_port;
+    log::info(logcat, "Starting listening for OxenMQ connections on port {}", port);
     auto omq_prom = std::make_shared<std::promise<void>>();
     auto omq_future = omq_prom->get_future();
     omq_.listen_curve(
-            fmt::format("tcp://0.0.0.0:{}", me.omq_quic_port),
+            fmt::format("tcp://0.0.0.0:{}", port),
             [this](std::string_view /*addr*/, std::string_view pk, bool /*sn*/) {
                 return stats_access_keys_.count(std::string{pk}) ? oxenmq::AuthLevel::admin
                                                                  : oxenmq::AuthLevel::none;
@@ -387,7 +336,7 @@ void OMQ::init(
     try {
         omq_future.get();
     } catch (const std::runtime_error&) {
-        auto msg = fmt::format("OxenMQ server failed to bind to port {}", me.omq_quic_port);
+        auto msg = fmt::format("OxenMQ server failed to bind to port {}", port);
         log::critical(logcat, "{}", msg);
         throw std::runtime_error{msg};
     }
@@ -452,16 +401,20 @@ void OMQ::notify(std::vector<connection_id>& conns, std::string_view notificatio
 }
 
 void OMQ::reachability_test(std::shared_ptr<snode::sn_test> test) {
-    auto xpk = test->sn.pubkey_x25519.view();
+    auto ct = service_node_->contacts().find(test->pubkey);
+    if (!ct || !*ct) {
+        test->add_result(false);
+        return;
+    }
     omq_.request(
-            xpk,
+            ct->pubkey_x25519.view(),
             "sn.ping",
             [test = std::move(test)](bool success, const auto&) {
                 log::debug(
                         logcat,
                         "{} response for OxenMQ ping test of {}",
                         success ? "Successful" : "FAILED",
-                        test->sn.pubkey_legacy);
+                        test->pubkey);
 
                 test->add_result(success);
             },

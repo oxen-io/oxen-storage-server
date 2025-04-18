@@ -3,6 +3,8 @@
 #include "../rpc/rate_limiter.h"
 #include "../rpc/request_handler.h"
 #include "utils.h"
+#include <fmt/ranges.h>
+#include <oxenc/hex.h>
 
 namespace oxenss::server {
 

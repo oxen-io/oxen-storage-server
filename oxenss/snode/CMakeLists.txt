@@ -1,5 +1,7 @@
 
 add_library(snode STATIC
+    contacts.cpp
+    network.cpp
     reachability_testing.cpp
     serialization.cpp
     service_node.cpp

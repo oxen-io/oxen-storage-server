@@ -982,7 +982,7 @@ void oxend_request::load_from(bt_dict_consumer params) {
 }
 
 static client_subrequest as_subrequest(client_request&& req) {
-    return var::visit(
+    return std::visit(
             [](auto&& r) -> client_subrequest {
                 using T = std::decay_t<decltype(r)>;
                 if constexpr (type_list_contains<T, client_rpc_subrequests>)
@@ -1014,7 +1014,7 @@ void batch::load_from(json params) {
         if (rpc_it == RequestHandler::client_rpc_endpoints.end())
             throw parse_error{
                     "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
-        subreqs.push_back(as_subrequest(rpc_it->second.load_req(std::move(*params_it))));
+        subreqs.push_back(as_subrequest(rpc_it->second.load_json(std::move(*params_it))));
     }
 }
 void batch::load_from(bt_dict_consumer params) {
@@ -1037,7 +1037,7 @@ void batch::load_from(bt_dict_consumer params) {
                     "Invalid batch subrequest: invalid method \"" + std::string{method} + "\""};
         if (!sr.skip_until("params") || !sr.is_dict())
             throw parse_error{"Invalid batch request: subrequests must have a params dict"};
-        subreqs.push_back(as_subrequest(rpc_it->second.load_req(sr.consume_dict_consumer())));
+        subreqs.push_back(as_subrequest(rpc_it->second.load_bt(sr.consume_dict_consumer())));
     }
     if (subreqs.empty())
         throw parse_error{"Invalid batch request: empty \"requests\" list"};
@@ -1123,9 +1123,8 @@ static std::unique_ptr<client_request> load_ifelse_request(json& params, const s
     if (rpc_it == RequestHandler::client_rpc_endpoints.end())
         throw parse_error{"Invalid ifelse request method \"" + key + "\""};
 
-    return var::visit(
-            [](auto&& r) { return std::make_unique<client_request>(std::move(r)); },
-            rpc_it->second.load_req(std::move(*pit)));
+    client_request r = rpc_it->second.load_json(std::move(*pit));
+    return std::make_unique<client_request>(std::move(r));
 }
 
 static std::unique_ptr<client_request> load_ifelse_request(
@@ -1144,9 +1143,9 @@ static std::unique_ptr<client_request> load_ifelse_request(
 
     if (!req.skip_until("params") || !req.is_dict())
         throw parse_error{"Invalid ifelse request: " + key + " missing params"};
-    return var::visit(
-            [](auto&& r) { return std::make_unique<client_request>(std::move(r)); },
-            rpc_it->second.load_req(req.consume_dict_consumer()));
+
+    client_request r = rpc_it->second.load_bt(req.consume_dict_consumer());
+    return std::make_unique<client_request>(std::move(r));
 }
 
 void ifelse::load_from(json params) {

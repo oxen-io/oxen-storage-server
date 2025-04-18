@@ -25,8 +25,11 @@ namespace oxenss::rpc {
 
 using namespace std::literals;
 
-// Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ
-// "storage.whatever" endpoints, and as the final target of an onion request.
+// Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint with a body consisting of:
+//
+//   {"method": "<name>", "params": {...}}
+//
+// The OMQ "storage.whatever" endpoints, and as the final target of an onion request.
 
 /// Thrown when parsing parameters when we encounter missing required fields, invalid value
 /// types, etc.  `what()` is designed to be returned to the request initiator.
@@ -437,7 +440,7 @@ constexpr bool is_default(const namespace_var& ns) {
 // - "all" if given as all namespaces
 // - "NN" for some explicitly given non-default numeric namespace NN
 inline std::string signature_value(const namespace_var& ns) {
-    return is_default(ns) ? ""s : is_all(ns) ? "all"s : to_string(var::get<namespace_id>(ns));
+    return is_default(ns) ? ""s : is_all(ns) ? "all"s : to_string(std::get<namespace_id>(ns));
 }
 
 /// Deletes all messages owned by the given pubkey on this SN and broadcasts the delete request
@@ -735,6 +738,33 @@ struct oxend_request final : endpoint {
     void load_from(oxenc::bt_dict_consumer params) override;
 };
 
+/// Requests the current set of all active network nodes in compact representation.  This is the
+/// same data that can be retrieved via a oxend_request request to get_service_nodes, but in a much
+/// smaller form, including only the data needed/used by clients using the storage server network.
+///
+/// Takes no parameters.  Responses is a binary data blob (NOT json) consisting of repeated 51-byte
+/// values:
+///
+/// - 32 byte Ed25519 pubkey
+/// - 8 byte u64 swarm ID, in network order.
+/// - 4 bytes public ip, in network (big-endian) order (i.e. 1.2.3.4 is "\x01\x02\x03\x04")
+/// - 2 byte https port, in network order (i.e. port 259 is "\x01\x03")
+/// - 2 byte OMQ (TCP)/QUIC (UDP) port, in network order
+/// - 3 byte storage server version, e.g. 1.2.3 is "\x01\x02\x03"
+///
+/// e.g. if there are 2000 active storage servers then this returns a 51*2000 byte response.
+///
+/// Nodes are included as long as their Ed25519 pubkey is known, even if their IP/port/version info
+/// is not yet known by this node: IP/port/version values in such a case will all be 0.
+///
+/// Note that as of HF21, the Ed25519 pubkey is always known, and so this will return a complete set
+/// of network swarm info (but possibly with 0 IP/port values).  Prior to HF21, however, Ed pubkey
+/// and IP/port info arrives together, and so prior to HF21 the returned information will be
+/// incomplete, but also won't include 0 values.
+struct active_nodes_bin final : no_args {
+    static constexpr auto names() { return NAMES("active_nodes_bin"); }
+};
+
 // All of the RPC types that can be invoked as a regular request: either directly, or inside a
 // batch.  This excludes the meta-requests like batch/sequence/ifelse (since those nest other
 // requests within them).
@@ -752,6 +782,7 @@ using client_rpc_subrequests = type_list<
         get_expiries,
         get_swarm,
         oxend_request,
+        active_nodes_bin,
         info>;
 
 using client_subrequest = type_list_variant_t<client_rpc_subrequests>;

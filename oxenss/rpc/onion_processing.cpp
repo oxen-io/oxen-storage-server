@@ -162,37 +162,13 @@ CiphertextPlusJson parse_combined_payload(std::string_view payload) {
     return result;
 }
 
-std::ostream& operator<<(std::ostream& os, const FinalDestinationInfo& d) {
-    return os << fmt::format("[\"body\": {}]", d.body);
-}
-
 bool operator==(const FinalDestinationInfo& lhs, const FinalDestinationInfo& rhs) {
     return lhs.body == rhs.body;
-}
-
-std::ostream& operator<<(std::ostream& os, const RelayToServerInfo& d) {
-    return os << fmt::format(
-                   "[\"protocol\": {}, \"host\": {}, \"port\": {}, "
-                   "\"target\": {}, \"payload\": {}]",
-                   d.protocol,
-                   d.host,
-                   d.port,
-                   d.target,
-                   d.payload);
 }
 
 bool operator==(const RelayToServerInfo& lhs, const RelayToServerInfo& rhs) {
     return (lhs.protocol == rhs.protocol) && (lhs.host == rhs.host) && (lhs.port == rhs.port) &&
            (lhs.target == rhs.target) && (lhs.payload == rhs.payload);
-}
-
-std::ostream& operator<<(std::ostream& os, const RelayToNodeInfo& d) {
-    return os << fmt::format(
-                   R"("["ciphertext": {}, "ephemeral_key": {}, "enc_type": {}, "next_node": {}])",
-                   d.ciphertext,
-                   d.ephemeral_key,
-                   d.enc_type,
-                   d.next_node);
 }
 
 bool operator==(const RelayToNodeInfo& a, const RelayToNodeInfo& b) {
