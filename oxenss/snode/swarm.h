@@ -1,135 +1,100 @@
 #pragma once
 
-#include <iostream>
-#include <oxenmq/auth.h>
-#include <limits>
-#include <string>
+#include <chrono>
+#include <set>
 #include <unordered_map>
-#include <vector>
 
-#include <oxenss/common/pubkey.h>
-#include "sn_record.h"
+#include "network.h"
+#include "oxenss/crypto/keys.h"
 
 namespace oxenss::snode {
 
+using namespace std::literals;
+
 class ServiceNode;
 
-using swarm_id_t = uint64_t;
-
-constexpr swarm_id_t INVALID_SWARM_ID = std::numeric_limits<uint64_t>::max();
-
-struct SwarmInfo {
-    swarm_id_t swarm_id;
-    std::vector<sn_record> snodes;
-
-    bool operator<(const SwarmInfo& other) const { return swarm_id < other.swarm_id; }
-};
-
-struct block_update {
-    std::vector<SwarmInfo> swarms;
-    std::vector<sn_record> decommissioned_nodes;
-    oxenmq::pubkey_set active_x25519_pubkeys;
-    uint64_t height;
-    std::string block_hash;
-    int hardfork;
-    int snode_revision;
-    bool unchanged = false;
-};
-
-// Returns a pointer to the SwarmInfo member of `all_swarms` for the given user pub.  Returns a
-// nullptr on error (which will only happen if there are no swarms at all).  `all_swarms` must be
-// sorted by swarm id.
-const SwarmInfo* get_swarm_by_pk(const std::vector<SwarmInfo>& all_swarms, const user_pubkey& pk);
-// Not invokable with a temporary:
-const SwarmInfo* get_swarm_by_pk(std::vector<SwarmInfo>&& all_swarms, const user_pubkey& pk) =
-        delete;
-
-// Takes a swarm update, returns the number of active SN entries with missing
-// IP/port/ed25519/x25519 data and the total number of entries.  (We don't include
-// decommissioned nodes in either count).
-std::pair<int, int> count_missing_data(const block_update& bu);
-
-/// In rare cases (such as when oxend has just been reset/resynced, and our initial swarm data came
-/// from a bootstrap node) we might have existing data that has valid ip/port info in it, but new
-/// data that does not: in such a case we want to preserve the old data before replacing the swarm
-/// data.  This function takes care of updating any such missing values in `new_swarms` from
-/// `old_swarms`.
-void preserve_ips(std::vector<SwarmInfo>& new_swarms, const std::vector<SwarmInfo>& old_swarms);
-
-/// Maps a pubkey into a 64-bit "swarm space" value; the swarm you belong to is whichever one
-/// has a swarm id closest to this pubkey-derived value.
-uint64_t pubkey_to_swarm_space(const user_pubkey& pk);
+enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 struct SwarmEvents {
     /// our (potentially new) swarm id
     swarm_id_t our_swarm_id;
-    /// whether our swarm got dissolved and we
-    /// need to salvage our stale data
+    /// whether our swarm got dissolved and we need to salvage our stale data
     bool dissolved = false;
     /// detected new swarms that need to be bootstrapped
-    std::vector<swarm_id_t> new_swarms;
+    std::set<swarm_id_t> new_swarms;
     /// detected new snodes in our swarm
-    std::vector<sn_record> new_snodes;
+    std::set<crypto::legacy_pubkey> new_swarm_members;
     /// our swarm members 
-    std::vector<sn_record> our_swarm_members;
+    std::set<crypto::legacy_pubkey> our_swarm_members;
 };
 
+// How often we wait, after returning a pending new member, before we return the member again from
+// `extract_new_members()`.
+constexpr auto NEW_SWARM_MEMBER_RETRY = 30s;
+
 class Swarm {
-
     swarm_id_t cur_swarm_id_ = INVALID_SWARM_ID;
-    /// Note: this excludes the "dummy" swarm
-    std::vector<SwarmInfo> all_valid_swarms_;
-    sn_record our_address_;
-    std::vector<sn_record> swarm_peers_;
-    /// This includes decommissioned nodes
-    std::unordered_map<crypto::legacy_pubkey, sn_record> all_funded_nodes_;
-    std::unordered_map<crypto::ed25519_pubkey, crypto::legacy_pubkey> all_funded_ed25519_;
-    std::unordered_map<crypto::x25519_pubkey, crypto::legacy_pubkey> all_funded_x25519_;
 
-    /// Check if `sid` is an existing (active) swarm
-    bool is_existing_swarm(swarm_id_t sid) const;
+    std::set<crypto::legacy_pubkey> members_;  // includes `our_pk`, when we are in a swarm.
+
+    // Pubkeys of new members into our swarm who we haven't yet established communications with;
+    // once we do, we push all our swarm's messages to them.  The value is the earliest timestamp at
+    // which we should next try contacting them, or nullopt if we have confirmed contact and can now
+    // send the data.
+    std::unordered_map<crypto::legacy_pubkey, std::optional<std::chrono::steady_clock::time_point>>
+            pending_new_members_;
+
+    // Extract relevant information from incoming swarm composition.
+    SwarmEvents derive_swarm_events(const swarms_t& swarms) const;
 
   public:
-    Swarm(sn_record address) : our_address_(address) {}
+    Network& network;
+    const crypto::legacy_pubkey our_pk;
+
+    Swarm(Network& network, const crypto::legacy_pubkey& our_pk) :
+            network{network}, our_pk{our_pk} {}
 
     ~Swarm();
 
-    /// Extract relevant information from incoming swarm composition
-    SwarmEvents derive_swarm_events(const std::vector<SwarmInfo>& swarms) const;
-
-    /// Update swarm state according to `events`. If not `is_active`
-    /// only update the list of all nodes
-    void update_state(
-            std::vector<SwarmInfo>&& swarms,
-            const std::vector<sn_record>& decommissioned,
-            const SwarmEvents& events,
-            bool is_active);
-
-    void apply_swarm_changes(std::vector<SwarmInfo>&& new_swarms);
+    /// Update swarm state; this takes care of updating both this swarm itself, and propagates the
+    /// general network swarm changes to the Network object (including contacts) as well.
+    SwarmEvents update_swarms(
+            swarms_t&& swarms, const std::map<crypto::legacy_pubkey, contact>& new_contacts);
 
     bool is_pubkey_for_us(const user_pubkey& pk) const;
 
-    const std::vector<sn_record>& other_nodes() const { return swarm_peers_; }
+    // Returns a copy of all the members of this swarm, including this node.
+    std::set<crypto::legacy_pubkey> members() const;
 
-    const std::vector<SwarmInfo>& all_valid_swarms() const { return all_valid_swarms_; }
+    // Returns a copy of all the other members of this swarm, not including this node.
+    std::set<crypto::legacy_pubkey> peers() const;
 
-    const sn_record& our_address() const { return our_address_; }
+    // Returns true if the given pubkey is recognized as a member of this swarm.
+    bool is_member(const crypto::legacy_pubkey& pk) const;
+    bool is_member(const crypto::x25519_pubkey& pk) const;
+    bool is_member(const crypto::ed25519_pubkey& pk) const;
 
-    swarm_id_t our_swarm_id() const { return cur_swarm_id_; }
+    // Returns the size of this swarm (including this node).
+    size_t size() const;
 
-    bool is_valid() const { return cur_swarm_id_ != INVALID_SWARM_ID; }
+    // Resets the timer and returns the pubkeys of any new swarm members that are due to be
+    // contacted to push swarm messages to.
+    std::set<crypto::legacy_pubkey> extract_pending_members();
 
-    void set_swarm_id(swarm_id_t sid);
+    // Marks a pending member as ready, so that it is returned by the next call to
+    // `extract_ready_members()`, and is no longer returned by `extract_pending_members()`.
+    void set_member_ready(const crypto::legacy_pubkey& pk);
 
-    const std::unordered_map<crypto::legacy_pubkey, sn_record>& all_funded_nodes() const {
-        return all_funded_nodes_;
+    // Extracts any "ready" members (that is, those that were pending and then marked ready with
+    // `set_member_ready`), returning them and removing them from the pending members list.
+    std::set<crypto::legacy_pubkey> extract_ready_members();
+
+    swarm_id_t our_swarm_id() const {
+        std::shared_lock lock{network.mut_};
+        return cur_swarm_id_;
     }
 
-    // Get the node with public key `pk` if exists; these search *all* fully-funded SNs
-    // (including decommissioned ones), not just the current swarm.
-    std::optional<sn_record> find_node(const crypto::legacy_pubkey& pk) const;
-    std::optional<sn_record> find_node(const crypto::ed25519_pubkey& pk) const;
-    std::optional<sn_record> find_node(const crypto::x25519_pubkey& pk) const;
+    bool is_valid() const { return our_swarm_id() != INVALID_SWARM_ID; }
 };
 
 }  // namespace oxenss::snode
