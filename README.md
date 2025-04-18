@@ -30,18 +30,17 @@ built statically from bundled versions:
 * sqlite >= 3.35.5
 
 You can, however, instruct the build to download and build static versions of all of these
-dependencies (other than autoconf) as part of the build by adding the `-DBUILD_STATIC_DEPS=ON`
+dependencies (other than autoconf) as part of the build by adding the `-D BUILD_STATIC_DEPS=ON`
 option to the `cmake` command below.  (This will, however, result in a slower build and larger,
 slower binary, as is typical for static builds).
 
 ```
 git submodule update --init --recursive
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j4
+cmake -B build -S .. -D CMAKE_BUILD_TYPE=Release -G Ninja
+cmake --build build --parallel
 ```
 
-The build will produce a `./build/httpserver/oxen-storage` binary.  You can run it with `--help` to
+The build will produce a `./build/oxen-storage` binary.  You can run it with `--help` to
 see supported run-time options.
 
 # Running

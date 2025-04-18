@@ -5,13 +5,13 @@
 #include <cpr/ssl_options.h>
 #include <oxenss/version.h>
 
+#include <event2/event.h>
+
 namespace oxenss::http {
 
 namespace log = oxen::log;
 
 auto logcat = log::Cat("http");
-
-static void curl_perform(int fd, short event, void* void_ctx);
 
 struct curl_context {
     Client& client;
@@ -21,7 +21,8 @@ struct curl_context {
     curl_context(Client& client, curl_socket_t fd) :
             client{client},
             sockfd{fd},
-            evt{event_new(client.loop->loop().get(), sockfd, 0, Client::curl_perform_c, this)} {}
+            evt{event_new(client.loop->get_event_base(), sockfd, 0, Client::curl_perform_c, this)} {
+    }
     ~curl_context() {
         event_del(evt);
         event_free(evt);
@@ -46,11 +47,10 @@ void Client::curl_perform_c(int /*fd*/, short event, void* cctx) {
     client.check_multi_info();
 }
 
-void Client::on_timeout_c(evutil_socket_t /*fd*/, short /*events*/, void* arg) {
-    auto& client = *static_cast<Client*>(arg);
+void Client::on_timeout() {
     int running_handles;
-    curl_multi_socket_action(client.curl_multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
-    client.check_multi_info();
+    curl_multi_socket_action(curl_multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+    check_multi_info();
 }
 
 int Client::start_timeout_c(CURLM* /*multi*/, long timeout_ms, void* userp) {
@@ -92,7 +92,7 @@ int Client::handle_socket_c(
             event_del(curl_ctx->evt);
             event_assign(
                     curl_ctx->evt,
-                    client.loop->loop().get(),
+                    client.loop->get_event_base(),
                     curl_ctx->sockfd,
                     events,
                     Client::curl_perform_c,
@@ -144,7 +144,12 @@ void Client::check_multi_info() {
 
 Client::Client(std::shared_ptr<oxen::quic::Loop> loop_) :
         loop{std::move(loop_)},
-        ev_timeout{evtimer_new(loop->loop().get(), Client::on_timeout_c, this)} {
+        ev_timeout{evtimer_new(
+                loop->get_event_base(),
+                [](evutil_socket_t /*fd*/, short /*events*/, void* arg) {
+                    static_cast<Client*>(arg)->on_timeout();
+                },
+                this)} {
     assert(loop);
     curl_multi = curl_multi_init();
     curl_multi_setopt(curl_multi, CURLMOPT_SOCKETDATA, this);
