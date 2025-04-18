@@ -1,3 +1,42 @@
+oxen-storage-server (2.10.0-1~ubuntu2410) oracular; urgency=medium
+
+  [ doylet ]
+  * Avoid unnecessary std::variant in rpc_handler
+  * Fix compiler warnings in unit_tests
+  * Remove unused slurp/dump file routines
+  * Handle missing `service_node_privkey` for SN endpoint
+  * Add missing DH_free on dh parameter
+  * Document the expected data payload for HTTPS rpc
+  * Distinguish connection failure from incorrect payload part count on rpc.get_service_nodes
+  * Fix race condition w/ block_hashes_cache on first swarm update
+  * Validate the OMQ RPC address on startup before using it
+  * Fix initial rpc.get_block_hash failing on Oxen 11
+  * Update readme build instructions
+  * Remove unneeded headers from service_node.h
+  * Fix infinite loop on failed initial update_swarms
+  * Remove unused storage testing from SS
+  * Format the non-compliant changes
+
+  [ Jason Rhinelander ]
+  * Small privkey fetching cleanup
+  * Refactor to avoid confusing loop logic and goto
+  * clang-format-19, and update .clang-format to c++20
+  * Update oxen-encoding to latest
+  * Update to de-networked libquic
+  * Update storage seeds
+  * Bump oxenmq (1.2.20), oxenc (1.4.0)
+  * Storage server contact & initial data refactor
+  * Remove old HF version gates
+  * Add SS version to contact; gate pre-transfer handshake on version
+  * Extract storage version from addr change notifications
+  * Misc cleanups/improvements
+  * Update oxen-libquic to point to proper dev branch
+  * Add compact service node list endpoint
+  * Enable multiple request streams
+  * Update depedency versions
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 17 Apr 2025 21:13:34 -0300
+
 oxen-storage-server (2.9.0-2~ubuntu2410) oracular; urgency=medium
 
   * Fix Loop initialization
