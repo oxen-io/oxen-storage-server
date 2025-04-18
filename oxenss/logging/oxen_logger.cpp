@@ -1,9 +1,9 @@
 #include "oxen_logger.h"
 #include <oxen/log.hpp>
-#include <fmt/std.h>
 
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <filesystem>
+#include <oxenss/utils/string_utils.hpp>
 
 namespace oxenss::logging {
 
@@ -42,12 +42,12 @@ void init(const std::filesystem::path& data_dir, oxen::log::Level log_level) {
         log::error(
                 logcat,
                 "Failed to open {} for logging: {}.  File logging disabled.",
-                log_location,
+                util::to_sv(log_location.u8string()),
                 ex.what());
         return;
     }
 
-    log::info(logcat, "Writing logs to {}", log_location);
+    log::info(logcat, "Writing logs to {}", util::to_sv(log_location.u8string()));
 }
 
 }  // namespace oxenss::logging

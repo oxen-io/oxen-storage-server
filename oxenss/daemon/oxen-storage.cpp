@@ -15,12 +15,10 @@
 
 #include <oxenmq/oxenmq.h>
 #include <sodium/core.h>
-#include <fmt/std.h>
 
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
 #include <stdexcept>
 #include <variant>
 #include <vector>
@@ -54,7 +52,7 @@ int main(int argc, char* argv[]) {
     if (auto* code = std::get_if<int>(&parsed))
         return *code;
 
-    auto& options = var::get<cli::command_line_options>(parsed);
+    auto& options = std::get<cli::command_line_options>(parsed);
 
     if (!fs::exists(options.data_dir))
         fs::create_directories(options.data_dir);
@@ -90,8 +88,22 @@ int main(int argc, char* argv[]) {
     }
 
     log::info(logcat, "Setting log level to {}", options.log_level);
-    log::info(logcat, "Setting database location to {}", options.data_dir);
+    log::info(logcat, "Setting database location to {}", util::to_sv(options.data_dir.u8string()));
     log::info(logcat, "Connecting to oxend @ {}", options.oxend_omq_rpc);
+
+    // Validate the OMQ RPC address can be converted, especially since bad address conversions can
+    // throw an exception that might _not_ be caught and propagate up to main, providing zero
+    // context on the whereabouts of the error.
+    try {
+        oxenmq::address{options.oxend_omq_rpc};
+    } catch (const std::exception& e) {
+        log::error(
+                logcat,
+                "OMQ RPC address '{}' was not a valid for ZMQ communications (e.g. "
+                "tcp://HOSTNAME:PORT or ipc://PATH, lookup OxenMQ addresses for more information)",
+                options.oxend_omq_rpc);
+        return EXIT_FAILURE;
+    }
 
     if (sodium_init() != 0) {
         log::error(logcat, "Could not initialize libsodium");
@@ -111,29 +123,29 @@ int main(int argc, char* argv[]) {
             log::info(logcat, "Stats access key: {}", key);
         }
 
-        const auto [private_key, private_key_ed25519, private_key_x25519] =
-                rpc::get_sn_privkeys(options.oxend_omq_rpc, [] { return signalled == 0; });
+        const auto [l_keys, ed_keys, x_keys] =
+                rpc::get_sn_keys(options.oxend_omq_rpc, [] { return signalled == 0; });
 
         if (signalled) {
             log::error(logcat, "Received signal {}, aborting startup", signalled.load());
             return EXIT_FAILURE;
         }
 
-        snode::sn_record me{
-                "0.0.0.0",
+        snode::contact me{
+                oxen::quic::ipv4{0},
                 options.https_port,
                 options.omq_quic_port,
-                private_key.pubkey(),
-                private_key_ed25519.pubkey(),
-                private_key_x25519.pubkey()};
+                STORAGE_SERVER_VERSION,
+                ed_keys.pub,
+                x_keys.pub};
 
         log::info(logcat, "Retrieved keys from oxend; our SN pubkeys are:");
-        log::info(logcat, "- legacy:  {}", me.pubkey_legacy);
+        log::info(logcat, "- legacy:  {}", l_keys.pub);
         log::info(logcat, "- ed25519: {}", me.pubkey_ed25519);
         log::info(logcat, "- x25519:  {}", me.pubkey_x25519);
         log::info(logcat, "- lokinet: {}", me.pubkey_ed25519.snode_address());
 
-        crypto::ChannelEncryption channel_encryption{private_key_x25519, me.pubkey_x25519};
+        crypto::ChannelEncryption channel_encryption{x_keys};
 
         auto ssl_cert = options.data_dir / "cert.pem";
         auto ssl_key = options.data_dir / "key.pem";
@@ -145,14 +157,13 @@ int main(int argc, char* argv[]) {
 
         // Set up oxenmq now, but don't actually start it until after we set up the ServiceNode
         // instance (because ServiceNode and OxenmqServer reference each other).
-        auto oxenmq_server_ptr =
-                std::make_unique<server::OMQ>(me, private_key_x25519, stats_access_keys);
+        auto oxenmq_server_ptr = std::make_unique<server::OMQ>(x_keys, stats_access_keys);
         auto& oxenmq_server = *oxenmq_server_ptr;
 
         snode::ServiceNode service_node{
-                me, private_key, oxenmq_server, options.data_dir, options.force_start};
+                l_keys, me, oxenmq_server, options.data_dir, options.force_start};
 
-        rpc::RequestHandler request_handler{service_node, channel_encryption, private_key_ed25519};
+        rpc::RequestHandler request_handler{service_node, channel_encryption, ed_keys.sec};
 
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 
@@ -164,14 +175,14 @@ int main(int argc, char* argv[]) {
                 ssl_cert,
                 ssl_key,
                 ssl_dh,
-                {me.pubkey_legacy, private_key}};
+                l_keys};
 
         auto quic = std::make_unique<server::QUIC>(
                 service_node,
                 request_handler,
                 rate_limiter,
                 oxen::quic::Address{options.ip, options.omq_quic_port},
-                private_key_ed25519);
+                ed_keys.sec);
         service_node.register_mq_server(quic.get());
 
         auto http_client = std::make_shared<http::Client>(quic->loop());

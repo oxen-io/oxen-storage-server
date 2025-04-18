@@ -1,8 +1,6 @@
 #include "channel_encryption.hpp"
 
 #include <cassert>
-#include <exception>
-#include <iostream>
 #include <memory>
 
 #include <openssl/evp.h>
@@ -62,10 +60,6 @@ EncryptType parse_enc_type(std::string_view enc_type) {
     if (enc_type == "aes-cbc" || enc_type == "cbc")
         return EncryptType::aes_cbc;
     throw std::runtime_error{"Invalid encryption type " + std::string{enc_type}};
-}
-
-std::ostream& operator<<(std::ostream& o, const EncryptType& t) {
-    return o << to_string(t);
 }
 
 std::string ChannelEncryption::encrypt(
@@ -191,10 +185,7 @@ static std::string decrypt_openssl(
 std::string ChannelEncryption::encrypt_cbc(
         std::string_view plaintext_, const x25519_pubkey& pubKey) const {
     return encrypt_openssl(
-            EVP_aes_256_cbc(),
-            0,
-            to_uchar(plaintext_),
-            calculate_shared_secret(private_key_, pubKey));
+            EVP_aes_256_cbc(), 0, to_uchar(plaintext_), calculate_shared_secret(keys_.sec, pubKey));
 }
 
 std::string ChannelEncryption::decrypt_cbc(
@@ -203,7 +194,7 @@ std::string ChannelEncryption::decrypt_cbc(
             EVP_aes_256_cbc(),
             0,
             to_uchar(ciphertext_),
-            calculate_shared_secret(private_key_, pubKey));
+            calculate_shared_secret(keys_.sec, pubKey));
 }
 
 std::string ChannelEncryption::encrypt_gcm(
@@ -212,7 +203,7 @@ std::string ChannelEncryption::encrypt_gcm(
             EVP_aes_256_gcm(),
             16 /* tag length */,
             to_uchar(plaintext_),
-            derive_symmetric_key(private_key_, pubKey));
+            derive_symmetric_key(keys_.sec, pubKey));
 }
 
 std::string ChannelEncryption::decrypt_gcm(
@@ -221,7 +212,7 @@ std::string ChannelEncryption::decrypt_gcm(
             EVP_aes_256_gcm(),
             16 /* tag length */,
             to_uchar(ciphertext_),
-            derive_symmetric_key(private_key_, pubKey));
+            derive_symmetric_key(keys_.sec, pubKey));
 }
 
 static std::array<unsigned char, crypto_aead_xchacha20poly1305_ietf_KEYBYTES> xchacha20_shared_key(
@@ -254,7 +245,7 @@ std::string ChannelEncryption::encrypt_xchacha20(
             crypto_aead_xchacha20poly1305_ietf_NPUBBYTES + plaintext.size() +
             crypto_aead_xchacha20poly1305_ietf_ABYTES);
 
-    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
+    const auto key = xchacha20_shared_key(keys_.pub, keys_.sec, pubKey, !server_);
 
     // Generate random nonce, and stash it at the beginning of ciphertext:
     randombytes_buf(ciphertext.data(), crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
@@ -288,7 +279,7 @@ std::string ChannelEncryption::decrypt_xchacha20(
     if (ciphertext.size() < crypto_aead_xchacha20poly1305_ietf_ABYTES)
         throw std::runtime_error{"Invalid ciphertext: too short"};
 
-    const auto key = xchacha20_shared_key(public_key_, private_key_, pubKey, !server_);
+    const auto key = xchacha20_shared_key(keys_.pub, keys_.sec, pubKey, !server_);
 
     std::string plaintext;
     plaintext.resize(ciphertext.size() - crypto_aead_xchacha20poly1305_ietf_ABYTES);

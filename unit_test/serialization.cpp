@@ -38,7 +38,7 @@ TEST_CASE("v1 serialization - basic values", "[serialization]") {
 
     const auto messages = deserialize_messages(batches[0]);
     CHECK(messages.size() == 2);
-    for (int i = 0; i < messages.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
         CHECK(messages[i].pubkey == pub_key);
         CHECK(messages[i].data == data);
         CHECK(messages[i].hash == hash);
@@ -60,7 +60,7 @@ TEST_CASE("v1 serialization - batch serialization", "[serialization]") {
     auto serialized = serialize_messages(msgs.begin(), msgs.end(), 1);
     REQUIRE(serialized.size() == 1);
     auto first = serialized.front();
-    const size_t num_messages = (SERIALIZATION_BATCH_SIZE / (serialized.front().size() - 2));
+    const size_t num_messages = (SERIALIZATION_BATCH_SIZE / (serialized.front().size() - 2)) + 1;
     msgs = {num_messages, msgs.front()};
     serialized = serialize_messages(msgs.begin(), msgs.end(), 1);
     CHECK(serialized.size() == 1);

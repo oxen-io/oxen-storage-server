@@ -3,8 +3,11 @@
 #include "../rpc/rate_limiter.h"
 #include "../rpc/request_handler.h"
 #include "../snode/service_node.h"
+#include "../snode/sn_test.h"
 #include "omq.h"
 #include "utils.h"
+
+#include <oxen/quic/gnutls_crypto.hpp>
 
 namespace oxenss::server {
 
@@ -46,7 +49,7 @@ QUIC::QUIC(
     request_handler_ = &rh;
     rate_limiter_ = &rl;
 
-    tls_creds->enable_inbound_0rtt();
+    static_cast<quic::GNUTLSCreds*>(tls_creds.get())->enable_inbound_0rtt();
 
     ep = network.endpoint(local, make_endpoint_static_secret(sk), quic::opt::alpns{ALPN});
 
@@ -60,9 +63,14 @@ QUIC::QUIC(
 }
 
 void QUIC::startup_endpoint() {
-    ep->listen(tls_creds, [&](quic::connection_interface& c) {
-        c.queue_incoming_stream<quic::BTRequestStream>(command_handler);
-    });
+    ep->listen(
+            tls_creds,
+            // Stream constructor: all incoming streams become BTRequestStreams, allowing clients to
+            // use multiple streams to send higher/lower priority data in parallel by juggling
+            // streams.
+            [this](quic::Connection& c, quic::Endpoint& e, std::optional<int64_t>) {
+                return e.loop.make_shared<quic::BTRequestStream>(c, e, command_handler);
+            });
 }
 
 void QUIC::handle_monitor_message(std::shared_ptr<quic::message> msg) {
@@ -83,7 +91,7 @@ void QUIC::handle_ping(std::shared_ptr<quic::message> msg) {
 
 void QUIC::handle_request(std::shared_ptr<quic::message> msg) {
     auto& omq = *service_node_->omq_server();
-    auto remote_host = msg->stream()->remote().host();
+    auto remote_host = msg->stream()->get_conn()->remote().host();
 
     auto name = msg->endpoint();
     if (!(name == "snode_ping" || name == "monitor" || name == "onion_req" ||
@@ -202,12 +210,16 @@ void QUIC::notify(std::vector<connection_id>& conns, std::string_view notificati
 }
 
 void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
-    if (!service_node_->hf_at_least(snode::QUIC_REACHABILITY_TESTING))
-        return test->add_result(true);
+    auto maybe_ct = service_node_->contacts().find(test->pubkey);
+    if (!maybe_ct || !*maybe_ct)
+        // If we don't have any usable contact info then don't do anything: oxend will already fail
+        // a node that hasn't broadcast usable contact info, so we don't need to worry about testing
+        // it here.
+        return;
+    const auto& ct = *maybe_ct;
 
-    auto& sn = test->sn;
     auto conn = ep->connect(
-            {sn.pubkey_ed25519.view(), sn.ip, sn.omq_quic_port},
+            {ct.pubkey_ed25519.view(), ct.ip, ct.omq_quic_port},
             tls_creds,
             quic::opt::handshake_timeout{5s});
     auto s = conn->open_stream<quic::BTRequestStream>();
@@ -217,14 +229,14 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
             log::debug(
                     logcat,
                     "QUIC reachability test failed for {}: {}",
-                    test->sn.pubkey_legacy,
+                    test->pubkey,
                     m.timed_out ? "timeout" : "unexpected response");
             passed = false;
         } else {
             log::debug(
                     logcat,
                     "Successful response to QUIC reachability ping test of {}",
-                    test->sn.pubkey_legacy);
+                    test->pubkey);
             passed = true;
         }
         if (auto conn = m.stream()->endpoint.get_conn(m.conn_rid()))
