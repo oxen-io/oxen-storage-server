@@ -20,7 +20,7 @@ def omq():
 def sns(omq):
     remote = omq.connect_remote(
         Address(
-            "curve://public.loki.foundation:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45"
+            "curve://public.session.foundation:38161/9c5201e30957cd44e3dcc8ad7f94f48e6914deef77390f77a439a2d7e7f4cb5c"
         )
     )
     x = omq.request_future(remote, "rpc.get_service_nodes", b'{"active_only": true}').get()
