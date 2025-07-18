@@ -5,7 +5,6 @@ from nacl.signing import SigningKey, VerifyKey
 from nacl.public import PublicKey
 import nacl.bindings as sodium
 from typing import Union
-from pyonionreq import xed25519
 
 
 def make_subaccount(
