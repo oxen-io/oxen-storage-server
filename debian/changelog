@@ -1,3 +1,21 @@
+oxen-storage-server (2.11.0-1~deb13) trixie; urgency=medium
+
+  [ Jason Rhinelander ]
+  * update library deps
+  * Update oxen-logging & use system lib if available
+  * add oxen-logging dep
+
+  [ doylet ]
+  * Fix incorrect parsing of failure in recursive swarm request
+  * Bump max page count (e.g. max DB size) to 10GiB
+
+  [ Jason Rhinelander ]
+  * 2.11.0 version bump
+  * update deps
+  * update deps
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 18 Jul 2025 16:23:04 -0300
+
 oxen-storage-server (2.10.0-1~deb13) trixie; urgency=medium
 
   [ doylet ]
