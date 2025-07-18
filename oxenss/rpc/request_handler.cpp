@@ -399,17 +399,23 @@ struct swarm_response {
     std::function<void(rpc::Response)> cb;
 };
 
-// Replies to a recursive swarm request via its callback; sends an http::OK unless all of the
-// swarm entries returned things with "failed" in them, in which case we send back an
-// INTERNAL_SERVER_ERROR along with the response.
+// Replies to a swarm request via its callback; sends an http::OK unless all of the
+// swarm entries returned things with "failed" in them or in the case of a non-recursive request,
+// the top-level object has a "failed" in it then we send back an INTERNAL_SERVER_ERROR
+// along with the response.
 void reply_or_fail(const std::shared_ptr<swarm_response>& res) {
     auto res_code = http::INTERNAL_SERVER_ERROR;
-    for (const auto& [snode, reply] : res->result.items()) {
-        if (!reply.count("failed")) {
-            res_code = http::OK;
-            break;
+    if (auto swarm_obj = res->result.find("swarm"); swarm_obj != res->result.end()) {
+        for (const auto& [sn_pkey, obj] : swarm_obj->items()) {
+            if (!obj.count("failed")) {
+                res_code = http::OK;
+                break;
+            }
         }
+    } else if (auto failed_it = res->result.find("failed"); failed_it == res->result.end()) {
+        res_code = http::OK;
     }
+
     res->cb(Response{res_code, std::move(res->result)});
 }
 
