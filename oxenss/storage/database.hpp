@@ -53,7 +53,7 @@ class Database {
     // Recommended period for calling clean_expired()
     static constexpr auto CLEANUP_PERIOD = 10s;
 
-    static constexpr int64_t SIZE_LIMIT = int64_t(3584) * 1024 * 1024;  // 3.5 GB
+    static constexpr int64_t SIZE_LIMIT = 10LL * 1024 * 1024 * 1024;  // 10 GiB
 
     // Constructor.  Note that you *must* also set up a timer that runs periodically (every
     // CLEANUP_PERIOD is recommended) and calls clean_expired().
