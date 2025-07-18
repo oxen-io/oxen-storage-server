@@ -63,9 +63,9 @@ endmacro()
 system_or_submodule(OXENC oxenc liboxenc>=1.4.0 oxenc)
 
 set(LIBQUIC_BUILD_TESTS OFF CACHE BOOL "")
-system_or_submodule(OXENQUIC quic liboxenquic>=1.4.0 oxen-libquic)
+system_or_submodule(OXENQUIC quic liboxenquic>=1.5.0 oxen-libquic)
 
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.20 oxen-mq)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.22 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann_json)
 system_or_submodule(CLI11 CLI11 CLI11>=2.2.0 CLI11)
@@ -97,7 +97,7 @@ if(NOT TARGET oxen::logging)
     if(BUILD_STATIC_DEPS)
         set(OXEN_LOGGING_FORCE_SUBMODULES ON CACHE INTERNAL "")
     endif()
-    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.1 oxen-logging)
+    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.2.0 oxen-logging)
     if(OXENLOGGING_FOUND)
         # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets,
         # but this script will give us them:
