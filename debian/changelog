@@ -1,3 +1,9 @@
+oxen-storage-server (2.11.0-1~ubuntu2404+1) noble; urgency=medium
+
+  * Rebuild for noble
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 02 Sep 2025 14:02:33 -0300
+
 oxen-storage-server (2.11.0-1~ubuntu2404) noble; urgency=medium
 
   [ Jason Rhinelander ]
