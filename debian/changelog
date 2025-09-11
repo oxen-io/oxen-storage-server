@@ -1,3 +1,9 @@
+oxen-storage-server (2.11.0-1~deb13+1) trixie; urgency=medium
+
+  * Rebuild for trixie
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 10 Sep 2025 22:28:45 -0300
+
 oxen-storage-server (2.11.0-1~deb13) trixie; urgency=medium
 
   [ Jason Rhinelander ]
