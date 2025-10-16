@@ -17,6 +17,7 @@
 #include <oxenmq/oxenmq.h>
 #include <nlohmann/json.hpp>
 #include <oxen/quic.hpp>
+#include <oxen/quic/gnutls_crypto.hpp>
 
 extern "C" {
 #include <sys/param.h>
@@ -53,7 +54,7 @@ PAYLOAD/CONTROL are values to pass to the request and should be:
 
 Onion requests for SS and oxend:
 
-    Pass '{"headers":[]}' for CONTROL
+    Pass '{"headers":[],"json":true,"base64":false}' for CONTROL
 
     PAYLOAD should be the JSON data; for example for an oxend request:
 
@@ -265,17 +266,15 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // any onion encryption at all all the way back to the client.
 
     // Ephemeral keypair:
-    x25519_pubkey A;
-    x25519_seckey a;
-    x25519_pubkey final_pubkey;
-    x25519_seckey final_seckey;
+    x25519_keypair eph;
+    x25519_keypair final_keys;
     EncryptType last_etype;
     EncryptType final_etype;
 
     auto it = keys.rbegin();
     {
-        crypto_box_keypair(A.data(), a.data());
-        ChannelEncryption e{a, A, false};
+        crypto_box_keypair(eph.pub.data(), eph.sec.data());
+        ChannelEncryption e{eph, false};
 
         auto data = encode_size(payload.size());
         data += payload;
@@ -287,23 +286,22 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 #endif
         blob = e.encrypt(last_etype, data, keys.back().second);
         // Save these because we need them again to decrypt the final response:
-        final_seckey = a;
-        final_pubkey = A;
+        final_keys = eph;
     }
 
     for (it++; it != keys.rend(); it++) {
         // Routing data for this hop:
         nlohmann::json routing{
             {"destination", std::prev(it)->first.hex()}, // Next hop's ed25519 key
-            {"ephemeral_key", A.hex()}, // The x25519 ephemeral_key here is the key for the *next* hop to use
+            {"ephemeral_key", eph.pub.hex()}, // The x25519 ephemeral_key here is the key for the *next* hop to use
             {"enc_type", to_string(last_etype)},
         };
 
         blob = encode_size(blob.size()) + blob + routing.dump();
 
         // Generate eph key for *this* request and encrypt it:
-        crypto_box_keypair(A.data(), a.data());
-        ChannelEncryption e{a, A, false};
+        crypto_box_keypair(eph.pub.data(), eph.sec.data());
+        ChannelEncryption e{eph, false};
         last_etype = enc_type.value_or(random_etype());
 
 #ifndef NDEBUG
@@ -315,7 +313,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // The data going to the first hop needs to be wrapped in one more layer to tell the first hop
     // how to decrypt the initial payload:
     blob = encode_size(blob.size()) + blob + nlohmann::json{
-        {"ephemeral_key", A.hex()}, {"enc_type", to_string(last_etype)}}.dump();
+        {"ephemeral_key", eph.pub.hex()}, {"enc_type", to_string(last_etype)}}.dump();
 
     auto started = std::chrono::steady_clock::now();
     std::string body;
@@ -324,10 +322,9 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
         using namespace oxen::quic;
         Network net;
 
-        static constexpr auto ALPN = "oxenstorage"sv;
-        static const ustring uALPN{reinterpret_cast<const unsigned char*>(ALPN.data()), ALPN.size()};
+        static constexpr auto ALPN = "oxenstorage"s;
 
-        auto ep = net.endpoint(Address{}, opt::outbound_alpns{{uALPN}});
+        auto ep = net.endpoint(Address{}, opt::outbound_alpns{{ALPN}});
         std::string sk;
         sk.resize(64);
         std::array<unsigned char, 32> pk;
@@ -351,7 +348,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
                 auto finished = std::chrono::steady_clock::now();
                 std::cerr << "Got QUIC onion request response in "
                           << std::chrono::duration<double>(finished - started).count() << "s\n";
-                body_prom.set_value(msg.body_str());
+                body_prom.set_value(std::string{msg.body()});
             }
         });
 
@@ -384,7 +381,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     // Nothing in the response tells us how it is encoded so we have to guess; the client normally
     // *does* know because it specifies `"base64": false` if it wants binary, but I don't want to
     // parse and guess what we should do, so we'll just guess.
-    ChannelEncryption d{final_seckey, final_pubkey, false};
+    ChannelEncryption d{final_keys, false};
     bool decrypted = false;
     auto orig_size = body.size();
     try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
