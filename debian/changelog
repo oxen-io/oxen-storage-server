@@ -1,3 +1,15 @@
+oxen-storage-server (2.11.1-1~deb11) bullseye; urgency=medium
+
+  * Dust off contrib/quic-reach-test
+  * Fix contrib/onion-request
+  * Fix binary response encoding
+  * Add nlohmann-json diagnostics for debug builds
+  * Update oxen library dependencies
+  * add clang-tools dep for clang builds
+  * fix deps and backports for older distros
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 16 Oct 2025 15:49:12 -0300
+
 oxen-storage-server (2.11.0-1~deb11) bullseye; urgency=medium
 
   [ Jason Rhinelander ]
