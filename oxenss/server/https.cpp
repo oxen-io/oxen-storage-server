@@ -207,17 +207,25 @@ void queue_response_internal(
         r.writeStatus(fmt::format("{} {}", res.status.first, res.status.second));
         https.add_generic_headers(r);
 
-        const bool is_json = std::holds_alternative<json>(res.body);
+        const auto* json = std::get_if<nlohmann::json>(&res.body);
+        const auto* binary = std::get_if<std::span<const std::byte>>(&res.body);
         if (std::none_of(begin(res.headers), end(res.headers), [](const auto& h) {
                 return util::string_iequal(h.first, "content-type");
             }))
-            r.writeHeader("Content-Type", is_json ? "application/json" : "text/plain");
+            r.writeHeader(
+                    "Content-Type",
+                    json     ? "application/json"
+                    : binary ? "application/octet-stream"
+                             : "text/plain");
         for (const auto& [h, v] : res.headers)
             r.writeHeader(h, v);
 
         // NB: if the dump() here throws then it means we messed up and put some invalid data
         // (probably binary) into a json value.
-        r.end(is_json ? std::get<json>(res.body).dump() : view_body(res),
+        r.end(json ? json->dump()
+              : binary
+                      ? std::string_view{reinterpret_cast<const char*>(binary->data()), binary->size()}
+                      : view_body(res),
               force_close || https.closing());
     });
 }

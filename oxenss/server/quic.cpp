@@ -143,12 +143,13 @@ void QUIC::handle_onion_request(std::shared_ptr<quic::message> msg) {
                             res.status.second,
                             util::friendly_duration(std::chrono::steady_clock::now() - started));
 
-                    const bool is_json = std::holds_alternative<nlohmann::json>(res.body);
                     std::string json_body;
                     std::string_view body;
-                    if (is_json) {
-                        json_body = std::get<nlohmann::json>(res.body).dump();
+                    if (auto json = std::get_if<nlohmann::json>(&res.body)) {
+                        json_body = json->dump();
                         body = json_body;
+                    } else if (auto* binary = std::get_if<std::span<const std::byte>>(&res.body)) {
+                        body = {reinterpret_cast<const char*>(binary->data()), binary->size()};
                     } else {
                         body = rpc::view_body(res);
                     }

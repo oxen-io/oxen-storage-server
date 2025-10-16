@@ -15,10 +15,6 @@
 #include <oxenc/bt.h>
 
 namespace oxenss {
-using ustring = std::basic_string<uint8_t>;
-using ustring_view = std::basic_string_view<uint8_t>;
-using bstring = std::basic_string<std::byte>;
-using bstring_view = std::basic_string_view<std::byte>;
 
 // place this here so we can use it in oxenss::*
 using namespace std::literals;
