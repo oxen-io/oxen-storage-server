@@ -64,24 +64,31 @@ inline constexpr size_t BATCH_REQUEST_MAX = 20;
 // Simple wrapper that works for most of our responses
 struct Response {
     http::response_code status = http::OK;
-    std::variant<std::string, std::string_view, nlohmann::json> body;
+    std::variant<std::string, std::string_view, std::span<const std::byte>, nlohmann::json> body;
     std::vector<std::pair<std::string, std::string>> headers;
     std::shared_ptr<void> keepalive;
 
     Response() = default;
     Response(
             http::response_code status,
-            std::variant<std::string, std::string_view, nlohmann::json> body = ""sv,
+            std::variant<std::string, std::string_view, std::span<const std::byte>, nlohmann::json>
+                    body = ""sv,
             std::vector<std::pair<std::string, std::string>> headers = {}) :
             status{status}, body{std::move(body)}, headers{std::move(headers)} {}
     Response(http::response_code status, std::string_view body, std::shared_ptr<void> keepalive) :
             status{status}, body{body}, keepalive{keepalive} {}
+    Response(
+            http::response_code status,
+            std::span<const std::byte> binary_response,
+            std::shared_ptr<void> keepalive) :
+            status{status}, body{binary_response}, keepalive{keepalive} {}
 };
 
 // Views the string or string_view body inside a Response.  Should only be called when the body
-// has already been verified to not contain a json object.
+// has already been verified to not contain a json object or binary blob.
 inline std::string_view view_body(const Response& r) {
-    assert(!std::holds_alternative<nlohmann::json>(r.body));
+    assert(!std::holds_alternative<nlohmann::json>(r.body) &&
+           !std::holds_alternative<std::span<const std::byte>>(r.body));
     if (auto* sv = std::get_if<std::string_view>(&r.body))
         return *sv;
     if (auto* s = std::get_if<std::string>(&r.body))
@@ -89,7 +96,7 @@ inline std::string_view view_body(const Response& r) {
     return "(internal error)"sv;
 }
 
-std::string to_string(const Response& res);
+std::string debug_string(const Response& res);
 
 namespace detail {
     // detail::to_hashable takes either an integral type, system_clock::time_point, or a string

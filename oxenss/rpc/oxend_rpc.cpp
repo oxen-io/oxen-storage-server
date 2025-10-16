@@ -1,6 +1,5 @@
 #include "oxend_rpc.h"
 #include <oxenss/logging/oxen_logger.h>
-#include <oxenss/server/omq_logger.h>
 
 #include <chrono>
 #include <exception>
@@ -18,7 +17,7 @@ using namespace std::literals;
 
 crypto::snode_keypairs get_sn_keys(
         std::string_view oxend_rpc_address, std::function<bool()> keep_trying) {
-    oxenmq::OxenMQ omq{omq_logger, oxenmq::LogLevel::info};
+    oxenmq::OxenMQ omq;
     omq.start();
     constexpr auto retry_interval = 5s;
     auto last_try = std::chrono::steady_clock::now() - retry_interval;
