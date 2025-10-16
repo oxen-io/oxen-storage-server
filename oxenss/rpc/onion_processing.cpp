@@ -45,7 +45,7 @@ ParsedInfo process_inner_request(std::string plaintext) {
             // rather than encode the information for the last hop inside [inner] itself (so
             // that you can send it arbitrary data encoded however the last hop wants to encode
             // things), instead it would cram extra data into the *same* json object that the
-            // last hop uses, and force the remove target to re-parse the last hop's request as
+            // last hop uses, and force the remote target to re-parse the last hop's request as
             // its own request.
             //
             // That is, a clean design here would have been:

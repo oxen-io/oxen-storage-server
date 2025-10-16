@@ -206,9 +206,10 @@ bool MQBase::handle_client_rpc(
                         else
                             dump = resp.dump();
                         body = dump;
-                    } else {
+                    } else if (auto* b = std::get_if<std::span<const std::byte>>(&res.body))
+                        body = {reinterpret_cast<const char*>(b->data()), b->size()};
+                    else
                         body = view_body(res);
-                    }
 
                     log::debug(
                             logcat,
