@@ -40,13 +40,19 @@ static auto logcat = log::Cat("rpc");
 // getting back to the client before the entry node's request times out.
 inline constexpr auto ONION_URL_TIMEOUT = 25s;
 
-std::string to_string(const Response& res) {
-    const bool is_json = std::holds_alternative<json>(res.body);
+std::string debug_string(const Response& res) {
+    const auto* json = std::get_if<nlohmann::json>(&res.body);
+    const auto* binary = std::get_if<std::span<const std::byte>>(&res.body);
     return "Status: {} {}, Content-Type: {}, Body: <{}>"_format(
             res.status.first,
             res.status.second,
-            is_json ? "application/json" : "text/plain",
-            is_json ? std::get<json>(res.body).dump() : view_body(res));
+            json     ? "application/json"
+            : binary ? "application/octet-stream"
+                     : "text/plain",
+            json ? json->dump()
+            : binary
+                    ? std::string_view{reinterpret_cast<const char*>(binary->data()), binary->size()}
+                    : view_body(res));
 }
 
 namespace {
@@ -679,7 +685,7 @@ void RequestHandler::process_client_req(
 void RequestHandler::process_client_req(
         rpc::active_nodes_bin&&, std::function<void(rpc::Response)> cb) {
     auto blobptr = service_node_.network().all_nodes_blob();
-    std::string_view blob{reinterpret_cast<const char*>(blobptr->data()), blobptr->size()};
+    std::span<const std::byte> blob{*blobptr};
     cb({http::OK, blob, std::move(blobptr)});
 }
 
@@ -1467,11 +1473,15 @@ void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc
         subresults->emplace_back();
 
     for (size_t i = 0; i < req.subreqs.size(); i++) {
-        auto handler = [subresults, i, cb](Response r) {
+        auto handler = [b64 = req.b64, subresults, i, cb](Response r) {
             json& subres = (*subresults)[i];
             subres["code"] = r.status.first;
             if (auto* j = std::get_if<json>(&r.body))
                 subres["body"] = std::move(*j);
+            else if (auto* b = std::get_if<std::span<const std::byte>>(&r.body))
+                subres["body"] =
+                        b64 ? oxenc::to_base64(*b)
+                            : std::string{reinterpret_cast<const char*>(b->data()), b->size()};
             else
                 subres["body"] = std::string{view_body(r)};
             bool done = true;
@@ -1525,12 +1535,15 @@ void RequestHandler::process_client_req(
     //
     auto manager = std::make_shared<sequence_manager>();
     manager->subreqs = std::move(req.subreqs);
-    manager->subresult_callback = [this, manager, cb = std::move(cb)](Response r) {
+    manager->subresult_callback = [this, manager, b64 = req.b64, cb = std::move(cb)](Response r) {
         json& subres = manager->subresults.emplace_back();
         auto status = r.status.first;
         subres["code"] = status;
         if (auto* j = std::get_if<json>(&r.body))
             subres["body"] = std::move(*j);
+        else if (auto* b = std::get_if<std::span<const std::byte>>(&r.body))
+            subres["body"] = b64 ? oxenc::to_base64(*b)
+                                 : std::string{reinterpret_cast<const char*>(b->data()), b->size()};
         else
             subres["body"] = std::string{view_body(r)};
 
@@ -1567,11 +1580,15 @@ void RequestHandler::process_client_req(rpc::ifelse&& req, std::function<void(rp
     if (!subreq)  // No subrequest action for this branch
         return cb(Response{http::OK, std::move(response)});
 
-    auto wrap_response = [response = std::move(response),
-                          cb = std::move(cb)](rpc::Response r) mutable {
+    auto wrap_response = [response = std::move(response), b64 = req.b64, cb = std::move(cb)](
+                                 rpc::Response r) mutable {
         response["result"] = json{{"code", r.status.first}};
         if (auto* j = std::get_if<json>(&r.body))
             response["result"]["body"] = std::move(*j);
+        else if (auto* b = std::get_if<std::span<const std::byte>>(&r.body))
+            response["result"]["body"] =
+                    b64 ? oxenc::to_base64(*b)
+                        : std::string{reinterpret_cast<const char*>(b->data()), b->size()};
         else
             response["result"]["body"] = std::string{view_body(r)};
         cb(Response{http::OK, std::move(response)});
@@ -1660,11 +1677,14 @@ Response RequestHandler::wrap_proxy_response(
         bool base64) const {
     int status = res.status.first;
     std::string body;
-    if (std::holds_alternative<std::string>(res.body))
-        body = json{{"status", status}, {"body", std::move(std::get<std::string>(res.body))}}
-                       .dump();
-    else if (std::holds_alternative<std::string_view>(res.body))
-        body = json{{"status", status}, {"body", std::get<std::string_view>(res.body)}}.dump();
+    if (auto* s = std::get_if<std::string>(&res.body))
+        body = json{{"status", status}, {"body", std::move(*s)}}.dump();
+    else if (auto* sv = std::get_if<std::string_view>(&res.body))
+        body = json{{"status", status}, {"body", *sv}}.dump();
+    else if (auto* bin = std::get_if<std::span<const std::byte>>(&res.body))
+        // We have a deficiency in the onion request protocol that returning binary data is simply
+        // impossible, so we get to b64 encode it hurray!
+        body = json{{"status", status}, {"body", oxenc::to_base64(*bin)}}.dump();
     else if (embed_json)
         body = json{{"status", status}, {"body", std::move(std::get<json>(res.body))}}.dump();
     else  // Yuck: double-encoded json
@@ -1745,7 +1765,10 @@ void RequestHandler::process_onion_req(RelayToNodeInfo&& info, OnionRequestMetad
             log::debug(
                     logcat,
                     "Onion request relay failed with: {}",
-                    std::holds_alternative<nlohmann::json>(res.body) ? "<json>" : view_body(res));
+                    std::holds_alternative<nlohmann::json>(res.body) ? "<json>"
+                    : std::holds_alternative<std::span<const std::byte>>(res.body)
+                            ? "<binary>"
+                            : view_body(res));
 
         cb(std::move(res));
     };

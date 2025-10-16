@@ -742,8 +742,7 @@ struct oxend_request final : endpoint {
 /// same data that can be retrieved via a oxend_request request to get_service_nodes, but in a much
 /// smaller form, including only the data needed/used by clients using the storage server network.
 ///
-/// Takes no parameters.  Responses is a binary data blob (NOT json) consisting of repeated 51-byte
-/// values:
+/// Takes no parameters.  Response is a binary data blob consisting of repeated 51-byte values:
 ///
 /// - 32 byte Ed25519 pubkey
 /// - 8 byte u64 swarm ID, in network order.
@@ -754,13 +753,14 @@ struct oxend_request final : endpoint {
 ///
 /// e.g. if there are 2000 active storage servers then this returns a 51*2000 byte response.
 ///
-/// Nodes are included as long as their Ed25519 pubkey is known, even if their IP/port/version info
-/// is not yet known by this node: IP/port/version values in such a case will all be 0.
+/// If this request is made through an onion request, the value will be wastefully base64 encoded as
+/// the onion request protocol has no provisions for binary data, but if made as a direct request
+/// (e.g. over lokinet or through direct HTTPS) it will be binary.
 ///
-/// Note that as of HF21, the Ed25519 pubkey is always known, and so this will return a complete set
-/// of network swarm info (but possibly with 0 IP/port values).  Prior to HF21, however, Ed pubkey
-/// and IP/port info arrives together, and so prior to HF21 the returned information will be
-/// incomplete, but also won't include 0 values.
+/// Active nodes are always included even if their IP/port/version info is not yet known by this
+/// node (i.e. because a valid uptime proof has not yet been received): IP/port/version values in
+/// such a case will all be 0.
+///
 struct active_nodes_bin final : no_args {
     static constexpr auto names() { return NAMES("active_nodes_bin"); }
 };
