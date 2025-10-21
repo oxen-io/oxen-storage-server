@@ -13,13 +13,13 @@ void init(const std::filesystem::path& data_dir, oxen::log::Level log_level) {
 
     log::reset_level(log_level);
 
-    // QUIC is a bit chatty, and we probably care more about storage server than quic logging, so if
-    // we're above trace and below critical, set the log level for the libquic categories to one
-    // higher than the general oxenss log level.
+    // QUIC and OMQ are a bit chatty, and we probably care more about storage server than quic
+    // logging, so if we're above trace and below critical, set the log level for those categories
+    // to one higher than the general oxenss log level.
     if (log_level > oxen::log::Level::trace && log_level < oxen::log::Level::critical) {
         auto quic_level = static_cast<oxen::log::Level>(
                 static_cast<std::underlying_type_t<oxen::log::Level>>(log_level) + 1);
-        for (const auto& cat : {"quic", "libevent", "bparser"})
+        for (const auto& cat : {"quic", "libevent", "bparser", "oxenmq"})
             log::set_level(cat, quic_level);
     }
 

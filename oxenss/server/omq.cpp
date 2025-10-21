@@ -1,5 +1,4 @@
 #include "omq.h"
-#include "omq_logger.h"
 
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenmq/auth.h>
@@ -90,11 +89,16 @@ void OMQ::handle_onion_request(
         oxenmq::Message::DeferredSend send) {
     data.cb = [send](rpc::Response res) {
 #ifndef NDEBUG
-        log::trace(logcat, "on response: {}...", to_string(res).substr(0, 100));
+        log::trace(logcat, "on response: {}...", debug_string(res).substr(0, 100));
 #endif
 
         if (auto* js = std::get_if<nlohmann::json>(&res.body))
             send.reply(std::to_string(res.status.first), js->dump());
+        else if (auto* binary = std::get_if<std::span<const std::byte>>(&res.body))
+            send.reply(
+                    std::to_string(res.status.first),
+                    std::string_view{
+                            reinterpret_cast<const char*>(binary->data()), binary->size()});
         else
             send.reply(std::to_string(res.status.first), view_body(res));
     };
@@ -173,10 +177,8 @@ OMQ::OMQ(
         const std::vector<crypto::x25519_pubkey>& stats_access_keys) :
         omq_{std::string{keys.pub.view()},
              std::string{keys.sec.view()},
-             true,                                         // is service node
-             [this](auto pk) { return peer_lookup(pk); },  // SN-by-key lookup func
-             omq_logger,
-             oxenmq::LogLevel::info} {
+             /*service_node=*/true,
+             /*sn_lookup=*/[this](auto pk) { return peer_lookup(pk); }} {
     for (const auto& key : stats_access_keys)
         stats_access_keys_.emplace(key.view());
 

@@ -23,3 +23,6 @@ target_link_libraries(rpc
     oxenc::oxenc
     sodium)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(rpc PUBLIC JSON_DIAGNOSTICS=1)
+endif()
