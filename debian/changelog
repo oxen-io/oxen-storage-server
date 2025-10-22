@@ -1,3 +1,9 @@
+oxen-storage-server (2.11.1-1~ubuntu2204+1) jammy; urgency=medium
+
+  * Rebuild with header-only fmt, spdlog
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 22 Oct 2025 03:16:27 -0300
+
 oxen-storage-server (2.11.1-1~ubuntu2204) jammy; urgency=medium
 
   * Dust off contrib/quic-reach-test
