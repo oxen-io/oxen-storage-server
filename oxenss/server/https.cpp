@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 #include <oxenc/base64.h>
 #include <oxenc/endian.h>
+#include <oxen/quic/format.hpp>
 #include <oxenc/hex.h>
 #include <oxenmq/oxenmq.h>
 #include <variant>
@@ -423,25 +424,33 @@ void HTTPS::create_endpoints(uWS::SSLApp& https) {
     });
 }
 
-bool HTTPS::should_rate_limit_client(std::string_view addr) {
-    if (addr.size() != 4)
-        return true;
-    uint32_t ip;
-    std::memcpy(&ip, addr.data(), 4);
-    oxenc::big_to_host_inplace(ip);
-    return rate_limiter_.should_rate_limit_client(ip);
-}
-
 void HTTPS::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
     auto addr = res.getRemoteAddress();
-    if (addr.size() != 4) {
-        // We don't (currently?) support IPv6 at all (SS published IPs are only IPv4) so if we
-        // somehow get an IPv6 address then it isn't a proper SS request so just drop it.
-        log::warning(logcat, "incoming client request is not IPv4; dropping it");
+    oxen::quic::ipv6 ip;
+    if (addr.size() == 4) {
+        // IPv4: convert to ipv4-mapped-ipv6:
+        ip = oxen::quic::ipv6{
+                0,
+                0,
+                0,
+                0,
+                0,
+                0xffff,
+                oxenc::load_big_to_host<uint16_t>(addr.data()),
+                oxenc::load_big_to_host<uint16_t>(addr.data() + 2)};
+    } else if (addr.size() == 16) {
+        ip = oxen::quic::ipv6{
+                std::span<const uint8_t, 16>{reinterpret_cast<const uint8_t*>(addr.data()), 16}};
+    } else {
+        log::warning(
+                logcat,
+                "Invalid incoming request IP: '{}'; rejecting request",
+                oxenc::to_hex(addr));
         return error_response(res, http::BAD_REQUEST);
     }
-    if (should_rate_limit_client(addr)) {
-        log::debug(logcat, "Rate limiting client request from {}", get_remote_address(res));
+
+    if (rate_limiter_.should_rate_limit_client(ip)) {
+        log::debug(logcat, "Rate limiting client request from {}", ip);
         return error_response(res, http::TOO_MANY_REQUESTS);
     }
     if (!req.getHeader("x-loki-long-poll").empty()) {

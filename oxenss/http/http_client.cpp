@@ -21,8 +21,7 @@ struct curl_context {
     curl_context(Client& client, curl_socket_t fd) :
             client{client},
             sockfd{fd},
-            evt{event_new(client.loop->get_event_base(), sockfd, 0, Client::curl_perform_c, this)} {
-    }
+            evt{event_new(client.loop.get_event_base(), sockfd, 0, Client::curl_perform_c, this)} {}
     ~curl_context() {
         event_del(evt);
         event_free(evt);
@@ -92,7 +91,7 @@ int Client::handle_socket_c(
             event_del(curl_ctx->evt);
             event_assign(
                     curl_ctx->evt,
-                    client.loop->get_event_base(),
+                    client.loop.get_event_base(),
                     curl_ctx->sockfd,
                     events,
                     Client::curl_perform_c,
@@ -142,15 +141,14 @@ void Client::check_multi_info() {
     }
 }
 
-Client::Client(std::shared_ptr<oxen::quic::Loop> loop_) :
-        loop{std::move(loop_)},
+Client::Client(oxen::quic::Loop& loop_) :
+        loop{loop_},
         ev_timeout{evtimer_new(
-                loop->get_event_base(),
+                loop.get_event_base(),
                 [](evutil_socket_t /*fd*/, short /*events*/, void* arg) {
                     static_cast<Client*>(arg)->on_timeout();
                 },
                 this)} {
-    assert(loop);
     curl_multi = curl_multi_init();
     curl_multi_setopt(curl_multi, CURLMOPT_SOCKETDATA, this);
     curl_multi_setopt(curl_multi, CURLMOPT_SOCKETFUNCTION, Client::handle_socket_c);
@@ -159,7 +157,7 @@ Client::Client(std::shared_ptr<oxen::quic::Loop> loop_) :
 }
 
 Client::~Client() {
-    loop->call_get([this] {
+    loop.call_get([this] {
         alive.reset();
         for (auto& [session, cb] : active_reqs)
             curl_multi_remove_handle(curl_multi, session->GetCurlHolder()->handle);
@@ -196,10 +194,10 @@ void Client::post(
     sess->SetBody(std::move(payload));
     curl_easy_setopt(sess->GetCurlHolder()->handle, CURLOPT_PRIVATE, sess.get());
     sess->PreparePost();
-    loop->call([this,
-                alive = std::weak_ptr{alive},
-                sess = std::move(sess),
-                cb = std::move(cb)]() mutable {
+    loop.call([this,
+               alive = std::weak_ptr{alive},
+               sess = std::move(sess),
+               cb = std::move(cb)]() mutable {
         if (alive.expired())
             return;  // this got destroyed before we got into the call
         curl_multi_add_handle(curl_multi, sess->GetCurlHolder()->handle);
