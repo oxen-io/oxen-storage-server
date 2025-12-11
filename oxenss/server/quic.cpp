@@ -37,21 +37,28 @@ QUIC::QUIC(
         snode::ServiceNode& snode,
         rpc::RequestHandler& rh,
         rpc::RateLimiter& rl,
-        const Address& bind,
+        std::span<const Address> bind,
         const crypto::ed25519_seckey& sk) :
-        local{bind},
-        tls_creds{quic::GNUTLSCreds::make_from_ed_seckey(sk.str())},
-        request_handler{rh},
-        command_handler{[this](quic::message m) {
-            handle_request(std::make_shared<quic::message>(std::move(m)));
-        }} {
+        tls_creds{quic::GNUTLSCreds::make_from_ed_seckey(sk.str())}, request_handler{rh} {
     service_node_ = &snode;
     request_handler_ = &rh;
     rate_limiter_ = &rl;
 
     static_cast<quic::GNUTLSCreds*>(tls_creds.get())->enable_inbound_0rtt();
 
-    ep = network.endpoint(local, make_endpoint_static_secret(sk), quic::opt::alpns{ALPN});
+    if (bind.empty())
+        throw std::invalid_argument{"No bind addresses given to QUIC listener!"};
+
+    endpoints.reserve(bind.size());
+    for (auto& a : bind) {
+        endpoints.push_back(quic::Endpoint::endpoint(
+                loop, a, make_endpoint_static_secret(sk), quic::opt::alpns{ALPN}));
+        if (!reach_ep && (a.is_ipv4() || (a.is_any_addr() && a.dual_stack)))
+            reach_ep = endpoints.back().get();
+    }
+
+    if (!reach_ep)
+        throw std::invalid_argument{"No IPv4 bind address given to QUIC listener!"};
 
     // Add a category to OMQ for handling incoming quic request jobs
     service_node_->omq_server()->add_category(
@@ -63,37 +70,45 @@ QUIC::QUIC(
 }
 
 void QUIC::startup_endpoint() {
-    ep->listen(
-            tls_creds,
-            // Stream constructor: all incoming streams become BTRequestStreams, allowing clients to
-            // use multiple streams to send higher/lower priority data in parallel by juggling
-            // streams.
-            [this](quic::Connection& c, quic::Endpoint& e, std::optional<int64_t>) {
-                return e.loop.make_shared<quic::BTRequestStream>(c, e, command_handler);
-            });
+    size_t ep_idx = 0;
+    for (auto& ep : endpoints) {
+        auto handler = [this, ep_idx](quic::message m) { handle_request(std::move(m), ep_idx); };
+        ep->listen(
+                tls_creds,
+                // Stream constructor: all incoming streams become BTRequestStreams, allowing
+                // clients to use multiple streams to send higher/lower priority data in parallel by
+                // juggling streams.
+                [handler = std::move(handler)](
+                        quic::Connection& c, quic::Endpoint& e, std::optional<int64_t>) {
+                    return e.loop.make_shared<quic::BTRequestStream>(c, e, handler);
+                });
+        ep_idx++;
+    }
 }
 
-void QUIC::handle_monitor_message(std::shared_ptr<quic::message> msg) {
+void QUIC::handle_monitor_message(quic::message msg, size_t ep_idx) {
 
-    auto body = msg->body();
-    auto refid = msg->stream()->reference_id;
+    auto body = msg.body();
+    auto refid = msg.stream()->reference_id;
     handle_monitor(
             body,
-            [msg = std::move(msg)](std::string response) { msg->respond(std::move(response)); },
-            refid);
+            [msg = std::move(msg)](std::string response) { msg.respond(std::move(response)); },
+            std::pair{ep_idx, refid});
 }
 
-void QUIC::handle_ping(std::shared_ptr<quic::message> msg) {
+void QUIC::handle_ping(quic::message msg) {
     log::debug(logcat, "Remote pinged me");
     service_node_->update_last_ping(snode::ReachType::QUIC);
-    msg->respond("pong");
+    msg.respond("pong");
 }
 
-void QUIC::handle_request(std::shared_ptr<quic::message> msg) {
+void QUIC::handle_request(quic::message msg, size_t ep_idx) {
     auto& omq = *service_node_->omq_server();
-    auto remote_host = msg->stream()->get_conn()->remote().host();
+    auto remote_host = msg.stream()->get_conn()->remote();
+    auto remote_ip =
+            (remote_host.is_ipv4() ? remote_host.mapped_ipv4_as_ipv6() : remote_host).to_ipv6();
 
-    auto name = msg->endpoint();
+    auto name = msg.endpoint();
     if (!(name == "snode_ping" || name == "monitor" || name == "onion_req" ||
           rpc::RequestHandler::client_rpc_endpoints.count(name)))
         throw quic::no_such_endpoint{};
@@ -102,34 +117,37 @@ void QUIC::handle_request(std::shared_ptr<quic::message> msg) {
     // `sn_mutex_` we could deadlock (because the `open_stream` we do in reachability testing is
     // synchronous, but is also called with the `sn_mutex_` held).
     omq.inject_task(
-            "quic", "quic:{}"_format(msg->endpoint()), remote_host, [this, msg, remote_host] {
-                auto name = msg->endpoint();
+            "quic",
+            "quic:{}"_format(msg.endpoint()),
+            remote_host.host(),
+            [this, msg, remote_ip, ep_idx] {
+                auto name = msg.endpoint();
 
                 if (name == "snode_ping")
                     handle_ping(std::move(msg));
 
                 if (name == "monitor")
-                    handle_monitor_message(std::move(msg));
+                    handle_monitor_message(std::move(msg), ep_idx);
 
                 if (name == "onion_req")
                     handle_onion_request(std::move(msg));
 
                 handle_client_rpc(
                         name,
-                        msg->body(),
-                        remote_host,
+                        msg.body(),
+                        remote_ip,
                         [msg](http::response_code code, std::string_view res_body) {
                             if (code.first == http::OK.first)
-                                msg->respond(res_body);
+                                msg.respond(res_body);
                             else
-                                msg->respond(
+                                msg.respond(
                                         "{} {}\n\n{}"_format(code.first, code.second, res_body),
                                         true);
                         });
             });
 }
 
-void QUIC::handle_onion_request(std::shared_ptr<quic::message> msg) {
+void QUIC::handle_onion_request(quic::message msg) {
 
     auto started = std::chrono::steady_clock::now();
     try {
@@ -155,17 +173,17 @@ void QUIC::handle_onion_request(std::shared_ptr<quic::message> msg) {
                     }
 
                     if (res.status.first != http::OK.first)
-                        msg->respond(
+                        msg.respond(
                                 "{} {}\n\n{}"_format(res.status.first, res.status.second, body),
                                 true);
                     else
-                        msg->respond(body);
+                        msg.respond(body);
                 },
                 0,  // hopno
                 crypto::EncryptType::aes_gcm,
         };
 
-        auto [ciphertext, json_req] = rpc::parse_combined_payload(msg->body());
+        auto [ciphertext, json_req] = rpc::parse_combined_payload(msg.body());
 
         onion.ephem_key = rpc::extract_x25519_from_hex(
                 json_req.at("ephemeral_key").get_ref<const std::string&>());
@@ -185,7 +203,7 @@ void QUIC::handle_onion_request(std::shared_ptr<quic::message> msg) {
     } catch (const std::exception& e) {
         auto err = fmt::format("Error parsing onion request: {}", e.what());
         log::error(logcat, "{}", err);
-        msg->respond(
+        msg.respond(
                 "{} {}\n\n{}"_format(http::BAD_REQUEST.first, http::BAD_REQUEST.second, err), true);
     }
 }
@@ -203,11 +221,15 @@ nlohmann::json QUIC::wrap_response(
 }
 
 void QUIC::notify(std::vector<connection_id>& conns, std::string_view notification) {
-    for (const auto& c : conns)
-        if (auto* cid = std::get_if<quic::ConnectionID>(&c))
-            if (auto conn = ep->get_conn(*cid))
+    for (const auto& c : conns) {
+        if (auto* quic_id = std::get_if<std::pair<size_t, quic::ConnectionID>>(&c)) {
+            auto& [ep_idx, cid] = *quic_id;
+            assert(ep_idx < endpoints.size());
+            if (auto conn = endpoints[ep_idx]->get_conn(cid))
                 if (auto str = conn->get_stream<quic::BTRequestStream>(0))
                     str->command("notify", notification);
+        }
+    }
 }
 
 void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
@@ -219,7 +241,7 @@ void QUIC::reachability_test(std::shared_ptr<snode::sn_test> test) {
         return;
     const auto& ct = *maybe_ct;
 
-    auto conn = ep->connect(
+    auto conn = reach_ep->connect(
             {ct.pubkey_ed25519.view(), ct.ip, ct.omq_quic_port},
             tls_creds,
             quic::opt::handshake_timeout{5s});
