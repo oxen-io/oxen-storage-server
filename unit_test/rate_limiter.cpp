@@ -58,10 +58,22 @@ TEST_CASE("rate limiter - snode - multiple identifiers", "[ratelim][snode]") {
     CHECK_FALSE(rate_limiter.should_rate_limit(identifier2, now));
 }
 
+oxen::quic::ipv6 map_ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+    return oxen::quic::ipv6{
+            0,
+            0,
+            0,
+            0,
+            0,
+            0xffff,
+            static_cast<uint16_t>((a << 8) | b),
+            static_cast<uint16_t>((c << 8) | d)};
+}
+
 TEST_CASE("rate limiter - client - empty bucket", "[ratelim][client]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    uint32_t identifier = (10 << 24) + (1 << 16) + (1 << 8) + 13;
+    auto identifier = map_ipv4(10, 1, 1, 13);
     const auto now = std::chrono::steady_clock::now();
 
     for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -77,7 +89,7 @@ TEST_CASE("rate limiter - client - empty bucket", "[ratelim][client]") {
 TEST_CASE("rate limiter - client - steady bucket fillup", "[ratelim][client]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    uint32_t identifier = (10 << 24) + (1 << 16) + (1 << 8) + 13;
+    auto identifier = map_ipv4(10, 1, 1, 13);
     const auto now = std::chrono::steady_clock::now();
     // make requests at the same rate as the bucket is filling up
     for (size_t i = 0; i < RateLimiter::BUCKET_SIZE * 10; ++i) {
@@ -89,7 +101,7 @@ TEST_CASE("rate limiter - client - steady bucket fillup", "[ratelim][client]") {
 TEST_CASE("rate limiter - client - multiple identifiers", "[ratelim][client]") {
     oxenmq::OxenMQ omq;
     RateLimiter rate_limiter{omq};
-    uint32_t identifier1 = (10 << 24) + (1 << 16) + (1 << 8) + 13;
+    auto identifier1 = map_ipv4(10, 1, 1, 13);
     const auto now = std::chrono::steady_clock::now();
 
     for (size_t i = 0; i < RateLimiter::BUCKET_SIZE; ++i) {
@@ -97,7 +109,7 @@ TEST_CASE("rate limiter - client - multiple identifiers", "[ratelim][client]") {
     }
     CHECK(rate_limiter.should_rate_limit_client(identifier1, now));
 
-    uint32_t identifier2 = (10 << 24) + (1 << 16) + (1 << 8) + 10;
+    auto identifier2 = map_ipv4(10, 1, 1, 10);
     // other id
     CHECK_FALSE(rate_limiter.should_rate_limit_client(identifier2, now));
 }
@@ -107,14 +119,15 @@ TEST_CASE("rate limiter - client - max client limit", "[ratelim][client]") {
     RateLimiter rate_limiter{omq};
     const auto now = std::chrono::steady_clock::now();
 
-    uint32_t ip_start = (10 << 24) + 1;
+    auto ip = map_ipv4(10, 0, 0, 1);
 
     for (uint32_t i = 0; i < RateLimiter::MAX_CLIENTS; ++i) {
-        rate_limiter.should_rate_limit_client(ip_start + i, now);
+        ip = ip.next_ip().value();
+        rate_limiter.should_rate_limit_client(ip, now);
     }
-    uint32_t overflow_ip = ip_start + RateLimiter::MAX_CLIENTS;
-    CHECK(rate_limiter.should_rate_limit_client(overflow_ip, now));
+    ip = ip.next_ip().value();
+    CHECK(rate_limiter.should_rate_limit_client(ip, now));
     // Wait for buckets to be filled
     const auto delta = 1'000'000us / RateLimiter::TOKEN_RATE;
-    CHECK_FALSE(rate_limiter.should_rate_limit_client(overflow_ip, now + delta));
+    CHECK_FALSE(rate_limiter.should_rate_limit_client(ip, now + delta));
 }
