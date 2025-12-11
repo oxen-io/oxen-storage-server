@@ -79,14 +79,6 @@ int main(int argc, char* argv[]) {
     // Always print version for the logs
     log::info(logcat, "{}", STORAGE_SERVER_VERSION_INFO);
 
-    if (options.ip == "127.0.0.1") {
-        log::critical(
-                logcat,
-                "Tried to bind oxen-storage to localhost, please bind "
-                "to outward facing address");
-        return EXIT_FAILURE;
-    }
-
     log::info(logcat, "Setting log level to {}", options.log_level);
     log::info(logcat, "Setting database location to {}", util::to_sv(options.data_dir.u8string()));
     log::info(logcat, "Connecting to oxend @ {}", options.oxend_omq_rpc);
@@ -167,25 +159,38 @@ int main(int argc, char* argv[]) {
 
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 
+        std::vector<std::tuple<std::string, uint16_t, bool>> https_bind;
+        std::vector<oxen::quic::Address> quic_bind;
+#ifdef IPV6_V6ONLY
+        // If this define is set then listen in dual stack mode.  uWebSockets doesn't give us any
+        // way to disable this; for quic it's a flag on the address object.
+        https_bind.emplace_back("::", options.https_port, true);
+        quic_bind.emplace_back("::", options.omq_quic_port);
+        quic_bind.back().dual_stack = true;
+#else
+        https_bind.emplace_back("0.0.0.0", options.https_port, true);
+        https_bind.emplace_back("::", options.https_port, true);
+
+        quic_bind.emplace_back("0.0.0.0", options.omq_quic_port);
+        quic_bind.emplace_back("::", options.omq_quic_port);
+        quic_bind.back().dual_stack = false;
+#endif
+
         server::HTTPS https_server{
                 service_node,
                 request_handler,
                 rate_limiter,
-                {{options.ip, options.https_port, true}},
+                std::move(https_bind),
                 ssl_cert,
                 ssl_key,
                 ssl_dh,
                 l_keys};
 
         auto quic = std::make_unique<server::QUIC>(
-                service_node,
-                request_handler,
-                rate_limiter,
-                oxen::quic::Address{options.ip, options.omq_quic_port},
-                ed_keys.sec);
+                service_node, request_handler, rate_limiter, std::move(quic_bind), ed_keys.sec);
         service_node.register_mq_server(quic.get());
 
-        auto http_client = std::make_shared<http::Client>(quic->loop());
+        auto http_client = std::make_shared<http::Client>(quic->loop);
         service_node.set_http_client(http_client);
         request_handler.set_http_client(http_client);
 
@@ -217,7 +222,8 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(100ms);
 
         log::warning(logcat, "Received signal {}; shutting down...", signalled.load());
-        http_client.reset();  // Kills outgoing requests and prevents new ones
+        http_client.reset();  // Kills outgoing requests and prevents new ones.  Also depends on
+                              // `quic`'s event loop so *must* be destroyed before `quic`.
         service_node.shutdown();
         log::info(logcat, "Stopping https server");
         https_server.shutdown(true);
