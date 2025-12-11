@@ -72,7 +72,8 @@ bool RateLimiter::should_rate_limit(
         return !remove_token(it->second, now, true);
 }
 
-bool RateLimiter::should_rate_limit_client(uint32_t ip, steady_clock::time_point now) {
+bool RateLimiter::should_rate_limit_client(
+        const oxen::quic::ipv6& ip, steady_clock::time_point now) {
     std::lock_guard lock{mutex_};
 
     if (auto it = client_buckets_.find(ip); it != client_buckets_.end())
@@ -85,13 +86,6 @@ bool RateLimiter::should_rate_limit_client(uint32_t ip, steady_clock::time_point
     }
     client_buckets_.emplace(ip, TokenBucket{BUCKET_SIZE - 1, now});
     return false;
-}
-
-bool RateLimiter::should_rate_limit_client(
-        const std::string& ip_dotted_quad, steady_clock::time_point now) {
-    struct in_addr ip;
-    int res = inet_pton(AF_INET, ip_dotted_quad.c_str(), &ip);
-    return res == 1 ? should_rate_limit_client(ip.s_addr, now) : false;
 }
 
 void RateLimiter::clean_buckets(steady_clock::time_point now) {

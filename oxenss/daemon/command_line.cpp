@@ -169,14 +169,7 @@ parse_result parse_cli_args(int argc, char* argv[]) {
                "Deprecated port argument; use --https-port option instead")
             ->capture_default_str()
             ->type_name("PORT");
-    // TODO: need to support multiple here (e.g. so we can listen on public + lokinet)
-    cli.add_option(
-               "--bind-ip",
-               options.ip,
-               "IP address on which to listen for connections; typically this should be the "
-               "0.0.0.0 (the IPv4 \"any\" address)")
-            ->capture_default_str()
-            ->type_name("IP");
+    cli.add_option("--bind-ip", options.ip_ignored, "Deprecated and ignored.");
     cli.add_flag("--testnet", options.testnet, "Start storage server in testnet mode");
     cli.add_flag(
             "--force-start",

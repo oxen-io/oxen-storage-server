@@ -8,7 +8,8 @@
 #include <oxenss/rpc/rate_limiter.h>
 #include <oxenss/snode/service_node.h>
 
-#include <oxen/quic.hpp>
+#include <oxen/quic/btstream.hpp>
+#include <oxen/quic/endpoint.hpp>
 
 namespace oxenss::rpc {
 class RequestHandler;
@@ -40,7 +41,7 @@ class QUIC : public MQBase {
     QUIC(snode::ServiceNode& snode,
          rpc::RequestHandler& rh,
          rpc::RateLimiter& rl,
-         const Address& bind,
+         std::span<const Address> bind,
          const crypto::ed25519_seckey& sk);
 
     void startup_endpoint();
@@ -49,29 +50,24 @@ class QUIC : public MQBase {
 
     void reachability_test(std::shared_ptr<snode::sn_test> test) override;
 
-    oxen::quic::Network& net() { return network; }
-
-    const std::shared_ptr<quic::Loop>& loop() const { return loop_; }
+    quic::Loop loop{};
 
   private:
-    const Address local;
-    std::shared_ptr<quic::Loop> loop_ = std::make_shared<quic::Loop>();
-    quic::Network network{loop_};
     std::shared_ptr<quic::TLSCreds> tls_creds;
-    std::shared_ptr<quic::Endpoint> ep;
+    std::vector<std::shared_ptr<quic::Endpoint>> endpoints;
+    quic::Endpoint* reach_ep = nullptr;
 
     rpc::RequestHandler& request_handler;
-    std::function<void(quic::message m)> command_handler;
 
     std::shared_ptr<quic::Endpoint> create_endpoint();
 
-    void handle_request(std::shared_ptr<quic::message> msg);
+    void handle_request(quic::message msg, size_t ep_idx);
 
-    void handle_onion_request(std::shared_ptr<quic::message> msg);
+    void handle_onion_request(quic::message msg);
 
-    void handle_monitor_message(std::shared_ptr<quic::message> msg);
+    void handle_monitor_message(quic::message msg, size_t ep_idx);
 
-    void handle_ping(std::shared_ptr<quic::message> msg);
+    void handle_ping(quic::message msg);
 
     nlohmann::json wrap_response(
             [[maybe_unused]] const http::response_code& status,
