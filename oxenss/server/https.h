@@ -90,8 +90,6 @@ class HTTPS {
 
     void create_endpoints(uWS::SSLApp& http);
 
-    bool should_rate_limit_client(std::string_view addr);
-
     void process_storage_rpc_req(HttpRequest& req, HttpResponse& res);
     void process_onion_req_v2(HttpRequest& req, HttpResponse& res);
 
