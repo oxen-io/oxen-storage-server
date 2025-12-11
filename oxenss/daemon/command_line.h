@@ -8,7 +8,7 @@
 namespace oxenss::cli {
 
 struct command_line_options {
-    std::string ip = "0.0.0.0";
+    std::string ip_ignored = "0.0.0.0";
     uint16_t https_port = 22021;
     uint16_t omq_quic_port = 22020;
     std::string oxend_omq_rpc;  // Defaults to ipc://$HOME/.oxen/[testnet/]oxend.sock

@@ -21,7 +21,7 @@ class Client {
     using response_callback = std::function<void(cpr::Response r)>;
 
     // Starts a new client, attaching itself to the event loop and ready for requests.
-    explicit Client(std::shared_ptr<oxen::quic::Loop> loop);
+    explicit Client(oxen::quic::Loop& loop);
 
     // Non-copyable, non-movable
     Client(const Client&) = delete;
@@ -44,7 +44,7 @@ class Client {
             bool https_disable_validation = false);
 
   private:
-    std::shared_ptr<oxen::quic::Loop> loop;
+    oxen::quic::Loop& loop;
     event* ev_timeout;
     std::shared_ptr<const bool> alive = std::make_shared<bool>(true);
     CURLM* curl_multi;
