@@ -156,10 +156,32 @@ void OMQ::handle_client_request(std::string_view method, oxenmq::Message& messag
         return;
     }
 
+    std::optional<oxen::quic::ipv6> remote_ip;
+    if (!forwarded) {
+        try {
+            // Currently oxenmq only listens for public client rpc on IPv4 public addresses, so if
+            // we get something else here we just reject the request.
+            oxen::quic::ipv4 ipv4{message.remote};
+            auto ipv4_hi = static_cast<uint16_t>(ipv4.addr >> 16);
+            auto ipv4_lo = static_cast<uint16_t>(ipv4.addr & 0xffff);
+            remote_ip.emplace(0, 0, 0, 0, 0, 0xffff, ipv4_hi, ipv4_lo);
+        } catch (const std::exception& e) {
+            log::warning(logcat, "Rejecting non-ipv4 OMQ RPC request from {}", message.remote);
+            message.send_reply(
+                    std::to_string(http::BAD_REQUEST.first),
+                    fmt::format(
+                            "Invalid request: non-forwarded OMQ client RPC requests are only "
+                            "permitted via IPv4",
+                            full_size,
+                            message.data.size()));
+            return;
+        }
+    }
+
     [[maybe_unused]] bool found = handle_client_rpc(
             method,
             message.data.size() == full_size ? message.data.back() : ""sv,
-            message.remote,
+            std::move(remote_ip),
             [send = message.send_later()](http::response_code status, std::string_view body) {
                 if (status == http::OK)
                     send.reply(body);

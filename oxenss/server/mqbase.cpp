@@ -5,6 +5,7 @@
 #include "utils.h"
 #include <fmt/ranges.h>
 #include <oxenc/hex.h>
+#include <oxen/quic/format.hpp>
 
 namespace oxenss::server {
 
@@ -174,7 +175,7 @@ void MQBase::handle_monitor_message_single(
 bool MQBase::handle_client_rpc(
         std::string_view name,
         std::string_view params,
-        const std::string& remote_addr,
+        std::optional<oxen::quic::ipv6> remote_ip,
         std::function<void(http::response_code, std::string_view)> reply,
         bool forwarded) {
     // Check client rpc endpoints
@@ -184,8 +185,9 @@ bool MQBase::handle_client_rpc(
 
     auto& handler = it->second.mq;
 
-    if (!forwarded && rate_limiter_->should_rate_limit_client(remote_addr)) {
-        log::debug(logcat, "Rate limiting client request from {}", remote_addr);
+    if (!forwarded && (!remote_ip || rate_limiter_->should_rate_limit_client(*remote_ip))) {
+        if (remote_ip)
+            log::debug(logcat, "Rate limiting client request from {}", *remote_ip);
         reply(http::TOO_MANY_REQUESTS, "Too many requests, try again later"sv);
         return true;
     }
