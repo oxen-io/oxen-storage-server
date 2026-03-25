@@ -17,7 +17,21 @@ local default_deps_nocxx = ['libsodium-dev'] + default_deps_base;  // libsodium-
 local default_deps = ['g++'] + default_deps_nocxx;  // g++ sometimes needs replacement
 local docker_base = 'registry.oxen.rocks/';
 
-local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1 --jobs=4'];
+local submodules_commands = [
+  'git fetch --tags',
+
+  // uWebSockets includes nearly 900MB of crap via submodules that we don't use and want to clone on
+  // every CI job, so do this song and dance to get rid of the junk.
+  'git submodule update --init --depth=1 external/uWebSockets',
+  'cd external/uWebSockets',
+  'git rm fuzzing/seed-corpus',
+  'git submodule update --init --depth=1 uSockets',
+  'cd uSockets',
+  'git rm boringssl lsquic',
+  'cd ../../..',
+
+  'git submodule update --init --recursive --depth=1 --jobs=4',
+];
 local submodules = {
   name: 'submodules',
   image: 'drone/git',
@@ -181,7 +195,7 @@ local static_check_and_upload = [
   // Various debian builds
   debian_pipeline('Debian (amd64)', docker_base + 'debian-sid', lto=true),
   debian_pipeline('Debian Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),
-  clang(17, lto=true),
+  clang(19, lto=true),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', werror=false),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts', oxen_repo=true),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),

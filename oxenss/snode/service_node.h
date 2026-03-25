@@ -12,6 +12,7 @@
 
 #include <oxenss/crypto/keys.h>
 #include <oxenss/common/message.h>
+#include <oxenss/common/serialize.h>
 #include <oxenss/storage/database.hpp>
 #include "network.h"
 #include "swarm.h"
@@ -57,11 +58,9 @@ inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 6};
 // The storage server version at which initial handshaking is supported before attempting a swarm
 // message transfer.
 inline constexpr std::array<uint16_t, 3> NEW_SWARM_MEMBER_HANDSHAKE_VERSION = {2, 10, 0};
+inline constexpr std::array<uint16_t, 3> SN_DATA_READY_WITH_REQUEST_VERSION = {2, 11, 0};
 
 class Swarm;
-
-/// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
-enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
 
 constexpr std::string_view to_string(SnodeStatus status) {
     switch (status) {
@@ -73,18 +72,46 @@ constexpr std::string_view to_string(SnodeStatus status) {
     return "Unknown"sv;
 }
 
+enum class RetryReason {
+    NON_CONTACTABLE,
+    FAILED_TO_SEND,
+};
+
+struct RequestRetryEntry {
+    crypto::legacy_pubkey key;
+    RetryReason reason;
+    bool retry_underway;
+    std::chrono::steady_clock::time_point deadline;
+    std::chrono::milliseconds next_retry_delay;
+};
+
+struct RequestRetry {
+    std::string cmd;
+    std::string req_payload;
+    uint64_t hash;
+    std::chrono::steady_clock::time_point create_time;
+    std::vector<RequestRetryEntry> nodes;
+};
+
+struct SerialiseSwarmsResult {
+    SerialiseBTResult bt;
+    std::map<crypto::legacy_pubkey, SwarmMemberState> swarm_members;
+    swarms_t network_swarms;
+    swarm_id_t swarm_cur_swarm_id;
+};
+
 /// All service node logic that is not network-specific
 class ServiceNode {
     bool syncing_ = true;
     bool active_ = false;
     std::atomic<bool> got_first_response_ = false;
     bool force_start_ = false;
+    bool skip_bootstrap_ = false;
     std::atomic<bool> shutting_down_ = false;
     hf_revision hardfork_ = {0, 0};
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
     std::string block_hash_;
-    std::unique_ptr<Database> db_;
     std::weak_ptr<http::Client> http_;
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
@@ -93,6 +120,7 @@ class ServiceNode {
     const contact our_contact_;
 
     Network network_;
+
     Swarm swarm_{network_, our_keys_.pub};
 
     server::OMQ& omq_server_;
@@ -111,6 +139,23 @@ class ServiceNode {
     mutable all_stats all_stats_;
 
     mutable std::recursive_mutex sn_mutex_;
+
+    // Lock to be taken when interacting with the 'retryable_requests' queue
+    mutable std::mutex retryable_requests_mutex;
+
+    // List of requests that will be re-attempted periodically through the
+    // 'retryable_requests_thread'
+    std::vector<RequestRetry> retryable_requests;
+
+    std::thread retryable_requests_thread;
+
+    // The hash of the last swarms blob that was serialised, used for dirty checks before storing to
+    // the DB.
+    uint64_t last_swarms_serialize_hash = 0;
+
+    // The hash of the last retryable requsts blob that was serialised, used for dirty checks before
+    // storing to the DB.
+    uint64_t last_retryable_serialize_hash = 0;
 
     void send_notifies(message m);
 
@@ -170,19 +215,25 @@ class ServiceNode {
             const contact& contact,
             server::OMQ& omq_server,
             const std::filesystem::path& db_location,
-            bool force_start);
+            bool force_start,
+            bool skip_bootstrap);
 
-    Database& get_db() { return *db_; }
-    const Database& get_db() const { return *db_; }
+    SerialiseSwarmsResult serialize_swarms(Serialise serialise, std::string_view read_data) const;
+
+    std::unique_ptr<Database> db;
 
     const Network& network() { return network_; }
 
     const Swarm& swarm() { return swarm_; }
 
     Contacts& contacts() { return network_.contacts; }
+
     const Contacts& contacts() const { return network_.contacts; }
 
     const contact& own_address() { return our_contact_; }
+
+    // Enqueue a request to be re-attempted
+    void add_retryable_request(RequestRetry&& item);
 
     // Adds a MQ server, i.e. QUIC.  The OMQ server is added automatically during construction and
     // should not be added.
@@ -210,8 +261,9 @@ class ServiceNode {
             rpc::OnionRequestMetadata&& data,
             std::function<void(bool success, std::vector<std::string> data)> cb) const;
 
-    // Returns true if the given x pubkey is recognized as one of our current swarm members
-    bool is_swarm_peer(const crypto::x25519_pubkey& xpk);
+    // Returns the peer's state if the given x pubkey is recognized as one of our current swarm
+    // members
+    std::optional<SwarmMemberState> is_swarm_peer(const crypto::x25519_pubkey& xpk);
 
     const hf_revision& hf() const { return hardfork_; }
 
@@ -271,9 +323,30 @@ class ServiceNode {
     // Called when oxend notifies us of a new block to update swarm info
     void update_swarms(std::promise<bool>* on_completion = nullptr);
 
+    // Mark the swarm member identified by 'pk' as needing a dump of the DB. When the 'check new
+    // members' routine for swarms is periodically executed, swarm members marked with this flag
+    // will then get the entire DB synchronised to them. No-op if the key does not match anyone in
+    // the swarm.
+    void set_member_needs_db_dump(const crypto::legacy_pubkey& pk);
+
     server::OMQ& omq_server() { return omq_server_; }
+
+    std::condition_variable retryable_requests_cv;
+
+    void retryable_requests_thread_entry_point();
 };
 
+struct DataReadyRequest {
+    bool needs_db_dump;
+};
+
+struct SerialiseDataReadyRequestResult {
+    SerialiseBTResult bt;
+    DataReadyRequest request;
+};
+
+SerialiseDataReadyRequestResult serialise_data_ready_request(
+        Serialise serialise, std::string_view read_data, const DataReadyRequest& write_data);
 }  // namespace oxenss::snode
 
 template <>

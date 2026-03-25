@@ -9,6 +9,7 @@
 #include <oxenc/bt_serialize.h>
 
 #include <chrono>
+#include <type_traits>
 
 namespace oxenss::snode {
 
@@ -46,6 +47,7 @@ static std::pair<std::string, bool> serialize_more_messages(
         item.append(to_epoch_ms(msg->timestamp));
         item.append(to_epoch_ms(msg->expiry));
         item.append(msg->data);
+        item.append(to_int(msg->msg_namespace));
     }
 
     if (some) {
@@ -108,6 +110,12 @@ std::vector<message> deserialize_messages(std::string_view slice) {
         item.timestamp = from_epoch_ms(m.consume_integer<int64_t>());
         item.expiry = from_epoch_ms(m.consume_integer<int64_t>());
         item.data = m.consume_string();
+        // TODO: the namespace was missing before 2.11.3, so for now we only load it if there is an
+        // extra field in the list.  Once all storage servers are running 2.11.3+ we can remove this
+        // `if` and just require the field unconditionally:
+        if (!m.is_finished())
+            item.msg_namespace = static_cast<namespace_id>(
+                    m.consume_integer<std::underlying_type_t<namespace_id>>());
     }
 
     log::trace(logcat, "=== END ===");

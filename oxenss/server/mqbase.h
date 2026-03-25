@@ -31,7 +31,9 @@ struct message;
 
 namespace oxenss::server {
 
-using connection_id = std::variant<oxenmq::ConnectionID, oxen::quic::ConnectionID>;
+// For oxenmq: the connection id; for quic: pair of {endpoint_index, endpoint_connectionid}
+using connection_id =
+        std::variant<oxenmq::ConnectionID, std::pair<size_t, oxen::quic::ConnectionID>>;
 
 using namespace std::literals;
 
@@ -72,7 +74,7 @@ class MQBase {
     bool handle_client_rpc(
             std::string_view name,
             std::string_view params,
-            const std::string& remote_addr,
+            std::optional<oxen::quic::ipv6> remote_addr,
             std::function<void(http::response_code status, std::string_view body)> reply,
             bool forwarded = false);
 

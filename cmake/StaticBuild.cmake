@@ -37,7 +37,7 @@ set(LIBUV_HASH SHA512=b153d019c630831819913ccd0615c22737df49125da533f86db27f24a5
     CACHE STRING "libuv source hash")
 
 set(ZLIB_VERSION 1.3.1 CACHE STRING "zlib version")
-set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32

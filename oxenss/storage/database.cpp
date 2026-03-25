@@ -283,6 +283,8 @@ class DatabaseImpl {
     }
 
     void initialize_database() {
+        tmp_init_db_version = db.execAndGet("PRAGMA user_version").getInt();
+
         if (!db.tableExists("owners")) {
             create_schema();
         }
@@ -332,8 +334,19 @@ CREATE TRIGGER IF NOT EXISTS revoked_autoclean
             )");
         }
 
-        views_triggers_indices();
+        if (!db.tableExists("runtime_state")) {
+            log::info(logcat, "Upgrading database schema: adding runtime_state");
+            db.exec(R"(
+CREATE TABLE runtime_state (
+    swarms_blob BLOB,
+    retryable_requests_blob BLOB
+);
+INSERT INTO runtime_state VALUES (null, null);
+PRAGMA user_version = 1;
+            )");
+        }
 
+        views_triggers_indices();
         log::info(logcat, "Database setup complete");
     }
 
@@ -592,8 +605,17 @@ void Database::clean_expired() {
             to_epoch_ms(std::chrono::system_clock::now()));
 }
 
-int64_t Database::get_message_count() {
-    return get_impl(false)->prepared_get<int64_t>("SELECT COUNT(*) FROM messages");
+int64_t Database::get_message_count(GetMessageCount get) {
+    int64_t result = 0;
+    switch (get) {
+        case GetMessageCount::All:
+            result = get_impl(false)->prepared_get<int64_t>("SELECT COUNT(*) FROM messages");
+            break;
+        case GetMessageCount::Owned:
+            result = get_impl(false)->prepared_get<int64_t>("SELECT COUNT(*) FROM owned_messages");
+            break;
+    }
+    return result;
 }
 
 int64_t Database::get_owner_count() {
@@ -1191,4 +1213,27 @@ void oxenss::Database::test_suite_block_for(std::chrono::milliseconds duration) 
     std::this_thread::sleep_for(duration);
 }
 
+std::string Database::runtime_state_blob(
+        BlobType type, Serialise serialise, const std::string& write_blob) {
+    std::string_view key = {};
+    switch (type) {
+        case BlobType::Swarms: key = "swarms_blob"; break;
+        case BlobType::RetryableRequests: key = "retryable_requests_blob"; break;
+    }
+
+    std::string result;
+    auto impl = get_impl(serialise == Serialise::Write);
+    if (serialise == Serialise::Read) {
+        auto stmt = impl->prepared_st("SELECT {} FROM runtime_state LIMIT 1"_format(key));
+        auto maybe_result = exec_and_maybe_get<std::string>(stmt);
+        if (maybe_result)
+            result = std::move(*maybe_result);
+    } else {
+        if (write_blob.size()) {
+            auto stmt = impl->prepared_st("UPDATE runtime_state SET {} = ?"_format(key));
+            exec_query(stmt, write_blob);
+        }
+    }
+    return result;
+}
 }  // namespace oxenss

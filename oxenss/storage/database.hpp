@@ -1,6 +1,7 @@
 #pragma once
 
 #include <oxenss/common/subaccount_token.h>
+#include <oxenss/common/serialize.h>
 #include <oxenss/common/message.h>
 #include <oxenss/common/pubkey.h>
 
@@ -30,6 +31,13 @@ enum class StoreResult {
     Extended,  // Message existed, but the expiry was extended to match the stored timestamp.
     Exists,    // Message exists and already has an expiry >= the stored one.
     Full,      // Can't insert right now because the database is full.
+};
+
+inline std::atomic<int> tmp_init_db_version = 0;
+
+enum class BlobType {
+    Swarms,
+    RetryableRequests,
 };
 
 // Storage database class.
@@ -100,8 +108,13 @@ class Database {
     // Retrieves all messages.
     std::vector<message> retrieve_all();
 
+    enum class GetMessageCount {
+        All,
+        Owned,  // Only messages that belong to this node's swarm
+    };
+
     // Return the total number of messages stored
-    int64_t get_message_count();
+    int64_t get_message_count(GetMessageCount get);
 
     // Returns the per-owner counts of stored messages, for storage statistics purposes.
     std::vector<int> get_message_counts();
@@ -210,6 +223,9 @@ class Database {
     // found are not included).
     std::map<std::string, int64_t> get_expiries(
             const user_pubkey& pubkey, const std::vector<std::string>& msg_hashes);
+
+    std::string runtime_state_blob(
+            BlobType type, Serialise serialise, const std::string& write_blob);
 };
 
 }  // namespace oxenss

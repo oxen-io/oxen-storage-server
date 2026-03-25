@@ -7,6 +7,7 @@
 #include <random>
 #include <unordered_set>
 #include <vector>
+#include <optional>
 
 namespace oxenss::snode {
 

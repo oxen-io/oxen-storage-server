@@ -53,7 +53,7 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     swarms_t swarms;
     for (oxenss::snode::swarm_id_t s : {100, 200, 300, 399, 498, 596, 694})
         swarms[s];
-    swarm.update_swarms(swarms_t{swarms}, {});
+    swarm.update_swarms(0, swarms_t{swarms}, {});
 
     oxenss::user_pubkey pk;
 
@@ -147,7 +147,7 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     // *sigh*).
     oxenss::snode::swarm_id_t wrapped_swarm = (uint64_t)-20;
     swarms[wrapped_swarm];
-    swarm.update_swarms(swarms_t{swarms}, {});
+    swarm.update_swarms(0, swarms_t{swarms}, {});
     REQUIRE(pk.load("050000000000000000000000000000000000000000000000000000000000000027"));
     CHECK(network.get_swarm_id_for(pk).value() == swarms.rbegin()->first);
     REQUIRE(pk.load("050000000000000000000000000000000000000000000000000000000000000028"));
@@ -160,7 +160,7 @@ TEST_CASE("service nodes - pubkey to swarm id") {
     // as max-u64 away, rather than 1 away), and so the id always maps to the highest swarm (even
     // though 0xfff...fe maps to the lowest swarm; the first check here, then, would fail.
     swarms[0];
-    swarm.update_swarms(swarms_t{swarms}, {});
+    swarm.update_swarms(0, swarms_t{swarms}, {});
     REQUIRE(pk.load("05000000000000000000000000000000000000000000000000ffffffffffffffff"));
     CHECK(network.get_swarm_id_for(pk).value() == 0);
     REQUIRE(pk.load("05000000000000000000000000000000000000000000000000fffffffffffffffe"));

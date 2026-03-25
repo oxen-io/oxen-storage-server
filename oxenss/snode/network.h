@@ -37,6 +37,8 @@ class Network {
 
     friend class Swarm;
 
+    friend class ServiceNode;
+
     swarms_t::const_iterator _find_swarm_for(const user_pubkey& pk) const;
 
     // Cached value of the all_nodes_blob() return value.  The cache is cleared whenever swarms or

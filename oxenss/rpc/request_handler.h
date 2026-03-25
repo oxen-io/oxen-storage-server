@@ -22,13 +22,6 @@
 
 namespace oxenss::rpc {
 
-// When a storage test returns a "retry" response, we retry again after this interval:
-inline constexpr auto TEST_RETRY_INTERVAL = 50ms;
-
-// If a storage test is still returning "retry" after this long since the initial request then
-// we give up and send an error response back to the requestor:
-inline constexpr auto TEST_RETRY_PERIOD = 55s;
-
 // Minimum and maximum TTL permitted for storing a new, public message
 inline constexpr auto TTL_MINIMUM = 10s;
 inline constexpr auto TTL_MAXIMUM = 14 * 24h;
@@ -82,6 +75,21 @@ struct Response {
             std::span<const std::byte> binary_response,
             std::shared_ptr<void> keepalive) :
             status{status}, body{binary_response}, keepalive{keepalive} {}
+};
+
+enum class SNStorageCCResultStatus {
+    Good,
+    Timeout,
+    ErrorCodeReason,
+    BadPeerResponse,
+};
+
+// Helper struct that stores the decoded response of a 'sn.storage_cc' request to a storage server
+// and consequently the possible replies/states that can be returned from this operation.
+struct SNStorageCCResult {
+    SNStorageCCResultStatus status = {};
+    std::string_view error_code;
+    std::string_view error_reason;
 };
 
 // Views the string or string_view body inside a Response.  Should only be called when the body
@@ -147,6 +155,11 @@ std::string compute_hash(Func hasher, const T&... args) {
 
 /// Computes a message hash using blake2b hash of various messages attributes.
 std::string computeMessageHash(const user_pubkey& pubkey, namespace_id ns, std::string_view data);
+
+/// Interpret the result an OMQ request to the 'sn.storage_cc' endpoint, typically for recursive
+/// swarm requests.
+SNStorageCCResult interpret_sn_storage_cc_response_parts(
+        bool success, std::span<std::string> parts);
 
 struct OnionRequestMetadata {
     crypto::x25519_pubkey ephem_key;

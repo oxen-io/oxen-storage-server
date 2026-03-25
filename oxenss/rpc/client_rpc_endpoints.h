@@ -541,9 +541,9 @@ struct delete_before final : recursive {
 };
 
 /// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
-/// other swarm members.  Note that this will not extend existing expiries, it will only shorten the
-/// expiry of any messages that have expiries after the requested value.  (To extend expiries of one
-/// or more individual messages use the `expire` endpoint).
+/// other swarm members. Note that this will not extend existing expiries, it will only shorten the
+/// expiry of any messages that have expiries after the requested value. (To extend expiries of one
+/// or more individual messages use the `expire_msgs` endpoint).
 ///
 /// Takes parameters of:
 /// - pubkey -- the pubkey whose messages shall have their expiries reduced, in hex (66) or bytes
@@ -625,8 +625,8 @@ struct expire_all final : recursive {
 ///       ("expire" || ShortenOrExtend || expiry || messages[0] || ... || messages[N])
 ///   where `expiry` is the expiry timestamp expressed as a string, for a single expiry, or the
 ///   expiries concatenated together (expiry[0] || expiry[1] || ...) for multiple expiries.
-///   `ShortenOrExtend` is string "shorten" if the shorten option is given (and true), "extend" if
-///   `extend` is true, and empty otherwise. The signature must be base64 encoded (json) or bytes
+///   `ShortenOrExtend` is the string "shorten" if the shorten option is given (and true), "extend"
+///   if `extend` is true, and empty otherwise. The signature must be base64 encoded (json) or bytes
 ///   (bt).
 ///
 /// Returns dict of:

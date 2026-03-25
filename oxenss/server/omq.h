@@ -10,6 +10,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include <oxenc/bt_serialize.h>
 #include <oxenmq/oxenmq.h>
+#include <oxenss/common/serialize.h>
 
 namespace oxenss {
 
@@ -27,7 +28,6 @@ namespace snode {
 }  // namespace oxenss
 
 namespace oxenss::server {
-
 class OMQ : public MQBase {
     oxenmq::OxenMQ omq_;
     oxenmq::ConnectionID oxend_conn_;

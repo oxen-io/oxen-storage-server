@@ -42,7 +42,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
         CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}) == StoreResult::New);
 
         CHECK(storage.get_owner_count() == 1);
-        CHECK(storage.get_message_count() == 1);
+        CHECK(storage.get_message_count(Database::GetMessageCount::All) == 1);
 
         // the database is closed when storage goes out of scope
     }
@@ -51,7 +51,7 @@ TEST_CASE("storage - data persistence", "[storage]") {
         Database storage{"."};
 
         CHECK(storage.get_owner_count() == 1);
-        CHECK(storage.get_message_count() == 1);
+        CHECK(storage.get_message_count(Database::GetMessageCount::All) == 1);
 
         auto [items, more] = storage.retrieve(pubkey, namespace_id::Default, "");
 
@@ -79,7 +79,7 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
         CHECK(storage.store({pubkey, hash, ns, now, now + ttl, bytes}) == StoreResult::New);
 
         CHECK(storage.get_owner_count() == 1);
-        CHECK(storage.get_message_count() == 1);
+        CHECK(storage.get_message_count(Database::GetMessageCount::All) == 1);
 
         // the database is closed when storage goes out of scope
     }
@@ -88,7 +88,7 @@ TEST_CASE("storage - data persistence, namespace", "[storage][namespace]") {
         Database storage{"."};
 
         CHECK(storage.get_owner_count() == 1);
-        CHECK(storage.get_message_count() == 1);
+        CHECK(storage.get_message_count(Database::GetMessageCount::All) == 1);
 
         auto [items, more] = storage.retrieve(pubkey, ns, "");
 
@@ -131,7 +131,7 @@ TEST_CASE("storage - re-storing existing hash", "[storage]") {
         CHECK(ins == StoreResult::Exists);
 
     CHECK(storage.get_owner_count() == 1);
-    CHECK(storage.get_message_count() == 1);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 1);
 }
 
 TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
@@ -152,7 +152,7 @@ TEST_CASE("storage - only return entries for specified pubkey", "[storage]") {
           StoreResult::New);
 
     CHECK(storage.get_owner_count() == 2);
-    CHECK(storage.get_message_count() == 2);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 2);
 
     const auto lastHash = "";
     {
@@ -184,7 +184,7 @@ TEST_CASE("storage - return entries older than lasthash", "[storage]") {
     }
 
     CHECK(storage.get_owner_count() == 1);
-    CHECK(storage.get_message_count() == 100);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 100);
 
     {
         const auto lastHash = "hash0";
@@ -228,7 +228,7 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
           StoreResult::New);
 
     CHECK(storage.get_owner_count() == 3);
-    CHECK(storage.get_message_count() == 6);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 6);
 
     {
         const auto lastHash = "";
@@ -245,7 +245,7 @@ TEST_CASE("storage - remove expired entries", "[storage]") {
     }
 
     CHECK(storage.get_owner_count() == 2);
-    CHECK(storage.get_message_count() == 2);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 2);
 }
 
 TEST_CASE("storage - bulk data storage", "[storage]") {
@@ -284,7 +284,7 @@ TEST_CASE("storage - bulk data storage", "[storage]") {
     }
 
     CHECK(storage.get_owner_count() == 1);
-    CHECK(storage.get_message_count() == num_items);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == num_items);
 }
 
 TEST_CASE("storage - bulk storage with overlap", "[storage]") {
@@ -307,7 +307,7 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
           StoreResult::New);
 
     CHECK(storage.get_owner_count() == 1);
-    CHECK(storage.get_message_count() == 2);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == 2);
 
     // bulk store
     {
@@ -326,7 +326,7 @@ TEST_CASE("storage - bulk storage with overlap", "[storage]") {
     }
 
     CHECK(storage.get_owner_count() == 1);
-    CHECK(storage.get_message_count() == num_items);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == num_items);
 
     // retrieve
     {
@@ -359,7 +359,7 @@ TEST_CASE("storage - retrieve limit", "[storage]") {
     }
 
     CHECK(storage.get_owner_count() == 2);
-    CHECK(storage.get_message_count() == num_entries + 5);
+    CHECK(storage.get_message_count(Database::GetMessageCount::All) == num_entries + 5);
 
     CHECK(storage.retrieve(pubkey, namespace_id::Default, "").first.size() == num_entries);
     CHECK(storage.retrieve(pubkey, namespace_id::Default, "", 10).first.size() == 10);

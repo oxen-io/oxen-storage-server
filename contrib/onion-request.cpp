@@ -282,7 +282,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
         last_etype = final_etype = enc_type.value_or(random_etype());
 #ifndef NDEBUG
-        std::cerr << "Encrypting for final hop using " << to_string(last_etype) << "/" << A << "\n";
+        std::cerr << "Encrypting for final hop using " << to_string(last_etype) << "/" << eph.pub.hex() << "\n";
 #endif
         blob = e.encrypt(last_etype, data, keys.back().second);
         // Save these because we need them again to decrypt the final response:
@@ -305,7 +305,7 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
         last_etype = enc_type.value_or(random_etype());
 
 #ifndef NDEBUG
-        std::cerr << "Encrypting for next-last hop using " << to_string(last_etype) << "/" << A << "\n";
+        std::cerr << "Encrypting for next-last hop using " << to_string(last_etype) << "/" << eph.pub.hex() << "\n";
 #endif
         blob = e.encrypt(last_etype, blob, it->second);
     }

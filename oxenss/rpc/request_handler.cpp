@@ -403,13 +403,16 @@ struct swarm_response {
     bool b64;
     nlohmann::json result;
     std::function<void(rpc::Response)> cb;
+    std::vector<snode::RequestRetryEntry> retry_nodes;
+    std::string cmd;
+    std::string req_payload;
 };
 
 // Replies to a swarm request via its callback; sends an http::OK unless all of the
 // swarm entries returned things with "failed" in them or in the case of a non-recursive request,
 // the top-level object has a "failed" in it then we send back an INTERNAL_SERVER_ERROR
 // along with the response.
-void reply_or_fail(const std::shared_ptr<swarm_response>& res) {
+static void reply_or_fail(snode::ServiceNode& sn, const std::shared_ptr<swarm_response>& res) {
     auto res_code = http::INTERNAL_SERVER_ERROR;
     if (auto swarm_obj = res->result.find("swarm"); swarm_obj != res->result.end()) {
         for (const auto& [sn_pkey, obj] : swarm_obj->items()) {
@@ -423,51 +426,83 @@ void reply_or_fail(const std::shared_ptr<swarm_response>& res) {
     }
 
     res->cb(Response{res_code, std::move(res->result)});
+
+    if (res->retry_nodes.size()) {
+        snode::RequestRetry retry = {};
+        retry.nodes = std::move(res->retry_nodes);
+        retry.cmd = res->cmd;
+        retry.req_payload = std::move(res->req_payload);
+        retry.create_time = std::chrono::steady_clock::now();
+        sn.add_retryable_request(std::move(retry));
+    }
 }
 
-static void distribute_command(
-        snode::ServiceNode& sn,
-        std::shared_ptr<swarm_response>& res,
-        std::string_view cmd,
-        const rpc::recursive& req) {
+SNStorageCCResult interpret_sn_storage_cc_response_parts(
+        bool success, std::span<std::string> parts) {
+    bool good_result = success && parts.size() == 1;
+    SNStorageCCResult result = {};
+    if (good_result) {
+        result.status = SNStorageCCResultStatus::Good;
+    } else {
+        bool timeout = !success;
+        if (timeout) {
+            result.status = SNStorageCCResultStatus::Timeout;
+        } else if (parts.size() == 2) {
+            result.status = SNStorageCCResultStatus::ErrorCodeReason;
+            result.error_code = parts[0];
+            result.error_reason = parts[1];
+        } else {
+            result.status = SNStorageCCResultStatus::BadPeerResponse;
+        }
+    }
+    return result;
+}
+
+static void distribute_command(snode::ServiceNode& sn, std::shared_ptr<swarm_response>& res) {
     auto peers = sn.swarm().peers();
     res->pending += peers.size();
 
+    // When a request to a peer fails, set the initial retry to 1s in the future
+    constexpr auto default_retry_delay = 1s;
+
     for (auto& peer : peers) {
-        auto ct = sn.contacts().find(peer);
+        auto ct = sn.contacts().find(peer.first);
         if (!ct || !*ct) {
             log::debug(
                     logcat,
                     "Not distributing {} to swarm peer {}: SN {}",
-                    cmd,
-                    peer,
+                    res->cmd,
+                    peer.first,
                     ct ? "is non-contactable" : "not found");
             res->pending--;
+
+            snode::RequestRetryEntry entry = {};
+            entry.key = peer.first;
+            entry.reason = snode::RetryReason::NON_CONTACTABLE;
+            entry.deadline = std::chrono::steady_clock::now() + default_retry_delay;
+            res->retry_nodes.push_back(entry);
             continue;
         }
+
         sn.omq_server()->request(
                 ct->pubkey_x25519.view(),
                 "sn.storage_cc",
-                [res, peer, peer_ed = ct->pubkey_ed25519, cmd](bool success, auto parts) {
+                [res, peer, peer_ed = ct->pubkey_ed25519, &sn, default_retry_delay](
+                        bool success, auto parts) {
                     json peer_result;
-                    if (!success)
-                        log::warning(
-                                logcat,
-                                "Response timeout from {} for forwarded command {}",
-                                peer,
-                                cmd);
-                    bool good_result = success && parts.size() == 1;
-                    if (good_result) {
+                    SNStorageCCResult store_result =
+                            interpret_sn_storage_cc_response_parts(success, parts);
+                    if (store_result.status == SNStorageCCResultStatus::Good) {
                         try {
                             peer_result = bt_to_json(oxenc::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
                             log::warning(
                                     logcat,
                                     "Received unparsable response to {} from {}: {}",
-                                    cmd,
-                                    peer,
+                                    res->cmd,
+                                    peer.first,
                                     e.what());
-                            good_result = false;
+                            store_result.status = SNStorageCCResultStatus::BadPeerResponse;
                         }
                     }
 
@@ -476,15 +511,34 @@ static void distribute_command(
                     // If we're the last response then we reply:
                     bool send_reply = --res->pending == 0;
 
-                    if (!good_result) {
+                    if (store_result.status != SNStorageCCResultStatus::Good) {
                         peer_result = json{{"failed", true}};
-                        if (!success)
+                        bool timeout = store_result.status == SNStorageCCResultStatus::Timeout;
+                        if (timeout) {
                             peer_result["timeout"] = true;
-                        else if (parts.size() == 2) {
-                            peer_result["code"] = parts[0];
-                            peer_result["reason"] = parts[1];
-                        } else
+                        } else if (
+                                store_result.status == SNStorageCCResultStatus::ErrorCodeReason) {
+                            peer_result["code"] = store_result.error_code;
+                            peer_result["reason"] = store_result.error_reason;
+                        } else {
                             peer_result["bad_peer_response"] = true;
+                        }
+
+                        log::debug(
+                                logcat,
+                                "Failure response from {} for forwarded command {} ({}): <{}>",
+                                peer.first,
+                                res->cmd,
+                                timeout ? "will be retried" : "unretryable due to error",
+                                peer_result.dump());
+
+                        if (timeout) {
+                            snode::RequestRetryEntry entry = {};
+                            entry.key = peer.first;
+                            entry.reason = snode::RetryReason::FAILED_TO_SEND;
+                            entry.deadline = std::chrono::steady_clock::now() + default_retry_delay;
+                            res->retry_nodes.push_back(entry);
+                        }
                     } else if (res->b64) {
                         if (auto it = peer_result.find("signature");
                             it != peer_result.end() && it->is_string())
@@ -492,12 +546,11 @@ static void distribute_command(
                     }
 
                     res->result["swarm"][peer_ed.hex()] = std::move(peer_result);
-
                     if (send_reply)
-                        reply_or_fail(res);
+                        reply_or_fail(sn, res);
                 },
-                cmd,
-                bt_serialize(req.to_bt()),
+                res->cmd,
+                res->req_payload,
                 oxenmq::send_option::request_timeout{5s});
     }
 }
@@ -509,11 +562,13 @@ std::pair<std::shared_ptr<swarm_response>, std::unique_lock<std::mutex>> static 
     res->cb = std::move(cb);
     res->pending = 1;
     res->b64 = req.b64;
+    res->cmd = RPC::names()[0];
+    res->req_payload = bt_serialize(req.to_bt());
 
     std::unique_lock<std::mutex> lock{res->mutex, std::defer_lock};
     if (req.recurse) {
         // Send it off to our peers right away, before we process it ourselves
-        distribute_command(sn, res, RPC::names()[0], req);
+        distribute_command(sn, res);
         lock.lock();
     }
     return {std::move(res), std::move(lock)};
@@ -565,7 +620,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
             access_required = access_required | subaccount_access::Delete;
 
         if (!verify_signature(
-                    service_node_.get_db(),
+                    *service_node_.db,
                     req.pubkey,
                     req.pubkey_ed25519,
                     req.subaccount,
@@ -644,7 +699,7 @@ void RequestHandler::process_client_req(rpc::store&& req, std::function<void(Res
             obfuscate_pubkey(req.pubkey));
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -733,7 +788,7 @@ void RequestHandler::process_client_req(
         }
 
         if (!verify_signature(
-                    service_node_.get_db(),
+                    *service_node_.db,
                     req.pubkey,
                     req.pubkey_ed25519,
                     req.subaccount,
@@ -770,7 +825,7 @@ void RequestHandler::process_client_req(
     std::vector<message> msgs;
     bool more = false;
     try {
-        std::tie(msgs, more) = service_node_.get_db().retrieve(
+        std::tie(msgs, more) = service_node_.db->retrieve(
                 req.pubkey,
                 req.msg_namespace,
                 req.last_hash.value_or(""),
@@ -870,7 +925,7 @@ void RequestHandler::process_client_req(
                 Response{http::NOT_ACCEPTABLE, "delete_all timestamp too far from current time"sv});
     }
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -896,7 +951,7 @@ void RequestHandler::process_client_req(
         handle_action_all_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_all(req.pubkey),
+                service_node_.db->delete_all(req.pubkey),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -906,8 +961,7 @@ void RequestHandler::process_client_req(
         handle_action_one_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_all(
-                        req.pubkey, std::get<namespace_id>(req.msg_namespace)),
+                service_node_.db->delete_all(req.pubkey, std::get<namespace_id>(req.msg_namespace)),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -918,7 +972,7 @@ void RequestHandler::process_client_req(
         add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<void(Response)> cb) {
@@ -928,7 +982,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
         return cb(handle_wrong_swarm(req.pubkey));
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -971,7 +1025,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    auto deleted = service_node_.get_db().delete_by_hash(req.pubkey, req.messages);
+    auto deleted = service_node_.db->delete_by_hash(req.pubkey, req.messages);
     std::sort(deleted.begin(), deleted.end());
     auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, deleted);
     mine["deleted"] = std::move(deleted);
@@ -980,7 +1034,7 @@ void RequestHandler::process_client_req(rpc::delete_msgs&& req, std::function<vo
         add_misc_response_fields(res->result, service_node_);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -1002,7 +1056,7 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subaccount allowed
@@ -1024,14 +1078,14 @@ void RequestHandler::process_client_req(
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    service_node_.get_db().revoke_subaccounts(req.pubkey, req.revoke);
+    service_node_.db->revoke_subaccounts(req.pubkey, req.revoke);
     auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.revoke);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     if (req.recurse)
         add_misc_response_fields(res->result, service_node_);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -1055,7 +1109,7 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 std::nullopt,  // no subaccount allowed
@@ -1077,7 +1131,7 @@ void RequestHandler::process_client_req(
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    mine["count"] = service_node_.get_db().unrevoke_subaccounts(req.pubkey, req.unrevoke);
+    mine["count"] = service_node_.db->unrevoke_subaccounts(req.pubkey, req.unrevoke);
     auto sig =
             create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, req.unrevoke);
     mine["signature"] = req.b64 ? oxenc::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
@@ -1085,7 +1139,7 @@ void RequestHandler::process_client_req(
         add_misc_response_fields(res->result, service_node_);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(
@@ -1106,7 +1160,7 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 std::nullopt,
                 std::nullopt,  // no subaccount allowed
@@ -1122,7 +1176,7 @@ void RequestHandler::process_client_req(
 
     std::vector<std::string> revoked_subaccounts;
     try {
-        revoked_subaccounts = service_node_.get_db().revoked_subaccounts(req.pubkey);
+        revoked_subaccounts = service_node_.db->revoked_subaccounts(req.pubkey);
     } catch (const std::exception& e) {
         auto msg = fmt::format(
                 "Internal Server Error. Could not retrieve revoked_subaccounts for {}",
@@ -1165,7 +1219,7 @@ void RequestHandler::process_client_req(
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -1191,7 +1245,7 @@ void RequestHandler::process_client_req(
         handle_action_all_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_by_timestamp(req.pubkey, req.before),
+                service_node_.db->delete_by_timestamp(req.pubkey, req.before),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1201,7 +1255,7 @@ void RequestHandler::process_client_req(
         handle_action_one_ns(
                 mine,
                 "deleted",
-                service_node_.get_db().delete_by_timestamp(
+                service_node_.db->delete_by_timestamp(
                         req.pubkey, std::get<namespace_id>(req.msg_namespace), req.before),
                 req.b64,
                 ed25519_sk_,
@@ -1212,7 +1266,7 @@ void RequestHandler::process_client_req(
         add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<void(Response)> cb) {
@@ -1232,7 +1286,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -1258,7 +1312,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
         handle_action_all_ns(
                 mine,
                 "updated",
-                service_node_.get_db().update_all_expiries(req.pubkey, req.expiry),
+                service_node_.db->update_all_expiries(req.pubkey, req.expiry),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1267,7 +1321,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
         handle_action_one_ns(
                 mine,
                 "updated",
-                service_node_.get_db().update_all_expiries(
+                service_node_.db->update_all_expiries(
                         req.pubkey, std::get<namespace_id>(req.msg_namespace), req.expiry),
                 req.b64,
                 ed25519_sk_,
@@ -1278,7 +1332,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
         add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<void(Response)> cb) {
@@ -1309,7 +1363,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -1352,7 +1406,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
                        ? res->result["swarm"][service_node_.own_address().pubkey_ed25519.hex()]
                        : res->result;
 
-    auto updated = service_node_.get_db().update_expiry(
+    auto updated = service_node_.db->update_expiry(
             req.pubkey,
             req.messages,
             expiry,
@@ -1373,7 +1427,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
             if (!updated_hashes.count(m))
                 unchanged_hashes.push_back(m);
         if (!unchanged_hashes.empty())
-            unchanged = service_node_.get_db().get_expiries(req.pubkey, unchanged_hashes);
+            unchanged = service_node_.db->get_expiries(req.pubkey, unchanged_hashes);
     }
 
     std::vector<std::string> updated_hash;
@@ -1419,7 +1473,7 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         add_misc_response_fields(res->result, service_node_, now);
 
     if (--res->pending == 0)
-        reply_or_fail(std::move(res));
+        reply_or_fail(service_node_, std::move(res));
 }
 
 void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<void(Response)> cb) {
@@ -1439,7 +1493,7 @@ void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<v
     }
 
     if (!verify_signature(
-                service_node_.get_db(),
+                *service_node_.db,
                 req.pubkey,
                 req.pubkey_ed25519,
                 req.subaccount,
@@ -1454,7 +1508,7 @@ void RequestHandler::process_client_req(rpc::get_expiries&& req, std::function<v
     }
 
     json res = json::object();
-    res["expiries"] = service_node_.get_db().get_expiries(req.pubkey, req.messages);
+    res["expiries"] = service_node_.db->get_expiries(req.pubkey, req.messages);
     return cb(Response{http::OK, std::move(res)});
 }
 
@@ -1657,7 +1711,7 @@ void RequestHandler::process_client_req(
 Response RequestHandler::process_retrieve_all() {
     std::vector<message> msgs;
     try {
-        msgs = service_node_.get_db().retrieve_all();
+        msgs = service_node_.db->retrieve_all();
     } catch (const std::exception& e) {
         return {http::INTERNAL_SERVER_ERROR, "could not retrieve all messages"s};
     }
